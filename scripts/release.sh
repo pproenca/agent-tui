@@ -1,0 +1,73 @@
+#!/bin/bash
+# release.sh - Update versions, commit, and tag for release
+#
+# Usage: ./scripts/release.sh <version>
+# Example: ./scripts/release.sh 0.2.0
+
+set -e
+
+if [ -z "$1" ]; then
+    echo "Usage: $0 <version>"
+    echo "Example: $0 0.2.0"
+    exit 1
+fi
+
+VERSION="$1"
+TAG="v${VERSION}"
+
+# Validate version format (semver)
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+    echo "Error: Invalid version format. Use semver (e.g., 0.2.0 or 0.2.0-beta.1)"
+    exit 1
+fi
+
+# Check for uncommitted changes
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "Error: You have uncommitted changes. Please commit or stash them first."
+    exit 1
+fi
+
+# Check if tag already exists
+if git rev-parse "$TAG" >/dev/null 2>&1; then
+    echo "Error: Tag $TAG already exists"
+    exit 1
+fi
+
+echo "Releasing version $VERSION..."
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Update package.json
+echo "Updating package.json..."
+sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$ROOT_DIR/package.json"
+
+# Update Cargo.toml
+echo "Updating cli/Cargo.toml..."
+sed -i '' "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" "$ROOT_DIR/cli/Cargo.toml"
+
+# Verify updates
+echo ""
+echo "Version updates:"
+grep '"version"' "$ROOT_DIR/package.json" | head -1
+grep '^version' "$ROOT_DIR/cli/Cargo.toml" | head -1
+
+# Stage changes
+echo ""
+echo "Staging changes..."
+git add "$ROOT_DIR/package.json" "$ROOT_DIR/cli/Cargo.toml"
+
+# Commit
+echo "Committing..."
+git commit -m "chore: bump version to $VERSION"
+
+# Create tag
+echo "Creating tag $TAG..."
+git tag -a "$TAG" -m "Release $VERSION"
+
+echo ""
+echo "Done! Release $VERSION prepared."
+echo ""
+echo "To publish, run:"
+echo "  git push && git push --tags"

@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-cli:
+    name: Build Rust CLI
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        rust: [stable]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('cli/Cargo.lock') }}
+
+      - name: Check formatting
+        working-directory: cli
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        working-directory: cli
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build
+        working-directory: cli
+        run: cargo build --release
+
+      - name: Run tests
+        working-directory: cli
+        run: cargo test --release
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-tui-${{ matrix.os }}
+          path: cli/target/release/agent-tui
+          if-no-files-found: error
+
+  integration:
+    name: Integration Tests
+    needs: [rust-cli]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download CLI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-tui-ubuntu-latest
+          path: ./bin
+
+      - name: Make CLI executable
+        run: chmod +x ./bin/agent-tui
+
+      - name: Add CLI to PATH
+        run: echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
+
+      - name: Start native daemon
+        run: |
+          ./bin/agent-tui daemon &
+          sleep 2
+
+      - name: Test health command
+        run: agent-tui health
+
+      - name: Test spawn and kill
+        run: |
+          agent-tui spawn bash
+          sleep 1
+          agent-tui sessions
+          agent-tui kill
+
+      - name: Test basic workflow
+        run: |
+          agent-tui spawn bash
+          agent-tui type "echo 'test'"
+          agent-tui keystroke Enter
+          agent-tui wait "test"
+          agent-tui snapshot
+          agent-tui kill

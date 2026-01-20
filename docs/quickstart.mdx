@@ -1,0 +1,209 @@
+---
+title: Quick Start
+description: 'Get up and running with agent-tui in under 60 seconds'
+---
+
+## Installation
+
+### npm (Recommended)
+
+```bash
+npm install -g agent-tui
+```
+
+### Homebrew
+
+```bash
+brew install pproenca/tap/agent-tui
+```
+
+### Cargo
+
+```bash
+cargo install agent-tui
+```
+
+<Accordion title="Build from Source">
+```bash
+git clone https://github.com/pproenca/agent-tui.git
+cd agent-tui/cli
+cargo build --release
+
+# Add to PATH
+export PATH="$PATH:$(pwd)/target/release"
+```
+
+Requires Rust 1.70+.
+</Accordion>
+
+<Info>
+  **Prerequisites:** macOS or Linux, Node.js 16+ (for npm install)
+</Info>
+
+## Built-in Demo
+
+The fastest way to see agent-tui in action:
+
+<Steps>
+  <Step title="Start the demo">
+    ```bash
+    agent-tui demo
+    ```
+    This spawns a simple TUI form with an input, checkbox, and buttons.
+  </Step>
+  <Step title="See detected elements">
+    ```bash
+    agent-tui snapshot -i
+    ```
+    Output:
+    ```
+    Elements:
+    @e1 [input:Name] "" (3,7) *focused*
+    @e2 [checkbox] "Enable notifications" (5,2)
+    @e3 [button:Submit] (7,4)
+    @e4 [button:Cancel] (7,15)
+    ```
+  </Step>
+  <Step title="Interact with elements">
+    ```bash
+    agent-tui fill @e1 "Hello World"
+    agent-tui toggle @e2
+    agent-tui click @e3
+    ```
+  </Step>
+  <Step title="Clean up">
+    ```bash
+    agent-tui kill
+    ```
+  </Step>
+</Steps>
+
+## Your First Automation
+
+Let's automate `npx create-next-app` — a common interactive wizard:
+
+<Steps>
+  <Step title="Spawn the wizard">
+    ```bash
+    agent-tui spawn "npx create-next-app"
+    ```
+    This starts the TUI in a virtual terminal managed by agent-tui.
+  </Step>
+  <Step title="Take a snapshot">
+    ```bash
+    agent-tui snapshot -i
+    ```
+    This shows the screen content and detected elements:
+    ```
+    Elements:
+    @e1 [input:project-name] "" (3,25) *focused*
+    @e2 [select:typescript] "Yes" (5,25)
+
+    Screen:
+    ? What is your project named? ...
+    ```
+  </Step>
+  <Step title="Fill the input">
+    ```bash
+    agent-tui fill @e1 "my-awesome-app"
+    ```
+    Uses the element ref `@e1` to fill the project name input.
+  </Step>
+  <Step title="Press Enter to continue">
+    ```bash
+    agent-tui keystroke Enter
+    ```
+    Sends the Enter key to confirm and move to the next prompt.
+  </Step>
+  <Step title="Wait and repeat">
+    ```bash
+    agent-tui wait --stable
+    agent-tui snapshot -i
+    # Continue with next prompts...
+    ```
+    Wait for the UI to update, then snapshot again to see new elements.
+  </Step>
+  <Step title="Clean up">
+    ```bash
+    agent-tui kill
+    ```
+    Terminate the session when done.
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's a full script automating `npx create-next-app`:
+
+```bash
+#!/bin/bash
+# Automate Next.js project creation
+
+# Start the wizard
+agent-tui spawn "npx create-next-app"
+
+# Wait for first prompt
+agent-tui wait "project name" --timeout 30000
+
+# Take snapshot and fill project name
+agent-tui snapshot -i
+agent-tui fill @e1 "my-next-app"
+agent-tui keystroke Enter
+
+# Wait for TypeScript prompt and select Yes
+agent-tui wait --stable
+agent-tui snapshot -i
+agent-tui keystroke Enter  # Accept default
+
+# Continue through remaining prompts...
+agent-tui wait --stable
+agent-tui keystroke Enter  # ESLint
+agent-tui wait --stable
+agent-tui keystroke Enter  # Tailwind
+agent-tui wait --stable
+agent-tui keystroke Enter  # src/ directory
+agent-tui wait --stable
+agent-tui keystroke Enter  # App Router
+agent-tui wait --stable
+agent-tui keystroke Enter  # Import alias
+
+# Wait for completion
+agent-tui wait "Success" --timeout 120000
+
+# Done!
+agent-tui kill
+echo "Project created successfully!"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Command Reference"
+    icon="terminal"
+    href="/commands/overview"
+  >
+    Learn all available commands
+  </Card>
+  <Card
+    title="Claude Code Automation"
+    icon="robot"
+    href="/guides/claude-code-automation"
+  >
+    Automate Claude Code itself
+  </Card>
+  <Card
+    title="Element Detection"
+    icon="crosshairs"
+    href="/guides/element-detection"
+  >
+    How element refs work
+  </Card>
+  <Card
+    title="AI Integration"
+    icon="microchip"
+    href="/ai-integration/overview"
+  >
+    Best practices for AI agents
+  </Card>
+</CardGroup>

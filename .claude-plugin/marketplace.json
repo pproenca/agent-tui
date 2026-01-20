@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "agent-tui",
+  "description": "TUI/CLI automation for AI agents",
+  "owner": {
+    "name": "Pedro Proenca",
+    "email": "help@pproenca.dev"
+  },
+  "plugins": [
+    {
+      "name": "agent-tui",
+      "description": "Automates TUI/CLI interactions for project wizards, terminal UIs, and interactive shell tools",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/agent-tui"],
+      "category": "development"
+    }
+  ]
+}

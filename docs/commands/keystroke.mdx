@@ -1,0 +1,98 @@
+---
+title: keystroke
+description: 'Send a single key or key combination'
+---
+
+## Usage
+
+```bash
+agent-tui keystroke <key>
+```
+
+## Description
+
+Sends a single keystroke or key combination to the active TUI session.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<key>` | Key name or combination (e.g., `Enter`, `Ctrl+C`) |
+
+## Supported Keys
+
+### Navigation
+
+| Key | Description |
+|-----|-------------|
+| `Tab` | Move to next field |
+| `Shift+Tab` | Move to previous field |
+| `Enter` | Confirm/submit |
+| `Escape` | Cancel/close |
+
+### Arrows
+
+| Key | Description |
+|-----|-------------|
+| `ArrowUp` / `Up` | Move up |
+| `ArrowDown` / `Down` | Move down |
+| `ArrowLeft` / `Left` | Move left |
+| `ArrowRight` / `Right` | Move right |
+
+### Modifiers
+
+| Key | Description |
+|-----|-------------|
+| `Ctrl+C` | Interrupt/cancel |
+| `Ctrl+D` | End of input / exit |
+| `Ctrl+Z` | Suspend |
+| `Ctrl+A` | Select all |
+
+### Function Keys
+
+| Key | Description |
+|-----|-------------|
+| `F1` - `F12` | Function keys |
+
+### Other
+
+| Key | Description |
+|-----|-------------|
+| `Backspace` | Delete previous character |
+| `Delete` | Delete next character |
+| `Home` | Move to beginning |
+| `End` | Move to end |
+| `PageUp` | Page up |
+| `PageDown` | Page down |
+
+## Examples
+
+```bash
+# Confirm selection
+agent-tui keystroke Enter
+
+# Cancel operation
+agent-tui keystroke Escape
+
+# Navigate menu
+agent-tui keystroke ArrowDown
+agent-tui keystroke ArrowDown
+agent-tui keystroke Enter
+
+# Interrupt running command
+agent-tui keystroke "Ctrl+C"
+
+# Open help
+agent-tui keystroke F1
+```
+
+## Notes
+
+<Info>
+  Wrap key combinations with spaces in quotes: `"Ctrl+C"`, `"Shift+Tab"`
+</Info>
+
+## See Also
+
+- [type](/commands/type) — Type text characters
+- [fill](/commands/fill) — Fill input fields

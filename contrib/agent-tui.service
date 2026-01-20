@@ -1,0 +1,43 @@
+# systemd unit file for agent-tui daemon
+# Install to: ~/.config/systemd/user/agent-tui.service (user) or /etc/systemd/system/agent-tui.service (system)
+#
+# Usage:
+#   systemctl --user daemon-reload
+#   systemctl --user enable agent-tui
+#   systemctl --user start agent-tui
+#   systemctl --user status agent-tui
+#   journalctl --user -u agent-tui -f
+
+[Unit]
+Description=agent-tui daemon for TUI automation
+Documentation=https://github.com/pproenca/agent-tui
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env node %h/.local/share/agent-tui/daemon/dist/index.js
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Environment configuration
+Environment="AGENT_TUI_LOG_LEVEL=info"
+Environment="AGENT_TUI_TRANSPORT=unix"
+# Uncomment for TCP transport
+# Environment="AGENT_TUI_TRANSPORT=tcp"
+# Environment="AGENT_TUI_TCP_PORT=19847"
+
+# Hardening (optional)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%t %h/.local/share/agent-tui
+PrivateTmp=yes
+
+# Resource limits
+MemoryHigh=512M
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

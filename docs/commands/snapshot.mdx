@@ -1,0 +1,117 @@
+---
+title: snapshot
+description: 'Capture screen state and detect elements'
+---
+
+## Usage
+
+```bash
+agent-tui snapshot [options]
+```
+
+## Description
+
+Captures the current screen content of the active TUI session. With `-i`, also detects interactive elements and assigns refs.
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-i, --interactive` | Detect interactive elements | false |
+| `-c, --compact` | Compact output (less whitespace) | false |
+| `--interactive-only` | Show only elements, no screen | false |
+| `-f, --format <fmt>` | Output format: `text` or `json` | text |
+
+## Examples
+
+### Basic Snapshot
+
+```bash
+# Screen content only
+agent-tui snapshot
+
+# Screen + elements
+agent-tui snapshot -i
+```
+
+### Output Formats
+
+```bash
+# Compact for less noise
+agent-tui snapshot -i -c
+
+# JSON for parsing
+agent-tui snapshot -i -f json | jq '.elements'
+
+# Only elements, no screen
+agent-tui snapshot -i --interactive-only
+```
+
+## Output
+
+### Text Format
+
+```
+Elements:
+@e1 [input:project-name] "" (3,25) *focused*
+@e2 [select:typescript] "Yes" (5,25)
+@e3 [checkbox:eslint] "[x]" (7,25)
+
+Screen:
+? What is your project named? _______________
+? Would you like to use TypeScript? Yes / No
+? Would you like to use ESLint? [x] Yes
+```
+
+### JSON Format
+
+```json
+{
+  "elements": [
+    {
+      "ref": "@e1",
+      "type": "input",
+      "label": "project-name",
+      "value": "",
+      "position": { "row": 3, "col": 25 },
+      "focused": true
+    },
+    {
+      "ref": "@e2",
+      "type": "select",
+      "label": "typescript",
+      "value": "Yes",
+      "position": { "row": 5, "col": 25 },
+      "focused": false
+    }
+  ],
+  "screen": "? What is your project named? ..."
+}
+```
+
+## Element Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `input` | Text input field | `@e1 [input:name] "" (3,25)` |
+| `button` | Clickable button | `@e2 [button] "Submit" (5,30)` |
+| `checkbox` | Checkbox | `@e3 [checkbox] "[x]" (7,10)` |
+| `radio` | Radio button | `@e4 [radio] "(•)" (9,10)` |
+| `select` | Dropdown/select | `@e5 [select] "Option A" (11,10)` |
+| `menuitem` | Menu item | `@e6 [menuitem] "File" (0,0)` |
+
+## Understanding Element Refs
+
+Element refs like `@e1`, `@e2` are assigned based on:
+- Screen position (top-to-bottom, left-to-right)
+- Element type
+
+<Warning>
+  **Refs change between snapshots.** Always take a fresh snapshot before interacting with elements.
+</Warning>
+
+## See Also
+
+- [fill](/commands/fill) — Fill input fields
+- [click](/commands/click) — Click elements
+- [wait](/commands/wait) — Wait for conditions

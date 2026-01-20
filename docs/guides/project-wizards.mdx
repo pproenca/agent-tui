@@ -1,0 +1,212 @@
+---
+title: Project Wizards
+description: 'Automate interactive project scaffolding'
+---
+
+## Overview
+
+Project wizards like `create-next-app`, `npm init`, and `create-react-app` are perfect targets for agent-tui automation. This guide shows common patterns for automating these tools.
+
+## General Pattern
+
+```bash
+# 1. Spawn the wizard
+agent-tui spawn "<wizard-command>"
+
+# 2. Wait for first prompt
+agent-tui wait "<prompt-text>" --timeout 30000
+
+# 3. Take snapshot to see elements
+agent-tui snapshot -i
+
+# 4. Fill/select based on element refs
+agent-tui fill @e1 "value"
+# or
+agent-tui keystroke ArrowDown  # for selections
+
+# 5. Confirm
+agent-tui keystroke Enter
+
+# 6. Repeat for each prompt
+agent-tui wait --stable
+agent-tui snapshot -i
+# ...
+
+# 7. Wait for completion
+agent-tui wait "Success" --timeout 120000
+
+# 8. Cleanup
+agent-tui kill
+```
+
+## create-next-app
+
+```bash
+agent-tui spawn "npx create-next-app"
+
+# Project name
+agent-tui wait "project name"
+agent-tui snapshot -i
+agent-tui fill @e1 "my-next-app"
+agent-tui keystroke Enter
+
+# TypeScript (default: Yes)
+agent-tui wait --stable
+agent-tui keystroke Enter
+
+# ESLint (default: Yes)
+agent-tui wait --stable
+agent-tui keystroke Enter
+
+# Tailwind (default: Yes)
+agent-tui wait --stable
+agent-tui keystroke Enter
+
+# src/ directory (default: No)
+agent-tui wait --stable
+agent-tui keystroke Enter
+
+# App Router (default: Yes)
+agent-tui wait --stable
+agent-tui keystroke Enter
+
+# Import alias (default: @/*)
+agent-tui wait --stable
+agent-tui keystroke Enter
+
+# Wait for installation
+agent-tui wait "Success" --timeout 180000
+agent-tui kill
+```
+
+## create-react-app
+
+```bash
+agent-tui spawn "npx create-react-app my-react-app"
+
+# This wizard has fewer prompts
+agent-tui wait "Success" --timeout 180000
+
+agent-tui kill
+```
+
+## npm init
+
+```bash
+agent-tui spawn "npm init"
+
+# Package name
+agent-tui wait "package name"
+agent-tui snapshot -i
+agent-tui type "my-package"
+agent-tui keystroke Enter
+
+# Version
+agent-tui wait "version"
+agent-tui keystroke Enter  # Accept default
+
+# Description
+agent-tui wait "description"
+agent-tui type "My awesome package"
+agent-tui keystroke Enter
+
+# Entry point
+agent-tui wait "entry point"
+agent-tui keystroke Enter  # Accept default
+
+# Test command
+agent-tui wait "test command"
+agent-tui type "jest"
+agent-tui keystroke Enter
+
+# Git repository
+agent-tui wait "git repository"
+agent-tui keystroke Enter  # Accept default
+
+# Keywords
+agent-tui wait "keywords"
+agent-tui type "nodejs, typescript"
+agent-tui keystroke Enter
+
+# Author
+agent-tui wait "author"
+agent-tui type "Your Name"
+agent-tui keystroke Enter
+
+# License
+agent-tui wait "license"
+agent-tui keystroke Enter  # Accept default (ISC)
+
+# Confirm
+agent-tui wait "Is this OK"
+agent-tui keystroke Enter
+
+agent-tui kill
+```
+
+## Vite
+
+```bash
+agent-tui spawn "npm create vite@latest"
+
+# Project name
+agent-tui wait "Project name"
+agent-tui type "my-vite-app"
+agent-tui keystroke Enter
+
+# Framework selection
+agent-tui wait "Select a framework"
+agent-tui keystroke ArrowDown  # Navigate to React
+agent-tui keystroke ArrowDown
+agent-tui keystroke Enter
+
+# Variant selection
+agent-tui wait "Select a variant"
+agent-tui keystroke ArrowDown  # Navigate to TypeScript
+agent-tui keystroke Enter
+
+agent-tui wait "Done" --timeout 30000
+agent-tui kill
+```
+
+## Tips for Wizard Automation
+
+<AccordionGroup>
+  <Accordion icon="clock" title="Use wait --stable">
+    Between prompts, use `wait --stable` to ensure the UI has settled before proceeding.
+  </Accordion>
+  <Accordion icon="camera" title="Snapshot When Unsure">
+    If you're not sure what elements are available, take a snapshot to see the current state.
+  </Accordion>
+  <Accordion icon="arrows-up-down" title="Arrow Keys for Selection">
+    Many wizards use arrow keys to navigate options. Use `keystroke ArrowDown/ArrowUp` to select.
+  </Accordion>
+  <Accordion icon="hourglass" title="Generous Timeouts for Installation">
+    Package installation can take several minutes. Use timeouts of 120-300 seconds for installation steps.
+  </Accordion>
+</AccordionGroup>
+
+## Handling Variations
+
+Different systems or network conditions may affect wizard behavior:
+
+```bash
+# Robust pattern with error handling
+agent-tui spawn "npx create-next-app"
+
+# Try to wait for prompt, with fallback
+if agent-tui wait "project name" --timeout 60000; then
+    agent-tui fill @e1 "my-app"
+    agent-tui keystroke Enter
+else
+    # Check current state
+    agent-tui snapshot -i
+    echo "Unexpected state, check snapshot"
+fi
+```
+
+## See Also
+
+- [Quick Start](/quickstart) — Basic automation flow
+- [snapshot](/commands/snapshot) — Element detection
+- [wait](/commands/wait) — Synchronization options

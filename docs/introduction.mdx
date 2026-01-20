@@ -1,0 +1,134 @@
+---
+title: Introduction
+description: 'Let AI agents control any terminal application'
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.svg"
+  alt="agent-tui hero"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.svg"
+  alt="agent-tui hero"
+/>
+
+## What is agent-tui?
+
+agent-tui enables AI coding agents to interact with interactive CLI/TUI applications through a programmatic interface — the terminal equivalent of browser automation tools.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quick Start"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get up and running in under 60 seconds
+  </Card>
+  <Card
+    title="Commands"
+    icon="terminal"
+    href="/commands/overview"
+  >
+    Full command reference
+  </Card>
+  <Card
+    title="Claude Code Automation"
+    icon="robot"
+    href="/guides/claude-code-automation"
+  >
+    The killer feature: AI controlling AI
+  </Card>
+  <Card
+    title="AI Integration"
+    icon="microchip"
+    href="/ai-integration/overview"
+  >
+    Optimal patterns for AI agents
+  </Card>
+</CardGroup>
+
+## The Problem
+
+Interactive CLI wizards block automation:
+
+```bash
+# This hangs waiting for user input!
+npx create-next-app
+# ? What is your project named? ...
+```
+
+AI agents can't "see" what's on screen or interact with TUI elements.
+
+## The Solution
+
+agent-tui captures screens, detects elements, and lets AI interact:
+
+```bash
+# 1. Spawn the wizard
+agent-tui spawn "npx create-next-app"
+
+# 2. See what's on screen
+agent-tui snapshot -i
+# @e1 [input] "project name" | @e2 [select] "TypeScript"...
+
+# 3. Interact using element refs
+agent-tui fill @e1 "my-app"
+agent-tui keystroke Enter
+```
+
+## Why agent-tui?
+
+| Problem | Solution |
+|---------|----------|
+| Interactive CLI wizards block automation | agent-tui captures screens and detects elements |
+| No API for terminal UIs | Element refs (`@e1`, `@e2`) make TUIs scriptable |
+| AI can't "see" terminal state | Snapshots provide structured view of screen + elements |
+| TUIs require human interaction | AI agents can now fill forms, click buttons, navigate menus |
+
+## Works With
+
+agent-tui is designed for AI agents:
+
+- **Claude Code** — Anthropic's AI coding assistant
+- **Cursor** — AI-powered code editor
+- **Codex** — OpenAI's code generation
+- **Copilot** — GitHub's AI pair programmer
+- **Any AI agent** — Any system that can run bash commands
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion icon="camera" title="Screen Capture">
+    Capture the current state of any TUI application. See exactly what's displayed, including UI elements.
+  </Accordion>
+  <Accordion icon="crosshairs" title="Element Detection">
+    Automatically detect buttons, inputs, checkboxes, menus, and more. Each element gets a stable ref for interaction.
+  </Accordion>
+  <Accordion icon="keyboard" title="Rich Interaction">
+    Fill inputs, click buttons, send keystrokes, type text. Full control over TUI applications.
+  </Accordion>
+  <Accordion icon="clock" title="Synchronization">
+    Wait for specific text, element appearance, or screen stability. Handle async UI updates gracefully.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quick Start"
+    icon="play"
+    href="/quickstart"
+  >
+    Install and run your first automation
+  </Card>
+  <Card
+    title="Automate Claude Code"
+    icon="robot"
+    href="/guides/claude-code-automation"
+  >
+    See the killer feature in action
+  </Card>
+</CardGroup>

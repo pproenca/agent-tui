@@ -1,0 +1,53 @@
+---
+title: click
+description: 'Click or activate an element'
+---
+
+## Usage
+
+```bash
+agent-tui click <ref>
+```
+
+## Description
+
+Clicks or activates an element identified by its element ref. Works with buttons, checkboxes, radio buttons, menu items, and other clickable elements.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<ref>` | Element ref from snapshot (e.g., `@e1`) |
+
+## Examples
+
+```bash
+# Click a button
+agent-tui click @e1
+
+# Click a checkbox
+agent-tui click @e2
+
+# Click a menu item
+agent-tui click @e3
+```
+
+## Workflow
+
+```bash
+# 1. Take snapshot to see elements
+agent-tui snapshot -i
+# Output: @e1 [button] "Submit" (10,30)
+
+# 2. Click the button
+agent-tui click @e1
+
+# 3. Wait for result
+agent-tui wait --stable
+```
+
+## See Also
+
+- [snapshot](/commands/snapshot) — Get element refs
+- [fill](/commands/fill) — Fill input fields
+- [keystroke](/commands/keystroke) — Send key presses

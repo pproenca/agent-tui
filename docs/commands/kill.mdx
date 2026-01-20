@@ -1,0 +1,60 @@
+---
+title: kill
+description: 'Terminate the active session'
+---
+
+## Usage
+
+```bash
+agent-tui kill [options]
+```
+
+## Description
+
+Terminates the active TUI session, ending the managed process and freeing resources.
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `--session <id>` | Kill a specific session by ID |
+
+## Examples
+
+```bash
+# Kill active session
+agent-tui kill
+
+# Kill specific session
+agent-tui kill --session project-a
+```
+
+## Workflow
+
+```bash
+# Start session
+agent-tui spawn "npm init"
+
+# Do work...
+agent-tui snapshot -i
+agent-tui fill @e1 "my-package"
+agent-tui keystroke Enter
+
+# Clean up when done
+agent-tui kill
+```
+
+## Notes
+
+<Warning>
+  Always kill sessions when done to free PTY resources and memory.
+</Warning>
+
+<Info>
+  Sessions are automatically cleaned up when the daemon restarts.
+</Info>
+
+## See Also
+
+- [spawn](/commands/spawn) — Start sessions
+- [sessions](/commands/sessions) — List active sessions

@@ -1,0 +1,113 @@
+---
+title: wait
+description: 'Wait for text, element, or screen stability'
+---
+
+## Usage
+
+```bash
+agent-tui wait [text] [options]
+```
+
+## Description
+
+Waits for a specified condition before continuing. Essential for handling async UI updates.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `[text]` | Text to wait for on screen (optional if using `--stable`) |
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--stable` | Wait for screen to stop changing | false |
+| `--element <ref>` | Wait for element to appear | - |
+| `--text-gone <text>` | Wait for text to disappear | - |
+| `-t, --timeout <ms>` | Maximum wait time in milliseconds | 30000 |
+
+## Examples
+
+### Wait for Text
+
+```bash
+# Wait for specific text
+agent-tui wait "project name"
+
+# Wait for completion message
+agent-tui wait "Success!" --timeout 120000
+
+# Wait for prompt
+agent-tui wait ">" --timeout 60000
+```
+
+### Wait for Stability
+
+```bash
+# Wait until screen stops changing
+agent-tui wait --stable
+
+# Wait for stability with timeout
+agent-tui wait --stable --timeout 10000
+```
+
+### Wait for Element
+
+```bash
+# Wait for button to appear
+agent-tui wait --element @e1
+
+# Wait for input field
+agent-tui wait --element @inp1 --timeout 5000
+```
+
+### Wait for Text to Disappear
+
+```bash
+# Wait for loading to finish
+agent-tui wait --text-gone "Loading..."
+
+# Wait for spinner to stop
+agent-tui wait --text-gone "..." --timeout 30000
+```
+
+## Common Patterns
+
+### After Form Submission
+
+```bash
+agent-tui keystroke Enter
+agent-tui wait --stable --timeout 5000
+agent-tui snapshot -i
+```
+
+### After Long Operation
+
+```bash
+agent-tui keystroke Enter  # Start installation
+agent-tui wait "Complete" --timeout 300000  # 5 minutes
+```
+
+### Wait for UI to Load
+
+```bash
+agent-tui spawn "npx create-next-app"
+agent-tui wait "project name" --timeout 30000
+```
+
+## Notes
+
+<Warning>
+  Always specify appropriate timeouts for operations that may take longer than the default 30 seconds.
+</Warning>
+
+<Info>
+  Use `--stable` when you don't know exactly what text will appear, but need to wait for the UI to settle.
+</Info>
+
+## See Also
+
+- [snapshot](/commands/snapshot) — Capture after waiting
+- [spawn](/commands/spawn) — Start sessions

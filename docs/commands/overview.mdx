@@ -1,0 +1,87 @@
+---
+title: Command Overview
+description: 'All agent-tui commands at a glance'
+---
+
+## Quick Reference
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| [`spawn`](/commands/spawn) | Start TUI app | `agent-tui spawn htop` |
+| [`snapshot`](/commands/snapshot) | Get screen state | `agent-tui snapshot -i` |
+| [`fill`](/commands/fill) | Fill input field | `agent-tui fill @e1 "text"` |
+| [`click`](/commands/click) | Click element | `agent-tui click @e1` |
+| [`keystroke`](/commands/keystroke) | Send key | `agent-tui keystroke Enter` |
+| [`type`](/commands/type) | Type text | `agent-tui type "hello"` |
+| [`wait`](/commands/wait) | Wait for condition | `agent-tui wait "Ready"` |
+| [`kill`](/commands/kill) | Terminate session | `agent-tui kill` |
+| [`sessions`](/commands/sessions) | List sessions | `agent-tui sessions` |
+
+## Command Categories
+
+### Session Management
+
+<CardGroup cols={2}>
+  <Card title="spawn" icon="play" href="/commands/spawn">
+    Start a TUI application in a managed session
+  </Card>
+  <Card title="kill" icon="stop" href="/commands/kill">
+    Terminate the active session
+  </Card>
+  <Card title="sessions" icon="list" href="/commands/sessions">
+    List all active sessions
+  </Card>
+</CardGroup>
+
+### Screen & Elements
+
+<CardGroup cols={2}>
+  <Card title="snapshot" icon="camera" href="/commands/snapshot">
+    Capture screen and detect elements
+  </Card>
+</CardGroup>
+
+### Interaction
+
+<CardGroup cols={2}>
+  <Card title="fill" icon="pen" href="/commands/fill">
+    Fill an input field with text
+  </Card>
+  <Card title="click" icon="hand-pointer" href="/commands/click">
+    Click or activate an element
+  </Card>
+  <Card title="keystroke" icon="keyboard" href="/commands/keystroke">
+    Send a single key or combination
+  </Card>
+  <Card title="type" icon="font" href="/commands/type">
+    Type literal text characters
+  </Card>
+</CardGroup>
+
+### Synchronization
+
+<CardGroup cols={2}>
+  <Card title="wait" icon="clock" href="/commands/wait">
+    Wait for text, element, or stability
+  </Card>
+</CardGroup>
+
+## Global Options
+
+All commands support these global options:
+
+| Option | Description |
+|--------|-------------|
+| `--session <id>` | Target a specific session |
+| `-f, --format <fmt>` | Output format: `text` or `json` |
+| `-v, --verbose` | Enable verbose output |
+| `--help` | Show help for command |
+
+## JSON Output
+
+Add `-f json` to any command for machine-readable output:
+
+```bash
+agent-tui snapshot -i -f json | jq '.elements'
+agent-tui sessions -f json | jq '.sessions[0].id'
+```

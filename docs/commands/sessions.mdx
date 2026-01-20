@@ -1,0 +1,94 @@
+---
+title: sessions
+description: 'List all active sessions'
+---
+
+## Usage
+
+```bash
+agent-tui sessions [options]
+```
+
+## Description
+
+Lists all active TUI sessions managed by the daemon.
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-f, --format <fmt>` | Output format: `text` or `json` | text |
+
+## Examples
+
+```bash
+# List sessions
+agent-tui sessions
+
+# JSON output for parsing
+agent-tui sessions -f json
+```
+
+## Output
+
+### Text Format
+
+```
+Sessions:
+  abc123  running   npx create-next-app   80x24
+  def456  running   htop                   120x40
+```
+
+### JSON Format
+
+```json
+{
+  "sessions": [
+    {
+      "id": "abc123",
+      "status": "running",
+      "command": "npx create-next-app",
+      "cols": 80,
+      "rows": 24
+    },
+    {
+      "id": "def456",
+      "status": "running",
+      "command": "htop",
+      "cols": 120,
+      "rows": 40
+    }
+  ]
+}
+```
+
+## Use Cases
+
+### Check for Orphaned Sessions
+
+```bash
+# List all sessions
+agent-tui sessions
+
+# Kill any leftover sessions
+agent-tui kill --session abc123
+```
+
+### Multi-Session Workflows
+
+```bash
+# Start multiple sessions
+agent-tui spawn "npm init" --session project-a
+agent-tui spawn "npm init" --session project-b
+
+# Check status
+agent-tui sessions
+
+# Work with specific session
+agent-tui --session project-a snapshot -i
+```
+
+## See Also
+
+- [spawn](/commands/spawn) — Start sessions
+- [kill](/commands/kill) — Terminate sessions

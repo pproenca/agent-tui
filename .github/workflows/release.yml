@@ -1,0 +1,234 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract and validate versions
+        id: version
+        run: |
+          CARGO_VERSION=$(grep '^version' cli/Cargo.toml | head -1 | cut -d'"' -f2)
+          NPM_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+
+          echo "Cargo.toml version: $CARGO_VERSION"
+          echo "package.json version: $NPM_VERSION"
+          echo "Git tag version: $TAG_VERSION"
+
+          if [ "$CARGO_VERSION" != "$NPM_VERSION" ]; then
+            echo "::error::Version mismatch between Cargo.toml ($CARGO_VERSION) and package.json ($NPM_VERSION)"
+            exit 1
+          fi
+
+          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch between Cargo.toml ($CARGO_VERSION) and git tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+          echo "version=$CARGO_VERSION" >> $GITHUB_OUTPUT
+          echo "All versions match: $CARGO_VERSION"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: agent-tui-linux-x64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: agent-tui-linux-arm64
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: agent-tui-darwin-x64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: agent-tui-darwin-arm64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: agent-tui-win32-x64
+            ext: .exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-release-
+
+      - name: Install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@cross
+
+      - name: Build with cross
+        if: matrix.cross
+        working-directory: cli
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build native
+        if: ${{ !matrix.cross }}
+        working-directory: cli
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          cp cli/target/${{ matrix.target }}/release/agent-tui dist/${{ matrix.artifact }}
+          chmod +x dist/${{ matrix.artifact }}
+
+      - name: Prepare artifact (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir dist
+          copy cli\target\${{ matrix.target }}\release\agent-tui.exe dist\${{ matrix.artifact }}.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}${{ matrix.ext }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir release
+          for dir in artifacts/*/; do
+            cp "$dir"* release/
+          done
+          ls -la release/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
+
+  publish-npm:
+    name: Publish to npm
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare npm package
+        run: |
+          mkdir -p bin
+          # Copy binaries with platform-specific names
+          cp artifacts/agent-tui-linux-x64/agent-tui-linux-x64 bin/
+          cp artifacts/agent-tui-linux-arm64/agent-tui-linux-arm64 bin/
+          cp artifacts/agent-tui-darwin-x64/agent-tui-darwin-x64 bin/
+          cp artifacts/agent-tui-darwin-arm64/agent-tui-darwin-arm64 bin/
+          cp artifacts/agent-tui-win32-x64/agent-tui-win32-x64.exe bin/
+          chmod +x bin/agent-tui-*
+          ls -la bin/
+
+      - name: Check if version already published
+        id: npm-check
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view agent-tui@$VERSION version 2>/dev/null; then
+            echo "Version $VERSION already published to npm"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm with provenance
+        if: steps.npm-check.outputs.skip != 'true'
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check if version already published
+        id: crates-check
+        run: |
+          VERSION=$(grep '^version' cli/Cargo.toml | head -1 | cut -d'"' -f2)
+          if cargo search agent-tui --limit 1 | grep -q "agent-tui = \"$VERSION\""; then
+            echo "Version $VERSION already published to crates.io"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to crates.io
+        if: steps.crates-check.outputs.skip != 'true'
+        working-directory: cli
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}

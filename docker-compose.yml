@@ -1,0 +1,53 @@
+# agent-tui Docker Compose configuration
+#
+# Usage:
+#   docker-compose up -d          # Start daemon
+#   docker-compose exec cli health # Run CLI commands
+#   docker-compose logs -f daemon  # View logs
+#   docker-compose down            # Stop all
+
+version: '3.8'
+
+services:
+  daemon:
+    build: .
+    container_name: agent-tui-daemon
+    ports:
+      - "19847:19847"
+    environment:
+      - AGENT_TUI_TRANSPORT=tcp
+      - AGENT_TUI_TCP_PORT=19847
+      - AGENT_TUI_LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "agent-tui", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+
+  # CLI container for interactive use
+  cli:
+    build: .
+    container_name: agent-tui-cli
+    entrypoint: ["/usr/local/bin/agent-tui"]
+    command: ["--help"]
+    environment:
+      - AGENT_TUI_TRANSPORT=tcp
+      - AGENT_TUI_TCP_PORT=19847
+    depends_on:
+      daemon:
+        condition: service_healthy
+    network_mode: "host"
+    profiles:
+      - cli  # Only start when explicitly requested
+
+networks:
+  default:
+    name: agent-tui-network

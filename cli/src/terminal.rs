@@ -1,0 +1,271 @@
+//! Terminal emulation using vt100
+//!
+//! This module wraps the vt100 crate to provide headless terminal
+//! emulation with access to cell styling data for element detection.
+
+use std::sync::{Arc, Mutex};
+use vt100::Parser;
+
+/// Cell style information for element detection
+#[derive(Debug, Clone, Default)]
+pub struct CellStyle {
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub inverse: bool,
+    pub fg_color: Option<Color>,
+    pub bg_color: Option<Color>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Color {
+    Default,
+    Indexed(u8),
+    Rgb(u8, u8, u8),
+}
+
+/// A cell in the terminal screen
+#[derive(Debug, Clone)]
+pub struct Cell {
+    pub char: char,
+    pub style: CellStyle,
+}
+
+/// Screen buffer with cell data
+#[derive(Debug, Clone)]
+pub struct ScreenBuffer {
+    pub cells: Vec<Vec<Cell>>,
+    pub cols: u16,
+    pub rows: u16,
+}
+
+/// Cursor position
+#[derive(Debug, Clone)]
+pub struct CursorPosition {
+    pub row: u16,
+    pub col: u16,
+    pub visible: bool,
+}
+
+/// Virtual terminal using vt100
+pub struct VirtualTerminal {
+    parser: Arc<Mutex<Parser>>,
+    cols: u16,
+    rows: u16,
+}
+
+impl VirtualTerminal {
+    /// Create a new virtual terminal with the given dimensions
+    pub fn new(cols: u16, rows: u16) -> Self {
+        let parser = Parser::new(rows, cols, 0);
+        Self {
+            parser: Arc::new(Mutex::new(parser)),
+            cols,
+            rows,
+        }
+    }
+
+    /// Process input data (from PTY)
+    pub fn process(&self, data: &[u8]) {
+        let mut parser = self.parser.lock().unwrap();
+        parser.process(data);
+    }
+
+    /// Get the screen as text
+    pub fn screen_text(&self) -> String {
+        let parser = self.parser.lock().unwrap();
+        let screen = parser.screen();
+
+        let mut lines = Vec::new();
+        for row in 0..screen.size().0 {
+            let mut line = String::new();
+            for col in 0..screen.size().1 {
+                let cell = screen.cell(row, col);
+                if let Some(cell) = cell {
+                    line.push(cell.contents().chars().next().unwrap_or(' '));
+                } else {
+                    line.push(' ');
+                }
+            }
+            // Trim trailing whitespace but preserve the line
+            let trimmed = line.trim_end();
+            lines.push(trimmed.to_string());
+        }
+
+        // Remove trailing empty lines
+        while lines.last().map(|l| l.is_empty()).unwrap_or(false) {
+            lines.pop();
+        }
+
+        lines.join("\n")
+    }
+
+    /// Get the screen buffer with style information
+    pub fn screen_buffer(&self) -> ScreenBuffer {
+        let parser = self.parser.lock().unwrap();
+        let screen = parser.screen();
+
+        let mut cells = Vec::new();
+        for row in 0..screen.size().0 {
+            let mut row_cells = Vec::new();
+            for col in 0..screen.size().1 {
+                let cell = screen.cell(row, col);
+                let (char, style) = if let Some(cell) = cell {
+                    let c = cell.contents().chars().next().unwrap_or(' ');
+                    let s = CellStyle {
+                        bold: cell.bold(),
+                        italic: cell.italic(),
+                        underline: cell.underline(),
+                        inverse: cell.inverse(),
+                        fg_color: convert_color(cell.fgcolor()),
+                        bg_color: convert_color(cell.bgcolor()),
+                    };
+                    (c, s)
+                } else {
+                    (' ', CellStyle::default())
+                };
+                row_cells.push(Cell { char, style });
+            }
+            cells.push(row_cells);
+        }
+
+        ScreenBuffer {
+            cells,
+            cols: self.cols,
+            rows: self.rows,
+        }
+    }
+
+    /// Get cursor position
+    pub fn cursor(&self) -> CursorPosition {
+        let parser = self.parser.lock().unwrap();
+        let screen = parser.screen();
+        let (row, col) = screen.cursor_position();
+
+        CursorPosition {
+            row,
+            col,
+            visible: !screen.hide_cursor(),
+        }
+    }
+
+    /// Resize the terminal
+    pub fn resize(&mut self, cols: u16, rows: u16) {
+        let mut parser = self.parser.lock().unwrap();
+        parser.set_size(rows, cols);
+        self.cols = cols;
+        self.rows = rows;
+    }
+
+    /// Get the terminal size
+    pub fn size(&self) -> (u16, u16) {
+        (self.cols, self.rows)
+    }
+
+    /// Clear the terminal screen buffer
+    pub fn clear(&mut self) {
+        let rows = self.rows;
+        let cols = self.cols;
+        let mut parser = self.parser.lock().unwrap();
+        parser.set_size(rows, cols);
+    }
+
+    /// Check if a cell has inverse style (often indicates focus/selection)
+    pub fn is_cell_inverse(&self, row: u16, col: u16) -> bool {
+        let parser = self.parser.lock().unwrap();
+        let screen = parser.screen();
+        screen.cell(row, col).map(|c| c.inverse()).unwrap_or(false)
+    }
+
+    /// Check if a cell is bold
+    pub fn is_cell_bold(&self, row: u16, col: u16) -> bool {
+        let parser = self.parser.lock().unwrap();
+        let screen = parser.screen();
+        screen.cell(row, col).map(|c| c.bold()).unwrap_or(false)
+    }
+
+    /// Get the style of a specific cell
+    pub fn cell_style(&self, row: u16, col: u16) -> Option<CellStyle> {
+        let parser = self.parser.lock().unwrap();
+        let screen = parser.screen();
+        screen.cell(row, col).map(|cell| CellStyle {
+            bold: cell.bold(),
+            italic: cell.italic(),
+            underline: cell.underline(),
+            inverse: cell.inverse(),
+            fg_color: convert_color(cell.fgcolor()),
+            bg_color: convert_color(cell.bgcolor()),
+        })
+    }
+
+    /// Get a range of cells as styled text
+    pub fn get_styled_range(
+        &self,
+        row: u16,
+        start_col: u16,
+        end_col: u16,
+    ) -> Vec<(char, CellStyle)> {
+        let parser = self.parser.lock().unwrap();
+        let screen = parser.screen();
+
+        let mut result = Vec::new();
+        for col in start_col..end_col {
+            if let Some(cell) = screen.cell(row, col) {
+                let c = cell.contents().chars().next().unwrap_or(' ');
+                let style = CellStyle {
+                    bold: cell.bold(),
+                    italic: cell.italic(),
+                    underline: cell.underline(),
+                    inverse: cell.inverse(),
+                    fg_color: convert_color(cell.fgcolor()),
+                    bg_color: convert_color(cell.bgcolor()),
+                };
+                result.push((c, style));
+            } else {
+                result.push((' ', CellStyle::default()));
+            }
+        }
+        result
+    }
+}
+
+fn convert_color(color: vt100::Color) -> Option<Color> {
+    match color {
+        vt100::Color::Default => Some(Color::Default),
+        vt100::Color::Idx(idx) => Some(Color::Indexed(idx)),
+        vt100::Color::Rgb(r, g, b) => Some(Color::Rgb(r, g, b)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_basic_terminal() {
+        let term = VirtualTerminal::new(80, 24);
+        term.process(b"Hello, World!");
+        let text = term.screen_text();
+        assert!(text.contains("Hello, World!"));
+    }
+
+    #[test]
+    fn test_cursor_position() {
+        let term = VirtualTerminal::new(80, 24);
+        term.process(b"ABC");
+        let cursor = term.cursor();
+        assert_eq!(cursor.col, 3);
+        assert_eq!(cursor.row, 0);
+    }
+
+    #[test]
+    fn test_screen_buffer() {
+        let term = VirtualTerminal::new(80, 24);
+        term.process(b"\x1b[1mBold\x1b[0m Normal");
+        let buffer = term.screen_buffer();
+
+        // First character 'B' should be bold
+        assert!(buffer.cells[0][0].style.bold);
+        assert_eq!(buffer.cells[0][0].char, 'B');
+    }
+}

@@ -1,0 +1,160 @@
+---
+title: Element Detection
+description: 'How agent-tui detects and references UI elements'
+---
+
+## Overview
+
+agent-tui automatically detects interactive elements in TUI applications and assigns them unique refs like `@e1`, `@e2`. This makes TUIs scriptable without requiring knowledge of internal implementation.
+
+## How Element Refs Work
+
+When you run `agent-tui snapshot -i`, the system:
+
+1. Captures the current screen content
+2. Analyzes the text for UI patterns (buttons, inputs, etc.)
+3. Assigns refs based on screen position (top-to-bottom, left-to-right)
+4. Returns both the screen and element list
+
+```bash
+agent-tui snapshot -i
+```
+
+Output:
+```
+Elements:
+@e1 [input:project-name] "" (3,25) *focused*
+@e2 [select:typescript] "Yes" (5,25)
+@e3 [checkbox:eslint] "[x]" (7,25)
+
+Screen:
+? What is your project named? _______________
+? Would you like to use TypeScript? Yes / No
+? Would you like to use ESLint? [x] Yes
+```
+
+## Element Types
+
+| Type | Pattern Detected | Example |
+|------|-----------------|---------|
+| `input` | Text fields, blank areas after prompts | `[____________]` |
+| `button` | Bracketed text, common button words | `[OK]`, `<Submit>`, `[Cancel]` |
+| `checkbox` | Square brackets with space or x | `[x]`, `[ ]` |
+| `radio` | Parentheses with dot or space | `(•)`, `( )` |
+| `select` | Dropdown indicators, Yes/No choices | `▼ Option`, `Yes / No` |
+| `menuitem` | Arrow markers, menu patterns | `> File`, `• Option` |
+| `listitem` | Bullet points, numbered items | `• Item`, `1. First` |
+
+## Element Ref Format
+
+```
+@e1 [type:label] "value" (row,col) *state*
+```
+
+| Part | Description |
+|------|-------------|
+| `@e1` | The ref you use to interact |
+| `[type:label]` | Element type and optional label |
+| `"value"` | Current value or text content |
+| `(row,col)` | Screen position |
+| `*state*` | Optional state like `*focused*`, `*selected*` |
+
+## Key Rule: Refs Change
+
+<Warning>
+  **Element refs are ephemeral.** They change whenever the UI updates.
+
+  Always take a fresh snapshot before interacting with elements.
+</Warning>
+
+### Wrong:
+
+```bash
+agent-tui snapshot -i  # @e1 = project name input
+agent-tui fill @e1 "my-app"
+agent-tui keystroke Enter
+# UI changes, refs shift!
+agent-tui fill @e1 "something"  # WRONG - @e1 is now different!
+```
+
+### Correct:
+
+```bash
+agent-tui snapshot -i  # @e1 = project name input
+agent-tui fill @e1 "my-app"
+agent-tui keystroke Enter
+agent-tui wait --stable
+agent-tui snapshot -i  # Get fresh refs!
+agent-tui fill @e1 "something"  # Now @e1 is correct
+```
+
+## JSON Output for Programmatic Use
+
+```bash
+agent-tui snapshot -i -f json
+```
+
+```json
+{
+  "elements": [
+    {
+      "ref": "@e1",
+      "type": "input",
+      "label": "project-name",
+      "value": "",
+      "position": { "row": 3, "col": 25 },
+      "focused": true
+    }
+  ],
+  "screen": "..."
+}
+```
+
+### Extract Specific Elements
+
+```bash
+# Get all inputs
+agent-tui snapshot -i -f json | jq '.elements[] | select(.type == "input")'
+
+# Get focused element
+agent-tui snapshot -i -f json | jq '.elements[] | select(.focused == true)'
+
+# Get element by label
+agent-tui snapshot -i -f json | jq '.elements[] | select(.label == "project-name")'
+```
+
+## Troubleshooting Detection
+
+### Element Not Detected
+
+If an expected element isn't showing up:
+
+1. **Check the raw screen:** `agent-tui snapshot` (without `-i`)
+2. **Verify the element is visible:** Some elements may be off-screen
+3. **Wait for UI to settle:** `agent-tui wait --stable` before snapshot
+4. **Try different timing:** UI might still be rendering
+
+### Wrong Element Detected
+
+If elements are misidentified:
+
+1. **Use keystroke navigation:** Use `Tab`, `ArrowDown` instead of refs
+2. **Combine with type:** Use `type "value"` for focused inputs
+3. **Report the issue:** Element detection can be improved
+
+## Interaction Commands by Element Type
+
+| Element | Primary Command | Alternative |
+|---------|----------------|-------------|
+| `input` | `fill @e1 "value"` | `type "value"` if focused |
+| `button` | `click @e1` | `keystroke Enter` if focused |
+| `checkbox` | `click @e1` | `keystroke Space` if focused |
+| `radio` | `click @e1` | `keystroke Space` if focused |
+| `select` | `keystroke ArrowDown/Up` | Navigate then `Enter` |
+| `menuitem` | `click @e1` | Navigate with arrows |
+
+## See Also
+
+- [snapshot](/commands/snapshot) — Capture elements
+- [fill](/commands/fill) — Fill input fields
+- [click](/commands/click) — Click elements

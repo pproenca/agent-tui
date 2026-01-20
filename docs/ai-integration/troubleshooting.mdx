@@ -1,0 +1,272 @@
+---
+title: Troubleshooting
+description: 'Common issues and solutions for AI agents'
+---
+
+## Quick Reference
+
+| Issue | Solution |
+|-------|----------|
+| Element not found | Take fresh snapshot |
+| Wait timeout | Increase timeout, use `--stable` |
+| No active session | Check with `sessions`, respawn |
+| Stale refs | Re-snapshot after UI changes |
+| Daemon unresponsive | Run `health -v`, restart daemon |
+
+## Element Not Found
+
+**Symptom:** `Error: Element @e1 not found`
+
+**Causes:**
+1. Refs changed since last snapshot
+2. Element not on screen
+3. Incorrect ref format
+
+**Solutions:**
+
+```bash
+# 1. Take a fresh snapshot
+agent-tui snapshot -i
+# Then use the refs you see
+
+# 2. Verify element exists
+agent-tui snapshot -i | grep "@e1"
+
+# 3. Check ref format
+# Correct: @e1
+# Wrong: e1, @E1, @e01
+```
+
+## Wait Timeout
+
+**Symptom:** `Error: Timeout waiting for 'text'`
+
+**Causes:**
+1. Text doesn't appear as expected
+2. Timeout too short
+3. Application crashed
+
+**Solutions:**
+
+```bash
+# 1. Check current screen state
+agent-tui snapshot
+
+# 2. Increase timeout
+agent-tui wait "text" --timeout 60000
+
+# 3. Use --stable instead of specific text
+agent-tui wait --stable --timeout 30000
+
+# 4. Check if session is still running
+agent-tui sessions
+```
+
+## No Active Session
+
+**Symptom:** `Error: No active session`
+
+**Causes:**
+1. Never spawned a session
+2. Session terminated unexpectedly
+3. Targeting wrong session
+
+**Solutions:**
+
+```bash
+# 1. List all sessions
+agent-tui sessions
+
+# 2. Spawn a new session if needed
+agent-tui spawn "your-command"
+
+# 3. Target correct session
+agent-tui --session correct-id snapshot -i
+```
+
+## Stale Element Refs
+
+**Symptom:** Clicking wrong element or element not responding
+
+**Causes:**
+1. UI changed since last snapshot
+2. Multiple operations without re-snapshotting
+
+**Solutions:**
+
+```bash
+# Always re-snapshot after UI changes
+agent-tui keystroke Enter
+agent-tui wait --stable
+agent-tui snapshot -i  # Fresh refs!
+agent-tui fill @e1 "value"  # Now correct
+```
+
+## Daemon Issues
+
+### Daemon Not Starting
+
+```bash
+# Check health
+agent-tui health -v
+
+# If fails, check for stale files
+ls -la /tmp/agent-tui.*
+
+# Remove stale files
+rm -f /tmp/agent-tui.sock /tmp/agent-tui.pid
+
+# Try again
+agent-tui health
+```
+
+### Daemon Unresponsive
+
+```bash
+# Check status
+agent-tui health -v
+
+# Force restart
+pkill -f agent-tui-daemon
+rm -f /tmp/agent-tui.sock /tmp/agent-tui.pid
+agent-tui health  # Restarts daemon
+```
+
+### Circuit Breaker Open
+
+```bash
+# Check circuit state
+agent-tui health -v
+# Output: Circuit Breaker: open
+
+# Wait 30 seconds or force reset
+pkill -f agent-tui-daemon
+rm -f /tmp/agent-tui.sock
+agent-tui health
+```
+
+## Application-Specific Issues
+
+### Application Not Starting
+
+```bash
+# Verify command works directly
+your-command  # Test outside agent-tui first
+
+# Check with larger terminal
+agent-tui spawn "your-command" --cols 120 --rows 40
+
+# Add wait after spawn
+agent-tui spawn "your-command"
+agent-tui wait --stable --timeout 10000
+```
+
+### Application Exits Immediately
+
+```bash
+# Check session status
+agent-tui sessions -f json | jq '.sessions[0].status'
+
+# Capture any output
+agent-tui snapshot
+
+# Try with shell wrapper
+agent-tui spawn "bash -c 'your-command; sleep 1'"
+```
+
+### Application Not Detecting Elements
+
+```bash
+# Get raw screen (no detection)
+agent-tui snapshot
+
+# Try with larger terminal
+agent-tui kill
+agent-tui spawn "your-command" --cols 160 --rows 50
+agent-tui wait --stable
+agent-tui snapshot -i
+
+# Use keystroke navigation instead
+agent-tui keystroke Tab
+agent-tui keystroke Tab
+agent-tui keystroke Enter
+```
+
+## Debug Strategies
+
+### Capture State on Error
+
+```bash
+#!/bin/bash
+on_error() {
+    echo "Error occurred, capturing state..."
+    agent-tui snapshot > /tmp/debug-screen.txt
+    agent-tui snapshot -i -f json > /tmp/debug-elements.json
+    agent-tui sessions -f json > /tmp/debug-sessions.json
+    agent-tui kill
+}
+trap on_error ERR
+
+# Your commands here...
+```
+
+### Verbose Output
+
+```bash
+# Enable verbose mode
+agent-tui -v spawn "command"
+agent-tui -v snapshot -i
+agent-tui -v health
+```
+
+### Step-by-Step Verification
+
+```bash
+# Verify each step
+agent-tui spawn "npx create-next-app"
+echo "Spawned: $?"
+
+agent-tui wait "project name" --timeout 30000
+echo "Waited: $?"
+
+agent-tui snapshot -i
+echo "Snapshot: $?"
+```
+
+## Environment Issues
+
+### Socket Permission Denied
+
+```bash
+# Check socket permissions
+ls -la /tmp/agent-tui.sock
+
+# Try different location
+export XDG_RUNTIME_DIR=/tmp/agent-tui-test
+agent-tui health
+```
+
+### Port Already in Use (TCP mode)
+
+```bash
+# Check what's using the port
+lsof -i :19847
+
+# Use different port
+export AGENT_TUI_TCP_PORT=19850
+agent-tui health
+```
+
+## Getting Help
+
+If issues persist:
+
+1. **Check health:** `agent-tui health -v`
+2. **Capture state:** Save snapshot and sessions output
+3. **Check logs:** Look for daemon logs
+4. **Report issue:** [GitHub Issues](https://github.com/pproenca/agent-tui/issues)
+
+## See Also
+
+- [Optimal Workflow](/ai-integration/optimal-workflow) — Prevent issues
+- [Commands Overview](/commands/overview) — Command reference

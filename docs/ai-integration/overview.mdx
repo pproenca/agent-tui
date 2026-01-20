@@ -1,0 +1,146 @@
+---
+title: AI Integration Overview
+description: 'Best practices for AI agents using agent-tui'
+---
+
+## Overview
+
+agent-tui is designed specifically for AI agents. This section covers optimal patterns, workflows, and troubleshooting for AI integration.
+
+<CardGroup cols={2}>
+  <Card
+    title="Optimal Workflow"
+    icon="route"
+    href="/ai-integration/optimal-workflow"
+  >
+    The recommended interaction pattern
+  </Card>
+  <Card
+    title="Troubleshooting"
+    icon="bug"
+    href="/ai-integration/troubleshooting"
+  >
+    Common issues and solutions
+  </Card>
+</CardGroup>
+
+## Works With
+
+agent-tui integrates with any AI agent that can execute bash commands:
+
+| Platform | Integration |
+|----------|-------------|
+| **Claude Code** | Native bash execution |
+| **Cursor** | Terminal commands |
+| **Codex** | Shell command support |
+| **Copilot** | Command execution |
+| **Custom agents** | Any bash-capable system |
+
+## Core Principles
+
+### 1. Always Snapshot Before Interacting
+
+Element refs (`@e1`, `@e2`) change when the UI updates. Always get fresh refs:
+
+```bash
+agent-tui snapshot -i  # Get current state
+agent-tui fill @e1 "value"  # Use the refs you just got
+```
+
+### 2. Wait for UI Stability
+
+TUI applications may take time to render. Use `wait` commands:
+
+```bash
+agent-tui keystroke Enter
+agent-tui wait --stable  # Wait for screen to settle
+agent-tui snapshot -i    # Then get new state
+```
+
+### 3. Handle Timeouts Gracefully
+
+Set appropriate timeouts based on the operation:
+
+```bash
+# Fast operations
+agent-tui wait "prompt" --timeout 5000
+
+# Slow operations (installations)
+agent-tui wait "Complete" --timeout 300000
+```
+
+### 4. Use JSON for Programmatic Processing
+
+When parsing output programmatically, use JSON format:
+
+```bash
+agent-tui snapshot -i -f json | jq '.elements'
+agent-tui sessions -f json | jq '.sessions[0].status'
+```
+
+### 5. Clean Up Sessions
+
+Always terminate sessions when done:
+
+```bash
+agent-tui kill
+# or for named sessions
+agent-tui kill --session my-session
+```
+
+## Minimal Example
+
+```bash
+# Complete AI workflow
+agent-tui spawn "npx create-next-app"
+agent-tui wait "project name" --timeout 30000
+agent-tui snapshot -i
+agent-tui fill @e1 "my-app"
+agent-tui keystroke Enter
+agent-tui wait --stable
+agent-tui kill
+```
+
+## JSON Output Schema
+
+All commands support `-f json`. Here's the schema for common commands:
+
+### snapshot
+
+```json
+{
+  "elements": [
+    {
+      "ref": "@e1",
+      "type": "input",
+      "label": "name",
+      "value": "",
+      "position": {"row": 3, "col": 25},
+      "focused": true
+    }
+  ],
+  "screen": "..."
+}
+```
+
+### sessions
+
+```json
+{
+  "sessions": [
+    {
+      "id": "abc123",
+      "status": "running",
+      "command": "htop",
+      "cols": 80,
+      "rows": 24
+    }
+  ]
+}
+```
+
+## See Also
+
+- [Optimal Workflow](/ai-integration/optimal-workflow) — Detailed workflow patterns
+- [Troubleshooting](/ai-integration/troubleshooting) — Common issues
+- [Claude Code Automation](/guides/claude-code-automation) — The killer feature

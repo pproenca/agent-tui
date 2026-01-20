@@ -1,0 +1,234 @@
+---
+title: Claude Code Automation
+description: 'The killer feature: AI controlling AI'
+---
+
+## Overview
+
+agent-tui can automate Claude Code itself — enabling an AI to control an AI's interface. This opens up powerful use cases:
+
+- **Automated testing** of Claude Code features
+- **CI/CD pipelines** for AI-assisted development
+- **Meta-AI systems** that orchestrate AI tools
+- **Quality assurance** for AI coding assistants
+
+## Basic Claude Code Interaction
+
+```bash
+# 1. Spawn Claude Code in permissive mode
+agent-tui spawn "claude --dangerously-skip-permissions"
+
+# 2. Wait for initialization (the ">" prompt)
+agent-tui wait ">" --timeout 120000
+
+# 3. Send a prompt
+agent-tui type "Create hello.py that prints Hello World"
+agent-tui keystroke Enter
+
+# 4. Wait for completion (screen stabilizes when Claude finishes)
+agent-tui wait --stable --timeout 60000
+
+# 5. Verify result
+agent-tui snapshot -i
+cat hello.py
+
+# 6. Cleanup
+agent-tui kill
+```
+
+## CI/CD Integration
+
+Here's a complete test script for CI pipelines:
+
+```bash
+#!/bin/bash
+# test-claude-code.sh - Automated Claude Code testing
+set -e
+
+echo "Starting Claude Code test..."
+
+# Start Claude Code with larger terminal for complex output
+agent-tui spawn "claude --dangerously-skip-permissions" --cols 120 --rows 40
+
+# Wait for prompt with generous timeout
+agent-tui wait ">" --timeout 120000
+echo "Claude Code initialized"
+
+# Send test task
+agent-tui type "Write tests for the auth module"
+agent-tui keystroke Enter
+
+# Wait for completion
+agent-tui wait --stable --timeout 180000
+echo "Task completed"
+
+# Capture final state
+agent-tui snapshot > output.txt
+
+# Cleanup
+agent-tui kill
+
+# Verify output
+grep -q "test" output.txt && echo "SUCCESS" || echo "FAILED"
+```
+
+## Multi-Turn Conversation
+
+```bash
+# Start Claude Code
+agent-tui spawn "claude --dangerously-skip-permissions"
+agent-tui wait ">" --timeout 120000
+
+# First prompt
+agent-tui type "Create a Python function that reverses a string"
+agent-tui keystroke Enter
+agent-tui wait --stable --timeout 60000
+
+# Follow-up prompt
+agent-tui type "Now add unit tests for that function"
+agent-tui keystroke Enter
+agent-tui wait --stable --timeout 60000
+
+# Another follow-up
+agent-tui type "Run the tests and fix any failures"
+agent-tui keystroke Enter
+agent-tui wait --stable --timeout 120000
+
+# Verify files were created
+ls -la *.py
+
+# Cleanup
+agent-tui kill
+```
+
+## Handling Long Operations
+
+Claude Code can take time for complex tasks. Use appropriate timeouts:
+
+```bash
+# Short task (file creation)
+agent-tui type "Create hello.py"
+agent-tui keystroke Enter
+agent-tui wait --stable --timeout 30000  # 30 seconds
+
+# Medium task (refactoring)
+agent-tui type "Refactor auth.py to use async/await"
+agent-tui keystroke Enter
+agent-tui wait --stable --timeout 120000  # 2 minutes
+
+# Long task (full feature implementation)
+agent-tui type "Implement user authentication with OAuth"
+agent-tui keystroke Enter
+agent-tui wait --stable --timeout 600000  # 10 minutes
+```
+
+## Capturing Output
+
+### Get Screen Content
+
+```bash
+# Plain text
+agent-tui snapshot > output.txt
+
+# With element detection
+agent-tui snapshot -i > output_with_elements.txt
+
+# JSON for parsing
+agent-tui snapshot -f json > output.json
+```
+
+### Parse Claude's Response
+
+```bash
+# Get just the screen content as JSON
+agent-tui snapshot -f json | jq -r '.screen'
+
+# Check if specific text appears
+agent-tui snapshot | grep -q "Success" && echo "Task succeeded"
+```
+
+## Error Handling
+
+```bash
+#!/bin/bash
+set -e
+
+# Start with error handling
+if ! agent-tui spawn "claude --dangerously-skip-permissions"; then
+    echo "Failed to spawn Claude Code"
+    exit 1
+fi
+
+# Wait with timeout check
+if ! agent-tui wait ">" --timeout 120000; then
+    echo "Claude Code failed to initialize"
+    agent-tui snapshot  # Capture state for debugging
+    agent-tui kill
+    exit 1
+fi
+
+# Send task
+agent-tui type "Your task here"
+agent-tui keystroke Enter
+
+# Wait with fallback
+if ! agent-tui wait --stable --timeout 60000; then
+    echo "Task timed out, checking state..."
+    agent-tui snapshot
+fi
+
+# Always cleanup
+agent-tui kill
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion icon="clock" title="Use Generous Timeouts">
+    Claude Code can take time, especially for complex tasks. Start with longer timeouts and adjust based on your use case.
+  </Accordion>
+  <Accordion icon="terminal" title="Use Larger Terminal Size">
+    Complex outputs benefit from larger terminals. Use `--cols 120 --rows 40` or larger.
+  </Accordion>
+  <Accordion icon="shield" title="Handle Errors Gracefully">
+    Always wrap operations in error handling. Capture snapshots on failure for debugging.
+  </Accordion>
+  <Accordion icon="broom" title="Always Clean Up">
+    Run `agent-tui kill` when done, even on error paths. Consider using trap for cleanup.
+  </Accordion>
+</AccordionGroup>
+
+## Advanced: Parallel Claude Instances
+
+```bash
+# Run multiple Claude instances
+agent-tui spawn "claude --dangerously-skip-permissions" --session claude-a
+agent-tui spawn "claude --dangerously-skip-permissions" --session claude-b
+
+# Wait for both to initialize
+agent-tui --session claude-a wait ">" --timeout 120000 &
+agent-tui --session claude-b wait ">" --timeout 120000 &
+wait
+
+# Send different tasks to each
+agent-tui --session claude-a type "Create frontend component"
+agent-tui --session claude-a keystroke Enter
+
+agent-tui --session claude-b type "Create backend API"
+agent-tui --session claude-b keystroke Enter
+
+# Wait for both
+agent-tui --session claude-a wait --stable --timeout 120000 &
+agent-tui --session claude-b wait --stable --timeout 120000 &
+wait
+
+# Cleanup
+agent-tui kill --session claude-a
+agent-tui kill --session claude-b
+```
+
+## See Also
+
+- [Quick Start](/quickstart) — Get started with agent-tui
+- [wait](/commands/wait) — Synchronization options
+- [AI Integration](/ai-integration/overview) — Best practices for AI agents

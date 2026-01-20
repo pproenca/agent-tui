@@ -1,0 +1,103 @@
+---
+title: spawn
+description: 'Start a TUI application in a managed session'
+---
+
+## Usage
+
+```bash
+agent-tui spawn <command> [options]
+```
+
+## Description
+
+Starts a TUI application in a virtual terminal managed by agent-tui. The application runs in the background, and you can interact with it using other commands.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<command>` | The command to run (can include arguments) |
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--session <id>` | Assign a custom session ID | auto-generated |
+| `--cols <n>` | Terminal width in columns | 80 |
+| `--rows <n>` | Terminal height in rows | 24 |
+
+## Examples
+
+### Basic Usage
+
+```bash
+# Start htop
+agent-tui spawn htop
+
+# Start a project wizard
+agent-tui spawn "npx create-next-app"
+
+# Start with shell command
+agent-tui spawn "npm init -y && npm install"
+```
+
+### Custom Terminal Size
+
+```bash
+# Larger terminal for complex UIs
+agent-tui spawn htop --cols 160 --rows 50
+
+# Smaller terminal for simple prompts
+agent-tui spawn "npm init" --cols 80 --rows 24
+```
+
+### Named Sessions
+
+```bash
+# Multiple parallel sessions
+agent-tui spawn "npm init" --session project-a
+agent-tui spawn "npm init" --session project-b
+
+# Interact with specific session
+agent-tui --session project-a snapshot -i
+```
+
+## Output
+
+Returns success message with session info:
+
+```
+Session started: abc123
+Command: npx create-next-app
+Terminal: 80x24
+```
+
+With `-f json`:
+
+```json
+{
+  "session_id": "abc123",
+  "command": "npx create-next-app",
+  "cols": 80,
+  "rows": 24,
+  "status": "running"
+}
+```
+
+## Notes
+
+<Warning>
+  After spawning, wait for the UI to load before taking a snapshot:
+  ```bash
+  agent-tui spawn htop
+  agent-tui wait --stable --timeout 5000
+  agent-tui snapshot -i
+  ```
+</Warning>
+
+## See Also
+
+- [kill](/commands/kill) — Terminate a session
+- [sessions](/commands/sessions) — List all sessions
+- [snapshot](/commands/snapshot) — Capture screen state

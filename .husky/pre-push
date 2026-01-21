@@ -1,0 +1,14 @@
+#!/bin/sh
+
+echo "Running pre-push checks..."
+
+echo "\n→ Checking formatting..."
+npm run format:check || exit 1
+
+echo "\n→ Running clippy..."
+npm run lint || exit 1
+
+echo "\n→ Running tests..."
+npm run test || exit 1
+
+echo "\nAll pre-push checks passed!"

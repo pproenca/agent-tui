@@ -65,7 +65,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Colors::error("Error:"),
                 e
             );
-            eprintln!("Try running: agent-tui daemon");
+            eprintln!();
+            eprintln!("Troubleshooting:");
+            eprintln!("  1. Check if socket directory is writable (usually /tmp)");
+            eprintln!("  2. Try starting daemon manually: agent-tui daemon");
+            eprintln!("  3. Check current configuration: agent-tui env");
             std::process::exit(1);
         }
     };

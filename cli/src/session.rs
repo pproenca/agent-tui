@@ -580,8 +580,10 @@ impl SessionManager {
             *active = Some(id.clone());
         }
 
-        // Persist session metadata
-        let _ = self.persistence.add_session(persisted);
+        // Persist session metadata (warn on failure, don't fail spawn)
+        if let Err(e) = self.persistence.add_session(persisted) {
+            eprintln!("Warning: Failed to persist session metadata: {}", e);
+        }
 
         Ok((id, pid))
     }
@@ -705,8 +707,10 @@ impl SessionManager {
             sess.kill()?;
         }
 
-        // Step 3: Remove from persistence (non-critical, ignore errors)
-        let _ = self.persistence.remove_session(session_id);
+        // Step 3: Remove from persistence (warn on failure, non-critical)
+        if let Err(e) = self.persistence.remove_session(session_id) {
+            eprintln!("Warning: Failed to remove session from persistence: {}", e);
+        }
 
         Ok(())
     }

@@ -24,55 +24,36 @@ fn get_patterns() -> &'static PatternRegexes {
     static PATTERNS: OnceLock<PatternRegexes> = OnceLock::new();
     PATTERNS.get_or_init(|| PatternRegexes {
         button: [
-            // [Button Text] - square brackets
             Regex::new(r"\[\s*([^\[\]_]+?)\s*\]").unwrap(),
-            // <Button Text> - angle brackets
             Regex::new(r"<\s*([^<>]+?)\s*>").unwrap(),
         ],
         input: [
-            // Label: [value___] - input with label and underscores
             Regex::new(r"([A-Za-z\s]+):\s*\[([^\]]*?)_*\]").unwrap(),
-            // [value___] - input with underscores
             Regex::new(r"\[([^\]]*?)_{3,}\]").unwrap(),
         ],
         checkbox: [
-            // [x] Label or [ ] Label
             Regex::new(r"\[([xX✓✔\s])\]\s*(.+?)(?:\s{2,}|$)").unwrap(),
-            // ◉ Label or ◯ Label (filled/empty circle)
             Regex::new(r"([◉◯●○✓✔])\s+(.+?)(?:\s{2,}|$)").unwrap(),
         ],
-        radio: [
-            // ( ) Label or (•) Label
-            Regex::new(r"\(([•o*\s])\)\s*(.+?)(?:\s{2,}|$)").unwrap(),
-        ],
+        radio: [Regex::new(r"\(([•o*\s])\)\s*(.+?)(?:\s{2,}|$)").unwrap()],
         select: [
-            // Label: value ▼
             Regex::new(r"([A-Za-z\s]+):\s*\[?([^\]▼▾\n]+?)\s*[▼▾]\]?").unwrap(),
-            // value ▼
             Regex::new(r"([^\s]+)\s+[▼▾]").unwrap(),
         ],
         menu_item: [
-            // > Item or ❯ Item or › Item or ▸ Item
             Regex::new(r"^\s*([>❯›▸►●•])\s+(.+?)$").unwrap(),
-            // 1. Item (numbered menu)
             Regex::new(r"^\s*(\d+)\.\s+(.+?)$").unwrap(),
         ],
         list_item: [
-            // - Item or * Item
             Regex::new(r"^\s*[-*]\s+(.+?)$").unwrap(),
-            // • Item
             Regex::new(r"^\s*•\s+(.+?)$").unwrap(),
         ],
         spinner: [
-            // Braille spinners
             Regex::new(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]").unwrap(),
-            // ASCII spinners
             Regex::new(r"[\|/\-\\]\s+(.+)").unwrap(),
         ],
         progress: [
-            // [████░░░░░░] or [====>    ]
             Regex::new(r"\[([█▓▒░=\->#\s]+)\]").unwrap(),
-            // 50% or 50 %
             Regex::new(r"(\d+)\s*%").unwrap(),
         ],
     })
@@ -100,13 +81,11 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
     for (row_idx, line) in lines.iter().enumerate() {
         let row = row_idx as u16;
 
-        // Detect buttons (but not inputs or checkboxes)
         for pattern in &patterns.button {
             for cap in pattern.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
                 let label = cap.get(1).map(|m| m.as_str().trim().to_string());
 
-                // Skip if it looks like an input (has underscores) or checkbox
                 let text = full_match.as_str();
                 if text.contains('_')
                     || text.starts_with("[x]")
@@ -118,7 +97,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
                     continue;
                 }
 
-                // Skip very short "buttons" that are likely just formatting
                 if let Some(ref l) = label {
                     if l.len() < 2 {
                         continue;
@@ -137,7 +115,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
             }
         }
 
-        // Detect inputs
         for pattern in &patterns.input {
             for cap in pattern.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
@@ -159,7 +136,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
             }
         }
 
-        // Detect checkboxes
         for pattern in &patterns.checkbox {
             for cap in pattern.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
@@ -180,7 +156,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
             }
         }
 
-        // Detect radio buttons
         for pattern in &patterns.radio {
             for cap in pattern.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
@@ -208,7 +183,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
             }
         }
 
-        // Detect selects/dropdowns
         for pattern in &patterns.select {
             for cap in pattern.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
@@ -227,7 +201,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
             }
         }
 
-        // Detect menu items
         for pattern in &patterns.menu_item {
             for cap in pattern.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
@@ -248,7 +221,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
             }
         }
 
-        // Detect list items
         for pattern in &patterns.list_item {
             for cap in pattern.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
@@ -266,7 +238,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
             }
         }
 
-        // Detect spinners
         for pattern in &patterns.spinner {
             for cap in pattern.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
@@ -283,7 +254,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
             }
         }
 
-        // Detect progress bars
         for pattern in &patterns.progress {
             for cap in pattern.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
@@ -302,7 +272,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
         }
     }
 
-    // Deduplicate overlapping matches
     deduplicate_matches(matches)
 }
 
@@ -323,7 +292,6 @@ fn type_priority(t: &ElementType) -> i32 {
 
 /// Remove overlapping matches, preferring higher-priority types
 pub fn deduplicate_matches(mut matches: Vec<PatternMatch>) -> Vec<PatternMatch> {
-    // Sort by priority (higher first), then by position
     matches.sort_by(|a, b| {
         let priority_cmp = type_priority(&b.element_type).cmp(&type_priority(&a.element_type));
         if priority_cmp != std::cmp::Ordering::Equal {
@@ -339,7 +307,6 @@ pub fn deduplicate_matches(mut matches: Vec<PatternMatch>) -> Vec<PatternMatch> 
     let mut occupied: HashSet<(u16, u16)> = HashSet::new();
 
     for m in matches {
-        // Check if any position is already occupied
         let mut overlaps = false;
         for c in m.col..(m.col + m.width) {
             if occupied.contains(&(m.row, c)) {
@@ -349,7 +316,6 @@ pub fn deduplicate_matches(mut matches: Vec<PatternMatch>) -> Vec<PatternMatch> 
         }
 
         if !overlaps {
-            // Mark positions as occupied
             for c in m.col..(m.col + m.width) {
                 occupied.insert((m.row, c));
             }
@@ -420,11 +386,9 @@ mod tests {
 
     #[test]
     fn test_deduplication() {
-        // Input pattern should take priority over button pattern
         let screen = "[value___]";
         let matches = detect_by_pattern(screen);
 
-        // Should only have one match (input, not button)
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].element_type, ElementType::Input);
     }

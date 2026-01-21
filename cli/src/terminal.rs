@@ -85,12 +85,11 @@ impl VirtualTerminal {
                     line.push(' ');
                 }
             }
-            // Trim trailing whitespace but preserve the line
+
             let trimmed = line.trim_end();
             lines.push(trimmed.to_string());
         }
 
-        // Remove trailing empty lines
         while lines.last().map(|l| l.is_empty()).unwrap_or(false) {
             lines.pop();
         }
@@ -199,7 +198,6 @@ mod tests {
         term.process(b"\x1b[1mBold\x1b[0m Normal");
         let buffer = term.screen_buffer();
 
-        // First character 'B' should be bold
         assert!(buffer.cells[0][0].style.bold);
         assert_eq!(buffer.cells[0][0].char, 'B');
     }

@@ -18,7 +18,6 @@ pub mod sync_utils;
 pub mod terminal;
 pub mod wait;
 
-// Re-export commonly used types at crate root
 pub use detection::{Element, ElementDetector, Framework};
 pub use pty::{PtyError, PtyHandle};
 pub use session::{Session, SessionError, SessionId, SessionInfo, SessionManager};

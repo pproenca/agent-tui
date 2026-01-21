@@ -19,19 +19,11 @@ use std::time::Instant;
 use thiserror::Error;
 use uuid::Uuid;
 
-// ============================================================================
-// Bounded Queue Helpers
-// ============================================================================
-
 /// Get the last N items from a queue
 fn get_last_n<T: Clone>(queue: &VecDeque<T>, count: usize) -> Vec<T> {
     let start = queue.len().saturating_sub(count);
     queue.iter().skip(start).cloned().collect()
 }
-
-// ============================================================================
-// SessionId Newtype
-// ============================================================================
 
 /// A unique identifier for a session.
 ///
@@ -81,10 +73,6 @@ impl From<&str> for SessionId {
         Self(s.to_string())
     }
 }
-
-// ============================================================================
-// Recording Types
-// ============================================================================
 
 /// A single frame captured during recording
 #[derive(Clone, Debug)]
@@ -276,10 +264,9 @@ impl Session {
     pub fn update(&mut self) -> Result<(), SessionError> {
         let mut buf = [0u8; 4096];
 
-        // Use non-blocking poll-based read to avoid holding locks during blocking I/O
         loop {
             match self.pty.try_read(&mut buf, 10) {
-                Ok(0) => break, // No data available or EOF
+                Ok(0) => break,
                 Ok(n) => {
                     self.terminal.process(&buf[..n]);
                 }
@@ -368,10 +355,10 @@ impl Session {
 
         match element.element_type.as_str() {
             "checkbox" | "radio" => {
-                self.pty.write(b" ")?; // Space to toggle
+                self.pty.write(b" ")?;
             }
             _ => {
-                self.pty.write(b"\r")?; // Enter to activate
+                self.pty.write(b"\r")?;
             }
         }
 
@@ -540,9 +527,6 @@ impl SessionManager {
         let session = Session::new(id.clone(), command.to_string(), pty, cols, rows);
         let session = Arc::new(Mutex::new(session));
 
-        // Note: No background thread - PTY updates happen on-demand when client
-        // requests a snapshot or screen. This avoids lock contention.
-
         let created_at = Utc::now().to_rfc3339();
         let persisted = PersistedSession {
             id: id.clone(),
@@ -563,7 +547,6 @@ impl SessionManager {
             *active = Some(id.clone());
         }
 
-        // Persist session metadata (warn on failure, don't fail spawn)
         if let Err(e) = self.persistence.add_session(persisted) {
             eprintln!("Warning: Failed to persist session metadata: {}", e);
         }
@@ -615,8 +598,6 @@ impl SessionManager {
     /// Note: Uses try_lock to avoid blocking; sessions that can't be locked
     /// are reported with status "busy" via the running field.
     pub fn list(&self) -> Vec<SessionInfo> {
-        // Collect session refs under the read lock, then release it before
-        // attempting to lock individual sessions to prevent lock ordering issues
         let session_refs: Vec<(SessionId, Arc<Mutex<Session>>)> = {
             let sessions = rwlock_read_or_recover(&self.sessions);
             sessions
@@ -627,30 +608,23 @@ impl SessionManager {
 
         session_refs
             .into_iter()
-            .map(|(id, session)| {
-                // Use try_lock to avoid blocking if the session is busy
-                match session.try_lock() {
-                    Ok(mut sess) => SessionInfo {
-                        id: id.clone(),
-                        command: sess.command.clone(),
-                        pid: sess.pid().unwrap_or(0),
-                        running: sess.is_running(),
-                        created_at: sess.created_at.to_rfc3339(),
-                        size: sess.size(),
-                    },
-                    Err(_) => {
-                        // Session is busy - report with "busy" indicator
-                        // Note: running=true with command="busy" indicates lock contention
-                        SessionInfo {
-                            id: id.clone(),
-                            command: "(busy)".to_string(),
-                            pid: 0,
-                            running: true,
-                            created_at: "".to_string(),
-                            size: (80, 24),
-                        }
-                    }
-                }
+            .map(|(id, session)| match session.try_lock() {
+                Ok(mut sess) => SessionInfo {
+                    id: id.clone(),
+                    command: sess.command.clone(),
+                    pid: sess.pid().unwrap_or(0),
+                    running: sess.is_running(),
+                    created_at: sess.created_at.to_rfc3339(),
+                    size: sess.size(),
+                },
+                Err(_) => SessionInfo {
+                    id: id.clone(),
+                    command: "(busy)".to_string(),
+                    pid: 0,
+                    running: true,
+                    created_at: "".to_string(),
+                    size: (80, 24),
+                },
             })
             .collect()
     }
@@ -662,8 +636,6 @@ impl SessionManager {
     pub fn kill(&self, session_id: &str) -> Result<(), SessionError> {
         let id = SessionId::new(session_id);
 
-        // Step 1: Acquire sessions write lock and remove the session atomically
-        // This prevents deadlock by ensuring consistent lock ordering
         let session = {
             let mut sessions = rwlock_write_or_recover(&self.sessions);
             let mut active = rwlock_write_or_recover(&self.active_session);
@@ -677,17 +649,13 @@ impl SessionManager {
             }
 
             session
-            // Both locks released here
         };
 
-        // Step 2: Now safe to kill - session is already removed from the map
-        // so no other thread can find it via list() or get()
         {
             let mut sess = mutex_lock_or_recover(&session);
             sess.kill()?;
         }
 
-        // Step 3: Remove from persistence (warn on failure, non-critical)
         if let Err(e) = self.persistence.remove_session(session_id) {
             eprintln!("Warning: Failed to remove session from persistence: {}", e);
         }
@@ -855,7 +823,6 @@ impl Default for SessionPersistence {
 
 /// Check if a process is still running
 fn is_process_running(pid: u32) -> bool {
-    // Use kill with signal 0 to check if process exists
     unsafe { libc::kill(pid as i32, 0) == 0 }
 }
 
@@ -898,11 +865,9 @@ mod persistence_tests {
 
     #[test]
     fn test_is_process_running() {
-        // Current process should be running
         let current_pid = std::process::id();
         assert!(is_process_running(current_pid));
 
-        // A very high PID unlikely to exist
         assert!(!is_process_running(999999999));
     }
 }

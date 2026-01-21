@@ -21,7 +21,6 @@ impl InquirerDetector {
 
     /// Check if the screen appears to be an Inquirer application
     pub fn looks_like_inquirer(ctx: &DetectionContext) -> bool {
-        // Inquirer has ◯ and ◉ on separate lines (one per option)
         let circle_lines = ctx
             .lines
             .iter()
@@ -57,11 +56,10 @@ struct InquirerPatterns {
 fn get_inquirer_patterns() -> &'static InquirerPatterns {
     static PATTERNS: OnceLock<InquirerPatterns> = OnceLock::new();
     PATTERNS.get_or_init(|| InquirerPatterns {
-        // Inquirer radio: ◯ or ◉ at start followed by text
         radio: Regex::new(r"^\s*([◯◉])\s+(.+?)$").unwrap(),
-        // Inquirer checkbox: ◻ or ◼ at start followed by text
+
         checkbox: Regex::new(r"^\s*([◻◼])\s+(.+?)$").unwrap(),
-        // Inquirer confirm: (Y/n) or (y/N)
+
         confirm: Regex::new(r"\(([Yy])/([Nn])\)").unwrap(),
     })
 }
@@ -74,7 +72,6 @@ impl ElementDetectorImpl for InquirerDetector {
         for (row_idx, line) in ctx.lines.iter().enumerate() {
             let row = row_idx as u16;
 
-            // Detect Inquirer radio buttons (◉ selected, ◯ unselected)
             if let Some(cap) = patterns.radio.captures(line) {
                 let full_match = cap.get(0).unwrap();
                 let marker = cap.get(1).map(|m| m.as_str()).unwrap_or("");
@@ -100,7 +97,6 @@ impl ElementDetectorImpl for InquirerDetector {
                 });
             }
 
-            // Detect Inquirer checkboxes (◼ checked, ◻ unchecked)
             if let Some(cap) = patterns.checkbox.captures(line) {
                 let full_match = cap.get(0).unwrap();
                 let marker = cap.get(1).map(|m| m.as_str()).unwrap_or("");
@@ -119,10 +115,9 @@ impl ElementDetectorImpl for InquirerDetector {
                 });
             }
 
-            // Detect Inquirer confirm prompts
             for cap in patterns.confirm.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
-                // Uppercase letter indicates default
+
                 let yes_cap = cap.get(1).map(|m| m.as_str()).unwrap_or("y");
                 let default_yes = yes_cap == "Y";
 
@@ -153,7 +148,7 @@ impl ElementDetectorImpl for InquirerDetector {
     }
 
     fn priority(&self) -> i32 {
-        15 // Higher than Ink (more specific patterns)
+        15
     }
 
     fn can_detect(&self, ctx: &DetectionContext) -> bool {

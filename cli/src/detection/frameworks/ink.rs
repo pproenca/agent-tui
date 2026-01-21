@@ -24,17 +24,14 @@ impl InkDetector {
 
     /// Check if the screen appears to be an Ink application
     pub fn looks_like_ink(ctx: &DetectionContext) -> bool {
-        // Braille spinners are strongly Ink-specific
         let braille_spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
         let has_braille = braille_spinners.iter().any(|s| ctx.screen_text.contains(s));
 
-        // Select pointer indicators at start of line
         let has_ink_select = ctx.lines.iter().any(|l| {
             let trimmed = l.trim();
             trimmed.starts_with('❯') || trimmed.starts_with('›')
         });
 
-        // Question pattern with pointer indicator
         let has_question_pattern = ctx.screen_text.contains('?') && ctx.screen_text.contains('❯');
 
         has_braille || has_ink_select || has_question_pattern
@@ -57,11 +54,10 @@ struct InkPatterns {
 fn get_ink_patterns() -> &'static InkPatterns {
     static PATTERNS: OnceLock<InkPatterns> = OnceLock::new();
     PATTERNS.get_or_init(|| InkPatterns {
-        // Ink select: ❯ or › at start of line followed by text
         select_item: Regex::new(r"^\s*([❯›])\s+(.+?)$").unwrap(),
-        // Ink checkboxes: ◉ or ◯ (not generic checkboxes)
+
         checkbox: Regex::new(r"^\s*([◉◯])\s+(.+?)$").unwrap(),
-        // Braille spinner
+
         braille_spinner: Regex::new(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]").unwrap(),
     })
 }
@@ -74,13 +70,11 @@ impl ElementDetectorImpl for InkDetector {
         for (row_idx, line) in ctx.lines.iter().enumerate() {
             let row = row_idx as u16;
 
-            // Detect Ink select items (❯ Item or › Item)
             if let Some(cap) = patterns.select_item.captures(line) {
                 let full_match = cap.get(0).unwrap();
                 let marker = cap.get(1).map(|m| m.as_str()).unwrap_or("");
                 let label = cap.get(2).map(|m| m.as_str().trim().to_string());
 
-                // In Ink, the item with ❯ is the focused/selected one
                 let is_focused = marker == "❯";
 
                 matches.push(PatternMatch {
@@ -94,7 +88,6 @@ impl ElementDetectorImpl for InkDetector {
                 });
             }
 
-            // Detect Ink checkboxes (◉ checked, ◯ unchecked)
             if let Some(cap) = patterns.checkbox.captures(line) {
                 let full_match = cap.get(0).unwrap();
                 let marker = cap.get(1).map(|m| m.as_str()).unwrap_or("");
@@ -113,7 +106,6 @@ impl ElementDetectorImpl for InkDetector {
                 });
             }
 
-            // Detect Ink braille spinners
             for cap in patterns.braille_spinner.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
 
@@ -137,7 +129,7 @@ impl ElementDetectorImpl for InkDetector {
     }
 
     fn priority(&self) -> i32 {
-        10 // Higher than generic
+        10
     }
 
     fn can_detect(&self, ctx: &DetectionContext) -> bool {
@@ -188,7 +180,7 @@ mod tests {
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].element_type, ElementType::MenuItem);
         assert_eq!(matches[0].label, Some("Red".to_string()));
-        assert_eq!(matches[0].checked, Some(true)); // ❯ indicates focus
+        assert_eq!(matches[0].checked, Some(true));
     }
 
     #[test]

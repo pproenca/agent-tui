@@ -11,6 +11,21 @@ pub struct Request {
     pub params: Option<Value>,
 }
 
+impl Request {
+    pub fn param_str(&self, key: &str) -> Option<&str> {
+        self.params
+            .as_ref()
+            .and_then(|p| p.get(key))
+            .and_then(|v| v.as_str())
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub fn require_str(&self, key: &str) -> Result<&str, Response> {
+        self.param_str(key)
+            .ok_or_else(|| Response::error(self.id, -32602, &format!("Missing '{}' param", key)))
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct Response {
     jsonrpc: String,

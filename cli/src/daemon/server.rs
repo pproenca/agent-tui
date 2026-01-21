@@ -41,6 +41,53 @@ impl DaemonServer {
         }
     }
 
+    /// Helper that resolves a session, acquires the lock, and runs a closure.
+    /// Returns the closure's result as a Response, handling session resolution and lock errors.
+    fn with_session<F>(&self, request: &Request, session_id: Option<&str>, f: F) -> Response
+    where
+        F: FnOnce(&mut crate::session::Session) -> Response,
+    {
+        match self.session_manager.resolve(session_id) {
+            Ok(session) => {
+                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
+                    return lock_timeout_response(request.id, session_id);
+                };
+                f(&mut sess)
+            }
+            Err(e) => Response::error(
+                request.id,
+                -32000,
+                &ai_friendly_error(&e.to_string(), session_id),
+            ),
+        }
+    }
+
+    /// Helper for handlers that require a 'ref' param and operate on a session.
+    fn with_session_and_ref<F>(&self, request: &Request, f: F) -> Response
+    where
+        F: FnOnce(&mut crate::session::Session, &str) -> Response,
+    {
+        let element_ref = match request.require_str("ref") {
+            Ok(r) => r,
+            Err(resp) => return resp,
+        };
+        let session_id = request.param_str("session");
+
+        match self.session_manager.resolve(session_id) {
+            Ok(session) => {
+                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
+                    return lock_timeout_response(request.id, session_id);
+                };
+                f(&mut sess, element_ref)
+            }
+            Err(e) => Response::error(
+                request.id,
+                -32000,
+                &ai_friendly_error(&e.to_string(), session_id),
+            ),
+        }
+    }
+
     fn handle_request(&self, request: Request) -> Response {
         match request.method.as_str() {
             "ping" => Response::success(request.id, json!({ "pong": true })),
@@ -281,40 +328,19 @@ impl DaemonServer {
     }
 
     fn handle_click(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-                match sess.click(element_ref) {
-                    Ok(()) => Response::success(request.id, json!({ "success": true })),
-                    Err(e) => Response::success(
-                        request.id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error(&e.to_string(), Some(element_ref))
-                        }),
-                    ),
-                }
+        let req_id = request.id;
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            match sess.click(element_ref) {
+                Ok(()) => Response::success(req_id, json!({ "success": true })),
+                Err(e) => Response::success(
+                    req_id,
+                    json!({
+                        "success": false,
+                        "message": ai_friendly_error(&e.to_string(), Some(element_ref))
+                    }),
+                ),
             }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
-        }
+        })
     }
 
     fn handle_dbl_click(&self, request: Request) -> Response {
@@ -380,193 +406,99 @@ impl DaemonServer {
     }
 
     fn handle_fill(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
+        let req_id = request.id;
+        let value = match request.require_str("value") {
+            Ok(v) => v.to_string(),
+            Err(resp) => return resp,
         };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let value = match params.get("value").and_then(|v| v.as_str()) {
-            Some(v) => v,
-            None => return Response::error(request.id, -32602, "Missing 'value' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-                match sess.fill(element_ref, value) {
-                    Ok(()) => Response::success(request.id, json!({ "success": true })),
-                    Err(e) => Response::success(
-                        request.id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error(&e.to_string(), Some(element_ref))
-                        }),
-                    ),
-                }
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            match sess.fill(element_ref, &value) {
+                Ok(()) => Response::success(req_id, json!({ "success": true })),
+                Err(e) => Response::success(
+                    req_id,
+                    json!({
+                        "success": false,
+                        "message": ai_friendly_error(&e.to_string(), Some(element_ref))
+                    }),
+                ),
             }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
-        }
+        })
     }
 
     fn handle_keystroke(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
+        let req_id = request.id;
+        let key = match request.require_str("key") {
+            Ok(k) => k.to_string(),
+            Err(resp) => return resp,
         };
-
-        let key = match params.get("key").and_then(|v| v.as_str()) {
-            Some(k) => k,
-            None => return Response::error(request.id, -32602, "Missing 'key' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-                match sess.keystroke(key) {
-                    Ok(()) => Response::success(request.id, json!({ "success": true })),
-                    Err(e) => Response::success(
-                        request.id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error(&e.to_string(), Some(key))
-                        }),
-                    ),
-                }
-            }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
-        }
+        let session_id = request.param_str("session");
+        self.with_session(&request, session_id, |sess| match sess.keystroke(&key) {
+            Ok(()) => Response::success(req_id, json!({ "success": true })),
+            Err(e) => Response::success(
+                req_id,
+                json!({
+                    "success": false,
+                    "message": ai_friendly_error(&e.to_string(), Some(&key))
+                }),
+            ),
+        })
     }
 
     fn handle_keydown(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
+        let req_id = request.id;
+        let key = match request.require_str("key") {
+            Ok(k) => k.to_string(),
+            Err(resp) => return resp,
         };
-
-        let key = match params.get("key").and_then(|v| v.as_str()) {
-            Some(k) => k,
-            None => return Response::error(request.id, -32602, "Missing 'key' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-                match sess.keydown(key) {
-                    Ok(()) => Response::success(request.id, json!({ "success": true })),
-                    Err(e) => Response::success(
-                        request.id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error(&e.to_string(), Some(key))
-                        }),
-                    ),
-                }
-            }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
-        }
+        let session_id = request.param_str("session");
+        self.with_session(&request, session_id, |sess| match sess.keydown(&key) {
+            Ok(()) => Response::success(req_id, json!({ "success": true })),
+            Err(e) => Response::success(
+                req_id,
+                json!({
+                    "success": false,
+                    "message": ai_friendly_error(&e.to_string(), Some(&key))
+                }),
+            ),
+        })
     }
 
     fn handle_keyup(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
+        let req_id = request.id;
+        let key = match request.require_str("key") {
+            Ok(k) => k.to_string(),
+            Err(resp) => return resp,
         };
-
-        let key = match params.get("key").and_then(|v| v.as_str()) {
-            Some(k) => k,
-            None => return Response::error(request.id, -32602, "Missing 'key' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-                match sess.keyup(key) {
-                    Ok(()) => Response::success(request.id, json!({ "success": true })),
-                    Err(e) => Response::success(
-                        request.id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error(&e.to_string(), Some(key))
-                        }),
-                    ),
-                }
-            }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
-        }
+        let session_id = request.param_str("session");
+        self.with_session(&request, session_id, |sess| match sess.keyup(&key) {
+            Ok(()) => Response::success(req_id, json!({ "success": true })),
+            Err(e) => Response::success(
+                req_id,
+                json!({
+                    "success": false,
+                    "message": ai_friendly_error(&e.to_string(), Some(&key))
+                }),
+            ),
+        })
     }
 
     fn handle_type(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
+        let req_id = request.id;
+        let text = match request.require_str("text") {
+            Ok(t) => t.to_string(),
+            Err(resp) => return resp,
         };
-
-        let text = match params.get("text").and_then(|v| v.as_str()) {
-            Some(t) => t,
-            None => return Response::error(request.id, -32602, "Missing 'text' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                match sess.type_text(text) {
-                    Ok(()) => Response::success(request.id, json!({ "success": true })),
-                    Err(e) => Response::success(
-                        request.id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error(&e.to_string(), None)
-                        }),
-                    ),
-                }
-            }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
+        let session_id = request.param_str("session");
+        self.with_session(&request, session_id, |sess| match sess.type_text(&text) {
+            Ok(()) => Response::success(req_id, json!({ "success": true })),
+            Err(e) => Response::success(
+                req_id,
+                json!({
+                    "success": false,
+                    "message": ai_friendly_error(&e.to_string(), None)
+                }),
             ),
-        }
+        })
     }
 
     fn handle_wait(&self, request: Request) -> Response {
@@ -1025,310 +957,140 @@ impl DaemonServer {
     }
 
     fn handle_get_text(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                match sess.find_element(element_ref) {
-                    Some(el) => {
-                        let text = el.label.clone().or_else(|| el.value.clone());
-                        Response::success(
-                            request.id,
-                            json!({
-                                "ref": element_ref,
-                                "text": text,
-                                "found": true
-                            }),
-                        )
-                    }
-                    None => Response::success(
-                        request.id,
-                        json!({
-                            "ref": element_ref,
-                            "text": null,
-                            "found": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref))
-                        }),
-                    ),
+        let req_id = request.id;
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            let _ = sess.update();
+            sess.detect_elements();
+            match sess.find_element(element_ref) {
+                Some(el) => {
+                    let text = el.label.clone().or_else(|| el.value.clone());
+                    Response::success(
+                        req_id,
+                        json!({ "ref": element_ref, "text": text, "found": true }),
+                    )
                 }
+                None => Response::success(
+                    req_id,
+                    json!({
+                        "ref": element_ref, "text": null, "found": false,
+                        "message": ai_friendly_error("Element not found", Some(element_ref))
+                    }),
+                ),
             }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
-        }
+        })
     }
 
     fn handle_get_value(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                match sess.find_element(element_ref) {
-                    Some(el) => Response::success(
-                        request.id,
-                        json!({
-                            "ref": element_ref,
-                            "value": el.value,
-                            "found": true
-                        }),
-                    ),
-                    None => Response::success(
-                        request.id,
-                        json!({
-                            "ref": element_ref,
-                            "value": null,
-                            "found": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref))
-                        }),
-                    ),
-                }
+        let req_id = request.id;
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            let _ = sess.update();
+            sess.detect_elements();
+            match sess.find_element(element_ref) {
+                Some(el) => Response::success(
+                    req_id,
+                    json!({ "ref": element_ref, "value": el.value, "found": true }),
+                ),
+                None => Response::success(
+                    req_id,
+                    json!({
+                        "ref": element_ref, "value": null, "found": false,
+                        "message": ai_friendly_error("Element not found", Some(element_ref))
+                    }),
+                ),
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+        })
     }
 
     fn handle_is_visible(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                let visible = sess.find_element(element_ref).is_some();
-                Response::success(
-                    request.id,
-                    json!({
-                        "ref": element_ref,
-                        "visible": visible
-                    }),
-                )
-            }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+        let req_id = request.id;
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            let _ = sess.update();
+            sess.detect_elements();
+            let visible = sess.find_element(element_ref).is_some();
+            Response::success(req_id, json!({ "ref": element_ref, "visible": visible }))
+        })
     }
 
     fn handle_is_focused(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                match sess.find_element(element_ref) {
-                    Some(el) => Response::success(
-                        request.id,
-                        json!({
-                            "ref": element_ref,
-                            "focused": el.focused,
-                            "found": true
-                        }),
-                    ),
-                    None => Response::success(
-                        request.id,
-                        json!({
-                            "ref": element_ref,
-                            "focused": false,
-                            "found": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref))
-                        }),
-                    ),
-                }
+        let req_id = request.id;
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            let _ = sess.update();
+            sess.detect_elements();
+            match sess.find_element(element_ref) {
+                Some(el) => Response::success(
+                    req_id,
+                    json!({ "ref": element_ref, "focused": el.focused, "found": true }),
+                ),
+                None => Response::success(
+                    req_id,
+                    json!({
+                        "ref": element_ref, "focused": false, "found": false,
+                        "message": ai_friendly_error("Element not found", Some(element_ref))
+                    }),
+                ),
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+        })
     }
 
     fn handle_is_enabled(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                match sess.find_element(element_ref) {
-                    Some(el) => {
-                        let enabled = !el.disabled.unwrap_or(false);
-                        Response::success(
-                            request.id,
-                            json!({
-                                "ref": element_ref,
-                                "enabled": enabled,
-                                "found": true
-                            }),
-                        )
-                    }
-                    None => Response::success(
-                        request.id,
-                        json!({
-                            "ref": element_ref,
-                            "enabled": false,
-                            "found": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref))
-                        }),
-                    ),
+        let req_id = request.id;
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            let _ = sess.update();
+            sess.detect_elements();
+            match sess.find_element(element_ref) {
+                Some(el) => {
+                    let enabled = !el.disabled.unwrap_or(false);
+                    Response::success(
+                        req_id,
+                        json!({ "ref": element_ref, "enabled": enabled, "found": true }),
+                    )
                 }
+                None => Response::success(
+                    req_id,
+                    json!({
+                        "ref": element_ref, "enabled": false, "found": false,
+                        "message": ai_friendly_error("Element not found", Some(element_ref))
+                    }),
+                ),
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+        })
     }
 
     fn handle_is_checked(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                match sess.find_element(element_ref) {
-                    Some(el) => {
-                        let el_type = el.element_type.as_str();
-                        if el_type != "checkbox" && el_type != "radio" {
-                            return Response::success(
-                                request.id,
-                                json!({
-                                    "ref": element_ref,
-                                    "checked": false,
-                                    "found": true,
-                                    "message": format!(
-                                        "Element {} is a {} not a checkbox/radio. Run 'snapshot -i' to see element types.",
-                                        element_ref, el_type
-                                    )
-                                }),
-                            );
-                        }
-                        let checked = el.checked.unwrap_or(false);
-                        Response::success(
-                            request.id,
+        let req_id = request.id;
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            let _ = sess.update();
+            sess.detect_elements();
+            match sess.find_element(element_ref) {
+                Some(el) => {
+                    let el_type = el.element_type.as_str();
+                    if el_type != "checkbox" && el_type != "radio" {
+                        return Response::success(
+                            req_id,
                             json!({
-                                "ref": element_ref,
-                                "checked": checked,
-                                "found": true
+                                "ref": element_ref, "checked": false, "found": true,
+                                "message": format!(
+                                    "Element {} is a {} not a checkbox/radio. Run 'snapshot -i' to see element types.",
+                                    element_ref, el_type
+                                )
                             }),
-                        )
+                        );
                     }
-                    None => Response::success(
-                        request.id,
-                        json!({
-                            "ref": element_ref,
-                            "checked": false,
-                            "found": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref))
-                        }),
-                    ),
+                    let checked = el.checked.unwrap_or(false);
+                    Response::success(
+                        req_id,
+                        json!({ "ref": element_ref, "checked": checked, "found": true }),
+                    )
                 }
+                None => Response::success(
+                    req_id,
+                    json!({
+                        "ref": element_ref, "checked": false, "found": false,
+                        "message": ai_friendly_error("Element not found", Some(element_ref))
+                    }),
+                ),
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+        })
     }
 
     fn handle_count(&self, request: Request) -> Response {
@@ -1581,178 +1343,63 @@ impl DaemonServer {
     }
 
     fn handle_focus(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                if sess.find_element(element_ref).is_none() {
-                    return Response::success(
-                        request.id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref))
-                        }),
-                    );
-                }
-
-                if let Err(e) = sess.pty_write(b"\t") {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), None),
-                    );
-                }
-
-                Response::success(
-                    request.id,
-                    json!({
-                        "success": true,
-                        "ref": element_ref
-                    }),
-                )
+        let req_id = request.id;
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            let _ = sess.update();
+            sess.detect_elements();
+            if sess.find_element(element_ref).is_none() {
+                return Response::success(
+                    req_id,
+                    json!({ "success": false, "message": ai_friendly_error("Element not found", Some(element_ref)) }),
+                );
             }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
-        }
+            if let Err(e) = sess.pty_write(b"\t") {
+                return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+            }
+            Response::success(req_id, json!({ "success": true, "ref": element_ref }))
+        })
     }
 
     fn handle_clear(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                if sess.find_element(element_ref).is_none() {
-                    return Response::success(
-                        request.id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref))
-                        }),
-                    );
-                }
-
-                let screen_text = sess.screen_text();
-                let framework = detect_framework(&screen_text);
-
-                let result = match framework {
-                    Framework::Textual => sess
-                        .pty_write(b"\x01")
-                        .and_then(|_| sess.pty_write(b"\x7f")),
-                    _ => sess.pty_write(b"\x15"),
-                };
-
-                if let Err(e) = result {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), None),
-                    );
-                }
-
-                Response::success(
-                    request.id,
-                    json!({
-                        "success": true,
-                        "ref": element_ref
-                    }),
-                )
+        let req_id = request.id;
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            let _ = sess.update();
+            sess.detect_elements();
+            if sess.find_element(element_ref).is_none() {
+                return Response::success(
+                    req_id,
+                    json!({ "success": false, "message": ai_friendly_error("Element not found", Some(element_ref)) }),
+                );
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+            let screen_text = sess.screen_text();
+            let framework = detect_framework(&screen_text);
+            let result = match framework {
+                Framework::Textual => sess.pty_write(b"\x01").and_then(|_| sess.pty_write(b"\x7f")),
+                _ => sess.pty_write(b"\x15"),
+            };
+            if let Err(e) = result {
+                return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+            }
+            Response::success(req_id, json!({ "success": true, "ref": element_ref }))
+        })
     }
 
     fn handle_select_all(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                if sess.find_element(element_ref).is_none() {
-                    return Response::success(
-                        request.id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref))
-                        }),
-                    );
-                }
-
-                if let Err(e) = sess.pty_write(b"\x01") {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), None),
-                    );
-                }
-
-                Response::success(
-                    request.id,
-                    json!({
-                        "success": true,
-                        "ref": element_ref
-                    }),
-                )
+        let req_id = request.id;
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            let _ = sess.update();
+            sess.detect_elements();
+            if sess.find_element(element_ref).is_none() {
+                return Response::success(
+                    req_id,
+                    json!({ "success": false, "message": ai_friendly_error("Element not found", Some(element_ref)) }),
+                );
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+            if let Err(e) = sess.pty_write(b"\x01") {
+                return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+            }
+            Response::success(req_id, json!({ "success": true, "ref": element_ref }))
+        })
     }
 
     fn handle_toggle(&self, request: Request) -> Response {

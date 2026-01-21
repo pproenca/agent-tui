@@ -12,7 +12,6 @@ set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
@@ -25,7 +24,7 @@ success() {
 }
 
 error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 # Cleanup on exit
@@ -35,7 +34,7 @@ cleanup() {
     rm -f hello.py 2>/dev/null || true
 }
 
-trap cleanup EXIT
+trap 'exit_code=$?; cleanup; exit $exit_code' EXIT
 
 # Check prerequisites
 if ! command -v agent-tui &> /dev/null; then
@@ -90,7 +89,7 @@ agent-tui snapshot -i
 
 # Step 7: Verify the file was created
 log "Verifying hello.py was created..."
-if [ -f "hello.py" ]; then
+if [[ -f "hello.py" ]]; then
     success "hello.py was created"
     echo ""
     echo "Contents of hello.py:"

@@ -15,13 +15,13 @@
 #   ./interactive-installer.sh "cargo new --name myproject"
 #   ./interactive-installer.sh "python -m venv .venv"
 
-set -e
+set -euo pipefail
 
 # Configuration
 COMMAND="$1"
-TIMEOUT_DEFAULT=30000
-TERMINAL_COLS=120
-TERMINAL_ROWS=40
+readonly TIMEOUT_DEFAULT=30000
+readonly TERMINAL_COLS=120
+readonly TERMINAL_ROWS=40
 
 # Colors
 RED='\033[0;31m'
@@ -33,7 +33,7 @@ NC='\033[0m'
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
 show_usage() {
     echo "Usage: $0 <command> [options...]"
@@ -57,7 +57,7 @@ cleanup() {
     agent-tui kill 2>/dev/null || true
 }
 
-trap cleanup EXIT
+trap 'exit_code=$?; cleanup; exit $exit_code' EXIT
 
 interactive_loop() {
     log_info "Entering interactive mode. Commands: type, key, wait, stable, snapshot, quit"
@@ -75,7 +75,7 @@ interactive_loop() {
 
         case "$cmd" in
             type)
-                if [ -n "$args" ]; then
+                if [[ -n "$args" ]]; then
                     log_step "Typing: $args"
                     agent-tui type "$args"
                 else
@@ -83,7 +83,7 @@ interactive_loop() {
                 fi
                 ;;
             key)
-                if [ -n "$args" ]; then
+                if [[ -n "$args" ]]; then
                     log_step "Sending key: $args"
                     agent-tui press "$args"
                 else
@@ -91,7 +91,7 @@ interactive_loop() {
                 fi
                 ;;
             wait)
-                if [ -n "$args" ]; then
+                if [[ -n "$args" ]]; then
                     log_step "Waiting for: $args"
                     if agent-tui wait "$args" --timeout $TIMEOUT_DEFAULT; then
                         log_info "Found: $args"
@@ -145,7 +145,7 @@ interactive_loop() {
 }
 
 main() {
-    if [ -z "$COMMAND" ]; then
+    if [[ -z "$COMMAND" ]]; then
         show_usage
         exit 1
     fi

@@ -14,7 +14,7 @@
 #   ./demo-claude-code-self-test.sh
 #
 
-set -e
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -97,7 +97,7 @@ echo "────────────────────────�
 echo
 
 # Check if the file was created
-if [ -f "$TEST_DIR/hello.py" ]; then
+if [[ -f "$TEST_DIR/hello.py" ]]; then
     echo -e "${GREEN}✓ File created successfully!${NC}"
     echo "Contents of hello.py:"
     echo "────────────────────────────────────────"

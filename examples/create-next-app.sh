@@ -17,12 +17,12 @@
 # 3. Navigate through options
 # 4. Wait for completion
 
-set -e
+set -euo pipefail
 
 # Configuration
 PROJECT_NAME="${1:-my-next-app}"
-TIMEOUT_STARTUP=30000
-TIMEOUT_INSTALL=300000  # 5 minutes for npm install
+readonly TIMEOUT_STARTUP=30000
+readonly TIMEOUT_INSTALL=300000  # 5 minutes for npm install
 
 # Colors for output
 RED='\033[0;31m'
@@ -39,7 +39,7 @@ log_warn() {
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 cleanup() {
@@ -47,7 +47,7 @@ cleanup() {
     agent-tui kill 2>/dev/null || true
 }
 
-trap cleanup EXIT
+trap 'exit_code=$?; cleanup; exit $exit_code' EXIT
 
 main() {
     log_info "Creating Next.js app: $PROJECT_NAME"
@@ -141,7 +141,7 @@ main() {
     agent-tui snapshot
 
     # Check if project directory was created
-    if [ -d "$PROJECT_NAME" ]; then
+    if [[ -d "$PROJECT_NAME" ]]; then
         log_info "SUCCESS: Project '$PROJECT_NAME' created!"
         echo ""
         echo "To get started:"

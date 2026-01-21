@@ -67,10 +67,6 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact: agent-tui-darwin-arm64
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            artifact: agent-tui-win32-x64
-            ext: .exe
 
     steps:
       - uses: actions/checkout@v4
@@ -106,24 +102,17 @@ jobs:
         working-directory: cli
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Prepare artifact (Unix)
-        if: runner.os != 'Windows'
+      - name: Prepare artifact
         run: |
           mkdir -p dist
           cp cli/target/${{ matrix.target }}/release/agent-tui dist/${{ matrix.artifact }}
           chmod +x dist/${{ matrix.artifact }}
 
-      - name: Prepare artifact (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          mkdir dist
-          copy cli\target\${{ matrix.target }}\release\agent-tui.exe dist\${{ matrix.artifact }}.exe
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}${{ matrix.ext }}
+          path: dist/${{ matrix.artifact }}
           if-no-files-found: error
 
   release:
@@ -194,7 +183,6 @@ jobs:
           cp artifacts/agent-tui-linux-arm64/agent-tui-linux-arm64 bin/
           cp artifacts/agent-tui-darwin-x64/agent-tui-darwin-x64 bin/
           cp artifacts/agent-tui-darwin-arm64/agent-tui-darwin-arm64 bin/
-          cp artifacts/agent-tui-win32-x64/agent-tui-win32-x64.exe bin/
           chmod +x bin/agent-tui-*
           ls -la bin/
 

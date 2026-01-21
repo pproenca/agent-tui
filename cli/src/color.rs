@@ -1,24 +1,16 @@
-//! Color output utilities for agent-tui CLI
-//!
-//! Respects NO_COLOR environment variable and provides consistent styling.
-
 use std::sync::OnceLock;
 
-/// Global flag to control color output
 static NO_COLOR: OnceLock<bool> = OnceLock::new();
 
-/// Initialize color state based on environment and CLI flags
 pub fn init(no_color_flag: bool) {
     let _ = NO_COLOR
         .set(no_color_flag || std::env::var("NO_COLOR").is_ok() || !atty::is(atty::Stream::Stdout));
 }
 
-/// Check if colors are disabled
 pub fn is_disabled() -> bool {
     *NO_COLOR.get().unwrap_or(&false)
 }
 
-/// ANSI color codes
 mod codes {
     pub const RESET: &str = "\x1b[0m";
     pub const GREEN: &str = "\x1b[32m";
@@ -28,11 +20,9 @@ mod codes {
     pub const BOLD: &str = "\x1b[1m";
 }
 
-/// Color helper functions
 pub struct Colors;
 
 impl Colors {
-    /// Success messages (green)
     pub fn success(text: &str) -> String {
         if is_disabled() {
             text.to_string()
@@ -41,7 +31,6 @@ impl Colors {
         }
     }
 
-    /// Error messages (red)
     pub fn error(text: &str) -> String {
         if is_disabled() {
             text.to_string()
@@ -50,7 +39,6 @@ impl Colors {
         }
     }
 
-    /// Info messages (cyan)
     pub fn info(text: &str) -> String {
         if is_disabled() {
             text.to_string()
@@ -59,7 +47,6 @@ impl Colors {
         }
     }
 
-    /// Dimmed text (gray)
     pub fn dim(text: &str) -> String {
         if is_disabled() {
             text.to_string()
@@ -68,7 +55,6 @@ impl Colors {
         }
     }
 
-    /// Bold text
     pub fn bold(text: &str) -> String {
         if is_disabled() {
             text.to_string()
@@ -77,7 +63,6 @@ impl Colors {
         }
     }
 
-    /// Element references (cyan, for @inp1, @btn1, etc.)
     pub fn element_ref(text: &str) -> String {
         if is_disabled() {
             text.to_string()
@@ -86,7 +71,6 @@ impl Colors {
         }
     }
 
-    /// Session ID (bold cyan)
     pub fn session_id(text: &str) -> String {
         if is_disabled() {
             text.to_string()

@@ -1,5 +1,3 @@
-//! JSON-RPC server over Unix socket
-
 use super::error_messages::{ai_friendly_error, lock_timeout_response};
 use super::lock_helpers::{acquire_session_lock, LOCK_TIMEOUT};
 use super::rpc_types::{Request, Response};
@@ -18,7 +16,6 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Get the socket path
 pub fn socket_path() -> PathBuf {
     std::env::var("XDG_RUNTIME_DIR")
         .map(|dir| PathBuf::from(dir).join("agent-tui.sock"))
@@ -44,7 +41,6 @@ impl DaemonServer {
         }
     }
 
-    /// Handle a JSON-RPC request
     fn handle_request(&self, request: Request) -> Response {
         match request.method.as_str() {
             "ping" => Response::success(request.id, json!({ "pong": true })),
@@ -1454,7 +1450,6 @@ impl DaemonServer {
         }
     }
 
-    /// Scroll until an element is visible on screen (agent-browser parity)
     fn handle_scroll_into_view(&self, request: Request) -> Response {
         let params = match request.params {
             Some(p) => p,
@@ -1517,7 +1512,6 @@ impl DaemonServer {
         }
     }
 
-    /// Get the currently focused element (agent-browser parity)
     fn handle_get_focused(&self, request: Request) -> Response {
         let params = request.params.unwrap_or(json!({}));
         let session_id = params.get("session").and_then(|v| v.as_str());
@@ -1559,7 +1553,6 @@ impl DaemonServer {
         }
     }
 
-    /// Get the session title/command (agent-browser parity)
     fn handle_get_title(&self, request: Request) -> Response {
         let params = request.params.unwrap_or(json!({}));
         let session_id = params.get("session").and_then(|v| v.as_str());
@@ -2469,7 +2462,6 @@ impl DaemonServer {
         }
     }
 
-    /// Handle a client connection
     fn handle_client(&self, stream: UnixStream) {
         let reader = BufReader::new(stream.try_clone().unwrap());
         let mut writer = stream;
@@ -2510,7 +2502,6 @@ impl DaemonServer {
     }
 }
 
-/// Start the daemon server
 pub fn start_daemon() -> std::io::Result<()> {
     let socket_path = socket_path();
     let lock_path = socket_path.with_extension("lock");
@@ -2590,7 +2581,6 @@ mod tests {
     use std::os::unix::io::AsRawFd;
     use tempfile::tempdir;
 
-    /// Test that file lock prevents second daemon from starting
     #[test]
     fn test_daemon_singleton_lock() {
         let tmp_dir = tempdir().expect("Failed to create temp dir");
@@ -2629,7 +2619,6 @@ mod tests {
         );
     }
 
-    /// Test that lock is released when file handle is dropped
     #[test]
     fn test_daemon_lock_released_on_drop() {
         let tmp_dir = tempdir().expect("Failed to create temp dir");

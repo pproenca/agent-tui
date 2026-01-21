@@ -1,8 +1,3 @@
-//! agent-tui - Pure Rust CLI for AI agents to interact with TUI applications
-//!
-//! This CLI communicates with a daemon process that manages PTY sessions.
-//! The daemon is automatically started if not running.
-
 mod attach;
 mod client;
 mod color;

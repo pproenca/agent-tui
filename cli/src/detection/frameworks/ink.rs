@@ -1,20 +1,9 @@
-//! Ink (React for CLI) framework detector
-//!
-//! Detects elements specific to Ink-based applications using patterns like:
-//! - Braille spinners: ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
-//! - Select indicators: ❯, ›
-//! - Checkbox circles: ◉, ◯
-
 use crate::detection::pattern::{deduplicate_matches, PatternMatch};
 use crate::detection::traits::{DetectionContext, ElementDetectorImpl};
 use crate::detection::ElementType;
 use regex::Regex;
 use std::sync::OnceLock;
 
-/// Ink framework detector
-///
-/// Specializes in detecting Ink-specific UI patterns that differ from
-/// generic terminal patterns.
 pub struct InkDetector;
 
 impl InkDetector {
@@ -22,7 +11,6 @@ impl InkDetector {
         Self
     }
 
-    /// Check if the screen appears to be an Ink application
     pub fn looks_like_ink(ctx: &DetectionContext) -> bool {
         let braille_spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
         let has_braille = braille_spinners.iter().any(|s| ctx.screen_text.contains(s));
@@ -44,7 +32,6 @@ impl Default for InkDetector {
     }
 }
 
-/// Cached regex patterns for Ink-specific elements
 struct InkPatterns {
     select_item: Regex,
     checkbox: Regex,

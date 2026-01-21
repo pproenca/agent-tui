@@ -1,8 +1,3 @@
-//! PTY management using portable-pty
-//!
-//! This module provides PTY creation and management for spawning
-//! and controlling terminal applications.
-
 use crate::sync_utils::mutex_lock_or_recover;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
@@ -34,7 +29,6 @@ pub struct PtyHandle {
 }
 
 impl PtyHandle {
-    /// Spawn a new PTY with the given command
     pub fn spawn(
         command: &str,
         args: &[String],
@@ -101,12 +95,10 @@ impl PtyHandle {
         })
     }
 
-    /// Get the process ID
     pub fn pid(&self) -> Option<u32> {
         self.child.process_id()
     }
 
-    /// Check if the process is still running
     pub fn is_running(&mut self) -> bool {
         self.child
             .try_wait()
@@ -114,7 +106,6 @@ impl PtyHandle {
             .unwrap_or(false)
     }
 
-    /// Write data to the PTY
     pub fn write(&self, data: &[u8]) -> Result<(), PtyError> {
         let mut writer = mutex_lock_or_recover(&self.writer);
         writer
@@ -124,13 +115,10 @@ impl PtyHandle {
         Ok(())
     }
 
-    /// Write a string to the PTY
     pub fn write_str(&self, s: &str) -> Result<(), PtyError> {
         self.write(s.as_bytes())
     }
 
-    /// Read available data without blocking
-    /// Returns Ok(0) if no data available within timeout
     pub fn try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, PtyError> {
         let mut pollfd = libc::pollfd {
             fd: self.reader_fd,
@@ -152,7 +140,6 @@ impl PtyHandle {
         reader.read(buf).map_err(|e| PtyError::Read(e.to_string()))
     }
 
-    /// Resize the PTY
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), PtyError> {
         self.size = PtySize {
             rows,
@@ -165,7 +152,6 @@ impl PtyHandle {
             .map_err(|e| PtyError::Resize(e.to_string()))
     }
 
-    /// Kill the process
     pub fn kill(&mut self) -> Result<(), PtyError> {
         self.child
             .kill()
@@ -173,7 +159,6 @@ impl PtyHandle {
     }
 }
 
-/// Parse a key string into escape sequences
 pub fn key_to_escape_sequence(key: &str) -> Option<Vec<u8>> {
     if key.contains('+') {
         let parts: Vec<&str> = key.split('+').collect();

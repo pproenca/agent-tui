@@ -1,32 +1,16 @@
-//! TUI framework auto-detection
-//!
-//! Detects which TUI framework is being used based on visual patterns
-//! and common UI signatures in the terminal output.
-
-/// Known TUI frameworks
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Framework {
-    /// Ink (React for CLI)
     Ink,
-    /// Blessed (Node.js curses-like)
     Blessed,
-    /// Bubble Tea (Go)
     BubbleTea,
-    /// Textual (Python)
     Textual,
-    /// ncurses/curses
     Ncurses,
-    /// Inquirer.js
     Inquirer,
-    /// Prompts (Node.js)
     Prompts,
-    /// Ratatui (Rust)
     Ratatui,
-    /// Unknown framework
     Unknown,
 }
 
-/// Detect the TUI framework based on screen content and patterns
 pub fn detect_framework(screen: &str) -> Framework {
     if is_inquirer(screen) {
         return Framework::Inquirer;
@@ -63,7 +47,6 @@ pub fn detect_framework(screen: &str) -> Framework {
     Framework::Unknown
 }
 
-/// Check for Ink framework patterns
 fn is_ink(screen: &str) -> bool {
     let braille_spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     let has_braille = braille_spinners.iter().any(|s| screen.contains(s));
@@ -88,7 +71,6 @@ fn is_ink(screen: &str) -> bool {
     has_question_pattern
 }
 
-/// Check for Inquirer.js patterns
 fn is_inquirer(screen: &str) -> bool {
     let circle_lines = screen
         .lines()
@@ -103,7 +85,6 @@ fn is_inquirer(screen: &str) -> bool {
     has_inquirer_select || has_inquirer_checkbox || has_inquirer_confirm
 }
 
-/// Check for Prompts (Node.js) patterns
 fn is_prompts(screen: &str) -> bool {
     let has_prompts_toggle = screen.contains("◉") && screen.contains("○");
     let has_prompts_select =
@@ -112,7 +93,6 @@ fn is_prompts(screen: &str) -> bool {
     has_prompts_toggle || has_prompts_select
 }
 
-/// Check for Bubble Tea patterns
 fn is_bubbletea(screen: &str) -> bool {
     let charm_spinners = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"];
     let has_charm_spinner = charm_spinners.iter().any(|s| screen.contains(s));
@@ -127,7 +107,6 @@ fn is_bubbletea(screen: &str) -> bool {
     has_charm_spinner || (has_help_bar && has_text_input)
 }
 
-/// Check for Textual (Python) patterns
 fn is_textual(screen: &str) -> bool {
     let has_textual_footer = screen.lines().last().is_some_and(|l| {
         l.contains("^q") || l.contains("^c") || l.contains("F1") || l.contains("ESC")
@@ -140,7 +119,6 @@ fn is_textual(screen: &str) -> bool {
     has_textual_footer || has_heavy_borders || has_data_table
 }
 
-/// Check for Blessed patterns
 fn is_blessed(screen: &str) -> bool {
     let has_scrollbar = screen.contains("▒") || screen.contains("░");
 
@@ -152,7 +130,6 @@ fn is_blessed(screen: &str) -> bool {
     (has_scrollbar && has_blessed_box) || has_blessed_input
 }
 
-/// Check for Ratatui patterns
 fn is_ratatui(screen: &str) -> bool {
     let block_chars = ["█", "▓", "▒", "░", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
     let block_count = block_chars.iter().filter(|c| screen.contains(*c)).count();
@@ -167,7 +144,6 @@ fn is_ratatui(screen: &str) -> bool {
     block_count >= 3 || has_sparkline
 }
 
-/// Check for ncurses patterns (generic curses-based apps)
 fn is_ncurses(screen: &str) -> bool {
     let has_function_keys = screen.contains("F1")
         || screen.contains("F2")

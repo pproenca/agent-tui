@@ -1,13 +1,7 @@
-//! Terminal emulation using vt100
-//!
-//! This module wraps the vt100 crate to provide headless terminal
-//! emulation with access to cell styling data for element detection.
-
 use crate::sync_utils::mutex_lock_or_recover;
 use std::sync::{Arc, Mutex};
 use vt100::Parser;
 
-/// Cell style information for element detection
 #[derive(Debug, Clone, Default)]
 pub struct CellStyle {
     pub bold: bool,
@@ -24,20 +18,17 @@ pub enum Color {
     Rgb(u8, u8, u8),
 }
 
-/// A cell in the terminal screen
 #[derive(Debug, Clone)]
 pub struct Cell {
     pub char: char,
     pub style: CellStyle,
 }
 
-/// Screen buffer with cell data
 #[derive(Debug, Clone)]
 pub struct ScreenBuffer {
     pub cells: Vec<Vec<Cell>>,
 }
 
-/// Cursor position
 #[derive(Debug, Clone)]
 pub struct CursorPosition {
     pub row: u16,
@@ -45,7 +36,6 @@ pub struct CursorPosition {
     pub visible: bool,
 }
 
-/// Virtual terminal using vt100
 pub struct VirtualTerminal {
     parser: Arc<Mutex<Parser>>,
     cols: u16,
@@ -53,7 +43,6 @@ pub struct VirtualTerminal {
 }
 
 impl VirtualTerminal {
-    /// Create a new virtual terminal with the given dimensions
     pub fn new(cols: u16, rows: u16) -> Self {
         let parser = Parser::new(rows, cols, 0);
         Self {
@@ -63,13 +52,11 @@ impl VirtualTerminal {
         }
     }
 
-    /// Process input data (from PTY)
     pub fn process(&self, data: &[u8]) {
         let mut parser = mutex_lock_or_recover(&self.parser);
         parser.process(data);
     }
 
-    /// Get the screen as text
     pub fn screen_text(&self) -> String {
         let parser = mutex_lock_or_recover(&self.parser);
         let screen = parser.screen();
@@ -97,7 +84,6 @@ impl VirtualTerminal {
         lines.join("\n")
     }
 
-    /// Get the screen buffer with style information
     pub fn screen_buffer(&self) -> ScreenBuffer {
         let parser = mutex_lock_or_recover(&self.parser);
         let screen = parser.screen();
@@ -128,7 +114,6 @@ impl VirtualTerminal {
         ScreenBuffer { cells }
     }
 
-    /// Get cursor position
     pub fn cursor(&self) -> CursorPosition {
         let parser = mutex_lock_or_recover(&self.parser);
         let screen = parser.screen();
@@ -141,7 +126,6 @@ impl VirtualTerminal {
         }
     }
 
-    /// Resize the terminal
     pub fn resize(&mut self, cols: u16, rows: u16) {
         let mut parser = mutex_lock_or_recover(&self.parser);
         parser.set_size(rows, cols);
@@ -149,12 +133,10 @@ impl VirtualTerminal {
         self.rows = rows;
     }
 
-    /// Get the terminal size
     pub fn size(&self) -> (u16, u16) {
         (self.cols, self.rows)
     }
 
-    /// Clear the terminal screen buffer
     pub fn clear(&mut self) {
         let rows = self.rows;
         let cols = self.cols;

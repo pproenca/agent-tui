@@ -1,15 +1,6 @@
-//! Generic fallback detector
-//!
-//! This detector wraps the existing pattern-based detection logic,
-//! providing a baseline that works for any framework.
-
 use crate::detection::pattern::{detect_by_pattern, PatternMatch};
 use crate::detection::traits::{DetectionContext, ElementDetectorImpl};
 
-/// Generic detector that uses pattern matching for any framework
-///
-/// This wraps the existing `detect_by_pattern` function, serving as the
-/// fallback when no framework-specific detector matches.
 pub struct GenericDetector;
 
 impl GenericDetector {

@@ -1,17 +1,3 @@
-//! Element detection for TUI applications
-//!
-//! This module provides pattern-based and style-based detection of
-//! interactive UI elements in terminal output.
-//!
-//! ## Architecture
-//!
-//! The detection system uses a trait-based extensible architecture:
-//!
-//! - `ElementDetectorImpl` trait defines the contract for framework-specific detectors
-//! - `FrameworkDetector` enum provides zero-cost dispatch to the appropriate detector
-//! - Framework-specific detectors live in the `frameworks/` submodule
-//! - `GenericDetector` serves as the fallback for unknown frameworks
-
 mod framework;
 mod frameworks;
 pub mod pattern;
@@ -23,7 +9,6 @@ use regex::Regex;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-/// Cached regex for legacy type-prefixed refs (@btn1, @inp2, etc.)
 fn legacy_ref_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"^@([a-z]+)(\d+)$").unwrap())
@@ -33,7 +18,6 @@ pub use framework::{detect_framework, Framework};
 pub use registry::FrameworkDetector;
 pub use traits::{DetectionContext, ElementDetectorImpl};
 
-/// Element types that can be detected
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ElementType {
     Button,
@@ -63,7 +47,6 @@ impl ElementType {
     }
 }
 
-/// Position in the terminal
 #[derive(Debug, Clone)]
 pub struct Position {
     pub row: u16,
@@ -72,7 +55,6 @@ pub struct Position {
     pub height: Option<u16>,
 }
 
-/// A detected element
 #[derive(Debug, Clone)]
 pub struct Element {
     pub element_ref: String,
@@ -114,8 +96,6 @@ impl Element {
         }
     }
 
-    /// Returns true if this element is interactive (can be clicked, filled, toggled, etc.)
-    /// Used for snapshot filtering with -i/--interactive-only flag.
     pub fn is_interactive(&self) -> bool {
         matches!(
             self.element_type,
@@ -128,8 +108,6 @@ impl Element {
         )
     }
 
-    /// Returns true if this element has meaningful content (non-empty text)
-    /// Used for snapshot filtering with -c/--compact flag.
     pub fn has_content(&self) -> bool {
         self.label
             .as_ref()
@@ -143,9 +121,7 @@ impl Element {
     }
 }
 
-/// Element detector
 pub struct ElementDetector {
-    /// Counter for sequential element refs
     ref_counter: usize,
     used_refs: HashSet<String>,
 }
@@ -164,7 +140,6 @@ impl ElementDetector {
         }
     }
 
-    /// Detect elements in the screen
     pub fn detect(
         &mut self,
         screen_text: &str,
@@ -173,9 +148,6 @@ impl ElementDetector {
         self.detect_with_framework(screen_text, screen_buffer, None)
     }
 
-    /// Detect elements using a specific framework detector
-    ///
-    /// If no framework is specified, auto-detects the appropriate detector.
     pub fn detect_with_framework(
         &mut self,
         screen_text: &str,
@@ -238,14 +210,6 @@ impl ElementDetector {
         elements
     }
 
-    /// Check if a region has styling that indicates focus
-    ///
-    /// Checks multiple style indicators:
-    /// - Inverse (most common focus indicator)
-    /// - Bold (often used for highlighting)
-    /// - Underline (sometimes used for focus)
-    /// - Non-default foreground color (highlighting)
-    /// - Non-default background color (highlighting)
     fn is_focused_by_style(&self, buffer: &ScreenBuffer, row: u16, col: u16, width: u16) -> bool {
         use crate::terminal::Color;
 
@@ -297,11 +261,6 @@ impl ElementDetector {
             })
     }
 
-    /// Generate a ref for an element
-    ///
-    /// Uses simple sequential refs like agent-browser: @e1, @e2, @e3
-    /// This makes refs deterministic and easy for AI to reason about.
-    /// Refs reset on each snapshot (expected behavior).
     fn generate_ref(
         &mut self,
         _element_type: &ElementType,
@@ -316,9 +275,6 @@ impl ElementDetector {
         seq_ref
     }
 
-    /// Find element by ref
-    ///
-    /// Supports both new sequential refs (@e1, @e2) and legacy type-prefixed refs (@btn1, @inp1)
     pub fn find_by_ref<'a>(&self, elements: &'a [Element], ref_str: &str) -> Option<&'a Element> {
         let normalized = if ref_str.starts_with('@') {
             ref_str.to_string()

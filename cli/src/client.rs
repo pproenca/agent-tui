@@ -1,7 +1,3 @@
-//! Client for connecting to the daemon
-//!
-//! Provides a simple interface to send JSON-RPC requests to the daemon.
-
 use crate::daemon::socket_path;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -56,11 +52,9 @@ struct RpcError {
     message: String,
 }
 
-/// Client for communicating with the daemon
 pub struct DaemonClient;
 
 impl DaemonClient {
-    /// Connect to the daemon
     pub fn connect() -> Result<Self, ClientError> {
         let path = socket_path();
         if !path.exists() {
@@ -73,7 +67,6 @@ impl DaemonClient {
         Ok(Self)
     }
 
-    /// Check if daemon is running
     pub fn is_daemon_running() -> bool {
         let path = socket_path();
         if !path.exists() {
@@ -83,7 +76,6 @@ impl DaemonClient {
         UnixStream::connect(path).is_ok()
     }
 
-    /// Send a request and get the response (uses new connection per request)
     pub fn call(&mut self, method: &str, params: Option<Value>) -> Result<Value, ClientError> {
         let path = socket_path();
         let mut stream = UnixStream::connect(&path)?;
@@ -119,7 +111,6 @@ impl DaemonClient {
         response.result.ok_or(ClientError::InvalidResponse)
     }
 
-    /// Convenience method for ping
     #[allow(dead_code)]
     pub fn ping(&mut self) -> Result<bool, ClientError> {
         let result = self.call("ping", None)?;
@@ -130,7 +121,6 @@ impl DaemonClient {
     }
 }
 
-/// Start the daemon in the background
 pub fn start_daemon_background() -> Result<(), ClientError> {
     use std::process::{Command, Stdio};
 
@@ -153,7 +143,6 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
     Err(ClientError::DaemonNotRunning)
 }
 
-/// Ensure daemon is running, starting it if necessary
 pub fn ensure_daemon() -> Result<DaemonClient, ClientError> {
     if !DaemonClient::is_daemon_running() {
         start_daemon_background()?;

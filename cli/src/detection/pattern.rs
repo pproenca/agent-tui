@@ -1,13 +1,8 @@
-//! Pattern-based element detection
-//!
-//! Detects TUI elements using regex patterns for common UI patterns.
-
 use super::ElementType;
 use regex::Regex;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-/// Cached regex patterns for element detection
 struct PatternRegexes {
     button: [Regex; 2],
     input: [Regex; 2],
@@ -59,7 +54,6 @@ fn get_patterns() -> &'static PatternRegexes {
     })
 }
 
-/// A pattern match result
 #[derive(Debug, Clone)]
 pub struct PatternMatch {
     pub element_type: ElementType,
@@ -71,7 +65,6 @@ pub struct PatternMatch {
     pub checked: Option<bool>,
 }
 
-/// Detect elements using pattern matching
 pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
     let mut matches = Vec::new();
     let lines: Vec<&str> = screen_text.lines().collect();
@@ -275,7 +268,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
     deduplicate_matches(matches)
 }
 
-/// Type priority for deduplication
 fn type_priority(t: &ElementType) -> i32 {
     match t {
         ElementType::Input => 10,
@@ -290,7 +282,6 @@ fn type_priority(t: &ElementType) -> i32 {
     }
 }
 
-/// Remove overlapping matches, preferring higher-priority types
 pub fn deduplicate_matches(mut matches: Vec<PatternMatch>) -> Vec<PatternMatch> {
     matches.sort_by(|a, b| {
         let priority_cmp = type_priority(&b.element_type).cmp(&type_priority(&a.element_type));

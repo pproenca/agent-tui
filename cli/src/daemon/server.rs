@@ -88,6 +88,18 @@ impl DaemonServer {
         }
     }
 
+    /// Helper for handlers that need element detection (update + detect_elements).
+    fn with_detected_session_and_ref<F>(&self, request: &Request, f: F) -> Response
+    where
+        F: FnOnce(&mut crate::session::Session, &str) -> Response,
+    {
+        self.with_session_and_ref(request, |sess, element_ref| {
+            let _ = sess.update();
+            sess.detect_elements();
+            f(sess, element_ref)
+        })
+    }
+
     fn handle_request(&self, request: Request) -> Response {
         match request.method.as_str() {
             "ping" => Response::success(request.id, json!({ "pong": true })),
@@ -958,9 +970,7 @@ impl DaemonServer {
 
     fn handle_get_text(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_session_and_ref(&request, |sess, element_ref| {
-            let _ = sess.update();
-            sess.detect_elements();
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
             match sess.find_element(element_ref) {
                 Some(el) => {
                     let text = el.label.clone().or_else(|| el.value.clone());
@@ -982,9 +992,7 @@ impl DaemonServer {
 
     fn handle_get_value(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_session_and_ref(&request, |sess, element_ref| {
-            let _ = sess.update();
-            sess.detect_elements();
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
             match sess.find_element(element_ref) {
                 Some(el) => Response::success(
                     req_id,
@@ -1003,9 +1011,7 @@ impl DaemonServer {
 
     fn handle_is_visible(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_session_and_ref(&request, |sess, element_ref| {
-            let _ = sess.update();
-            sess.detect_elements();
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
             let visible = sess.find_element(element_ref).is_some();
             Response::success(req_id, json!({ "ref": element_ref, "visible": visible }))
         })
@@ -1013,9 +1019,7 @@ impl DaemonServer {
 
     fn handle_is_focused(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_session_and_ref(&request, |sess, element_ref| {
-            let _ = sess.update();
-            sess.detect_elements();
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
             match sess.find_element(element_ref) {
                 Some(el) => Response::success(
                     req_id,
@@ -1034,9 +1038,7 @@ impl DaemonServer {
 
     fn handle_is_enabled(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_session_and_ref(&request, |sess, element_ref| {
-            let _ = sess.update();
-            sess.detect_elements();
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
             match sess.find_element(element_ref) {
                 Some(el) => {
                     let enabled = !el.disabled.unwrap_or(false);
@@ -1058,9 +1060,7 @@ impl DaemonServer {
 
     fn handle_is_checked(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_session_and_ref(&request, |sess, element_ref| {
-            let _ = sess.update();
-            sess.detect_elements();
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
             match sess.find_element(element_ref) {
                 Some(el) => {
                     let el_type = el.element_type.as_str();
@@ -1344,9 +1344,7 @@ impl DaemonServer {
 
     fn handle_focus(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_session_and_ref(&request, |sess, element_ref| {
-            let _ = sess.update();
-            sess.detect_elements();
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
             if sess.find_element(element_ref).is_none() {
                 return Response::success(
                     req_id,
@@ -1362,9 +1360,7 @@ impl DaemonServer {
 
     fn handle_clear(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_session_and_ref(&request, |sess, element_ref| {
-            let _ = sess.update();
-            sess.detect_elements();
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
             if sess.find_element(element_ref).is_none() {
                 return Response::success(
                     req_id,
@@ -1386,9 +1382,7 @@ impl DaemonServer {
 
     fn handle_select_all(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_session_and_ref(&request, |sess, element_ref| {
-            let _ = sess.update();
-            sess.detect_elements();
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
             if sess.find_element(element_ref).is_none() {
                 return Response::success(
                     req_id,

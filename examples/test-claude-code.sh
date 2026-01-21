@@ -21,13 +21,13 @@
 # 4. Verify the result
 # 5. Clean up
 
-set -e
+set -euo pipefail
 
 # Configuration
-TIMEOUT_STARTUP=120000   # 2 minutes for Claude to start
-TIMEOUT_TASK=60000       # 1 minute for task completion
-TERMINAL_COLS=120
-TERMINAL_ROWS=40
+readonly TIMEOUT_STARTUP=120000   # 2 minutes for Claude to start
+readonly TIMEOUT_TASK=60000       # 1 minute for task completion
+readonly TERMINAL_COLS=120
+readonly TERMINAL_ROWS=40
 
 # Colors for output
 RED='\033[0;31m'
@@ -45,7 +45,7 @@ log_warn() {
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 cleanup() {
@@ -55,7 +55,7 @@ cleanup() {
 }
 
 # Set up cleanup trap
-trap cleanup EXIT
+trap 'exit_code=$?; cleanup; exit $exit_code' EXIT
 
 # Main test
 main() {
@@ -114,7 +114,7 @@ main() {
 
     # Verify the file was created
     log_info "Verifying result..."
-    if [ -f "hello.py" ]; then
+    if [[ -f "hello.py" ]]; then
         log_info "SUCCESS: hello.py was created!"
         echo ""
         echo "--- File contents ---"

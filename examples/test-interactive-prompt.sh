@@ -2,7 +2,7 @@
 # Interactive prompt workflow example
 # Demonstrates interaction with prompts that ask for user input
 
-set -e
+set -euo pipefail
 
 echo "=== Interactive Prompt Workflow ==="
 echo

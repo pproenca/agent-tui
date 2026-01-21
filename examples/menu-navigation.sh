@@ -2,7 +2,7 @@
 # Menu navigation workflow example
 # Demonstrates interaction with dialog-based menus
 
-set -e
+set -euo pipefail
 
 echo "=== Menu Navigation Workflow ==="
 echo

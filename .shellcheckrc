@@ -1,0 +1,15 @@
+# ShellCheck configuration for agent-tui
+# https://www.shellcheck.net/wiki/
+
+# Default shell dialect
+shell=bash
+
+# Disable specific checks:
+# SC2154: False positive for trap 'exit_code=$?; ...; exit $exit_code' pattern
+#         where the variable IS assigned within the trap string
+# SC2329: False positive for cleanup() functions invoked via trap commands
+disable=SC2154,SC2329
+
+# Note: We intentionally do NOT enable require-variable-braces or
+# quote-safe-variables as they are strict style preferences that
+# create unnecessary noise. The codebase already follows good quoting practices.

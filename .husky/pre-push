@@ -1,14 +1,14 @@
 #!/bin/sh
 
-echo "Running pre-push checks..."
+printf '%s\n' "Running pre-push checks..."
 
-echo "\n→ Checking formatting..."
+printf '\n→ Checking formatting...\n'
 npm run format:check || exit 1
 
-echo "\n→ Running clippy..."
+printf '\n→ Running clippy...\n'
 npm run lint || exit 1
 
-echo "\n→ Running tests..."
+printf '\n→ Running tests...\n'
 npm run test || exit 1
 
-echo "\nAll pre-push checks passed!"
+printf '\nAll pre-push checks passed!\n'

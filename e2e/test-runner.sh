@@ -21,7 +21,7 @@ cleanup() {
     agent-tui cleanup --all 2>/dev/null || true
 }
 
-trap cleanup EXIT
+trap 'exit_code=$?; cleanup; exit $exit_code' EXIT
 
 # Test helper functions
 test_start() {
@@ -85,7 +85,7 @@ if echo "$SPAWN_OUTPUT" | grep -q "Session started:"; then
     # Get session ID
     SESSION_ID=$(echo "$SPAWN_OUTPUT" | sed -nE 's/.*Session started: ([a-zA-Z0-9]+).*/\1/p' || echo "")
 
-    if [ -n "$SESSION_ID" ]; then
+    if [[ -n "$SESSION_ID" ]]; then
         # Test snapshot
         if agent-tui snapshot | grep -q "Screen:"; then
             test_pass "Snapshot captured"
@@ -180,7 +180,7 @@ echo "Test Results"
 echo "============================================"
 echo -e "Total:  $TESTS_RUN"
 echo -e "${GREEN}Passed: $TESTS_PASSED${NC}"
-if [ $TESTS_FAILED -gt 0 ]; then
+if (( TESTS_FAILED > 0 )); then
     echo -e "${RED}Failed: $TESTS_FAILED${NC}"
     exit 1
 else

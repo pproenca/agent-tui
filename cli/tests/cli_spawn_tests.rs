@@ -32,7 +32,7 @@ fn test_help_output() {
         .stdout(predicate::str::contains("snapshot"))
         .stdout(predicate::str::contains("click"))
         .stdout(predicate::str::contains("fill"))
-        .stdout(predicate::str::contains("keystroke"));
+        .stdout(predicate::str::contains("press"));
 }
 
 /// Test --version shows version number

@@ -351,7 +351,7 @@ pub fn handle_fill(ctx: &mut HandlerContext, element_ref: String, value: String)
     Ok(())
 }
 
-pub fn handle_keystroke(ctx: &mut HandlerContext, key: String) -> HandlerResult {
+pub fn handle_press(ctx: &mut HandlerContext, key: String) -> HandlerResult {
     let params = json!({
         "key": key,
         "session": ctx.session
@@ -369,9 +369,9 @@ pub fn handle_keystroke(ctx: &mut HandlerContext, key: String) -> HandlerResult 
         }
         OutputFormat::Text | OutputFormat::Tree => {
             if success {
-                println!("Keystroke sent");
+                println!("Key pressed");
             } else {
-                eprintln!("Keystroke failed");
+                eprintln!("Press failed");
                 std::process::exit(1);
             }
         }
@@ -725,7 +725,7 @@ pub fn handle_health(ctx: &mut HandlerContext, verbose: bool) -> HandlerResult {
     Ok(())
 }
 
-pub fn handle_screen(
+pub fn handle_screenshot(
     ctx: &mut HandlerContext,
     strip_ansi: bool,
     include_cursor: bool,
@@ -1504,6 +1504,72 @@ pub fn handle_toggle(
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown error");
                 eprintln!("Toggle failed: {}", msg);
+                std::process::exit(1);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn handle_check(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+    let params = json!({
+        "ref": element_ref,
+        "session": ctx.session,
+        "state": true
+    });
+
+    let result = ctx.client.call("toggle", Some(params))?;
+    let success = result
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    match ctx.format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        OutputFormat::Text | OutputFormat::Tree => {
+            if success {
+                println!("{} is now checked", element_ref);
+            } else {
+                let msg = result
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown error");
+                eprintln!("Check failed: {}", msg);
+                std::process::exit(1);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn handle_uncheck(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+    let params = json!({
+        "ref": element_ref,
+        "session": ctx.session,
+        "state": false
+    });
+
+    let result = ctx.client.call("toggle", Some(params))?;
+    let success = result
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    match ctx.format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        OutputFormat::Text | OutputFormat::Tree => {
+            if success {
+                println!("{} is now unchecked", element_ref);
+            } else {
+                let msg = result
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown error");
+                eprintln!("Uncheck failed: {}", msg);
                 std::process::exit(1);
             }
         }

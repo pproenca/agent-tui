@@ -46,6 +46,63 @@ fn mutex_lock_or_recover<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
     })
 }
 
+// ============================================================================
+// SessionId Newtype
+// ============================================================================
+
+/// A unique identifier for a session.
+///
+/// This newtype wrapper provides type safety by distinguishing session IDs
+/// from other strings in the codebase, preventing accidental misuse.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SessionId(String);
+
+impl SessionId {
+    /// Create a new SessionId from a string
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// Generate a new random session ID (first 8 chars of UUID)
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4().to_string()[..8].to_string())
+    }
+
+    /// Get the underlying string
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for SessionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for SessionId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SessionId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for SessionId {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+// ============================================================================
+// Recording Types
+// ============================================================================
+
 /// A single frame captured during recording
 #[derive(Clone, Debug)]
 pub struct RecordingFrame {
@@ -154,7 +211,7 @@ struct ModifierState {
 
 /// Session state
 pub struct Session {
-    pub id: String,
+    pub id: SessionId,
     pub command: String,
     pub created_at: DateTime<Utc>,
     pty: PtyHandle,
@@ -173,7 +230,7 @@ pub struct Session {
 }
 
 impl Session {
-    fn new(id: String, command: String, pty: PtyHandle, cols: u16, rows: u16) -> Self {
+    fn new(id: SessionId, command: String, pty: PtyHandle, cols: u16, rows: u16) -> Self {
         Self {
             id,
             command,
@@ -498,8 +555,8 @@ impl Session {
 
 /// Session manager
 pub struct SessionManager {
-    sessions: RwLock<HashMap<String, Arc<Mutex<Session>>>>,
-    active_session: RwLock<Option<String>>,
+    sessions: RwLock<HashMap<SessionId, Arc<Mutex<Session>>>>,
+    active_session: RwLock<Option<SessionId>>,
     start_time: Instant,
     persistence: SessionPersistence,
 }
@@ -534,8 +591,10 @@ impl SessionManager {
         session_id: Option<String>,
         cols: u16,
         rows: u16,
-    ) -> Result<(String, u32), SessionError> {
-        let id = session_id.unwrap_or_else(|| Uuid::new_v4().to_string()[..8].to_string());
+    ) -> Result<(SessionId, u32), SessionError> {
+        let id = session_id
+            .map(SessionId::new)
+            .unwrap_or_else(SessionId::generate);
 
         let pty = PtyHandle::spawn(command, args, cwd, env, cols, rows)?;
         let pid = pty.pid().unwrap_or(0);
@@ -577,8 +636,9 @@ impl SessionManager {
     /// Get a session by ID
     pub fn get(&self, session_id: &str) -> Result<Arc<Mutex<Session>>, SessionError> {
         let sessions = rwlock_read_or_recover(&self.sessions);
+        let id = SessionId::new(session_id);
         sessions
-            .get(session_id)
+            .get(&id)
             .cloned()
             .ok_or_else(|| SessionError::NotFound(session_id.to_string()))
     }
@@ -591,7 +651,7 @@ impl SessionManager {
         };
 
         match active_id {
-            Some(id) => self.get(&id),
+            Some(id) => self.get(id.as_str()),
             None => Err(SessionError::NoActiveSession),
         }
     }
@@ -609,7 +669,7 @@ impl SessionManager {
         let _ = self.get(session_id)?;
 
         let mut active = rwlock_write_or_recover(&self.active_session);
-        *active = Some(session_id.to_string());
+        *active = Some(SessionId::new(session_id));
         Ok(())
     }
 
@@ -619,7 +679,7 @@ impl SessionManager {
     pub fn list(&self) -> Vec<SessionInfo> {
         // Collect session refs under the read lock, then release it before
         // attempting to lock individual sessions to prevent lock ordering issues
-        let session_refs: Vec<(String, Arc<Mutex<Session>>)> = {
+        let session_refs: Vec<(SessionId, Arc<Mutex<Session>>)> = {
             let sessions = rwlock_read_or_recover(&self.sessions);
             sessions
                 .iter()
@@ -666,6 +726,8 @@ impl SessionManager {
     /// Lock ordering: sessions.write() -> active_session.write() -> session.lock()
     /// This order prevents deadlock with list() which acquires sessions.read() first.
     pub fn kill(&self, session_id: &str) -> Result<(), SessionError> {
+        let id = SessionId::new(session_id);
+
         // Step 1: Acquire sessions write lock and remove the session atomically
         // This prevents deadlock by ensuring consistent lock ordering
         let session = {
@@ -673,10 +735,10 @@ impl SessionManager {
             let mut active = rwlock_write_or_recover(&self.active_session);
 
             let session = sessions
-                .remove(session_id)
+                .remove(&id)
                 .ok_or_else(|| SessionError::NotFound(session_id.to_string()))?;
 
-            if active.as_ref() == Some(&session_id.to_string()) {
+            if active.as_ref() == Some(&id) {
                 *active = None;
             }
 
@@ -720,7 +782,7 @@ impl SessionManager {
     }
 
     /// Get active session ID
-    pub fn active_session_id(&self) -> Option<String> {
+    pub fn active_session_id(&self) -> Option<SessionId> {
         rwlock_read_or_recover(&self.active_session).clone()
     }
 }
@@ -728,7 +790,7 @@ impl SessionManager {
 /// Session info for listing
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
-    pub id: String,
+    pub id: SessionId,
     pub command: String,
     pub pid: u32,
     pub running: bool,
@@ -744,7 +806,7 @@ lazy_static::lazy_static! {
 /// Persisted session metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedSession {
-    pub id: String,
+    pub id: SessionId,
     pub command: String,
     pub pid: u32,
     pub created_at: String,
@@ -819,7 +881,7 @@ impl SessionPersistence {
     /// Remove a session from persistence
     pub fn remove_session(&self, session_id: &str) -> std::io::Result<()> {
         let mut sessions = self.load();
-        sessions.retain(|s| s.id != session_id);
+        sessions.retain(|s| s.id.as_str() != session_id);
         self.save(&sessions)
     }
 
@@ -838,7 +900,7 @@ impl SessionPersistence {
 
     /// Get a persisted session by ID
     pub fn get_session(&self, session_id: &str) -> Option<PersistedSession> {
-        self.load().into_iter().find(|s| s.id == session_id)
+        self.load().into_iter().find(|s| s.id.as_str() == session_id)
     }
 
     /// Clean up stale sessions (processes that are no longer running)
@@ -903,7 +965,7 @@ mod persistence_tests {
     #[test]
     fn test_persisted_session_serialization() {
         let session = PersistedSession {
-            id: "test123".to_string(),
+            id: SessionId::new("test123"),
             command: "bash".to_string(),
             pid: 12345,
             created_at: "2024-01-01T00:00:00Z".to_string(),

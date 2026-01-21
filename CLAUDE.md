@@ -83,6 +83,13 @@ CLI parses args (clap) → JSON-RPC request → Unix socket → Native Daemon
 - If you add a public API, it must be used somewhere or have tests
 - Lint suppressions like `#[allow(unused_imports)]` are only acceptable for intentionally public APIs that external consumers may use
 
+### Dead Code Policy
+- When encountering dead code (unused functions, constants, etc.), **do not immediately delete it**
+- First investigate: Is this an incomplete feature that should be finished?
+- Check if similar code nearby IS used - the dead code may be part of an incomplete pattern
+- If the code represents unfinished work, complete the implementation rather than removing it
+- Only delete dead code after confirming it's truly obsolete and not part of a planned feature
+
 ## Environment Variables
 
 | Variable | Description | Default |

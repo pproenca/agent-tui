@@ -19,8 +19,12 @@ pub struct Region {
     pub right: u16,
     /// The border style used
     pub border_style: BorderStyle,
-    /// Optional title extracted from the border
+    /// Optional title extracted from the top border
     pub title: Option<String>,
+    /// Optional label extracted from the left border
+    pub left_label: Option<String>,
+    /// Optional label extracted from the right border
+    pub right_label: Option<String>,
 }
 
 impl Region {
@@ -210,8 +214,13 @@ pub fn detect_regions(screen: &str) -> Vec<Region> {
 
 /// Trace a complete box starting from a top-left corner
 fn trace_box(lines: &[Vec<char>], start_row: usize, start_col: usize) -> Option<Region> {
-    let top_left = lines[start_row][start_col];
-    let border_style = detect_border_style(top_left);
+    let top_left_char = lines[start_row][start_col];
+    let border_style = detect_border_style(top_left_char);
+
+    // Verify the detected style matches the corner character
+    if !border_style.top_left().contains(&top_left_char) {
+        return None;
+    }
 
     // Find the top-right corner by following horizontal lines
     let mut top_right_col = None;
@@ -279,6 +288,10 @@ fn trace_box(lines: &[Vec<char>], start_row: usize, start_col: usize) -> Option<
     // Extract title from top border if present
     let title = extract_title(&lines[start_row], start_col, right_col);
 
+    // Extract labels from side borders if present
+    let left_label = extract_side_label(lines, start_col, start_row, bottom);
+    let right_label = extract_side_label(lines, right_col, start_row, bottom);
+
     Some(Region {
         top: start_row as u16,
         left: start_col as u16,
@@ -286,6 +299,8 @@ fn trace_box(lines: &[Vec<char>], start_row: usize, start_col: usize) -> Option<
         right: right_col as u16,
         border_style,
         title,
+        left_label,
+        right_label,
     })
 }
 
@@ -317,6 +332,35 @@ fn extract_title(line: &[char], left: usize, right: usize) -> Option<String> {
         .collect();
 
     let trimmed = title.trim();
+    if trimmed.is_empty() || trimmed.len() < 2 {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+/// Extract a label from a side border (left or right edge of a region)
+/// Some TUIs place labels along vertical borders
+pub fn extract_side_label(lines: &[Vec<char>], col: usize, top: usize, bottom: usize) -> Option<String> {
+    if bottom <= top + 2 {
+        return None;
+    }
+
+    // Collect characters from the column between top and bottom
+    let content: String = lines
+        .iter()
+        .skip(top + 1)
+        .take(bottom - top - 1)
+        .filter_map(|line| line.get(col).copied())
+        .collect();
+
+    // Remove border characters and trim
+    let label: String = content
+        .chars()
+        .filter(|c| !VERTICAL_CHARS.contains(c))
+        .collect();
+
+    let trimmed = label.trim();
     if trimmed.is_empty() || trimmed.len() < 2 {
         None
     } else {
@@ -402,6 +446,8 @@ mod tests {
             right: 50,
             border_style: BorderStyle::Single,
             title: None,
+            left_label: None,
+            right_label: None,
         };
 
         assert!(region.contains(5, 10)); // top-left corner
@@ -420,6 +466,8 @@ mod tests {
             right: 60,
             border_style: BorderStyle::Rounded,
             title: Some("Confirm".to_string()),
+            left_label: None,
+            right_label: None,
         };
 
         assert!(modal.is_modal(80, 24));
@@ -431,6 +479,8 @@ mod tests {
             right: 79,
             border_style: BorderStyle::Single,
             title: None,
+            left_label: None,
+            right_label: None,
         };
 
         assert!(!fullwidth.is_modal(80, 24));

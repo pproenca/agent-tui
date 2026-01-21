@@ -231,6 +231,8 @@ fn strip_ansi_codes(s: &str) -> String {
 /// JSON-RPC request
 #[derive(Debug, Deserialize)]
 struct Request {
+    /// Protocol version (required by JSON-RPC spec but unused after deserialization)
+    #[allow(dead_code)]
     jsonrpc: String,
     id: u64,
     method: String,
@@ -978,7 +980,7 @@ impl DaemonServer {
         let session_to_kill = match session_id {
             Some(id) => id.to_string(),
             None => match self.session_manager.active_session_id() {
-                Some(id) => id,
+                Some(id) => id.to_string(),
                 None => return Response::error(request.id, -32000, "No active session"),
             },
         };
@@ -1009,7 +1011,7 @@ impl DaemonServer {
                     return lock_timeout_response(request.id, session_id);
                 };
                 let (cols, rows) = sess.size();
-                (sess.id.clone(), sess.command.clone(), cols, rows)
+                (sess.id.to_string(), sess.command.clone(), cols, rows)
             }
             Err(e) => {
                 return Response::error(

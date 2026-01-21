@@ -15,6 +15,10 @@ exclude = [
     ".github/*"
 ]
 
+[lib]
+name = "agent_tui"
+path = "src/lib.rs"
+
 [[bin]]
 name = "agent-tui"
 path = "src/main.rs"

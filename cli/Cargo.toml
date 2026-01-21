@@ -33,7 +33,6 @@ rand = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 # For native terminal attach
 crossterm = "0.28"
-futures-util = "0.3"
 base64 = "0.22"
 # Pure Rust PTY + terminal emulation (no daemon)
 portable-pty = "0.8"
@@ -42,15 +41,11 @@ regex = "1.10"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
-signal-hook = "0.3"
-signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"        # Binary testing - invoke CLI as subprocess
 predicates = "3.0"        # Assertion building for CLI output verification
 tempfile = "3.0"          # Isolated socket paths for mock daemon
-tokio-test = "0.4"        # Async test utilities
-insta = "1.34"            # Snapshot testing for output format verification
 
 [profile.release]
 opt-level = 3

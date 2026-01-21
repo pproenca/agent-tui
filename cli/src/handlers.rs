@@ -33,17 +33,6 @@ impl<'a> HandlerContext<'a> {
         }
     }
 
-    /// Output a JSON result with proper formatting based on output format
-    pub fn output_json(
-        &self,
-        result: &serde_json::Value,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if self.format == OutputFormat::Json {
-            println!("{}", serde_json::to_string_pretty(result)?);
-        }
-        Ok(())
-    }
-
     /// Handle a success/failure result with standard output formatting
     ///
     /// Returns true if success, false otherwise. In text mode, prints appropriate message

@@ -3,8 +3,6 @@
 //! This CLI communicates with a daemon process that manages PTY sessions.
 //! The daemon is automatically started if not running.
 
-#![allow(dead_code)]
-
 mod attach;
 mod client;
 mod color;

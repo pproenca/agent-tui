@@ -1,0 +1,7 @@
+# Rustfmt configuration for agent-tui
+# See: https://rust-lang.github.io/rustfmt/
+
+edition = "2021"
+newline_style = "Unix"
+max_width = 100
+use_small_heuristics = "Default"

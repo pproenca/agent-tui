@@ -11,8 +11,9 @@ cli/target/
 Cargo.lock
 !cli/Cargo.lock
 
-# Rust analyzer
+# Rust analyzer (allow project config)
 .cargo/
+!.cargo/config.toml
 
 # ============================================
 # Testing & Coverage

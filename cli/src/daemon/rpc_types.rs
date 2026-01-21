@@ -40,6 +40,15 @@ impl Request {
         self.param_u64(key, default as u64) as u16
     }
 
+    pub fn param_i32(&self, key: &str, default: i32) -> i32 {
+        self.params
+            .as_ref()
+            .and_then(|p| p.get(key))
+            .and_then(|v| v.as_i64())
+            .map(|n| n as i32)
+            .unwrap_or(default)
+    }
+
     #[allow(clippy::result_large_err)]
     pub fn require_str(&self, key: &str) -> Result<&str, Response> {
         self.param_str(key)

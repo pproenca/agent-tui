@@ -19,9 +19,23 @@ impl Request {
             .and_then(|v| v.as_str())
     }
 
+    pub fn param_bool(&self, key: &str) -> Option<bool> {
+        self.params.as_ref()?.get(key)?.as_bool()
+    }
+
+    pub fn param_array(&self, key: &str) -> Option<&Vec<Value>> {
+        self.params.as_ref()?.get(key)?.as_array()
+    }
+
     #[allow(clippy::result_large_err)]
     pub fn require_str(&self, key: &str) -> Result<&str, Response> {
         self.param_str(key)
+            .ok_or_else(|| Response::error(self.id, -32602, &format!("Missing '{}' param", key)))
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub fn require_array(&self, key: &str) -> Result<&Vec<Value>, Response> {
+        self.param_array(key)
             .ok_or_else(|| Response::error(self.id, -32602, &format!("Missing '{}' param", key)))
     }
 }

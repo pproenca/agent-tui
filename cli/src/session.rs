@@ -257,6 +257,10 @@ impl Session {
         &self.cached_elements
     }
 
+    pub fn cached_elements(&self) -> &[Element] {
+        &self.cached_elements
+    }
+
     pub fn find_element(&self, element_ref: &str) -> Option<&Element> {
         self.detector
             .find_by_ref(&self.cached_elements, element_ref)

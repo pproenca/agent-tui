@@ -6,12 +6,16 @@ on:
     paths:
       - 'cli/**'
       - 'Cargo.lock'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main, master]
     paths:
       - 'cli/**'
       - 'Cargo.lock'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/ci.yml'
 
 concurrency:
@@ -199,3 +203,27 @@ jobs:
           if [ -n "$DAEMON_PID" ]; then
             kill $DAEMON_PID 2>/dev/null || true
           fi
+
+  publish-check:
+    name: Publish Dry-Run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cargo publish dry-run
+        working-directory: cli
+        run: cargo publish --dry-run
+
+      - name: npm ci (validate package-lock.json)
+        run: npm ci --ignore-scripts
+
+      - name: npm pack (validate package)
+        run: npm pack --dry-run

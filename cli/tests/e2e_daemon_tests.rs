@@ -1319,3 +1319,232 @@ fn test_find_by_placeholder_with_exact() {
     assert_eq!(params["placeholder"], "Search...");
     assert_eq!(params["exact"], true);
 }
+
+// =============================================================================
+// Dblclick Command Tests
+// =============================================================================
+
+#[test]
+fn test_dblclick_sends_element_ref() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["dblclick", "@btn1"])
+        .success()
+        .stdout(predicate::str::contains("Double-clicked"));
+
+    harness.assert_method_called_with("dbl_click", json!({"ref": "@btn1"}));
+}
+
+#[test]
+fn test_dblclick_with_session() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["-s", "my-session", "dblclick", "@item1"])
+        .success();
+
+    let request = harness.last_request_for("dbl_click").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["ref"], "@item1");
+    assert_eq!(params["session"], "my-session");
+}
+
+// =============================================================================
+// Restart Command Tests
+// =============================================================================
+
+#[test]
+fn test_restart_session() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["restart"])
+        .success()
+        .stdout(predicate::str::contains("Restarted"));
+
+    harness.assert_method_called("restart");
+}
+
+// =============================================================================
+// Selectall Command Tests
+// =============================================================================
+
+#[test]
+fn test_selectall_element() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["selectall", "@inp1"])
+        .success()
+        .stdout(predicate::str::contains("Selected all"));
+
+    harness.assert_method_called_with("select_all", json!({"ref": "@inp1"}));
+}
+
+// =============================================================================
+// Get Focused/Title Tests
+// =============================================================================
+
+#[test]
+fn test_get_focused() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["get", "focused"])
+        .success()
+        .stdout(predicate::str::contains("@inp1"));
+
+    harness.assert_method_called("get_focused");
+}
+
+#[test]
+fn test_get_title() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["get", "title"])
+        .success()
+        .stdout(predicate::str::contains("bash"));
+
+    harness.assert_method_called("get_title");
+}
+
+// =============================================================================
+// Check/Uncheck Command Tests
+// =============================================================================
+
+#[test]
+fn test_check_checkbox() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["check", "@cb1"])
+        .success()
+        .stdout(predicate::str::contains("checked"));
+
+    // check uses toggle with state: true
+    let request = harness.last_request_for("toggle").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["ref"], "@cb1");
+    assert_eq!(params["state"], true);
+}
+
+#[test]
+fn test_uncheck_checkbox() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["uncheck", "@cb1"])
+        .success()
+        .stdout(predicate::str::contains("unchecked"));
+
+    // uncheck uses toggle with state: false
+    let request = harness.last_request_for("toggle").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["ref"], "@cb1");
+    assert_eq!(params["state"], false);
+}
+
+// =============================================================================
+// Errors Command Tests
+// =============================================================================
+
+#[test]
+fn test_errors_command() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["errors"])
+        .success()
+        .stdout(predicate::str::contains("No errors captured"));
+
+    harness.assert_method_called("errors");
+}
+
+#[test]
+fn test_errors_with_count() {
+    let harness = TestHarness::new();
+
+    harness.run(&["errors", "-n", "25"]).success();
+
+    let request = harness.last_request_for("errors").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["count"], 25);
+}
+
+// =============================================================================
+// Assert Command Tests
+// =============================================================================
+
+#[test]
+fn test_assert_text_condition() {
+    let harness = TestHarness::new();
+
+    // Assert uses screen internally to check for text
+    harness
+        .run(&["assert", "text:Test screen"])
+        .success()
+        .stdout(predicate::str::contains("Assertion passed"));
+
+    // Verify screen was called to get the content
+    harness.assert_method_called("screen");
+}
+
+// =============================================================================
+// Cleanup Command Tests
+// =============================================================================
+
+#[test]
+fn test_cleanup_sessions() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["cleanup"])
+        .success()
+        .stdout(predicate::str::contains("No sessions to clean up"));
+
+    // Cleanup calls sessions to list them
+    harness.assert_method_called("sessions");
+}
+
+// =============================================================================
+// Completions Command Tests
+// =============================================================================
+
+#[test]
+fn test_completions_bash() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["completions", "bash"])
+        .success()
+        .stdout(predicate::str::contains("complete"));
+}
+
+#[test]
+fn test_completions_zsh() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["completions", "zsh"])
+        .success()
+        .stdout(predicate::str::contains("compdef"));
+}
+
+// =============================================================================
+// Demo Command Tests
+// =============================================================================
+
+#[test]
+fn test_demo_spawns_internal_tui() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["demo"])
+        .success()
+        .stdout(predicate::str::contains("Demo started"));
+
+    // Demo calls spawn with the agent-tui binary itself
+    harness.assert_method_called("spawn");
+}

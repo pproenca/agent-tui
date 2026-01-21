@@ -376,6 +376,54 @@ impl MockDaemon {
                     "selected_options": ["option1", "option2"]
                 })),
             );
+            h.insert(
+                "dbl_click".to_string(),
+                MockResponse::Success(serde_json::json!({
+                    "success": true,
+                    "message": null
+                })),
+            );
+            h.insert(
+                "restart".to_string(),
+                MockResponse::Success(serde_json::json!({
+                    "success": true,
+                    "old_session_id": super::TEST_SESSION_ID,
+                    "new_session_id": "new-session-xyz789",
+                    "command": "bash",
+                    "pid": super::TEST_PID
+                })),
+            );
+            h.insert(
+                "select_all".to_string(),
+                MockResponse::Success(serde_json::json!({
+                    "success": true,
+                    "ref": "@inp1"
+                })),
+            );
+            h.insert(
+                "get_focused".to_string(),
+                MockResponse::Success(serde_json::json!({
+                    "ref": "@inp1",
+                    "type": "input",
+                    "label": "Name",
+                    "found": true
+                })),
+            );
+            h.insert(
+                "get_title".to_string(),
+                MockResponse::Success(serde_json::json!({
+                    "title": "bash",
+                    "session_id": super::TEST_SESSION_ID
+                })),
+            );
+            h.insert(
+                "errors".to_string(),
+                MockResponse::Success(serde_json::json!({
+                    "session_id": super::TEST_SESSION_ID,
+                    "errors": [],
+                    "total_count": 0
+                })),
+            );
         }
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();

@@ -1712,12 +1712,15 @@ pub fn start_daemon() -> std::io::Result<()> {
 
     {
         let server = Arc::clone(&server);
-        thread::spawn(move || loop {
-            thread::sleep(Duration::from_secs(300));
-            if let Err(e) = server.session_manager.cleanup_persistence() {
-                eprintln!("Warning: Failed to cleanup stale sessions: {}", e);
-            }
-        });
+        thread::Builder::new()
+            .name("session-cleanup".to_string())
+            .spawn(move || loop {
+                thread::sleep(Duration::from_secs(300));
+                if let Err(e) = server.session_manager.cleanup_persistence() {
+                    eprintln!("Warning: Failed to cleanup stale sessions: {}", e);
+                }
+            })
+            .expect("Failed to spawn cleanup thread");
     }
 
     for stream in listener.incoming() {

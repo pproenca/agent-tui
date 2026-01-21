@@ -597,7 +597,6 @@ impl SessionManager {
         rwlock_read_or_recover(&self.active_session).clone()
     }
 
-    /// Clean up stale sessions from persistence storage
     pub fn cleanup_persistence(&self) -> std::io::Result<usize> {
         self.persistence.cleanup_stale_sessions()
     }
@@ -625,12 +624,16 @@ pub struct PersistedSession {
 
 pub struct SessionPersistence {
     path: PathBuf,
+    lock: Mutex<()>,
 }
 
 impl SessionPersistence {
     pub fn new() -> Self {
         let path = Self::sessions_file_path();
-        Self { path }
+        Self {
+            path,
+            lock: Mutex::new(()),
+        }
     }
 
     fn sessions_file_path() -> PathBuf {
@@ -653,38 +656,42 @@ impl SessionPersistence {
         Ok(())
     }
 
-    pub fn load(&self) -> Vec<PersistedSession> {
-        if !self.path.exists() {
-            return Vec::new();
-        }
-
-        match fs::File::open(&self.path) {
-            Ok(file) => {
-                let reader = BufReader::new(file);
-                match serde_json::from_reader(reader) {
-                    Ok(sessions) => sessions,
-                    Err(e) => {
-                        eprintln!(
-                            "Warning: Failed to parse sessions file '{}': {}",
-                            self.path.display(),
-                            e
-                        );
-                        Vec::new()
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!(
-                    "Warning: Failed to open sessions file '{}': {}",
-                    self.path.display(),
-                    e
-                );
-                Vec::new()
-            }
-        }
+    #[allow(dead_code)] // Public API for external consumers
+    pub fn load(&self) -> std::io::Result<Vec<PersistedSession>> {
+        let _guard = mutex_lock_or_recover(&self.lock);
+        self.load_unlocked()
     }
 
-    pub fn save(&self, sessions: &[PersistedSession]) -> std::io::Result<()> {
+    fn load_unlocked(&self) -> std::io::Result<Vec<PersistedSession>> {
+        if !self.path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let file = fs::File::open(&self.path).map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to open sessions file '{}': {}",
+                    self.path.display(),
+                    e
+                ),
+            )
+        })?;
+
+        let reader = BufReader::new(file);
+        serde_json::from_reader(reader).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Failed to parse sessions file '{}': {}",
+                    self.path.display(),
+                    e
+                ),
+            )
+        })
+    }
+
+    fn save_unlocked(&self, sessions: &[PersistedSession]) -> std::io::Result<()> {
         self.ensure_dir()?;
 
         let file = fs::File::create(&self.path).map_err(|e| {
@@ -705,22 +712,26 @@ impl SessionPersistence {
     }
 
     pub fn add_session(&self, session: PersistedSession) -> std::io::Result<()> {
-        let mut sessions = self.load();
+        let _guard = mutex_lock_or_recover(&self.lock);
 
+        let mut sessions = self.load_unlocked()?;
         sessions.retain(|s| s.id != session.id);
         sessions.push(session);
-
-        self.save(&sessions)
+        self.save_unlocked(&sessions)
     }
 
     pub fn remove_session(&self, session_id: &str) -> std::io::Result<()> {
-        let mut sessions = self.load();
+        let _guard = mutex_lock_or_recover(&self.lock);
+
+        let mut sessions = self.load_unlocked()?;
         sessions.retain(|s| s.id.as_str() != session_id);
-        self.save(&sessions)
+        self.save_unlocked(&sessions)
     }
 
     pub fn cleanup_stale_sessions(&self) -> std::io::Result<usize> {
-        let sessions = self.load();
+        let _guard = mutex_lock_or_recover(&self.lock);
+
+        let sessions = self.load_unlocked()?;
         let mut cleaned = 0;
 
         let active_sessions: Vec<PersistedSession> = sessions
@@ -734,7 +745,7 @@ impl SessionPersistence {
             })
             .collect();
 
-        self.save(&active_sessions)?;
+        self.save_unlocked(&active_sessions)?;
         Ok(cleaned)
     }
 }

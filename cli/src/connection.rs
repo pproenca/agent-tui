@@ -304,6 +304,45 @@ pub fn get_socket_path() -> PathBuf {
     PathBuf::from(runtime_dir).join("agent-tui.sock")
 }
 
+/// Verify a directory is writable by attempting to create a temp file
+fn is_directory_writable(dir: &std::path::Path) -> bool {
+    if !dir.exists() {
+        return false;
+    }
+    let test_file = dir.join(".agent-tui-write-test");
+    match std::fs::write(&test_file, b"test") {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&test_file);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Get socket path with writability validation.
+/// Returns an error with actionable message if no writable directory is available.
+pub fn get_validated_socket_path() -> Result<PathBuf, ConnectionError> {
+    let candidates = [
+        std::env::var("XDG_RUNTIME_DIR").ok(),
+        std::env::var("TMPDIR").ok(),
+        Some("/tmp".to_string()),
+    ];
+
+    let tried: Vec<String> = candidates.iter().filter_map(|c| c.clone()).collect();
+
+    for dir in candidates.into_iter().flatten() {
+        let path = PathBuf::from(&dir);
+        if is_directory_writable(&path) {
+            return Ok(path.join("agent-tui.sock"));
+        }
+    }
+
+    Err(ConnectionError::ConnectionFailed(format!(
+        "No writable directory for IPC socket.\nTried: {}\n\nEnsure one of these directories is writable, or set XDG_RUNTIME_DIR or TMPDIR to a writable location.",
+        tried.join(", ")
+    )))
+}
+
 pub fn get_pid_path() -> PathBuf {
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
         .or_else(|_| std::env::var("TMPDIR"))
@@ -311,9 +350,57 @@ pub fn get_pid_path() -> PathBuf {
     PathBuf::from(runtime_dir).join("agent-tui.pid")
 }
 
+/// Search for a binary in the PATH environment variable
+fn find_in_path(binary: &str) -> Option<PathBuf> {
+    let path_env = std::env::var_os("PATH")?;
+    let path_str = path_env.to_str()?;
+    path_str
+        .split(':')
+        .map(|dir| PathBuf::from(dir).join(binary))
+        .find(|p| p.exists())
+}
+
+/// Get the daemon binary path with robust fallback chain.
+/// The native Rust daemon is embedded in the same binary, so we need to find ourselves.
 pub fn get_daemon_path() -> PathBuf {
-    // The native Rust daemon is embedded - just return our own binary path
-    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("agent-tui"))
+    // 1. Try current_exe() - works in most cases
+    if let Ok(exe) = std::env::current_exe() {
+        if exe.exists() {
+            return exe;
+        }
+    }
+
+    // 2. Linux: Try /proc/self/exe
+    #[cfg(target_os = "linux")]
+    if let Ok(exe) = std::fs::read_link("/proc/self/exe") {
+        if exe.exists() {
+            return exe;
+        }
+    }
+
+    // 3. Search PATH for agent-tui
+    if let Some(path) = find_in_path("agent-tui") {
+        return path;
+    }
+
+    // 4. Check common installation locations
+    for path in &["/usr/local/bin/agent-tui", "/usr/bin/agent-tui"] {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return p;
+        }
+    }
+
+    // 5. Check ~/.cargo/bin (common for Rust tools)
+    if let Ok(home) = std::env::var("HOME") {
+        let cargo_bin = PathBuf::from(home).join(".cargo/bin/agent-tui");
+        if cargo_bin.exists() {
+            return cargo_bin;
+        }
+    }
+
+    // Final fallback - will fail with clear error in start_daemon()
+    PathBuf::from("agent-tui")
 }
 
 /// Check if daemon process is alive by reading PID file and verifying process exists
@@ -428,8 +515,25 @@ pub async fn verify_daemon_responsive() -> bool {
 pub fn start_daemon() -> Result<(), ConnectionError> {
     let daemon_path = get_daemon_path();
 
+    // Validate daemon path exists
+    if !daemon_path.exists() {
+        return Err(ConnectionError::ConnectionFailed(format!(
+            "Cannot find daemon binary at: {}\n\nTry:\n  - Reinstalling agent-tui\n  - Running from the installation directory\n  - Adding agent-tui to your PATH",
+            daemon_path.display()
+        )));
+    }
+
+    // Validate socket directory is writable before attempting to spawn
+    let _ = get_validated_socket_path()?;
+
     // Start the native Rust daemon
-    let (program, args): (&str, Vec<&str>) = (daemon_path.to_str().unwrap(), vec!["daemon"]);
+    let program = daemon_path.to_str().ok_or_else(|| {
+        ConnectionError::ConnectionFailed(format!(
+            "Invalid daemon path (non-UTF8): {}",
+            daemon_path.display()
+        ))
+    })?;
+    let args: Vec<&str> = vec!["daemon"];
 
     // Start daemon in background
     let mut cmd = Command::new(program);

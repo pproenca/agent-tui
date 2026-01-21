@@ -5,8 +5,6 @@
 
 use crate::client::DaemonClient;
 use crate::color::Colors;
-use crate::session::Session;
-use crate::sync_utils::mutex_lock_or_recover;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -14,8 +12,6 @@ use crossterm::{
 };
 use serde_json::json;
 use std::io::{self, Write};
-use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -23,126 +19,6 @@ use thiserror::Error;
 pub enum AttachError {
     #[error("Terminal error: {0}")]
     Terminal(#[from] io::Error),
-    #[error("Session not found: {0}")]
-    SessionNotFound(String),
-    #[error("Session not running: {0}")]
-    SessionNotRunning(String),
-}
-
-/// Synchronous attach to a session using direct PTY I/O
-///
-/// This provides interactive terminal access without requiring a WebSocket server.
-/// Uses crossterm for raw mode and handles keyboard input/PTY output directly.
-///
-/// Detach with Ctrl+\ (sends SIGQUIT-like sequence)
-pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(), AttachError> {
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    eprintln!(
-        "{} Attaching to session {}...",
-        Colors::dim("[attach]"),
-        Colors::session_id(session_id)
-    );
-    eprintln!(
-        "{} Press {} to detach.",
-        Colors::success("Connected!"),
-        Colors::bold("Ctrl+\\")
-    );
-    eprintln!();
-
-    enable_raw_mode().map_err(AttachError::Terminal)?;
-
-    let running = Arc::new(AtomicBool::new(true));
-    let running_clone = Arc::clone(&running);
-
-    let (cols, rows) = terminal::size().map_err(AttachError::Terminal)?;
-    {
-        let mut sess = mutex_lock_or_recover(&session);
-        let _ = sess.resize(cols, rows);
-    }
-
-    let session_for_output = Arc::clone(&session);
-    let output_thread = thread::spawn(move || {
-        let mut buf = [0u8; 4096];
-        let mut stdout = io::stdout();
-
-        while running_clone.load(Ordering::Relaxed) {
-            let n = {
-                let sess = mutex_lock_or_recover(&session_for_output);
-                sess.pty_try_read(&mut buf, 50).unwrap_or_default()
-            };
-
-            if n > 0 {
-                if stdout.write_all(&buf[..n]).is_err() {
-                    break;
-                }
-                if stdout.flush().is_err() {
-                    break;
-                }
-            }
-
-            {
-                let mut sess = mutex_lock_or_recover(&session_for_output);
-                if !sess.is_running() {
-                    break;
-                }
-            }
-        }
-    });
-
-    loop {
-        if event::poll(Duration::from_millis(100)).unwrap_or(false) {
-            match event::read() {
-                Ok(Event::Key(key_event)) => {
-                    if key_event.modifiers.contains(KeyModifiers::CONTROL)
-                        && key_event.code == KeyCode::Char('\\')
-                    {
-                        break;
-                    }
-
-                    if let Some(bytes) = key_event_to_bytes(&key_event) {
-                        let sess = mutex_lock_or_recover(&session);
-                        if sess.pty_write(&bytes).is_err() {
-                            break;
-                        }
-                    }
-                }
-                Ok(Event::Resize(cols, rows)) => {
-                    let mut sess = mutex_lock_or_recover(&session);
-                    let _ = sess.resize(cols, rows);
-                }
-                Ok(_) => {}
-                Err(_) => break,
-            }
-        }
-
-        {
-            let mut sess = mutex_lock_or_recover(&session);
-            if !sess.is_running() {
-                eprintln!();
-                eprintln!(
-                    "{} Session {} exited",
-                    Colors::dim("[attach]"),
-                    Colors::session_id(session_id)
-                );
-                break;
-            }
-        }
-    }
-
-    running.store(false, Ordering::Relaxed);
-    let _ = output_thread.join();
-
-    let _ = disable_raw_mode();
-
-    eprintln!();
-    eprintln!(
-        "{} Detached from session {}",
-        Colors::dim("[attach]"),
-        Colors::session_id(session_id)
-    );
-
-    Ok(())
 }
 
 /// IPC-based attach to a session using daemon pty_read/pty_write calls

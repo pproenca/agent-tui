@@ -13,17 +13,15 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum PtyError {
     #[error("Failed to open PTY: {0}")]
-    OpenFailed(String),
+    Open(String),
     #[error("Failed to spawn process: {0}")]
-    SpawnFailed(String),
+    Spawn(String),
     #[error("Failed to write to PTY: {0}")]
-    WriteFailed(String),
+    Write(String),
     #[error("Failed to read from PTY: {0}")]
-    ReadFailed(String),
+    Read(String),
     #[error("Failed to resize PTY: {0}")]
-    ResizeFailed(String),
-    #[error("Process not running")]
-    NotRunning,
+    Resize(String),
 }
 
 pub struct PtyHandle {
@@ -56,7 +54,7 @@ impl PtyHandle {
 
         let pair = pty_system
             .openpty(size)
-            .map_err(|e| PtyError::OpenFailed(e.to_string()))?;
+            .map_err(|e| PtyError::Open(e.to_string()))?;
 
         let mut cmd = CommandBuilder::new(command);
         cmd.args(args);
@@ -77,23 +75,23 @@ impl PtyHandle {
         let child = pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| PtyError::SpawnFailed(e.to_string()))?;
+            .map_err(|e| PtyError::Spawn(e.to_string()))?;
 
         let reader = pair
             .master
             .try_clone_reader()
-            .map_err(|e| PtyError::OpenFailed(e.to_string()))?;
+            .map_err(|e| PtyError::Open(e.to_string()))?;
 
         // Get raw fd for non-blocking poll from the master
         let reader_fd = pair
             .master
             .as_raw_fd()
-            .ok_or_else(|| PtyError::OpenFailed("Failed to get master fd".to_string()))?;
+            .ok_or_else(|| PtyError::Open("Failed to get master fd".to_string()))?;
 
         let writer = pair
             .master
             .take_writer()
-            .map_err(|e| PtyError::OpenFailed(e.to_string()))?;
+            .map_err(|e| PtyError::Open(e.to_string()))?;
 
         Ok(Self {
             master: pair.master,
@@ -123,24 +121,14 @@ impl PtyHandle {
         let mut writer = mutex_lock_or_recover(&self.writer);
         writer
             .write_all(data)
-            .map_err(|e| PtyError::WriteFailed(e.to_string()))?;
-        writer
-            .flush()
-            .map_err(|e| PtyError::WriteFailed(e.to_string()))?;
+            .map_err(|e| PtyError::Write(e.to_string()))?;
+        writer.flush().map_err(|e| PtyError::Write(e.to_string()))?;
         Ok(())
     }
 
     /// Write a string to the PTY
     pub fn write_str(&self, s: &str) -> Result<(), PtyError> {
         self.write(s.as_bytes())
-    }
-
-    /// Read available data from the PTY (non-blocking)
-    pub fn read(&self, buf: &mut [u8]) -> Result<usize, PtyError> {
-        let mut reader = mutex_lock_or_recover(&self.reader);
-        reader
-            .read(buf)
-            .map_err(|e| PtyError::ReadFailed(e.to_string()))
     }
 
     /// Read available data without blocking
@@ -156,7 +144,7 @@ impl PtyHandle {
         let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
 
         if result < 0 {
-            return Err(PtyError::ReadFailed("poll failed".to_string()));
+            return Err(PtyError::Read("poll failed".to_string()));
         }
 
         if result == 0 {
@@ -166,9 +154,7 @@ impl PtyHandle {
 
         // Data available, read it
         let mut reader = mutex_lock_or_recover(&self.reader);
-        reader
-            .read(buf)
-            .map_err(|e| PtyError::ReadFailed(e.to_string()))
+        reader.read(buf).map_err(|e| PtyError::Read(e.to_string()))
     }
 
     /// Resize the PTY
@@ -181,36 +167,14 @@ impl PtyHandle {
         };
         self.master
             .resize(self.size)
-            .map_err(|e| PtyError::ResizeFailed(e.to_string()))
-    }
-
-    /// Get the current size
-    pub fn size(&self) -> (u16, u16) {
-        (self.size.cols, self.size.rows)
+            .map_err(|e| PtyError::Resize(e.to_string()))
     }
 
     /// Kill the process
     pub fn kill(&mut self) -> Result<(), PtyError> {
         self.child
             .kill()
-            .map_err(|e| PtyError::SpawnFailed(e.to_string()))
-    }
-
-    /// Wait for the process to exit
-    pub fn wait(&mut self) -> Result<Option<portable_pty::ExitStatus>, PtyError> {
-        self.child
-            .try_wait()
-            .map_err(|e| PtyError::SpawnFailed(e.to_string()))
-    }
-
-    /// Get a clone of the reader for async operations
-    pub fn reader(&self) -> Arc<Mutex<Box<dyn Read + Send>>> {
-        Arc::clone(&self.reader)
-    }
-
-    /// Get the reader file descriptor for polling
-    pub fn reader_fd(&self) -> RawFd {
-        self.reader_fd
+            .map_err(|e| PtyError::Spawn(e.to_string()))
     }
 }
 

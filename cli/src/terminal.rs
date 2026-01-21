@@ -11,7 +11,6 @@ use vt100::Parser;
 #[derive(Debug, Clone, Default)]
 pub struct CellStyle {
     pub bold: bool,
-    pub italic: bool,
     pub underline: bool,
     pub inverse: bool,
     pub fg_color: Option<Color>,
@@ -36,8 +35,6 @@ pub struct Cell {
 #[derive(Debug, Clone)]
 pub struct ScreenBuffer {
     pub cells: Vec<Vec<Cell>>,
-    pub cols: u16,
-    pub rows: u16,
 }
 
 /// Cursor position
@@ -115,7 +112,6 @@ impl VirtualTerminal {
                     let c = cell.contents().chars().next().unwrap_or(' ');
                     let s = CellStyle {
                         bold: cell.bold(),
-                        italic: cell.italic(),
                         underline: cell.underline(),
                         inverse: cell.inverse(),
                         fg_color: convert_color(cell.fgcolor()),
@@ -130,11 +126,7 @@ impl VirtualTerminal {
             cells.push(row_cells);
         }
 
-        ScreenBuffer {
-            cells,
-            cols: self.cols,
-            rows: self.rows,
-        }
+        ScreenBuffer { cells }
     }
 
     /// Get cursor position
@@ -169,64 +161,6 @@ impl VirtualTerminal {
         let cols = self.cols;
         let mut parser = mutex_lock_or_recover(&self.parser);
         parser.set_size(rows, cols);
-    }
-
-    /// Check if a cell has inverse style (often indicates focus/selection)
-    pub fn is_cell_inverse(&self, row: u16, col: u16) -> bool {
-        let parser = mutex_lock_or_recover(&self.parser);
-        let screen = parser.screen();
-        screen.cell(row, col).map(|c| c.inverse()).unwrap_or(false)
-    }
-
-    /// Check if a cell is bold
-    pub fn is_cell_bold(&self, row: u16, col: u16) -> bool {
-        let parser = mutex_lock_or_recover(&self.parser);
-        let screen = parser.screen();
-        screen.cell(row, col).map(|c| c.bold()).unwrap_or(false)
-    }
-
-    /// Get the style of a specific cell
-    pub fn cell_style(&self, row: u16, col: u16) -> Option<CellStyle> {
-        let parser = mutex_lock_or_recover(&self.parser);
-        let screen = parser.screen();
-        screen.cell(row, col).map(|cell| CellStyle {
-            bold: cell.bold(),
-            italic: cell.italic(),
-            underline: cell.underline(),
-            inverse: cell.inverse(),
-            fg_color: convert_color(cell.fgcolor()),
-            bg_color: convert_color(cell.bgcolor()),
-        })
-    }
-
-    /// Get a range of cells as styled text
-    pub fn get_styled_range(
-        &self,
-        row: u16,
-        start_col: u16,
-        end_col: u16,
-    ) -> Vec<(char, CellStyle)> {
-        let parser = mutex_lock_or_recover(&self.parser);
-        let screen = parser.screen();
-
-        let mut result = Vec::new();
-        for col in start_col..end_col {
-            if let Some(cell) = screen.cell(row, col) {
-                let c = cell.contents().chars().next().unwrap_or(' ');
-                let style = CellStyle {
-                    bold: cell.bold(),
-                    italic: cell.italic(),
-                    underline: cell.underline(),
-                    inverse: cell.inverse(),
-                    fg_color: convert_color(cell.fgcolor()),
-                    bg_color: convert_color(cell.bgcolor()),
-                };
-                result.push((c, style));
-            } else {
-                result.push((' ', CellStyle::default()));
-            }
-        }
-        result
     }
 }
 

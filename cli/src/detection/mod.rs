@@ -2,11 +2,21 @@
 //!
 //! This module provides pattern-based and style-based detection of
 //! interactive UI elements in terminal output.
+//!
+//! ## Architecture
+//!
+//! The detection system uses a trait-based extensible architecture:
+//!
+//! - `ElementDetectorImpl` trait defines the contract for framework-specific detectors
+//! - `FrameworkDetector` enum provides zero-cost dispatch to the appropriate detector
+//! - Framework-specific detectors live in the `frameworks/` submodule
+//! - `GenericDetector` serves as the fallback for unknown frameworks
 
 mod framework;
-mod ink;
-mod pattern;
-mod region;
+mod frameworks;
+pub mod pattern;
+mod registry;
+mod traits;
 
 use crate::terminal::ScreenBuffer;
 use regex::Regex;
@@ -19,16 +29,9 @@ fn legacy_ref_regex() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"^@([a-z]+)(\d+)$").unwrap())
 }
 
-// Framework detection (available for external use)
-#[allow(unused_imports)]
 pub use framework::{detect_framework, Framework};
-// Ink-specific detection (available for external use)
-#[allow(unused_imports)]
-pub use ink::detect_ink_elements;
-pub use pattern::detect_by_pattern;
-// Region/modal detection (available for external use)
-#[allow(unused_imports)]
-pub use region::{detect_regions, find_modals, find_region_at, BorderStyle, Region};
+pub use registry::FrameworkDetector;
+pub use traits::{DetectionContext, ElementDetectorImpl};
 
 /// Element types that can be detected
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -40,12 +43,8 @@ pub enum ElementType {
     Select,
     MenuItem,
     ListItem,
-    Link,
     Spinner,
     Progress,
-    Text,
-    Container,
-    Unknown,
 }
 
 impl ElementType {
@@ -58,31 +57,8 @@ impl ElementType {
             ElementType::Select => "select",
             ElementType::MenuItem => "menuitem",
             ElementType::ListItem => "listitem",
-            ElementType::Link => "link",
             ElementType::Spinner => "spinner",
             ElementType::Progress => "progress",
-            ElementType::Text => "text",
-            ElementType::Container => "container",
-            ElementType::Unknown => "unknown",
-        }
-    }
-
-    /// Get a short prefix for this element type (useful for generating compact refs)
-    pub fn prefix(&self) -> &'static str {
-        match self {
-            ElementType::Button => "btn",
-            ElementType::Input => "inp",
-            ElementType::Checkbox => "cb",
-            ElementType::Radio => "rb",
-            ElementType::Select => "sel",
-            ElementType::MenuItem => "mi",
-            ElementType::ListItem => "li",
-            ElementType::Link => "lnk",
-            ElementType::Spinner => "spn",
-            ElementType::Progress => "prg",
-            ElementType::Text => "txt",
-            ElementType::Container => "cnt",
-            ElementType::Unknown => "el",
         }
     }
 }
@@ -109,7 +85,6 @@ pub struct Element {
     pub checked: Option<bool>,
     pub disabled: Option<bool>,
     pub hint: Option<String>,
-    pub options: Option<Vec<String>>,
 }
 
 impl Element {
@@ -136,7 +111,6 @@ impl Element {
             checked: None,
             disabled: None,
             hint: None,
-            options: None,
         }
     }
 
@@ -151,7 +125,6 @@ impl Element {
                 | ElementType::Radio
                 | ElementType::Select
                 | ElementType::MenuItem
-                | ElementType::Link
         )
     }
 
@@ -197,14 +170,41 @@ impl ElementDetector {
         screen_text: &str,
         screen_buffer: Option<&ScreenBuffer>,
     ) -> Vec<Element> {
+        self.detect_with_framework(screen_text, screen_buffer, None)
+    }
+
+    /// Detect elements using a specific framework detector
+    ///
+    /// If no framework is specified, auto-detects the appropriate detector.
+    pub fn detect_with_framework(
+        &mut self,
+        screen_text: &str,
+        screen_buffer: Option<&ScreenBuffer>,
+        framework_detector: Option<&FrameworkDetector>,
+    ) -> Vec<Element> {
+        use traits::ElementDetectorImpl;
+
         // Reset for each snapshot (agent-browser pattern: refs are per-snapshot)
         self.ref_counter = 0;
         self.used_refs.clear();
 
         let mut elements = Vec::new();
 
-        // Pattern-based detection
-        let pattern_matches = detect_by_pattern(screen_text);
+        // Create detection context
+        let ctx = DetectionContext::new(screen_text, screen_buffer);
+
+        // Use provided detector or auto-detect
+        let default_detector;
+        let detector = match framework_detector {
+            Some(d) => d,
+            None => {
+                default_detector = FrameworkDetector::detect(&ctx);
+                &default_detector
+            }
+        };
+
+        // Pattern-based detection using the framework detector
+        let pattern_matches = detector.detect_patterns(&ctx);
 
         for m in pattern_matches {
             let focused = if let Some(buffer) = screen_buffer {
@@ -380,23 +380,11 @@ impl ElementDetector {
 
         None
     }
-
-    /// Find focused element
-    pub fn find_focused<'a>(&self, elements: &'a [Element]) -> Option<&'a Element> {
-        elements.iter().find(|e| e.focused)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_element_type_prefix() {
-        assert_eq!(ElementType::Button.prefix(), "btn");
-        assert_eq!(ElementType::Input.prefix(), "inp");
-        assert_eq!(ElementType::Checkbox.prefix(), "cb");
-    }
 
     #[test]
     fn test_generate_sequential_ref() {

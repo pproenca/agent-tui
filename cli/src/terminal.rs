@@ -3,6 +3,7 @@
 //! This module wraps the vt100 crate to provide headless terminal
 //! emulation with access to cell styling data for element detection.
 
+use crate::sync_utils::mutex_lock_or_recover;
 use std::sync::{Arc, Mutex};
 use vt100::Parser;
 
@@ -67,13 +68,13 @@ impl VirtualTerminal {
 
     /// Process input data (from PTY)
     pub fn process(&self, data: &[u8]) {
-        let mut parser = self.parser.lock().unwrap();
+        let mut parser = mutex_lock_or_recover(&self.parser);
         parser.process(data);
     }
 
     /// Get the screen as text
     pub fn screen_text(&self) -> String {
-        let parser = self.parser.lock().unwrap();
+        let parser = mutex_lock_or_recover(&self.parser);
         let screen = parser.screen();
 
         let mut lines = Vec::new();
@@ -102,7 +103,7 @@ impl VirtualTerminal {
 
     /// Get the screen buffer with style information
     pub fn screen_buffer(&self) -> ScreenBuffer {
-        let parser = self.parser.lock().unwrap();
+        let parser = mutex_lock_or_recover(&self.parser);
         let screen = parser.screen();
 
         let mut cells = Vec::new();
@@ -138,7 +139,7 @@ impl VirtualTerminal {
 
     /// Get cursor position
     pub fn cursor(&self) -> CursorPosition {
-        let parser = self.parser.lock().unwrap();
+        let parser = mutex_lock_or_recover(&self.parser);
         let screen = parser.screen();
         let (row, col) = screen.cursor_position();
 
@@ -151,7 +152,7 @@ impl VirtualTerminal {
 
     /// Resize the terminal
     pub fn resize(&mut self, cols: u16, rows: u16) {
-        let mut parser = self.parser.lock().unwrap();
+        let mut parser = mutex_lock_or_recover(&self.parser);
         parser.set_size(rows, cols);
         self.cols = cols;
         self.rows = rows;
@@ -166,27 +167,27 @@ impl VirtualTerminal {
     pub fn clear(&mut self) {
         let rows = self.rows;
         let cols = self.cols;
-        let mut parser = self.parser.lock().unwrap();
+        let mut parser = mutex_lock_or_recover(&self.parser);
         parser.set_size(rows, cols);
     }
 
     /// Check if a cell has inverse style (often indicates focus/selection)
     pub fn is_cell_inverse(&self, row: u16, col: u16) -> bool {
-        let parser = self.parser.lock().unwrap();
+        let parser = mutex_lock_or_recover(&self.parser);
         let screen = parser.screen();
         screen.cell(row, col).map(|c| c.inverse()).unwrap_or(false)
     }
 
     /// Check if a cell is bold
     pub fn is_cell_bold(&self, row: u16, col: u16) -> bool {
-        let parser = self.parser.lock().unwrap();
+        let parser = mutex_lock_or_recover(&self.parser);
         let screen = parser.screen();
         screen.cell(row, col).map(|c| c.bold()).unwrap_or(false)
     }
 
     /// Get the style of a specific cell
     pub fn cell_style(&self, row: u16, col: u16) -> Option<CellStyle> {
-        let parser = self.parser.lock().unwrap();
+        let parser = mutex_lock_or_recover(&self.parser);
         let screen = parser.screen();
         screen.cell(row, col).map(|cell| CellStyle {
             bold: cell.bold(),
@@ -205,7 +206,7 @@ impl VirtualTerminal {
         start_col: u16,
         end_col: u16,
     ) -> Vec<(char, CellStyle)> {
-        let parser = self.parser.lock().unwrap();
+        let parser = mutex_lock_or_recover(&self.parser);
         let screen = parser.screen();
 
         let mut result = Vec::new();

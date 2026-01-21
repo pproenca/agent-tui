@@ -15,6 +15,7 @@ mod detection;
 mod handlers;
 mod pty;
 mod session;
+mod sync_utils;
 mod terminal;
 mod wait;
 

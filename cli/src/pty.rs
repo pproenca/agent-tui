@@ -3,6 +3,7 @@
 //! This module provides PTY creation and management for spawning
 //! and controlling terminal applications.
 
+use crate::sync_utils::mutex_lock_or_recover;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 use std::os::fd::RawFd;
@@ -119,7 +120,7 @@ impl PtyHandle {
 
     /// Write data to the PTY
     pub fn write(&self, data: &[u8]) -> Result<(), PtyError> {
-        let mut writer = self.writer.lock().unwrap();
+        let mut writer = mutex_lock_or_recover(&self.writer);
         writer
             .write_all(data)
             .map_err(|e| PtyError::WriteFailed(e.to_string()))?;
@@ -136,7 +137,7 @@ impl PtyHandle {
 
     /// Read available data from the PTY (non-blocking)
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, PtyError> {
-        let mut reader = self.reader.lock().unwrap();
+        let mut reader = mutex_lock_or_recover(&self.reader);
         reader
             .read(buf)
             .map_err(|e| PtyError::ReadFailed(e.to_string()))
@@ -164,7 +165,7 @@ impl PtyHandle {
         }
 
         // Data available, read it
-        let mut reader = self.reader.lock().unwrap();
+        let mut reader = mutex_lock_or_recover(&self.reader);
         reader
             .read(buf)
             .map_err(|e| PtyError::ReadFailed(e.to_string()))

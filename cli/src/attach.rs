@@ -6,6 +6,7 @@
 use crate::client::DaemonClient;
 use crate::color::Colors;
 use crate::session::Session;
+use crate::sync_utils::mutex_lock_or_recover;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -56,7 +57,7 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
 
     let (cols, rows) = terminal::size().map_err(AttachError::Terminal)?;
     {
-        let mut sess = session.lock().unwrap();
+        let mut sess = mutex_lock_or_recover(&session);
         let _ = sess.resize(cols, rows);
     }
 
@@ -67,7 +68,7 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
 
         while running_clone.load(Ordering::Relaxed) {
             let n = {
-                let sess = session_for_output.lock().unwrap();
+                let sess = mutex_lock_or_recover(&session_for_output);
                 sess.pty_try_read(&mut buf, 50).unwrap_or_default()
             };
 
@@ -81,7 +82,7 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
             }
 
             {
-                let mut sess = session_for_output.lock().unwrap();
+                let mut sess = mutex_lock_or_recover(&session_for_output);
                 if !sess.is_running() {
                     break;
                 }
@@ -100,14 +101,14 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
                     }
 
                     if let Some(bytes) = key_event_to_bytes(&key_event) {
-                        let sess = session.lock().unwrap();
+                        let sess = mutex_lock_or_recover(&session);
                         if sess.pty_write(&bytes).is_err() {
                             break;
                         }
                     }
                 }
                 Ok(Event::Resize(cols, rows)) => {
-                    let mut sess = session.lock().unwrap();
+                    let mut sess = mutex_lock_or_recover(&session);
                     let _ = sess.resize(cols, rows);
                 }
                 Ok(_) => {}
@@ -116,7 +117,7 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
         }
 
         {
-            let mut sess = session.lock().unwrap();
+            let mut sess = mutex_lock_or_recover(&session);
             if !sess.is_running() {
                 eprintln!();
                 eprintln!(

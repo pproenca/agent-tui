@@ -2,6 +2,7 @@
 
 use crate::detection::{detect_framework, Element, Framework};
 use crate::session::{Session, SessionManager};
+use crate::sync_utils::mutex_lock_or_recover;
 use crate::wait::{check_condition, StableTracker, WaitCondition};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -2711,7 +2712,7 @@ impl DaemonServer {
 
         match self.session_manager.get(session_id) {
             Ok(session) => {
-                let sess = session.lock().unwrap();
+                let sess = mutex_lock_or_recover(&session);
                 let mut buf = [0u8; 4096];
                 match sess.pty_try_read(&mut buf, timeout_ms) {
                     Ok(n) => {
@@ -2765,7 +2766,7 @@ impl DaemonServer {
 
         match self.session_manager.get(session_id) {
             Ok(session) => {
-                let sess = session.lock().unwrap();
+                let sess = mutex_lock_or_recover(&session);
                 match sess.pty_write(&data) {
                     Ok(()) => Response::success(
                         request.id,

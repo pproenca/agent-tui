@@ -6,6 +6,7 @@
 
 use crate::detection::{Element, ElementDetector};
 use crate::pty::{key_to_escape_sequence, PtyError, PtyHandle};
+use crate::sync_utils::{mutex_lock_or_recover, rwlock_read_or_recover, rwlock_write_or_recover};
 use crate::terminal::{CursorPosition, ScreenBuffer, VirtualTerminal};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -13,38 +14,10 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 use thiserror::Error;
 use uuid::Uuid;
-
-// ============================================================================
-// Lock Poison Recovery Helpers
-// ============================================================================
-
-/// Recover from a poisoned RwLock read guard
-fn rwlock_read_or_recover<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
-    lock.read().unwrap_or_else(|poisoned| {
-        eprintln!("Warning: recovering from poisoned rwlock (read)");
-        poisoned.into_inner()
-    })
-}
-
-/// Recover from a poisoned RwLock write guard
-fn rwlock_write_or_recover<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
-    lock.write().unwrap_or_else(|poisoned| {
-        eprintln!("Warning: recovering from poisoned rwlock (write)");
-        poisoned.into_inner()
-    })
-}
-
-/// Recover from a poisoned Mutex
-fn mutex_lock_or_recover<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
-    lock.lock().unwrap_or_else(|poisoned| {
-        eprintln!("Warning: recovering from poisoned mutex");
-        poisoned.into_inner()
-    })
-}
 
 // ============================================================================
 // SessionId Newtype
@@ -838,7 +811,12 @@ impl SessionPersistence {
     /// Ensure the directory exists
     fn ensure_dir(&self) -> std::io::Result<()> {
         if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent).map_err(|e| {
+                std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to create directory '{}': {}", parent.display(), e),
+                )
+            })?;
         }
         Ok(())
     }
@@ -854,7 +832,14 @@ impl SessionPersistence {
                 let reader = BufReader::new(file);
                 serde_json::from_reader(reader).unwrap_or_default()
             }
-            Err(_) => Vec::new(),
+            Err(e) => {
+                eprintln!(
+                    "Warning: Failed to open sessions file '{}': {}",
+                    self.path.display(),
+                    e
+                );
+                Vec::new()
+            }
         }
     }
 
@@ -862,9 +847,20 @@ impl SessionPersistence {
     pub fn save(&self, sessions: &[PersistedSession]) -> std::io::Result<()> {
         self.ensure_dir()?;
 
-        let file = fs::File::create(&self.path)?;
+        let file = fs::File::create(&self.path).map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!("Failed to create file '{}': {}", self.path.display(), e),
+            )
+        })?;
         let writer = BufWriter::new(file);
-        serde_json::to_writer_pretty(writer, sessions)?;
+        serde_json::to_writer_pretty(writer, sessions).map_err(|e| {
+            std::io::Error::other(format!(
+                "Failed to write sessions to '{}': {}",
+                self.path.display(),
+                e
+            ))
+        })?;
         Ok(())
     }
 
@@ -900,7 +896,9 @@ impl SessionPersistence {
 
     /// Get a persisted session by ID
     pub fn get_session(&self, session_id: &str) -> Option<PersistedSession> {
-        self.load().into_iter().find(|s| s.id.as_str() == session_id)
+        self.load()
+            .into_iter()
+            .find(|s| s.id.as_str() == session_id)
     }
 
     /// Clean up stale sessions (processes that are no longer running)
@@ -926,7 +924,12 @@ impl SessionPersistence {
     /// Clear all persisted sessions
     pub fn clear(&self) -> std::io::Result<()> {
         if self.path.exists() {
-            fs::remove_file(&self.path)?;
+            fs::remove_file(&self.path).map_err(|e| {
+                std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to remove file '{}': {}", self.path.display(), e),
+                )
+            })?;
         }
         Ok(())
     }

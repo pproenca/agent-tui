@@ -11,6 +11,13 @@ mod region;
 use crate::terminal::ScreenBuffer;
 use regex::Regex;
 use std::collections::HashSet;
+use std::sync::OnceLock;
+
+/// Cached regex for legacy type-prefixed refs (@btn1, @inp2, etc.)
+fn legacy_ref_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^@([a-z]+)(\d+)$").unwrap())
+}
 
 // Framework detection (available for external use)
 #[allow(unused_imports)]
@@ -195,7 +202,6 @@ impl ElementDetector {
         self.used_refs.clear();
 
         let mut elements = Vec::new();
-        let _lines: Vec<&str> = screen_text.lines().collect();
 
         // Pattern-based detection
         let pattern_matches = detect_by_pattern(screen_text);
@@ -337,8 +343,7 @@ impl ElementDetector {
         }
 
         // Support legacy type-prefixed format (@btn1, @inp2, etc.) for backwards compatibility
-        let legacy_re = Regex::new(r"^@([a-z]+)(\d+)$").unwrap();
-        if let Some(caps) = legacy_re.captures(&normalized) {
+        if let Some(caps) = legacy_ref_regex().captures(&normalized) {
             let prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let index: usize = caps
                 .get(2)

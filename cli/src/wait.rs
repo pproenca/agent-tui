@@ -59,10 +59,7 @@ impl WaitCondition {
                     }
                 })
             }
-            None => {
-                // Default: if text is provided, wait for text
-                text.map(|t| WaitCondition::Text(t.to_string()))
-            }
+            None => text.map(|t| WaitCondition::Text(t.to_string())),
             _ => None,
         }
     }
@@ -106,12 +103,10 @@ impl StableTracker {
 
         self.last_hashes.push(hash);
 
-        // Keep only the last N hashes
         if self.last_hashes.len() > self.required_consecutive {
             self.last_hashes.remove(0);
         }
 
-        // Check if all hashes are the same
         if self.last_hashes.len() >= self.required_consecutive {
             let first = self.last_hashes[0];
             self.last_hashes.iter().all(|&h| h == first)
@@ -127,7 +122,6 @@ pub fn check_condition(
     condition: &WaitCondition,
     stable_tracker: &mut StableTracker,
 ) -> bool {
-    // Update session to get latest screen
     let _ = session.update();
 
     match condition {

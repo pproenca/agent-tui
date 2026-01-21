@@ -67,7 +67,6 @@ impl DaemonClient {
             return Err(ClientError::DaemonNotRunning);
         }
 
-        // Verify the daemon is responding
         let stream = UnixStream::connect(&path)?;
         drop(stream);
 
@@ -81,7 +80,6 @@ impl DaemonClient {
             return false;
         }
 
-        // Try to connect to verify it's actually running
         UnixStream::connect(path).is_ok()
     }
 
@@ -90,7 +88,6 @@ impl DaemonClient {
         let path = socket_path();
         let mut stream = UnixStream::connect(&path)?;
 
-        // Set timeouts
         stream.set_read_timeout(Some(Duration::from_secs(60)))?;
         stream.set_write_timeout(Some(Duration::from_secs(10)))?;
 
@@ -103,11 +100,9 @@ impl DaemonClient {
 
         let request_json = serde_json::to_string(&request)?;
 
-        // Write request
         writeln!(stream, "{}", request_json)?;
         stream.flush()?;
 
-        // Read response
         let mut reader = BufReader::new(&stream);
         let mut response_line = String::new();
         reader.read_line(&mut response_line)?;
@@ -141,7 +136,6 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
 
     let exe = std::env::current_exe()?;
 
-    // Fork a daemon process
     Command::new(exe)
         .arg("daemon")
         .stdin(Stdio::null())
@@ -149,7 +143,6 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
         .stderr(Stdio::null())
         .spawn()?;
 
-    // Wait for daemon to start
     for _ in 0..50 {
         std::thread::sleep(std::time::Duration::from_millis(100));
         if DaemonClient::is_daemon_running() {

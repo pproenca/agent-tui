@@ -49,10 +49,8 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
     );
     eprintln!();
 
-    // Enable raw mode
     enable_raw_mode().map_err(AttachError::Terminal)?;
 
-    // Signal for clean shutdown
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = Arc::clone(&running);
 
@@ -63,21 +61,18 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
         let _ = sess.resize(cols, rows);
     }
 
-    // Spawn thread to read from PTY and write to stdout
     let session_for_output = Arc::clone(&session);
     let output_thread = thread::spawn(move || {
         let mut buf = [0u8; 4096];
         let mut stdout = io::stdout();
 
         while running_clone.load(Ordering::Relaxed) {
-            // Try to read from PTY with a short timeout
             let n = {
                 let sess = session_for_output.lock().unwrap();
                 sess.pty_try_read(&mut buf, 50).unwrap_or_default()
             };
 
             if n > 0 {
-                // Write to stdout
                 if stdout.write_all(&buf[..n]).is_err() {
                     break;
                 }
@@ -86,7 +81,6 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
                 }
             }
 
-            // Check if session is still running
             {
                 let mut sess = session_for_output.lock().unwrap();
                 if !sess.is_running() {
@@ -96,20 +90,16 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
         }
     });
 
-    // Main loop: read keyboard input and send to PTY
     loop {
-        // Poll for events with a timeout
         if event::poll(Duration::from_millis(100)).unwrap_or(false) {
             match event::read() {
                 Ok(Event::Key(key_event)) => {
-                    // Check for detach signal (Ctrl+\)
                     if key_event.modifiers.contains(KeyModifiers::CONTROL)
                         && key_event.code == KeyCode::Char('\\')
                     {
                         break;
                     }
 
-                    // Convert key event to bytes and send to PTY
                     if let Some(bytes) = key_event_to_bytes(&key_event) {
                         let sess = session.lock().unwrap();
                         if sess.pty_write(&bytes).is_err() {
@@ -118,7 +108,6 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
                     }
                 }
                 Ok(Event::Resize(cols, rows)) => {
-                    // Resize PTY to match terminal
                     let mut sess = session.lock().unwrap();
                     let _ = sess.resize(cols, rows);
                 }
@@ -127,7 +116,6 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
             }
         }
 
-        // Check if session is still running
         {
             let mut sess = session.lock().unwrap();
             if !sess.is_running() {
@@ -142,11 +130,9 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
         }
     }
 
-    // Signal output thread to stop and wait for it
     running.store(false, Ordering::Relaxed);
     let _ = output_thread.join();
 
-    // Cleanup
     let _ = disable_raw_mode();
 
     eprintln!();
@@ -178,10 +164,8 @@ pub fn attach_ipc(client: &mut DaemonClient, session_id: &str) -> Result<(), Att
     );
     eprintln!();
 
-    // Enable raw mode
     enable_raw_mode().map_err(AttachError::Terminal)?;
 
-    // Get terminal size and resize PTY to match
     let (cols, rows) = terminal::size().map_err(AttachError::Terminal)?;
     let resize_params = json!({
         "cols": cols,
@@ -190,10 +174,8 @@ pub fn attach_ipc(client: &mut DaemonClient, session_id: &str) -> Result<(), Att
     });
     let _ = client.call("resize", Some(resize_params));
 
-    // Main loop: read keyboard input, send to PTY, read PTY output
     let result = attach_ipc_loop(client, session_id);
 
-    // Cleanup
     let _ = disable_raw_mode();
 
     eprintln!();
@@ -210,11 +192,9 @@ fn attach_ipc_loop(client: &mut DaemonClient, session_id: &str) -> Result<(), At
     let mut stdout = io::stdout();
 
     loop {
-        // Poll for keyboard events with a short timeout
         if event::poll(Duration::from_millis(10)).unwrap_or(false) {
             match event::read() {
                 Ok(Event::Key(key_event)) => {
-                    // Check for detach signal (Ctrl+\)
                     if key_event.modifiers.contains(KeyModifiers::CONTROL)
                         && key_event.code == KeyCode::Char('\\')
                     {
@@ -247,7 +227,6 @@ fn attach_ipc_loop(client: &mut DaemonClient, session_id: &str) -> Result<(), At
             }
         }
 
-        // Read from PTY via IPC with a short timeout
         let read_params = json!({
             "session": session_id,
             "timeout_ms": 50

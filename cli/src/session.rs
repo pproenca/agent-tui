@@ -311,7 +311,6 @@ impl Session {
 
     /// Click an element (move cursor and press Enter/Space)
     pub fn click(&mut self, element_ref: &str) -> Result<(), SessionError> {
-        // First update and detect elements
         self.update()?;
         self.detect_elements();
 
@@ -335,7 +334,6 @@ impl Session {
 
     /// Fill an input with a value
     pub fn fill(&mut self, element_ref: &str, value: &str) -> Result<(), SessionError> {
-        // First update and detect elements
         self.update()?;
         self.detect_elements();
 
@@ -387,7 +385,6 @@ impl Session {
         self.recording.start_time = Instant::now();
         self.recording.frames.clear();
 
-        // Capture initial frame
         let screen = self.terminal.screen_text();
         self.recording.frames.push(RecordingFrame {
             timestamp_ms: 0,
@@ -453,7 +450,6 @@ impl Session {
                 details: details.map(String::from),
             });
 
-            // Trim old entries if we exceed max
             while self.trace.entries.len() > self.trace.max_entries {
                 self.trace.entries.pop_front();
             }
@@ -521,7 +517,6 @@ impl Default for SessionManager {
 impl SessionManager {
     pub fn new() -> Self {
         let persistence = SessionPersistence::new();
-        // Clean up any stale sessions from previous runs
         let _ = persistence.cleanup_stale_sessions();
 
         Self {
@@ -544,10 +539,7 @@ impl SessionManager {
         cols: u16,
         rows: u16,
     ) -> Result<(String, u32), SessionError> {
-        let id = session_id.unwrap_or_else(|| {
-            // Generate a short, readable ID
-            Uuid::new_v4().to_string()[..8].to_string()
-        });
+        let id = session_id.unwrap_or_else(|| Uuid::new_v4().to_string()[..8].to_string());
 
         let pty = PtyHandle::spawn(command, args, cwd, env, cols, rows)?;
         let pid = pty.pid().unwrap_or(0);
@@ -558,7 +550,6 @@ impl SessionManager {
         // Note: No background thread - PTY updates happen on-demand when client
         // requests a snapshot or screen. This avoids lock contention.
 
-        // Create persisted session metadata
         let created_at = Utc::now().to_rfc3339();
         let persisted = PersistedSession {
             id: id.clone(),
@@ -574,7 +565,6 @@ impl SessionManager {
             sessions.insert(id.clone(), session);
         }
 
-        // Set as active session
         {
             let mut active = rwlock_write_or_recover(&self.active_session);
             *active = Some(id.clone());
@@ -620,7 +610,6 @@ impl SessionManager {
 
     /// Set active session
     pub fn set_active(&self, session_id: &str) -> Result<(), SessionError> {
-        // Verify session exists
         let _ = self.get(session_id)?;
 
         let mut active = rwlock_write_or_recover(&self.active_session);
@@ -691,7 +680,6 @@ impl SessionManager {
                 .remove(session_id)
                 .ok_or_else(|| SessionError::NotFound(session_id.to_string()))?;
 
-            // Clear active session if this was it
             if active.as_ref() == Some(&session_id.to_string()) {
                 *active = None;
             }
@@ -783,7 +771,6 @@ impl SessionPersistence {
 
     /// Get the path to the sessions file
     fn sessions_file_path() -> PathBuf {
-        // Use ~/.agent-tui/sessions.json
         let home = std::env::var("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/tmp"));
@@ -828,7 +815,6 @@ impl SessionPersistence {
     pub fn add_session(&self, session: PersistedSession) -> std::io::Result<()> {
         let mut sessions = self.load();
 
-        // Remove any existing session with the same ID
         sessions.retain(|s| s.id != session.id);
         sessions.push(session);
 
@@ -846,7 +832,6 @@ impl SessionPersistence {
     pub fn update_session(&self, session: PersistedSession) -> std::io::Result<()> {
         let mut sessions = self.load();
 
-        // Find and update the session
         if let Some(existing) = sessions.iter_mut().find(|s| s.id == session.id) {
             *existing = session;
         } else {
@@ -869,7 +854,6 @@ impl SessionPersistence {
         let active_sessions: Vec<PersistedSession> = sessions
             .into_iter()
             .filter(|s| {
-                // Check if process is still running
                 let running = is_process_running(s.pid);
                 if !running {
                     cleaned += 1;

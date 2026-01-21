@@ -114,6 +114,44 @@ impl DaemonServer {
         })
     }
 
+    /// Helper for handlers that require a string param and perform a session action.
+    fn with_session_action<F>(&self, request: &Request, param: &str, f: F) -> Response
+    where
+        F: FnOnce(&mut crate::session::Session, &str) -> Result<(), Box<dyn std::error::Error>>,
+    {
+        let req_id = request.id;
+        let value = match request.require_str(param) {
+            Ok(v) => v.to_string(),
+            Err(resp) => return resp,
+        };
+        let session_id = request.param_str("session");
+        self.with_session(request, session_id, |sess| match f(sess, &value) {
+            Ok(()) => Response::action_success(req_id),
+            Err(e) => Response::action_failed(req_id, Some(&value), &e.to_string()),
+        })
+    }
+
+    /// Helper that resolves a session and returns the Arc for handlers needing multiple lock acquisitions.
+    #[allow(clippy::result_large_err)]
+    fn with_resolved_session(
+        &self,
+        request: &Request,
+    ) -> Result<(Arc<std::sync::Mutex<crate::session::Session>>, String), Response> {
+        let element_ref = match request.require_str("ref") {
+            Ok(r) => r.to_owned(),
+            Err(resp) => return Err(resp),
+        };
+        let session_id = request.param_str("session");
+        match self.session_manager.resolve(session_id) {
+            Ok(s) => Ok((s, element_ref)),
+            Err(e) => Err(Response::error(
+                request.id,
+                -32000,
+                &ai_friendly_error(&e.to_string(), None),
+            )),
+        }
+    }
+
     /// Helper for handlers that query a single element property.
     fn element_property<F, T>(&self, request: &Request, field_name: &str, extract: F) -> Response
     where
@@ -386,23 +424,15 @@ impl DaemonServer {
 
     fn handle_dbl_click(&self, request: Request) -> Response {
         let req_id = request.id;
-        let element_ref = match request.require_str("ref") {
-            Ok(r) => r.to_owned(),
+        let (session, element_ref) = match self.with_resolved_session(&request) {
+            Ok(result) => result,
             Err(resp) => return resp,
-        };
-        let session_id = request.param_str("session");
-
-        let session = match self.session_manager.resolve(session_id) {
-            Ok(s) => s,
-            Err(e) => {
-                return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None))
-            }
         };
 
         // First click
         {
             let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                return lock_timeout_response(req_id, session_id);
+                return lock_timeout_response(req_id, request.param_str("session"));
             };
             if let Err(e) = sess.click(&element_ref) {
                 return Response::action_failed(req_id, Some(&element_ref), &e.to_string());
@@ -414,7 +444,7 @@ impl DaemonServer {
         // Second click
         {
             let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                return lock_timeout_response(req_id, session_id);
+                return lock_timeout_response(req_id, request.param_str("session"));
             };
             match sess.click(&element_ref) {
                 Ok(()) => Response::action_success(req_id),
@@ -438,54 +468,26 @@ impl DaemonServer {
     }
 
     fn handle_keystroke(&self, request: Request) -> Response {
-        let req_id = request.id;
-        let key = match request.require_str("key") {
-            Ok(k) => k.to_string(),
-            Err(resp) => return resp,
-        };
-        let session_id = request.param_str("session");
-        self.with_session(&request, session_id, |sess| match sess.keystroke(&key) {
-            Ok(()) => Response::action_success(req_id),
-            Err(e) => Response::action_failed(req_id, Some(&key), &e.to_string()),
+        self.with_session_action(&request, "key", |sess, key| {
+            sess.keystroke(key).map_err(|e| e.into())
         })
     }
 
     fn handle_keydown(&self, request: Request) -> Response {
-        let req_id = request.id;
-        let key = match request.require_str("key") {
-            Ok(k) => k.to_string(),
-            Err(resp) => return resp,
-        };
-        let session_id = request.param_str("session");
-        self.with_session(&request, session_id, |sess| match sess.keydown(&key) {
-            Ok(()) => Response::action_success(req_id),
-            Err(e) => Response::action_failed(req_id, Some(&key), &e.to_string()),
+        self.with_session_action(&request, "key", |sess, key| {
+            sess.keydown(key).map_err(|e| e.into())
         })
     }
 
     fn handle_keyup(&self, request: Request) -> Response {
-        let req_id = request.id;
-        let key = match request.require_str("key") {
-            Ok(k) => k.to_string(),
-            Err(resp) => return resp,
-        };
-        let session_id = request.param_str("session");
-        self.with_session(&request, session_id, |sess| match sess.keyup(&key) {
-            Ok(()) => Response::action_success(req_id),
-            Err(e) => Response::action_failed(req_id, Some(&key), &e.to_string()),
+        self.with_session_action(&request, "key", |sess, key| {
+            sess.keyup(key).map_err(|e| e.into())
         })
     }
 
     fn handle_type(&self, request: Request) -> Response {
-        let req_id = request.id;
-        let text = match request.require_str("text") {
-            Ok(t) => t.to_string(),
-            Err(resp) => return resp,
-        };
-        let session_id = request.param_str("session");
-        self.with_session(&request, session_id, |sess| match sess.type_text(&text) {
-            Ok(()) => Response::action_success(req_id),
-            Err(e) => Response::action_failed(req_id, None, &e.to_string()),
+        self.with_session_action(&request, "text", |sess, text| {
+            sess.type_text(text).map_err(|e| e.into())
         })
     }
 
@@ -1140,10 +1142,7 @@ impl DaemonServer {
         let req_id = request.id;
         self.with_detected_session_and_ref(&request, |sess, element_ref| {
             if sess.find_element(element_ref).is_none() {
-                return Response::success(
-                    req_id,
-                    json!({ "success": false, "message": ai_friendly_error("Element not found", Some(element_ref)) }),
-                );
+                return Response::element_not_found(req_id, element_ref);
             }
             if let Err(e) = sess.pty_write(b"\t") {
                 return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
@@ -1156,15 +1155,14 @@ impl DaemonServer {
         let req_id = request.id;
         self.with_detected_session_and_ref(&request, |sess, element_ref| {
             if sess.find_element(element_ref).is_none() {
-                return Response::success(
-                    req_id,
-                    json!({ "success": false, "message": ai_friendly_error("Element not found", Some(element_ref)) }),
-                );
+                return Response::element_not_found(req_id, element_ref);
             }
             let screen_text = sess.screen_text();
             let framework = detect_framework(&screen_text);
             let result = match framework {
-                Framework::Textual => sess.pty_write(b"\x01").and_then(|_| sess.pty_write(b"\x7f")),
+                Framework::Textual => sess
+                    .pty_write(b"\x01")
+                    .and_then(|_| sess.pty_write(b"\x7f")),
                 _ => sess.pty_write(b"\x15"),
             };
             if let Err(e) = result {
@@ -1178,10 +1176,7 @@ impl DaemonServer {
         let req_id = request.id;
         self.with_detected_session_and_ref(&request, |sess, element_ref| {
             if sess.find_element(element_ref).is_none() {
-                return Response::success(
-                    req_id,
-                    json!({ "success": false, "message": ai_friendly_error("Element not found", Some(element_ref)) }),
-                );
+                return Response::element_not_found(req_id, element_ref);
             }
             if let Err(e) = sess.pty_write(b"\x01") {
                 return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
@@ -1199,41 +1194,38 @@ impl DaemonServer {
                 Some(el) => {
                     let el_type = el.element_type.as_str();
                     if el_type != "checkbox" && el_type != "radio" {
-                        return Response::success(
+                        return Response::wrong_element_type(
                             req_id,
-                            json!({
-                                "success": false,
-                                "message": format!(
-                                    "Element {} is a {} not a checkbox/radio. Run 'snapshot -i' to see element types.",
-                                    element_ref, el_type
-                                )
-                            }),
+                            element_ref,
+                            el_type,
+                            "checkbox/radio",
                         );
                     }
                     el.checked.unwrap_or(false)
                 }
                 None => {
-                    return Response::success(
-                        req_id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref))
-                        }),
-                    );
+                    return Response::element_not_found(req_id, element_ref);
                 }
             };
 
             let should_toggle = force_state != Some(current_checked);
             let new_checked = if should_toggle {
                 if let Err(e) = sess.pty_write(b" ") {
-                    return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+                    return Response::error(
+                        req_id,
+                        -32000,
+                        &ai_friendly_error(&e.to_string(), None),
+                    );
                 }
                 !current_checked
             } else {
                 current_checked
             };
 
-            Response::success(req_id, json!({ "success": true, "ref": element_ref, "checked": new_checked }))
+            Response::success(
+                req_id,
+                json!({ "success": true, "ref": element_ref, "checked": new_checked }),
+            )
         })
     }
 
@@ -1247,22 +1239,15 @@ impl DaemonServer {
         self.with_detected_session_and_ref(&request, |sess, element_ref| {
             match sess.find_element(element_ref) {
                 Some(el) if el.element_type.as_str() != "select" => {
-                    return Response::success(
+                    return Response::wrong_element_type(
                         req_id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error("Element is not a select", Some(element_ref))
-                        }),
+                        element_ref,
+                        el.element_type.as_str(),
+                        "select",
                     );
                 }
                 None => {
-                    return Response::success(
-                        req_id,
-                        json!({
-                            "success": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref))
-                        }),
-                    );
+                    return Response::element_not_found(req_id, element_ref);
                 }
                 _ => {}
             }
@@ -1283,7 +1268,10 @@ impl DaemonServer {
                 return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
             }
 
-            Response::success(req_id, json!({ "success": true, "ref": element_ref, "option": option }))
+            Response::success(
+                req_id,
+                json!({ "success": true, "ref": element_ref, "option": option }),
+            )
         })
     }
 

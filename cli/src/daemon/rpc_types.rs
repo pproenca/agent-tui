@@ -109,4 +109,29 @@ impl Response {
             }),
         )
     }
+
+    /// Shorthand for element not found response.
+    pub fn element_not_found(id: u64, element_ref: &str) -> Self {
+        Self::success(
+            id,
+            json!({
+                "success": false,
+                "message": ai_friendly_error("Element not found", Some(element_ref))
+            }),
+        )
+    }
+
+    /// Shorthand for wrong element type response.
+    pub fn wrong_element_type(id: u64, element_ref: &str, actual: &str, expected: &str) -> Self {
+        Self::success(
+            id,
+            json!({
+                "success": false,
+                "message": format!(
+                    "Element {} is a {} not a {}. Run 'snapshot -i' to see element types.",
+                    element_ref, actual, expected
+                )
+            }),
+        )
+    }
 }

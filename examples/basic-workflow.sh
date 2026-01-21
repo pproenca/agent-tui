@@ -1,6 +1,6 @@
 #!/bin/bash
 # Basic agent-tui workflow example
-# Demonstrates: spawn, snapshot, type, keystroke, wait, kill
+# Demonstrates: spawn, snapshot, type, press, wait, kill
 
 set -e
 
@@ -15,7 +15,7 @@ sleep 1
 # Type a command
 echo "2. Typing a command..."
 agent-tui type "echo 'Hello from agent-tui!'"
-agent-tui keystroke Enter
+agent-tui press Enter
 
 # Wait for output
 echo "3. Waiting for output..."

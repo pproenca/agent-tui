@@ -86,48 +86,48 @@ main() {
     # Enter project name
     log_info "Entering project name: $PROJECT_NAME"
     agent-tui type "$PROJECT_NAME"
-    agent-tui keystroke Enter
+    agent-tui press Enter
 
     # Wait for TypeScript question
     log_info "Waiting for TypeScript prompt..."
     if agent-tui wait "TypeScript" --timeout 10000 2>/dev/null; then
         log_info "Selecting TypeScript: Yes"
-        agent-tui keystroke Enter  # Default is usually Yes
+        agent-tui press Enter  # Default is usually Yes
     fi
 
     # Wait for ESLint question
     log_info "Waiting for ESLint prompt..."
     if agent-tui wait "ESLint" --timeout 10000 2>/dev/null; then
         log_info "Selecting ESLint: Yes"
-        agent-tui keystroke Enter
+        agent-tui press Enter
     fi
 
     # Wait for Tailwind CSS question
     log_info "Waiting for Tailwind prompt..."
     if agent-tui wait "Tailwind" --timeout 10000 2>/dev/null; then
         log_info "Selecting Tailwind: Yes"
-        agent-tui keystroke Enter
+        agent-tui press Enter
     fi
 
     # Wait for src/ directory question
     log_info "Waiting for src/ directory prompt..."
     if agent-tui wait "src/" --timeout 10000 2>/dev/null; then
         log_info "Selecting src/ directory: Yes"
-        agent-tui keystroke Enter
+        agent-tui press Enter
     fi
 
     # Wait for App Router question
     log_info "Waiting for App Router prompt..."
     if agent-tui wait "App Router" --timeout 10000 2>/dev/null; then
         log_info "Selecting App Router: Yes"
-        agent-tui keystroke Enter
+        agent-tui press Enter
     fi
 
     # Wait for import alias question
     log_info "Waiting for import alias prompt..."
     if agent-tui wait "import alias" --timeout 10000 2>/dev/null; then
         log_info "Accepting default import alias"
-        agent-tui keystroke Enter
+        agent-tui press Enter
     fi
 
     # Wait for installation to complete

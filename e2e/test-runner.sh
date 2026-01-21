@@ -93,11 +93,11 @@ if echo "$SPAWN_OUTPUT" | grep -q "Session started:"; then
             test_fail "Snapshot failed"
         fi
 
-        # Test keystroke
-        if agent-tui keystroke Enter 2>&1 | grep -q "Keystroke sent"; then
-            test_pass "Keystroke sent"
+        # Test press
+        if agent-tui press Enter 2>&1 | grep -q "Key pressed"; then
+            test_pass "Key pressed"
         else
-            test_fail "Keystroke failed"
+            test_fail "Press failed"
         fi
 
         # Test type
@@ -126,7 +126,7 @@ agent-tui spawn bash >/dev/null 2>&1
 sleep 0.5
 # Type something and check assert
 agent-tui type "echo TESTMARKER" >/dev/null 2>&1
-agent-tui keystroke Enter >/dev/null 2>&1
+agent-tui press Enter >/dev/null 2>&1
 sleep 0.5
 if agent-tui assert text:TESTMARKER 2>&1 | grep -q "PASS"; then
     test_pass "Assert text condition works"

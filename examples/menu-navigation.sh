@@ -46,7 +46,7 @@ EOF
 
     echo "4. Selecting option 2..."
     agent-tui type "2"
-    agent-tui keystroke Enter
+    agent-tui press Enter
 
     echo "5. Verifying selection..."
     agent-tui wait "Option B"
@@ -54,7 +54,7 @@ EOF
 
     echo "6. Selecting quit..."
     agent-tui type "4"
-    agent-tui keystroke Enter
+    agent-tui press Enter
 
     echo "7. Verifying quit..."
     agent-tui wait "Goodbye"
@@ -72,8 +72,8 @@ else
     agent-tui snapshot -i
 
     echo "3. Navigating menu..."
-    agent-tui keystroke ArrowDown
-    agent-tui keystroke Enter
+    agent-tui press ArrowDown
+    agent-tui press Enter
 
     echo "4. Final state..."
     agent-tui snapshot

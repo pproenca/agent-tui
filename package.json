@@ -24,6 +24,7 @@
     "agent-tui": "bin/agent-tui"
   },
   "scripts": {
+    "docs": "cd docs && mintlify dev",
     "build": "cargo build --release --manifest-path cli/Cargo.toml",
     "build:native": "npm run build && node scripts/copy-native.js",
     "build:linux-x64": "docker compose -f docker/docker-compose.yml run --rm linux-x64",

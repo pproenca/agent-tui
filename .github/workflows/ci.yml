@@ -15,7 +15,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         rust: [stable]
 
     steps:
@@ -35,6 +35,8 @@ jobs:
             ~/.cargo/git
             cli/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Check formatting
         working-directory: cli
@@ -52,17 +54,29 @@ jobs:
         working-directory: cli
         run: cargo test --release
 
-      - name: Upload CLI artifact
+      - name: Upload CLI artifact (Unix)
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: agent-tui-${{ matrix.os }}
           path: cli/target/release/agent-tui
           if-no-files-found: error
 
+      - name: Upload CLI artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-tui-${{ matrix.os }}
+          path: cli/target/release/agent-tui.exe
+          if-no-files-found: error
+
   integration:
-    name: Integration Tests
+    name: Integration Tests (${{ matrix.os }})
     needs: [rust-cli]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +84,7 @@ jobs:
       - name: Download CLI artifact
         uses: actions/download-artifact@v4
         with:
-          name: agent-tui-ubuntu-latest
+          name: agent-tui-${{ matrix.os }}
           path: ./bin
 
       - name: Make CLI executable
@@ -82,7 +96,20 @@ jobs:
       - name: Start native daemon
         run: |
           ./bin/agent-tui daemon &
-          sleep 2
+          DAEMON_PID=$!
+          echo "DAEMON_PID=$DAEMON_PID" >> $GITHUB_ENV
+          # Wait for daemon to be ready with health check polling
+          for i in $(seq 1 30); do
+            if ./bin/agent-tui health 2>/dev/null; then
+              echo "Daemon ready after $i attempts"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "::error::Daemon failed to start within 15 seconds"
+              exit 1
+            fi
+            sleep 0.5
+          done
 
       - name: Test health command
         run: agent-tui health
@@ -102,3 +129,10 @@ jobs:
           agent-tui wait "test"
           agent-tui snapshot
           agent-tui kill
+
+      - name: Cleanup daemon
+        if: always()
+        run: |
+          if [ -n "$DAEMON_PID" ]; then
+            kill $DAEMON_PID 2>/dev/null || true
+          fi

@@ -23,6 +23,81 @@ pub fn socket_path() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("/tmp/agent-tui.sock"))
 }
 
+/// Reusable filter for element queries (find, count).
+struct ElementFilter<'a> {
+    role: Option<&'a str>,
+    name: Option<&'a str>,
+    text: Option<&'a str>,
+    placeholder: Option<&'a str>,
+    focused_only: bool,
+    exact: bool,
+}
+
+impl ElementFilter<'_> {
+    fn matches(&self, el: &Element) -> bool {
+        if let Some(r) = self.role {
+            if el.element_type.as_str() != r {
+                return false;
+            }
+        }
+        if let Some(n) = self.name {
+            let matches = if self.exact {
+                el.label.as_ref().map(|l| l == n).unwrap_or(false)
+            } else {
+                let n_lower = n.to_lowercase();
+                el.label
+                    .as_ref()
+                    .map(|l| l.to_lowercase().contains(&n_lower))
+                    .unwrap_or(false)
+            };
+            if !matches {
+                return false;
+            }
+        }
+        if let Some(t) = self.text {
+            let in_label = if self.exact {
+                el.label.as_ref().map(|l| l == t).unwrap_or(false)
+            } else {
+                let t_lower = t.to_lowercase();
+                el.label
+                    .as_ref()
+                    .map(|l| l.to_lowercase().contains(&t_lower))
+                    .unwrap_or(false)
+            };
+            let in_value = if self.exact {
+                el.value.as_ref().map(|v| v == t).unwrap_or(false)
+            } else {
+                let t_lower = t.to_lowercase();
+                el.value
+                    .as_ref()
+                    .map(|v| v.to_lowercase().contains(&t_lower))
+                    .unwrap_or(false)
+            };
+            if !in_label && !in_value {
+                return false;
+            }
+        }
+        if let Some(p) = self.placeholder {
+            let matches = if self.exact {
+                el.hint.as_ref().map(|h| h == p).unwrap_or(false)
+            } else {
+                let p_lower = p.to_lowercase();
+                el.hint
+                    .as_ref()
+                    .map(|h| h.to_lowercase().contains(&p_lower))
+                    .unwrap_or(false)
+            };
+            if !matches {
+                return false;
+            }
+        }
+        if self.focused_only && !el.focused {
+            return false;
+        }
+        true
+    }
+}
+
 pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
     start_time: Instant,
@@ -179,6 +254,20 @@ impl DaemonServer {
                     }),
                 ),
             }
+        })
+    }
+
+    /// Helper for handlers that verify element exists then write PTY bytes.
+    fn element_action(&self, request: &Request, pty_bytes: &[u8]) -> Response {
+        let req_id = request.id;
+        self.with_detected_session_and_ref(request, |sess, element_ref| {
+            if sess.find_element(element_ref).is_none() {
+                return Response::element_not_found(req_id, element_ref);
+            }
+            if let Err(e) = sess.pty_write(pty_bytes) {
+                return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+            }
+            Response::success(req_id, json!({ "success": true, "ref": element_ref }))
         })
     }
 
@@ -785,16 +874,18 @@ impl DaemonServer {
 
     fn handle_find(&self, request: Request) -> Response {
         let params = request.params.as_ref().cloned().unwrap_or(json!({}));
-        let role = params.get("role").and_then(|v| v.as_str());
-        let name = params.get("name").and_then(|v| v.as_str());
-        let text = params.get("text").and_then(|v| v.as_str());
-        let placeholder = params.get("placeholder").and_then(|v| v.as_str());
-        let focused_only = params.bool_or("focused", false);
+        let filter = ElementFilter {
+            role: params.get("role").and_then(|v| v.as_str()),
+            name: params.get("name").and_then(|v| v.as_str()),
+            text: params.get("text").and_then(|v| v.as_str()),
+            placeholder: params.get("placeholder").and_then(|v| v.as_str()),
+            focused_only: params.bool_or("focused", false),
+            exact: params.bool_or("exact", false),
+        };
         let nth = params
             .get("nth")
             .and_then(|v| v.as_u64())
             .map(|n| n as usize);
-        let exact = params.bool_or("exact", false);
 
         let req_id = request.id;
         self.with_detected_session(&request, |sess| {
@@ -802,68 +893,7 @@ impl DaemonServer {
 
             let matches: Vec<_> = elements
                 .iter()
-                .filter(|el| {
-                    if let Some(r) = role {
-                        if el.element_type.as_str() != r {
-                            return false;
-                        }
-                    }
-                    if let Some(n) = name {
-                        let matches = if exact {
-                            el.label.as_ref().map(|l| l == n).unwrap_or(false)
-                        } else {
-                            let n_lower = n.to_lowercase();
-                            el.label
-                                .as_ref()
-                                .map(|l| l.to_lowercase().contains(&n_lower))
-                                .unwrap_or(false)
-                        };
-                        if !matches {
-                            return false;
-                        }
-                    }
-                    if let Some(t) = text {
-                        let in_label = if exact {
-                            el.label.as_ref().map(|l| l == t).unwrap_or(false)
-                        } else {
-                            let t_lower = t.to_lowercase();
-                            el.label
-                                .as_ref()
-                                .map(|l| l.to_lowercase().contains(&t_lower))
-                                .unwrap_or(false)
-                        };
-                        let in_value = if exact {
-                            el.value.as_ref().map(|v| v == t).unwrap_or(false)
-                        } else {
-                            let t_lower = t.to_lowercase();
-                            el.value
-                                .as_ref()
-                                .map(|v| v.to_lowercase().contains(&t_lower))
-                                .unwrap_or(false)
-                        };
-                        if !in_label && !in_value {
-                            return false;
-                        }
-                    }
-                    if let Some(p) = placeholder {
-                        let matches = if exact {
-                            el.hint.as_ref().map(|h| h == p).unwrap_or(false)
-                        } else {
-                            let p_lower = p.to_lowercase();
-                            el.hint
-                                .as_ref()
-                                .map(|h| h.to_lowercase().contains(&p_lower))
-                                .unwrap_or(false)
-                        };
-                        if !matches {
-                            return false;
-                        }
-                    }
-                    if focused_only && !el.focused {
-                        return false;
-                    }
-                    true
-                })
+                .filter(|el| filter.matches(el))
                 .map(element_to_json)
                 .collect();
 
@@ -950,50 +980,19 @@ impl DaemonServer {
     }
 
     fn handle_count(&self, request: Request) -> Response {
-        let role = request.param_str("role").map(str::to_owned);
-        let name = request.param_str("name").map(str::to_owned);
-        let text = request.param_str("text").map(str::to_owned);
+        let filter = ElementFilter {
+            role: request.param_str("role"),
+            name: request.param_str("name"),
+            text: request.param_str("text"),
+            placeholder: None,
+            focused_only: false,
+            exact: false,
+        };
         let req_id = request.id;
 
         self.with_detected_session(&request, |sess| {
             let elements = sess.cached_elements();
-            let count = elements
-                .iter()
-                .filter(|el| {
-                    if let Some(ref r) = role {
-                        if el.element_type.as_str() != r {
-                            return false;
-                        }
-                    }
-                    if let Some(ref n) = name {
-                        if !el
-                            .label
-                            .as_deref()
-                            .map(|l| l.contains(n.as_str()))
-                            .unwrap_or(false)
-                        {
-                            return false;
-                        }
-                    }
-                    if let Some(ref t) = text {
-                        let in_label = el
-                            .label
-                            .as_deref()
-                            .map(|l| l.contains(t.as_str()))
-                            .unwrap_or(false);
-                        let in_value = el
-                            .value
-                            .as_deref()
-                            .map(|v| v.contains(t.as_str()))
-                            .unwrap_or(false);
-                        if !in_label && !in_value {
-                            return false;
-                        }
-                    }
-                    true
-                })
-                .count();
-
+            let count = elements.iter().filter(|el| filter.matches(el)).count();
             Response::success(req_id, json!({ "count": count }))
         })
     }
@@ -1139,16 +1138,7 @@ impl DaemonServer {
     }
 
     fn handle_focus(&self, request: Request) -> Response {
-        let req_id = request.id;
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
-            if sess.find_element(element_ref).is_none() {
-                return Response::element_not_found(req_id, element_ref);
-            }
-            if let Err(e) = sess.pty_write(b"\t") {
-                return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
-            }
-            Response::success(req_id, json!({ "success": true, "ref": element_ref }))
-        })
+        self.element_action(&request, b"\t")
     }
 
     fn handle_clear(&self, request: Request) -> Response {
@@ -1173,16 +1163,7 @@ impl DaemonServer {
     }
 
     fn handle_select_all(&self, request: Request) -> Response {
-        let req_id = request.id;
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
-            if sess.find_element(element_ref).is_none() {
-                return Response::element_not_found(req_id, element_ref);
-            }
-            if let Err(e) = sess.pty_write(b"\x01") {
-                return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
-            }
-            Response::success(req_id, json!({ "success": true, "ref": element_ref }))
-        })
+        self.element_action(&request, b"\x01")
     }
 
     fn handle_toggle(&self, request: Request) -> Response {
@@ -1592,20 +1573,11 @@ impl DaemonServer {
     fn handle_pty_read(&self, request: Request) -> Response {
         use base64::{engine::general_purpose::STANDARD, Engine};
 
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
+        let session_id = match request.require_str("session") {
+            Ok(id) => id,
+            Err(resp) => return resp,
         };
-
-        let session_id = match params.get("session").and_then(|v| v.as_str()) {
-            Some(id) => id,
-            None => return Response::error(request.id, -32602, "Missing 'session' param"),
-        };
-
-        let timeout_ms = params
-            .get("timeout_ms")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(50) as i32;
+        let timeout_ms = request.param_i32("timeout_ms", 50);
 
         match self.session_manager.get(session_id) {
             Ok(session) => {
@@ -1641,21 +1613,14 @@ impl DaemonServer {
     fn handle_pty_write(&self, request: Request) -> Response {
         use base64::{engine::general_purpose::STANDARD, Engine};
 
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
+        let session_id = match request.require_str("session") {
+            Ok(id) => id,
+            Err(resp) => return resp,
         };
-
-        let session_id = match params.get("session").and_then(|v| v.as_str()) {
-            Some(id) => id,
-            None => return Response::error(request.id, -32602, "Missing 'session' param"),
+        let data_b64 = match request.require_str("data") {
+            Ok(d) => d,
+            Err(resp) => return resp,
         };
-
-        let data_b64 = match params.get("data").and_then(|v| v.as_str()) {
-            Some(d) => d,
-            None => return Response::error(request.id, -32602, "Missing 'data' param"),
-        };
-
         let data = match STANDARD.decode(data_b64) {
             Ok(d) => d,
             Err(_) => return Response::error(request.id, -32602, "Invalid base64 data"),

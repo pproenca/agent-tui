@@ -1,8 +1,3 @@
-//! Framework-specific element detectors
-//!
-//! Each framework has its own detector implementation that can provide
-//! specialized pattern matching for that framework's UI conventions.
-
 mod bubbletea;
 mod generic;
 mod ink;

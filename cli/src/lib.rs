@@ -1,16 +1,3 @@
-//! agent-tui - Library for AI agents to interact with TUI applications
-//!
-//! This library provides the core functionality for managing PTY sessions,
-//! detecting UI elements, and interacting with terminal applications.
-//!
-//! # Modules
-//!
-//! - [`session`] - Session management and lifecycle
-//! - [`detection`] - UI element detection (buttons, inputs, checkboxes, etc.)
-//! - [`terminal`] - Virtual terminal emulation
-//! - [`pty`] - PTY (pseudo-terminal) handling
-//! - [`wait`] - Wait conditions for synchronization
-
 pub mod detection;
 pub mod pty;
 pub mod session;

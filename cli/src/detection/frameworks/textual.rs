@@ -1,17 +1,9 @@
-//! Textual (Python) framework detector
-//!
-//! Detects elements specific to Textual applications using patterns like:
-//! - Heavy box drawing: ┏, ┓, ┗, ┛
-//! - Footer keybindings: ^q, ^c, F1, ESC
-//! - Data table patterns with ┼
-
 use crate::detection::pattern::{deduplicate_matches, PatternMatch};
 use crate::detection::traits::{DetectionContext, ElementDetectorImpl};
 use crate::detection::ElementType;
 use regex::Regex;
 use std::sync::OnceLock;
 
-/// Textual (Python) framework detector
 pub struct TextualDetector;
 
 impl TextualDetector {
@@ -19,7 +11,6 @@ impl TextualDetector {
         Self
     }
 
-    /// Check if the screen appears to be a Textual application
     pub fn looks_like_textual(ctx: &DetectionContext) -> bool {
         let has_textual_footer = ctx.lines.last().is_some_and(|l| {
             l.contains("^q") || l.contains("^c") || l.contains("F1") || l.contains("ESC")
@@ -43,7 +34,6 @@ impl Default for TextualDetector {
     }
 }
 
-/// Cached regex patterns for Textual-specific elements
 struct TextualPatterns {
     footer_key: Regex,
     button: Regex,

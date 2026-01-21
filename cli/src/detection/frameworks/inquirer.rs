@@ -1,17 +1,9 @@
-//! Inquirer.js framework detector
-//!
-//! Detects elements specific to Inquirer.js applications using patterns like:
-//! - Radio buttons: ◯, ◉ at start of lines
-//! - Checkboxes: ◻, ◼
-//! - Confirm prompts: (Y/n), (y/N)
-
 use crate::detection::pattern::{deduplicate_matches, PatternMatch};
 use crate::detection::traits::{DetectionContext, ElementDetectorImpl};
 use crate::detection::ElementType;
 use regex::Regex;
 use std::sync::OnceLock;
 
-/// Inquirer.js framework detector
 pub struct InquirerDetector;
 
 impl InquirerDetector {
@@ -19,7 +11,6 @@ impl InquirerDetector {
         Self
     }
 
-    /// Check if the screen appears to be an Inquirer application
     pub fn looks_like_inquirer(ctx: &DetectionContext) -> bool {
         let circle_lines = ctx
             .lines
@@ -46,7 +37,6 @@ impl Default for InquirerDetector {
     }
 }
 
-/// Cached regex patterns for Inquirer-specific elements
 struct InquirerPatterns {
     radio: Regex,
     checkbox: Regex,

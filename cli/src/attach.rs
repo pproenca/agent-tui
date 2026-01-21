@@ -1,8 +1,3 @@
-//! Native terminal attachment for interactive session control
-//!
-//! This module handles attaching the user's terminal directly to an agent-tui session,
-//! providing a native terminal experience with direct I/O forwarding.
-
 use crate::client::DaemonClient;
 use crate::color::Colors;
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -21,12 +16,6 @@ pub enum AttachError {
     Terminal(#[from] io::Error),
 }
 
-/// IPC-based attach to a session using daemon pty_read/pty_write calls
-///
-/// This provides interactive terminal access via the daemon's IPC protocol,
-/// avoiding the issue of CLI process having an empty local SessionManager.
-///
-/// Detach with Ctrl+\ (sends SIGQUIT-like sequence)
 pub fn attach_ipc(client: &mut DaemonClient, session_id: &str) -> Result<(), AttachError> {
     eprintln!(
         "{} Attaching to session {}...",
@@ -129,7 +118,6 @@ fn attach_ipc_loop(client: &mut DaemonClient, session_id: &str) -> Result<(), At
     Ok(())
 }
 
-/// Convert a crossterm key event to bytes to send to the PTY
 fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
     use KeyCode::*;
 

@@ -1,8 +1,3 @@
-//! Command handlers for the agent-tui CLI
-//!
-//! This module contains the handler functions for each CLI command,
-//! extracted from main.rs for better maintainability.
-
 use crate::client::DaemonClient;
 use crate::color::Colors;
 use crate::commands::{OutputFormat, RecordFormat, ScrollDirection};
@@ -10,10 +5,8 @@ use crate::daemon;
 use serde_json::json;
 use std::collections::HashMap;
 
-/// Result type for command handlers
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
-/// Context passed to all handlers
 pub struct HandlerContext<'a> {
     pub client: &'a mut DaemonClient,
     pub session: Option<String>,
@@ -33,10 +26,6 @@ impl<'a> HandlerContext<'a> {
         }
     }
 
-    /// Handle a success/failure result with standard output formatting
-    ///
-    /// Returns true if success, false otherwise. In text mode, prints appropriate message
-    /// and exits with code 1 on failure.
     pub fn output_success_result(
         &self,
         result: &serde_json::Value,

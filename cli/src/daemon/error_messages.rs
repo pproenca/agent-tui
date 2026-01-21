@@ -1,9 +1,5 @@
-//! AI-friendly error messages with actionable hints
-
 use super::rpc_types::Response;
 
-/// Convert technical errors into AI-friendly messages with actionable hints.
-/// This follows agent-browser's pattern of always suggesting a next action.
 pub fn ai_friendly_error(error: &str, context: Option<&str>) -> String {
     let ctx = context.unwrap_or("unknown");
 
@@ -47,7 +43,6 @@ pub fn ai_friendly_error(error: &str, context: Option<&str>) -> String {
     format!("{}. Run 'snapshot -i' to see current screen state.", error)
 }
 
-/// Create a standardized lock timeout error response
 pub fn lock_timeout_response(request_id: u64, session_context: Option<&str>) -> Response {
     let msg = match session_context {
         Some(sid) => format!(

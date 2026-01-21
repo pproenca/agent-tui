@@ -1,12 +1,8 @@
-//! JSON-RPC types for the daemon server
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// JSON-RPC request
 #[derive(Debug, Deserialize)]
 pub struct Request {
-    /// Protocol version (required by JSON-RPC spec but unused after deserialization)
     #[allow(dead_code)]
     jsonrpc: String,
     pub id: u64,
@@ -15,7 +11,6 @@ pub struct Request {
     pub params: Option<Value>,
 }
 
-/// JSON-RPC response
 #[derive(Debug, Serialize)]
 pub struct Response {
     jsonrpc: String,

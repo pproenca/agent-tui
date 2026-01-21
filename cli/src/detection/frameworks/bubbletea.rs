@@ -1,17 +1,9 @@
-//! Bubble Tea (Go) framework detector
-//!
-//! Detects elements specific to Bubble Tea/Charm applications using patterns like:
-//! - Charm-style spinners: ⣾⣽⣻⢿⡿⣟⣯⣷
-//! - Help bar: "q: quit", "ctrl+c", "esc: back"
-//! - Text inputs with │ cursor
-
 use crate::detection::pattern::{deduplicate_matches, PatternMatch};
 use crate::detection::traits::{DetectionContext, ElementDetectorImpl};
 use crate::detection::ElementType;
 use regex::Regex;
 use std::sync::OnceLock;
 
-/// Bubble Tea (Charm) framework detector
 pub struct BubbleTeaDetector;
 
 impl BubbleTeaDetector {
@@ -19,7 +11,6 @@ impl BubbleTeaDetector {
         Self
     }
 
-    /// Check if the screen appears to be a Bubble Tea application
     pub fn looks_like_bubbletea(ctx: &DetectionContext) -> bool {
         let charm_spinners = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"];
         let has_charm_spinner = charm_spinners.iter().any(|s| ctx.screen_text.contains(s));
@@ -42,7 +33,6 @@ impl Default for BubbleTeaDetector {
     }
 }
 
-/// Cached regex patterns for BubbleTea-specific elements
 struct BubbleTeaPatterns {
     charm_spinner: Regex,
     help_item: Regex,

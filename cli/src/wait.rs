@@ -1,33 +1,19 @@
-//! Wait conditions for agent-tui
-//!
-//! Provides various wait conditions for polling until a condition is met
-//! or timeout occurs.
-
 use crate::session::Session;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-/// Wait condition types
 #[derive(Debug, Clone)]
 pub enum WaitCondition {
-    /// Wait for text to appear on screen
     Text(String),
-    /// Wait for element ref to exist
     Element(String),
-    /// Wait for element to be focused
     Focused(String),
-    /// Wait for element to NOT be visible
     NotVisible(String),
-    /// Wait for screen to be stable (3 consecutive identical hashes)
     Stable,
-    /// Wait for text to disappear from screen
     TextGone(String),
-    /// Wait for element value to match (format: ref=expected_value)
     Value { element: String, expected: String },
 }
 
 impl WaitCondition {
-    /// Parse a wait condition from string parameters
     pub fn parse(
         condition: Option<&str>,
         target: Option<&str>,
@@ -59,7 +45,6 @@ impl WaitCondition {
         }
     }
 
-    /// Get a description of the condition for error messages
     pub fn description(&self) -> String {
         match self {
             WaitCondition::Text(t) => format!("text \"{}\"", t),
@@ -75,7 +60,6 @@ impl WaitCondition {
     }
 }
 
-/// State tracker for stable wait condition
 #[derive(Default)]
 pub struct StableTracker {
     last_hashes: Vec<u64>,
@@ -90,7 +74,6 @@ impl StableTracker {
         }
     }
 
-    /// Add a screen hash and return true if screen is stable
     pub fn add_hash(&mut self, screen: &str) -> bool {
         let mut hasher = DefaultHasher::new();
         screen.hash(&mut hasher);
@@ -111,7 +94,6 @@ impl StableTracker {
     }
 }
 
-/// Check if a wait condition is satisfied
 pub fn check_condition(
     session: &mut Session,
     condition: &WaitCondition,

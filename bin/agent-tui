@@ -5,7 +5,18 @@
 set -e
 
 # Get the directory where this script is located
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve symlinks to get the real script location (needed for npm global installs)
+SCRIPT="$0"
+while [ -L "$SCRIPT" ]; do
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
+    SCRIPT="$(readlink "$SCRIPT")"
+    # Handle relative symlinks
+    case "$SCRIPT" in
+        /*) ;;
+        *) SCRIPT="$SCRIPT_DIR/$SCRIPT" ;;
+    esac
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
 
 # Detect platform and architecture
 detect_platform() {

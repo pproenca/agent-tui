@@ -60,7 +60,8 @@ impl ElementType {
         }
     }
 
-    fn prefix(&self) -> &'static str {
+    /// Get a short prefix for this element type (useful for generating compact refs)
+    pub fn prefix(&self) -> &'static str {
         match self {
             ElementType::Button => "btn",
             ElementType::Input => "inp",

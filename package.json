@@ -1,6 +1,6 @@
 {
   "name": "agent-tui",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "CLI tool for AI agents to interact with TUI applications",
   "license": "MIT",
   "repository": {

@@ -113,6 +113,36 @@ impl DaemonServer {
         })
     }
 
+    /// Helper for handlers that query a single element property.
+    fn element_property<F, T>(&self, request: &Request, field_name: &str, extract: F) -> Response
+    where
+        F: FnOnce(&Element) -> T,
+        T: serde::Serialize,
+    {
+        let req_id = request.id;
+        self.with_detected_session_and_ref(request, |sess, element_ref| {
+            match sess.find_element(element_ref) {
+                Some(el) => Response::success(
+                    req_id,
+                    json!({
+                        "ref": element_ref,
+                        field_name: extract(el),
+                        "found": true
+                    }),
+                ),
+                None => Response::success(
+                    req_id,
+                    json!({
+                        "ref": element_ref,
+                        field_name: serde_json::Value::Null,
+                        "found": false,
+                        "message": ai_friendly_error("Element not found", Some(element_ref))
+                    }),
+                ),
+            }
+        })
+    }
+
     fn handle_request(&self, request: Request) -> Response {
         match request.method.as_str() {
             "ping" => Response::success(request.id, json!({ "pong": true })),
@@ -356,77 +386,48 @@ impl DaemonServer {
         let req_id = request.id;
         self.with_session_and_ref(&request, |sess, element_ref| {
             match sess.click(element_ref) {
-                Ok(()) => Response::success(req_id, json!({ "success": true })),
-                Err(e) => Response::success(
-                    req_id,
-                    json!({
-                        "success": false,
-                        "message": ai_friendly_error(&e.to_string(), Some(element_ref))
-                    }),
-                ),
+                Ok(()) => Response::action_success(req_id),
+                Err(e) => Response::action_failed(req_id, Some(element_ref), &e.to_string()),
             }
         })
     }
 
     fn handle_dbl_click(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
+        let req_id = request.id;
+        let element_ref = match request.require_str("ref") {
+            Ok(r) => r.to_owned(),
+            Err(resp) => return resp,
         };
+        let session_id = request.param_str("session");
 
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                {
-                    let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                        return Response::error(
-                            request.id,
-                            -32000,
-                            &ai_friendly_error("lock timeout", None),
-                        );
-                    };
-
-                    if let Err(e) = sess.click(element_ref) {
-                        return Response::success(
-                            request.id,
-                            json!({
-                                "success": false,
-                                "message": ai_friendly_error(&e.to_string(), Some(element_ref))
-                            }),
-                        );
-                    }
-                }
-
-                thread::sleep(Duration::from_millis(50));
-
-                {
-                    let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                        return Response::error(
-                            request.id,
-                            -32000,
-                            &ai_friendly_error("lock timeout (second click)", None),
-                        );
-                    };
-
-                    match sess.click(element_ref) {
-                        Ok(()) => Response::success(request.id, json!({ "success": true })),
-                        Err(e) => Response::success(
-                            request.id,
-                            json!({
-                                "success": false,
-                                "message": ai_friendly_error(&e.to_string(), Some(element_ref))
-                            }),
-                        ),
-                    }
-                }
+        let session = match self.session_manager.resolve(session_id) {
+            Ok(s) => s,
+            Err(e) => {
+                return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None))
             }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
+        };
+
+        // First click
+        {
+            let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
+                return lock_timeout_response(req_id, session_id);
+            };
+            if let Err(e) = sess.click(&element_ref) {
+                return Response::action_failed(req_id, Some(&element_ref), &e.to_string());
+            }
+        }
+
+        thread::sleep(Duration::from_millis(50));
+
+        // Second click
+        {
+            let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
+                return lock_timeout_response(req_id, session_id);
+            };
+            match sess.click(&element_ref) {
+                Ok(()) => Response::action_success(req_id),
+                Err(e) => Response::action_failed(req_id, Some(&element_ref), &e.to_string()),
+            }
         }
     }
 
@@ -438,14 +439,8 @@ impl DaemonServer {
         };
         self.with_session_and_ref(&request, |sess, element_ref| {
             match sess.fill(element_ref, &value) {
-                Ok(()) => Response::success(req_id, json!({ "success": true })),
-                Err(e) => Response::success(
-                    req_id,
-                    json!({
-                        "success": false,
-                        "message": ai_friendly_error(&e.to_string(), Some(element_ref))
-                    }),
-                ),
+                Ok(()) => Response::action_success(req_id),
+                Err(e) => Response::action_failed(req_id, Some(element_ref), &e.to_string()),
             }
         })
     }
@@ -458,14 +453,8 @@ impl DaemonServer {
         };
         let session_id = request.param_str("session");
         self.with_session(&request, session_id, |sess| match sess.keystroke(&key) {
-            Ok(()) => Response::success(req_id, json!({ "success": true })),
-            Err(e) => Response::success(
-                req_id,
-                json!({
-                    "success": false,
-                    "message": ai_friendly_error(&e.to_string(), Some(&key))
-                }),
-            ),
+            Ok(()) => Response::action_success(req_id),
+            Err(e) => Response::action_failed(req_id, Some(&key), &e.to_string()),
         })
     }
 
@@ -477,14 +466,8 @@ impl DaemonServer {
         };
         let session_id = request.param_str("session");
         self.with_session(&request, session_id, |sess| match sess.keydown(&key) {
-            Ok(()) => Response::success(req_id, json!({ "success": true })),
-            Err(e) => Response::success(
-                req_id,
-                json!({
-                    "success": false,
-                    "message": ai_friendly_error(&e.to_string(), Some(&key))
-                }),
-            ),
+            Ok(()) => Response::action_success(req_id),
+            Err(e) => Response::action_failed(req_id, Some(&key), &e.to_string()),
         })
     }
 
@@ -496,14 +479,8 @@ impl DaemonServer {
         };
         let session_id = request.param_str("session");
         self.with_session(&request, session_id, |sess| match sess.keyup(&key) {
-            Ok(()) => Response::success(req_id, json!({ "success": true })),
-            Err(e) => Response::success(
-                req_id,
-                json!({
-                    "success": false,
-                    "message": ai_friendly_error(&e.to_string(), Some(&key))
-                }),
-            ),
+            Ok(()) => Response::action_success(req_id),
+            Err(e) => Response::action_failed(req_id, Some(&key), &e.to_string()),
         })
     }
 
@@ -515,14 +492,8 @@ impl DaemonServer {
         };
         let session_id = request.param_str("session");
         self.with_session(&request, session_id, |sess| match sess.type_text(&text) {
-            Ok(()) => Response::success(req_id, json!({ "success": true })),
-            Err(e) => Response::success(
-                req_id,
-                json!({
-                    "success": false,
-                    "message": ai_friendly_error(&e.to_string(), None)
-                }),
-            ),
+            Ok(()) => Response::action_success(req_id),
+            Err(e) => Response::action_failed(req_id, None, &e.to_string()),
         })
     }
 
@@ -982,44 +953,13 @@ impl DaemonServer {
     }
 
     fn handle_get_text(&self, request: Request) -> Response {
-        let req_id = request.id;
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
-            match sess.find_element(element_ref) {
-                Some(el) => {
-                    let text = el.label.clone().or_else(|| el.value.clone());
-                    Response::success(
-                        req_id,
-                        json!({ "ref": element_ref, "text": text, "found": true }),
-                    )
-                }
-                None => Response::success(
-                    req_id,
-                    json!({
-                        "ref": element_ref, "text": null, "found": false,
-                        "message": ai_friendly_error("Element not found", Some(element_ref))
-                    }),
-                ),
-            }
+        self.element_property(&request, "text", |el| {
+            el.label.clone().or_else(|| el.value.clone())
         })
     }
 
     fn handle_get_value(&self, request: Request) -> Response {
-        let req_id = request.id;
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
-            match sess.find_element(element_ref) {
-                Some(el) => Response::success(
-                    req_id,
-                    json!({ "ref": element_ref, "value": el.value, "found": true }),
-                ),
-                None => Response::success(
-                    req_id,
-                    json!({
-                        "ref": element_ref, "value": null, "found": false,
-                        "message": ai_friendly_error("Element not found", Some(element_ref))
-                    }),
-                ),
-            }
-        })
+        self.element_property(&request, "value", |el| el.value.clone())
     }
 
     fn handle_is_visible(&self, request: Request) -> Response {
@@ -1031,44 +971,11 @@ impl DaemonServer {
     }
 
     fn handle_is_focused(&self, request: Request) -> Response {
-        let req_id = request.id;
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
-            match sess.find_element(element_ref) {
-                Some(el) => Response::success(
-                    req_id,
-                    json!({ "ref": element_ref, "focused": el.focused, "found": true }),
-                ),
-                None => Response::success(
-                    req_id,
-                    json!({
-                        "ref": element_ref, "focused": false, "found": false,
-                        "message": ai_friendly_error("Element not found", Some(element_ref))
-                    }),
-                ),
-            }
-        })
+        self.element_property(&request, "focused", |el| el.focused)
     }
 
     fn handle_is_enabled(&self, request: Request) -> Response {
-        let req_id = request.id;
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
-            match sess.find_element(element_ref) {
-                Some(el) => {
-                    let enabled = !el.disabled.unwrap_or(false);
-                    Response::success(
-                        req_id,
-                        json!({ "ref": element_ref, "enabled": enabled, "found": true }),
-                    )
-                }
-                None => Response::success(
-                    req_id,
-                    json!({
-                        "ref": element_ref, "enabled": false, "found": false,
-                        "message": ai_friendly_error("Element not found", Some(element_ref))
-                    }),
-                ),
-            }
-        })
+        self.element_property(&request, "enabled", |el| !el.disabled.unwrap_or(false))
     }
 
     fn handle_is_checked(&self, request: Request) -> Response {

@@ -1,5 +1,6 @@
+use super::error_messages::ai_friendly_error;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 #[derive(Debug, Deserialize)]
 pub struct Request {
@@ -79,5 +80,21 @@ impl Response {
                 data: None,
             }),
         }
+    }
+
+    /// Shorthand for a successful action response with just `{ "success": true }`.
+    pub fn action_success(id: u64) -> Self {
+        Self::success(id, json!({ "success": true }))
+    }
+
+    /// Shorthand for a failed action response with AI-friendly error message.
+    pub fn action_failed(id: u64, element_ref: Option<&str>, error: &str) -> Self {
+        Self::success(
+            id,
+            json!({
+                "success": false,
+                "message": ai_friendly_error(error, element_ref)
+            }),
+        )
     }
 }

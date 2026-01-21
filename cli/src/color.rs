@@ -4,8 +4,9 @@ use std::sync::OnceLock;
 static NO_COLOR: OnceLock<bool> = OnceLock::new();
 
 pub fn init(no_color_flag: bool) {
-    let _ = NO_COLOR
-        .set(no_color_flag || std::env::var("NO_COLOR").is_ok() || !std::io::stdout().is_terminal());
+    let _ = NO_COLOR.set(
+        no_color_flag || std::env::var("NO_COLOR").is_ok() || !std::io::stdout().is_terminal(),
+    );
 }
 
 pub fn is_disabled() -> bool {

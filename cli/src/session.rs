@@ -20,6 +20,24 @@ use thiserror::Error;
 use uuid::Uuid;
 
 // ============================================================================
+// Bounded Queue Helpers
+// ============================================================================
+
+/// Push an item to a bounded queue, removing oldest items if necessary
+fn push_bounded<T>(queue: &mut VecDeque<T>, item: T, max: usize) {
+    queue.push_back(item);
+    while queue.len() > max {
+        queue.pop_front();
+    }
+}
+
+/// Get the last N items from a queue
+fn get_last_n<T: Clone>(queue: &VecDeque<T>, count: usize) -> Vec<T> {
+    let start = queue.len().saturating_sub(count);
+    queue.iter().skip(start).cloned().collect()
+}
+
+// ============================================================================
 // SessionId Newtype
 // ============================================================================
 
@@ -173,6 +191,28 @@ pub enum SessionError {
     Timeout,
 }
 
+/// Modifier key types for keydown/keyup sequences
+#[derive(Clone, Copy)]
+enum ModifierKey {
+    Ctrl,
+    Alt,
+    Shift,
+    Meta,
+}
+
+impl ModifierKey {
+    /// Parse a modifier key from a string
+    fn from_str(key: &str) -> Option<Self> {
+        match key.to_lowercase().as_str() {
+            "ctrl" | "control" => Some(Self::Ctrl),
+            "alt" => Some(Self::Alt),
+            "shift" => Some(Self::Shift),
+            "meta" | "cmd" | "command" | "win" | "super" => Some(Self::Meta),
+            _ => None,
+        }
+    }
+}
+
 /// Held modifier keys state for keydown/keyup sequences
 #[derive(Default)]
 struct ModifierState {
@@ -180,6 +220,18 @@ struct ModifierState {
     alt: bool,
     shift: bool,
     meta: bool,
+}
+
+impl ModifierState {
+    /// Set a modifier key state
+    fn set(&mut self, key: ModifierKey, value: bool) {
+        match key {
+            ModifierKey::Ctrl => self.ctrl = value,
+            ModifierKey::Alt => self.alt = value,
+            ModifierKey::Shift => self.shift = value,
+            ModifierKey::Meta => self.meta = value,
+        }
+    }
 }
 
 /// Session state
@@ -301,35 +353,25 @@ impl Session {
     /// other keys. This method allows sequences like:
     ///   keydown("Shift") -> click(@item1) -> click(@item2) -> keyup("Shift")
     pub fn keydown(&mut self, key: &str) -> Result<(), SessionError> {
-        match key.to_lowercase().as_str() {
-            "ctrl" | "control" => self.held_modifiers.ctrl = true,
-            "alt" => self.held_modifiers.alt = true,
-            "shift" => self.held_modifiers.shift = true,
-            "meta" | "cmd" | "command" | "win" | "super" => self.held_modifiers.meta = true,
-            _ => {
-                return Err(SessionError::InvalidKey(format!(
-                    "{}. Only modifier keys (Ctrl, Alt, Shift, Meta) can be held",
-                    key
-                )))
-            }
-        }
+        let modifier = ModifierKey::from_str(key).ok_or_else(|| {
+            SessionError::InvalidKey(format!(
+                "{}. Only modifier keys (Ctrl, Alt, Shift, Meta) can be held",
+                key
+            ))
+        })?;
+        self.held_modifiers.set(modifier, true);
         Ok(())
     }
 
     /// Release a held modifier key
     pub fn keyup(&mut self, key: &str) -> Result<(), SessionError> {
-        match key.to_lowercase().as_str() {
-            "ctrl" | "control" => self.held_modifiers.ctrl = false,
-            "alt" => self.held_modifiers.alt = false,
-            "shift" => self.held_modifiers.shift = false,
-            "meta" | "cmd" | "command" | "win" | "super" => self.held_modifiers.meta = false,
-            _ => {
-                return Err(SessionError::InvalidKey(format!(
-                    "{}. Only modifier keys (Ctrl, Alt, Shift, Meta) can be released",
-                    key
-                )))
-            }
-        }
+        let modifier = ModifierKey::from_str(key).ok_or_else(|| {
+            SessionError::InvalidKey(format!(
+                "{}. Only modifier keys (Ctrl, Alt, Shift, Meta) can be released",
+                key
+            ))
+        })?;
+        self.held_modifiers.set(modifier, false);
         Ok(())
     }
 
@@ -470,44 +512,34 @@ impl Session {
     pub fn add_trace_entry(&mut self, action: &str, details: Option<&str>) {
         if self.trace.is_tracing {
             let timestamp_ms = self.trace.start_time.elapsed().as_millis() as u64;
-            self.trace.entries.push_back(TraceEntry {
+            let entry = TraceEntry {
                 timestamp_ms,
                 action: action.to_string(),
                 details: details.map(String::from),
-            });
-
-            while self.trace.entries.len() > self.trace.max_entries {
-                self.trace.entries.pop_front();
-            }
+            };
+            push_bounded(&mut self.trace.entries, entry, self.trace.max_entries);
         }
     }
 
     /// Get recent trace entries
     pub fn get_trace_entries(&self, count: usize) -> Vec<TraceEntry> {
-        let len = self.trace.entries.len();
-        let start = len.saturating_sub(count);
-        self.trace.entries.iter().skip(start).cloned().collect()
+        get_last_n(&self.trace.entries, count)
     }
 
     /// Add an error entry
     pub fn add_error(&mut self, message: &str, source: &str) {
         let timestamp = Utc::now().to_rfc3339();
-        self.errors.entries.push_back(ErrorEntry {
+        let entry = ErrorEntry {
             timestamp,
             message: message.to_string(),
             source: source.to_string(),
-        });
-
-        while self.errors.entries.len() > self.errors.max_entries {
-            self.errors.entries.pop_front();
-        }
+        };
+        push_bounded(&mut self.errors.entries, entry, self.errors.max_entries);
     }
 
     /// Get recent errors
     pub fn get_errors(&self, count: usize) -> Vec<ErrorEntry> {
-        let len = self.errors.entries.len();
-        let start = len.saturating_sub(count);
-        self.errors.entries.iter().skip(start).cloned().collect()
+        get_last_n(&self.errors.entries, count)
     }
 
     /// Get total error count

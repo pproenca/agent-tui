@@ -19,9 +19,6 @@ detect_platform() {
         Darwin)
             PLATFORM="darwin"
             ;;
-        MINGW*|MSYS*|CYGWIN*|Windows_NT)
-            PLATFORM="win32"
-            ;;
         *)
             echo "Unsupported platform: $OS" >&2
             exit 1
@@ -47,13 +44,6 @@ detect_platform() {
 PLATFORM_ARCH="$(detect_platform)"
 BINARY_NAME="agent-tui-${PLATFORM_ARCH}"
 
-# Add .exe extension on Windows
-case "$PLATFORM_ARCH" in
-    win32-*)
-        BINARY_NAME="${BINARY_NAME}.exe"
-        ;;
-esac
-
 BINARY_PATH="${SCRIPT_DIR}/${BINARY_NAME}"
 
 # Check if the binary exists
@@ -64,7 +54,7 @@ if [ ! -f "$BINARY_PATH" ]; then
     exit 1
 fi
 
-# Make sure it's executable (no-op on Windows)
+# Make sure it's executable
 chmod +x "$BINARY_PATH" 2>/dev/null || true
 
 # Execute the binary with all arguments

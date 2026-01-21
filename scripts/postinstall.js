@@ -24,8 +24,7 @@ function getPlatformArch() {
 
     const platformMap = {
         'darwin': 'darwin',
-        'linux': 'linux',
-        'win32': 'win32'
+        'linux': 'linux'
     };
 
     const archMap = {

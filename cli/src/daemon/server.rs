@@ -100,6 +100,19 @@ impl DaemonServer {
         })
     }
 
+    /// Helper for handlers that need detection but no ref param.
+    fn with_detected_session<F>(&self, request: &Request, f: F) -> Response
+    where
+        F: FnOnce(&mut crate::session::Session) -> Response,
+    {
+        let session_id = request.param_str("session");
+        self.with_session(request, session_id, |sess| {
+            let _ = sess.update();
+            sess.detect_elements();
+            f(sess)
+        })
+    }
+
     fn handle_request(&self, request: Request) -> Response {
         match request.method.as_str() {
             "ping" => Response::success(request.id, json!({ "pong": true })),
@@ -1094,61 +1107,52 @@ impl DaemonServer {
     }
 
     fn handle_count(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-        let role = params.get("role").and_then(|v| v.as_str());
-        let name = params.get("name").and_then(|v| v.as_str());
-        let text = params.get("text").and_then(|v| v.as_str());
+        let role = request.param_str("role").map(str::to_owned);
+        let name = request.param_str("name").map(str::to_owned);
+        let text = request.param_str("text").map(str::to_owned);
+        let req_id = request.id;
 
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                let elements = sess.detect_elements();
-
-                let count = elements
-                    .iter()
-                    .filter(|el| {
-                        if let Some(r) = role {
-                            if el.element_type.as_str() != r {
-                                return false;
-                            }
+        self.with_detected_session(&request, |sess| {
+            let elements = sess.cached_elements();
+            let count = elements
+                .iter()
+                .filter(|el| {
+                    if let Some(ref r) = role {
+                        if el.element_type.as_str() != r {
+                            return false;
                         }
-
-                        if let Some(n) = name {
-                            if !el.label.as_ref().map(|l| l.contains(n)).unwrap_or(false) {
-                                return false;
-                            }
+                    }
+                    if let Some(ref n) = name {
+                        if !el
+                            .label
+                            .as_deref()
+                            .map(|l| l.contains(n.as_str()))
+                            .unwrap_or(false)
+                        {
+                            return false;
                         }
-
-                        if let Some(t) = text {
-                            let in_label =
-                                el.label.as_ref().map(|l| l.contains(t)).unwrap_or(false);
-                            let in_value =
-                                el.value.as_ref().map(|v| v.contains(t)).unwrap_or(false);
-                            if !in_label && !in_value {
-                                return false;
-                            }
+                    }
+                    if let Some(ref t) = text {
+                        let in_label = el
+                            .label
+                            .as_deref()
+                            .map(|l| l.contains(t.as_str()))
+                            .unwrap_or(false);
+                        let in_value = el
+                            .value
+                            .as_deref()
+                            .map(|v| v.contains(t.as_str()))
+                            .unwrap_or(false);
+                        if !in_label && !in_value {
+                            return false;
                         }
-                        true
-                    })
-                    .count();
+                    }
+                    true
+                })
+                .count();
 
-                Response::success(
-                    request.id,
-                    json!({
-                        "count": count
-                    }),
-                )
-            }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+            Response::success(req_id, json!({ "count": count }))
+        })
     }
 
     fn handle_scroll(&self, request: Request) -> Response {
@@ -1275,44 +1279,30 @@ impl DaemonServer {
     }
 
     fn handle_get_focused(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-                let _ = sess.update();
-                let elements = sess.detect_elements();
-
-                if let Some(focused_el) = elements.iter().find(|e| e.focused) {
-                    Response::success(
-                        request.id,
-                        json!({
-                            "ref": focused_el.element_ref,
-                            "type": focused_el.element_type.as_str(),
-                            "label": focused_el.label,
-                            "value": focused_el.value,
-                            "found": true
-                        }),
-                    )
-                } else {
-                    Response::success(
-                        request.id,
-                        json!({
-                            "found": false,
-                            "message": "No focused element found. Run 'snapshot -i' to see all elements."
-                        }),
-                    )
-                }
+        let req_id = request.id;
+        self.with_detected_session(&request, |sess| {
+            let elements = sess.cached_elements();
+            if let Some(focused_el) = elements.iter().find(|e| e.focused) {
+                Response::success(
+                    req_id,
+                    json!({
+                        "ref": focused_el.element_ref,
+                        "type": focused_el.element_type.as_str(),
+                        "label": focused_el.label,
+                        "value": focused_el.value,
+                        "found": true
+                    }),
+                )
+            } else {
+                Response::success(
+                    req_id,
+                    json!({
+                        "found": false,
+                        "message": "No focused element found. Run 'snapshot -i' to see all elements."
+                    }),
+                )
             }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
-        }
+        })
     }
 
     fn handle_get_title(&self, request: Request) -> Response {
@@ -1397,274 +1387,163 @@ impl DaemonServer {
     }
 
     fn handle_toggle(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
+        let force_state = request.param_bool("state");
+        let req_id = request.id;
 
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-        let force_state = params.get("state").and_then(|v| v.as_bool());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                let current_checked = match sess.find_element(element_ref) {
-                    Some(el) => {
-                        let el_type = el.element_type.as_str();
-                        if el_type != "checkbox" && el_type != "radio" {
-                            return Response::success(
-                                request.id,
-                                json!({
-                                    "success": false,
-                                    "message": format!(
-                                        "Element {} is a {} not a checkbox/radio. Run 'snapshot -i' to see element types.",
-                                        element_ref, el_type
-                                    )
-                                }),
-                            );
-                        }
-                        el.checked.unwrap_or(false)
-                    }
-                    None => {
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
+            let current_checked = match sess.find_element(element_ref) {
+                Some(el) => {
+                    let el_type = el.element_type.as_str();
+                    if el_type != "checkbox" && el_type != "radio" {
                         return Response::success(
-                            request.id,
+                            req_id,
                             json!({
                                 "success": false,
-                                "message": ai_friendly_error("Element not found", Some(element_ref))
+                                "message": format!(
+                                    "Element {} is a {} not a checkbox/radio. Run 'snapshot -i' to see element types.",
+                                    element_ref, el_type
+                                )
                             }),
                         );
                     }
-                };
-
-                let should_toggle = match force_state {
-                    Some(desired_state) => desired_state != current_checked,
-                    None => true,
-                };
-
-                let new_checked = if should_toggle {
-                    if let Err(e) = sess.pty_write(b" ") {
-                        return Response::error(
-                            request.id,
-                            -32000,
-                            &ai_friendly_error(&e.to_string(), None),
-                        );
-                    }
-                    !current_checked
-                } else {
-                    current_checked
-                };
-
-                Response::success(
-                    request.id,
-                    json!({
-                        "success": true,
-                        "ref": element_ref,
-                        "checked": new_checked
-                    }),
-                )
-            }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
-        }
-    }
-
-    fn handle_select(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let option = match params.get("option").and_then(|v| v.as_str()) {
-            Some(o) => o,
-            None => return Response::error(request.id, -32602, "Missing 'option' param"),
-        };
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                match sess.find_element(element_ref) {
-                    Some(el) => {
-                        if el.element_type.as_str() != "select" {
-                            return Response::success(
-                                request.id,
-                                json!({
-                                    "success": false,
-                                    "message": ai_friendly_error("Element is not a select", Some(element_ref))
-                                }),
-                            );
-                        }
-                    }
-                    None => {
-                        return Response::success(
-                            request.id,
-                            json!({
-                                "success": false,
-                                "message": ai_friendly_error("Element not found", Some(element_ref))
-                            }),
-                        );
-                    }
+                    el.checked.unwrap_or(false)
                 }
-
-                let screen_text = sess.screen_text();
-                let framework = detect_framework(&screen_text);
-
-                let result = match framework {
-                    Framework::Unknown => sess
-                        .pty_write(b"\r")
-                        .and_then(|_| sess.pty_write(option.as_bytes()))
-                        .and_then(|_| sess.pty_write(b"\r")),
-                    _ => navigate_to_option(&mut sess, option, &screen_text)
-                        .and_then(|_| sess.pty_write(b"\r")),
-                };
-
-                if let Err(e) = result {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), None),
-                    );
-                }
-
-                Response::success(
-                    request.id,
-                    json!({
-                        "success": true,
-                        "ref": element_ref,
-                        "option": option
-                    }),
-                )
-            }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
-    }
-
-    fn handle_multiselect(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
-
-        let element_ref = match params.get("ref").and_then(|v| v.as_str()) {
-            Some(r) => r,
-            None => return Response::error(request.id, -32602, "Missing 'ref' param"),
-        };
-
-        let options: Vec<String> = match params.get("options").and_then(|v| v.as_array()) {
-            Some(arr) => arr
-                .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect(),
-            None => return Response::error(request.id, -32602, "Missing 'options' param"),
-        };
-
-        if options.is_empty() {
-            return Response::error(request.id, -32602, "Options array cannot be empty");
-        }
-
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                sess.detect_elements();
-
-                if sess.find_element(element_ref).is_none() {
+                None => {
                     return Response::success(
-                        request.id,
+                        req_id,
                         json!({
                             "success": false,
-                            "message": ai_friendly_error("Element not found", Some(element_ref)),
-                            "selected_options": []
+                            "message": ai_friendly_error("Element not found", Some(element_ref))
                         }),
                     );
                 }
+            };
 
-                let mut selected = Vec::new();
-                for option in &options {
-                    if let Err(e) = sess.pty_write(option.as_bytes()) {
-                        return Response::error(
-                            request.id,
-                            -32000,
-                            &ai_friendly_error(&e.to_string(), None),
-                        );
-                    }
-
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-
-                    if let Err(e) = sess.pty_write(b" ") {
-                        return Response::error(
-                            request.id,
-                            -32000,
-                            &ai_friendly_error(&e.to_string(), None),
-                        );
-                    }
-
-                    if let Err(e) = sess.pty_write(&[0x15]) {
-                        return Response::error(
-                            request.id,
-                            -32000,
-                            &ai_friendly_error(&e.to_string(), None),
-                        );
-                    }
-
-                    selected.push(option.clone());
+            let should_toggle = force_state != Some(current_checked);
+            let new_checked = if should_toggle {
+                if let Err(e) = sess.pty_write(b" ") {
+                    return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
                 }
+                !current_checked
+            } else {
+                current_checked
+            };
 
-                if let Err(e) = sess.pty_write(b"\r") {
+            Response::success(req_id, json!({ "success": true, "ref": element_ref, "checked": new_checked }))
+        })
+    }
+
+    fn handle_select(&self, request: Request) -> Response {
+        let option = match request.require_str("option") {
+            Ok(o) => o.to_owned(),
+            Err(resp) => return resp,
+        };
+        let req_id = request.id;
+
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
+            match sess.find_element(element_ref) {
+                Some(el) if el.element_type.as_str() != "select" => {
+                    return Response::success(
+                        req_id,
+                        json!({
+                            "success": false,
+                            "message": ai_friendly_error("Element is not a select", Some(element_ref))
+                        }),
+                    );
+                }
+                None => {
+                    return Response::success(
+                        req_id,
+                        json!({
+                            "success": false,
+                            "message": ai_friendly_error("Element not found", Some(element_ref))
+                        }),
+                    );
+                }
+                _ => {}
+            }
+
+            let screen_text = sess.screen_text();
+            let framework = detect_framework(&screen_text);
+
+            let result = match framework {
+                Framework::Unknown => sess
+                    .pty_write(b"\r")
+                    .and_then(|_| sess.pty_write(option.as_bytes()))
+                    .and_then(|_| sess.pty_write(b"\r")),
+                _ => navigate_to_option(sess, &option, &screen_text)
+                    .and_then(|_| sess.pty_write(b"\r")),
+            };
+
+            if let Err(e) = result {
+                return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+            }
+
+            Response::success(req_id, json!({ "success": true, "ref": element_ref, "option": option }))
+        })
+    }
+
+    fn handle_multiselect(&self, request: Request) -> Response {
+        let options: Vec<String> = match request.require_array("options") {
+            Ok(arr) => arr
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect(),
+            Err(resp) => return resp,
+        };
+        if options.is_empty() {
+            return Response::error(request.id, -32602, "Options array cannot be empty");
+        }
+        let req_id = request.id;
+
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
+            if sess.find_element(element_ref).is_none() {
+                return Response::success(
+                    req_id,
+                    json!({
+                        "success": false,
+                        "message": ai_friendly_error("Element not found", Some(element_ref)),
+                        "selected_options": []
+                    }),
+                );
+            }
+
+            let mut selected = Vec::new();
+            for option in &options {
+                if let Err(e) = sess.pty_write(option.as_bytes()) {
                     return Response::error(
-                        request.id,
+                        req_id,
                         -32000,
                         &ai_friendly_error(&e.to_string(), None),
                     );
                 }
-
-                Response::success(
-                    request.id,
-                    json!({
-                        "success": true,
-                        "ref": element_ref,
-                        "selected_options": selected
-                    }),
-                )
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                if let Err(e) = sess.pty_write(b" ") {
+                    return Response::error(
+                        req_id,
+                        -32000,
+                        &ai_friendly_error(&e.to_string(), None),
+                    );
+                }
+                if let Err(e) = sess.pty_write(&[0x15]) {
+                    return Response::error(
+                        req_id,
+                        -32000,
+                        &ai_friendly_error(&e.to_string(), None),
+                    );
+                }
+                selected.push(option.clone());
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+
+            if let Err(e) = sess.pty_write(b"\r") {
+                return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+            }
+
+            Response::success(
+                req_id,
+                json!({ "success": true, "ref": element_ref, "selected_options": selected }),
+            )
+        })
     }
 
     fn handle_attach(&self, request: Request) -> Response {

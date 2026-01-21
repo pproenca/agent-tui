@@ -1,0 +1,13 @@
+# Clippy configuration for agent-tui
+# See: https://doc.rust-lang.org/clippy/configuration.html
+
+# Disallow changing the current working directory
+disallowed-methods = [
+    { path = "std::env::set_current_dir", reason = "Use absolute paths to avoid directory-related bugs" }
+]
+
+# Cognitive complexity threshold for functions
+cognitive-complexity-threshold = 30
+
+# Maximum number of lines in a function
+too-many-lines-threshold = 200

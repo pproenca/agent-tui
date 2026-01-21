@@ -3,29 +3,52 @@ name: CI
 on:
   push:
     branches: [main, master]
+    paths:
+      - 'cli/**'
+      - 'Cargo.lock'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main, master]
+    paths:
+      - 'cli/**'
+      - 'Cargo.lock'
+      - '.github/workflows/ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG: info
 
 jobs:
-  rust-cli:
-    name: Build Rust CLI
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        rust: [stable]
-
+  format:
+    name: Check Formatting
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ matrix.rust }}
-          components: clippy, rustfmt
+          components: rustfmt
+
+      - name: Check formatting
+        working-directory: cli
+        run: cargo fmt --all -- --check
+
+  lint:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -34,17 +57,65 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             cli/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('cli/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Check formatting
-        working-directory: cli
-        run: cargo fmt --all -- --check
+            ${{ runner.os }}-cargo-lint-
 
       - name: Clippy
         working-directory: cli
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+  udeps:
+    name: Check Unused Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-udeps
+        uses: taiki-e/install-action@cargo-udeps
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-udeps-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-udeps-
+
+      - name: Check unused dependencies
+        working-directory: cli
+        run: cargo +nightly udeps --all-targets
+
+  build:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
 
       - name: Build
         working-directory: cli
@@ -63,9 +134,10 @@ jobs:
 
   integration:
     name: Integration Tests (${{ matrix.os }})
-    needs: [rust-cli]
+    needs: [build]
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
 

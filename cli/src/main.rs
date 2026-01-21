@@ -74,8 +74,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // Determine output format (--json overrides --format)
+    let format = if cli.json {
+        commands::OutputFormat::Json
+    } else {
+        cli.format
+    };
+
     // Create handler context
-    let mut ctx = HandlerContext::new(&mut client, cli.session, cli.format);
+    let mut ctx = HandlerContext::new(&mut client, cli.session, format);
 
     match cli.command {
         Commands::Daemon => unreachable!(),             // Handled above
@@ -101,7 +108,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Fill { element_ref, value } => {
             handlers::handle_fill(&mut ctx, element_ref, value)?
         }
-        Commands::Keystroke { key } => handlers::handle_keystroke(&mut ctx, key)?,
+        Commands::Press { key } => handlers::handle_press(&mut ctx, key)?,
         Commands::Type { text } => handlers::handle_type(&mut ctx, text)?,
         Commands::KeyDown { key } => handlers::handle_keydown(&mut ctx, key)?,
         Commands::KeyUp { key } => handlers::handle_keyup(&mut ctx, key)?,
@@ -135,10 +142,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Restart => handlers::handle_restart(&mut ctx)?,
         Commands::Sessions => handlers::handle_sessions(&mut ctx)?,
         Commands::Health { verbose } => handlers::handle_health(&mut ctx, verbose)?,
-        Commands::Screen {
+        Commands::Screenshot {
             strip_ansi,
             include_cursor,
-        } => handlers::handle_screen(&mut ctx, strip_ansi, include_cursor)?,
+        } => handlers::handle_screenshot(&mut ctx, strip_ansi, include_cursor)?,
         Commands::Resize { cols, rows } => handlers::handle_resize(&mut ctx, cols, rows)?,
         Commands::Version => handlers::handle_version(&mut ctx)?,
         Commands::Cleanup { all } => handlers::handle_cleanup(&mut ctx, all)?,
@@ -170,18 +177,36 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Focus { element_ref } => handlers::handle_focus(&mut ctx, element_ref)?,
         Commands::Clear { element_ref } => handlers::handle_clear(&mut ctx, element_ref)?,
         Commands::SelectAll { element_ref } => handlers::handle_select_all(&mut ctx, element_ref)?,
-        Commands::GetText { element_ref } => handlers::handle_get_text(&mut ctx, element_ref)?,
-        Commands::GetValue { element_ref } => handlers::handle_get_value(&mut ctx, element_ref)?,
-        Commands::GetFocused => handlers::handle_get_focused(&mut ctx)?,
-        Commands::GetTitle => handlers::handle_get_title(&mut ctx)?,
-        Commands::IsVisible { element_ref } => handlers::handle_is_visible(&mut ctx, element_ref)?,
-        Commands::IsFocused { element_ref } => handlers::handle_is_focused(&mut ctx, element_ref)?,
-        Commands::IsEnabled { element_ref } => handlers::handle_is_enabled(&mut ctx, element_ref)?,
-        Commands::IsChecked { element_ref } => handlers::handle_is_checked(&mut ctx, element_ref)?,
+        Commands::Get(command) => match command {
+            commands::GetCommand::Text { element_ref } => {
+                handlers::handle_get_text(&mut ctx, element_ref)?
+            }
+            commands::GetCommand::Value { element_ref } => {
+                handlers::handle_get_value(&mut ctx, element_ref)?
+            }
+            commands::GetCommand::Focused => handlers::handle_get_focused(&mut ctx)?,
+            commands::GetCommand::Title => handlers::handle_get_title(&mut ctx)?,
+        },
+        Commands::Is(command) => match command {
+            commands::IsCommand::Visible { element_ref } => {
+                handlers::handle_is_visible(&mut ctx, element_ref)?
+            }
+            commands::IsCommand::Focused { element_ref } => {
+                handlers::handle_is_focused(&mut ctx, element_ref)?
+            }
+            commands::IsCommand::Enabled { element_ref } => {
+                handlers::handle_is_enabled(&mut ctx, element_ref)?
+            }
+            commands::IsCommand::Checked { element_ref } => {
+                handlers::handle_is_checked(&mut ctx, element_ref)?
+            }
+        },
         Commands::Count { role, name, text } => handlers::handle_count(&mut ctx, role, name, text)?,
         Commands::Toggle { element_ref, state } => {
             handlers::handle_toggle(&mut ctx, element_ref, state)?
         }
+        Commands::Check { element_ref } => handlers::handle_check(&mut ctx, element_ref)?,
+        Commands::Uncheck { element_ref } => handlers::handle_uncheck(&mut ctx, element_ref)?,
         Commands::Attach {
             session_id,
             interactive,

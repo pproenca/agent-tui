@@ -273,26 +273,26 @@ fn test_fill_error_handling() {
 }
 
 // =============================================================================
-// Keystroke Command Tests
+// Press Command Tests
 // =============================================================================
 
 #[test]
-fn test_keystroke_sends_key() {
+fn test_press_sends_key() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["keystroke", "Enter"])
+        .run(&["press", "Enter"])
         .success()
-        .stdout(predicate::str::contains("Keystroke sent"));
+        .stdout(predicate::str::contains("Key pressed"));
 
     harness.assert_method_called_with("keystroke", json!({"key": "Enter"}));
 }
 
 #[test]
-fn test_keystroke_with_modifier() {
+fn test_press_with_modifier() {
     let harness = TestHarness::new();
 
-    harness.run(&["keystroke", "Ctrl+C"]).success();
+    harness.run(&["press", "Ctrl+C"]).success();
 
     let request = harness.last_request_for("keystroke").unwrap();
     let params = request.params.unwrap();
@@ -300,23 +300,23 @@ fn test_keystroke_with_modifier() {
 }
 
 #[test]
-fn test_keystroke_arrow_keys() {
+fn test_press_arrow_keys() {
     let harness = TestHarness::new();
 
     for key in &["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"] {
         harness.clear_requests();
-        harness.run(&["keystroke", key]).success();
+        harness.run(&["press", key]).success();
         harness.assert_method_called_with("keystroke", json!({"key": key}));
     }
 }
 
 #[test]
-fn test_keystroke_function_keys() {
+fn test_press_function_keys() {
     let harness = TestHarness::new();
 
     for key in &["F1", "F5", "F10", "F12"] {
         harness.clear_requests();
-        harness.run(&["keystroke", key]).success();
+        harness.run(&["press", key]).success();
         harness.assert_method_called_with("keystroke", json!({"key": key}));
     }
 }
@@ -582,15 +582,15 @@ fn test_type_text() {
 }
 
 // =============================================================================
-// Screen Command Tests
+// Screenshot Command Tests
 // =============================================================================
 
 #[test]
-fn test_screen_returns_raw_content() {
+fn test_screenshot_returns_raw_content() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["screen"])
+        .run(&["screenshot"])
         .success()
         .stdout(predicate::str::contains("Test screen content"));
 
@@ -639,7 +639,7 @@ fn test_toggle_checkbox() {
 }
 
 // =============================================================================
-// GetText/GetValue/IsVisible/IsFocused Command Tests
+// Get/Is Command Tests (subcommand format)
 // =============================================================================
 
 #[test]
@@ -647,7 +647,7 @@ fn test_get_text() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["get-text", "@btn1"])
+        .run(&["get", "text", "@btn1"])
         .success()
         .stdout(predicate::str::contains("Test Text"));
 
@@ -659,7 +659,7 @@ fn test_get_value() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["get-value", "@inp1"])
+        .run(&["get", "value", "@inp1"])
         .success()
         .stdout(predicate::str::contains("test-value"));
 
@@ -671,7 +671,7 @@ fn test_is_visible() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["is-visible", "@btn1"])
+        .run(&["is", "visible", "@btn1"])
         .success()
         .stdout(predicate::str::contains("@btn1 is visible"));
 
@@ -683,7 +683,7 @@ fn test_is_focused() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["is-focused", "@inp1"])
+        .run(&["is", "focused", "@inp1"])
         .success()
         .stdout(predicate::str::contains("@inp1 is focused"));
 
@@ -695,7 +695,7 @@ fn test_is_enabled() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["is-enabled", "@btn1"])
+        .run(&["is", "enabled", "@btn1"])
         .success()
         .stdout(predicate::str::contains("@btn1 is enabled"));
 
@@ -712,7 +712,7 @@ fn test_is_checked() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["is-checked", "@cb1"])
+        .run(&["is", "checked", "@cb1"])
         .success()
         .stdout(predicate::str::contains("@cb1 is checked"));
 
@@ -1145,7 +1145,7 @@ fn test_keydown_keyup_sequence() {
 
     // Simulate a modifier key sequence
     harness.run(&["keydown", "Ctrl"]).success();
-    harness.run(&["keystroke", "c"]).success();
+    harness.run(&["press", "c"]).success();
     harness.run(&["keyup", "Ctrl"]).success();
 
     // Verify all three methods were called

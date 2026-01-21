@@ -6,7 +6,7 @@ const LONG_ABOUT: &str = r#"agent-tui enables AI agents to interact with TUI (Te
 WORKFLOW:
     1. Spawn a TUI application
     2. Take snapshots to see the screen and detect elements
-    3. Interact using fill, click, keystroke commands
+    3. Interact using fill, click, press commands
     4. Wait for UI changes
     5. Kill the session when done
 
@@ -24,13 +24,13 @@ EXAMPLES:
     agent-tui spawn "npx create-next-app"
     agent-tui snapshot -i
     agent-tui fill @e1 "my-project"
-    agent-tui keystroke Enter
+    agent-tui press Enter
     agent-tui wait "success"
     agent-tui kill
 
     # Interactive menu navigation
     agent-tui spawn htop
-    agent-tui keystroke F10
+    agent-tui press F10
     agent-tui snapshot -i
     agent-tui click @e1
     agent-tui kill
@@ -55,6 +55,10 @@ pub struct Cli {
     /// Output format
     #[arg(short, long, global = true, default_value = "text")]
     pub format: OutputFormat,
+
+    /// Output as JSON (shorthand for --format json)
+    #[arg(long, global = true)]
+    pub json: bool,
 
     /// Disable colored output (also respects NO_COLOR env var)
     #[arg(long, global = true, env = "NO_COLOR")]
@@ -158,8 +162,8 @@ EXAMPLES:
         value: String,
     },
 
-    /// Send a keystroke to the terminal
-    #[command(long_about = r#"Send a keystroke to the terminal.
+    /// Press a key or key combination
+    #[command(long_about = r#"Press a key or key combination.
 
 Sends a key press to the active terminal session. Supports special keys,
 modifiers, and key combinations.
@@ -176,13 +180,13 @@ MODIFIERS:
     Shift+<key>  - Shift modifier
 
 EXAMPLES:
-    agent-tui keystroke Enter
-    agent-tui keystroke Tab
-    agent-tui keystroke Ctrl+C
-    agent-tui keystroke ArrowDown
-    agent-tui keystroke F10"#)]
-    Keystroke {
-        /// Key to send (e.g., "Enter", "Tab", "Ctrl+C", "ArrowDown")
+    agent-tui press Enter
+    agent-tui press Tab
+    agent-tui press Ctrl+C
+    agent-tui press ArrowDown
+    agent-tui press F10"#)]
+    Press {
+        /// Key to press (e.g., "Enter", "Tab", "Ctrl+C", "ArrowDown")
         key: String,
     },
 
@@ -432,55 +436,13 @@ EXAMPLES:
         element_ref: String,
     },
 
-    /// Get the text content of an element
-    GetText {
-        /// Element reference (e.g., @btn1)
-        #[arg(name = "ref")]
-        element_ref: String,
-    },
+    /// Get information about elements or session
+    #[command(subcommand)]
+    Get(GetCommand),
 
-    /// Get the value of an input element
-    GetValue {
-        /// Element reference (e.g., @inp1)
-        #[arg(name = "ref")]
-        element_ref: String,
-    },
-
-    /// Get the currently focused element (agent-browser parity)
-    #[command(name = "get-focused")]
-    GetFocused,
-
-    /// Get the session title/command
-    #[command(name = "get-title")]
-    GetTitle,
-
-    /// Check if an element is visible
-    IsVisible {
-        /// Element reference (e.g., @btn1)
-        #[arg(name = "ref")]
-        element_ref: String,
-    },
-
-    /// Check if an element is focused
-    IsFocused {
-        /// Element reference (e.g., @inp1)
-        #[arg(name = "ref")]
-        element_ref: String,
-    },
-
-    /// Check if an element is enabled (not disabled)
-    IsEnabled {
-        /// Element reference (e.g., @btn1)
-        #[arg(name = "ref")]
-        element_ref: String,
-    },
-
-    /// Check if a checkbox or radio button is checked
-    IsChecked {
-        /// Element reference (e.g., @cb1)
-        #[arg(name = "ref")]
-        element_ref: String,
-    },
+    /// Check element state (visible, focused, enabled, checked)
+    #[command(subcommand)]
+    Is(IsCommand),
 
     /// Count elements matching criteria
     #[command(long_about = r#"Count elements matching criteria.
@@ -506,17 +468,16 @@ EXAMPLES:
         text: Option<String>,
     },
 
-    /// Get raw screen text (without element detection)
-    #[command(long_about = r#"Get raw screen content without element detection.
+    /// Take a text screenshot of the terminal
+    #[command(long_about = r#"Take a text screenshot of the terminal.
 
-Returns the terminal screen as text. This is the TUI equivalent of browser's
-screenshot (for visual) and content (for raw data) commands.
+Returns the terminal screen as text without element detection.
 
 EXAMPLES:
-    agent-tui screen                  # Raw screen with ANSI codes
-    agent-tui screen --strip-ansi     # Plain text without colors
-    agent-tui screen --include-cursor # Include cursor position"#)]
-    Screen {
+    agent-tui screenshot                  # Raw screen with ANSI codes
+    agent-tui screenshot --strip-ansi     # Plain text without colors
+    agent-tui screenshot --include-cursor # Include cursor position"#)]
+    Screenshot {
         /// Strip ANSI escape codes (colors, formatting)
         #[arg(long)]
         strip_ansi: bool,
@@ -532,10 +493,12 @@ EXAMPLES:
 Use this to toggle the checked state of a checkbox or radio button.
 By default, it inverts the current state. Use --state to force a specific state.
 
+For explicit check/uncheck operations, prefer using 'check' and 'uncheck' commands.
+
 EXAMPLES:
     agent-tui toggle @e5              # Toggle current state
-    agent-tui toggle @e5 --state true # Force checked (equivalent to browser's check)
-    agent-tui toggle @e5 --state false # Force unchecked (equivalent to browser's uncheck)"#)]
+    agent-tui toggle @e5 --state true # Force checked
+    agent-tui toggle @e5 --state false # Force unchecked"#)]
     Toggle {
         /// Element reference (e.g., @cb1)
         #[arg(name = "ref")]
@@ -544,6 +507,32 @@ EXAMPLES:
         /// Force specific state: true to check, false to uncheck
         #[arg(long)]
         state: Option<bool>,
+    },
+
+    /// Check a checkbox (agent-browser parity)
+    #[command(long_about = r#"Check a checkbox element.
+
+Ensures the checkbox is checked. If already checked, this is a no-op.
+
+EXAMPLES:
+    agent-tui check @e2               # Check the checkbox"#)]
+    Check {
+        /// Element reference (e.g., @cb1)
+        #[arg(name = "ref")]
+        element_ref: String,
+    },
+
+    /// Uncheck a checkbox (agent-browser parity)
+    #[command(long_about = r#"Uncheck a checkbox element.
+
+Ensures the checkbox is unchecked. If already unchecked, this is a no-op.
+
+EXAMPLES:
+    agent-tui uncheck @e2             # Uncheck the checkbox"#)]
+    Uncheck {
+        /// Element reference (e.g., @cb1)
+        #[arg(name = "ref")]
+        element_ref: String,
     },
 
     // === Recording and Debugging Commands ===
@@ -806,6 +795,62 @@ EXAMPLES:
     },
 }
 
+/// Subcommands for the `get` command
+#[derive(Debug, Subcommand)]
+pub enum GetCommand {
+    /// Get the text content of an element
+    Text {
+        /// Element reference (e.g., @btn1)
+        #[arg(name = "ref")]
+        element_ref: String,
+    },
+
+    /// Get the value of an input element
+    Value {
+        /// Element reference (e.g., @inp1)
+        #[arg(name = "ref")]
+        element_ref: String,
+    },
+
+    /// Get the currently focused element
+    Focused,
+
+    /// Get the session title/command
+    Title,
+}
+
+/// Subcommands for the `is` command
+#[derive(Debug, Subcommand)]
+pub enum IsCommand {
+    /// Check if an element is visible
+    Visible {
+        /// Element reference (e.g., @btn1)
+        #[arg(name = "ref")]
+        element_ref: String,
+    },
+
+    /// Check if an element is focused
+    Focused {
+        /// Element reference (e.g., @inp1)
+        #[arg(name = "ref")]
+        element_ref: String,
+    },
+
+    /// Check if an element is enabled (not disabled)
+    Enabled {
+        /// Element reference (e.g., @btn1)
+        #[arg(name = "ref")]
+        element_ref: String,
+    },
+
+    /// Check if a checkbox or radio button is checked
+    Checked {
+        /// Element reference (e.g., @cb1)
+        #[arg(name = "ref")]
+        element_ref: String,
+    },
+}
+
 #[derive(Clone, Copy, Debug, ValueEnum, Default)]
 pub enum RecordFormat {
     #[default]
@@ -1010,9 +1055,9 @@ mod tests {
         assert_eq!(value, "test value");
     }
 
-    /// Test keystroke command
+    /// Test press command
     #[test]
-    fn test_keystroke_command() {
+    fn test_press_command() {
         let test_cases = vec![
             "Enter",
             "Tab",
@@ -1036,10 +1081,10 @@ mod tests {
         ];
 
         for key in test_cases {
-            let cli = Cli::parse_from(["agent-tui", "keystroke", key]);
-            let Commands::Keystroke { key: parsed_key } = cli.command else {
+            let cli = Cli::parse_from(["agent-tui", "press", key]);
+            let Commands::Press { key: parsed_key } = cli.command else {
                 panic!(
-                    "Expected Keystroke command for key: {key}, got {:?}",
+                    "Expected Press command for key: {key}, got {:?}",
                     cli.command
                 );
             };

@@ -69,7 +69,6 @@ impl PtyHandle {
             }
         }
 
-        // Set TERM for proper terminal emulation
         cmd.env("TERM", "xterm-256color");
 
         let child = pair
@@ -82,7 +81,6 @@ impl PtyHandle {
             .try_clone_reader()
             .map_err(|e| PtyError::Open(e.to_string()))?;
 
-        // Get raw fd for non-blocking poll from the master
         let reader_fd = pair
             .master
             .as_raw_fd()
@@ -134,7 +132,6 @@ impl PtyHandle {
     /// Read available data without blocking
     /// Returns Ok(0) if no data available within timeout
     pub fn try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, PtyError> {
-        // Use poll to check if data is available
         let mut pollfd = libc::pollfd {
             fd: self.reader_fd,
             events: libc::POLLIN,
@@ -148,11 +145,9 @@ impl PtyHandle {
         }
 
         if result == 0 {
-            // Timeout, no data available
             return Ok(0);
         }
 
-        // Data available, read it
         let mut reader = mutex_lock_or_recover(&self.reader);
         reader.read(buf).map_err(|e| PtyError::Read(e.to_string()))
     }
@@ -180,7 +175,6 @@ impl PtyHandle {
 
 /// Parse a key string into escape sequences
 pub fn key_to_escape_sequence(key: &str) -> Option<Vec<u8>> {
-    // Handle modifier combinations
     if key.contains('+') {
         let parts: Vec<&str> = key.split('+').collect();
         if parts.len() == 2 {
@@ -189,52 +183,44 @@ pub fn key_to_escape_sequence(key: &str) -> Option<Vec<u8>> {
 
             return match modifier.to_lowercase().as_str() {
                 "ctrl" | "control" => {
-                    // Ctrl+letter produces ASCII 1-26
                     if base_key.len() == 1 {
                         let c = base_key.chars().next()?.to_ascii_uppercase();
                         if c.is_ascii_alphabetic() {
                             return Some(vec![(c as u8) - b'A' + 1]);
                         }
                     }
-                    // Special ctrl combinations
+
                     match base_key.to_lowercase().as_str() {
-                        "c" => Some(vec![3]),   // Ctrl+C (SIGINT)
-                        "d" => Some(vec![4]),   // Ctrl+D (EOF)
-                        "z" => Some(vec![26]),  // Ctrl+Z (SIGTSTP)
-                        "\\" => Some(vec![28]), // Ctrl+\ (SIGQUIT)
-                        "[" => Some(vec![27]),  // Ctrl+[ (ESC)
+                        "c" => Some(vec![3]),
+                        "d" => Some(vec![4]),
+                        "z" => Some(vec![26]),
+                        "\\" => Some(vec![28]),
+                        "[" => Some(vec![27]),
                         _ => None,
                     }
                 }
                 "alt" | "meta" => {
-                    // Alt+key sends ESC followed by the key
                     let base = key_to_escape_sequence(base_key)?;
-                    let mut result = vec![0x1b]; // ESC
+                    let mut result = vec![0x1b];
                     result.extend(base);
                     Some(result)
                 }
-                "shift" => {
-                    // For function keys, shift modifies the escape sequence
-                    match base_key.to_lowercase().as_str() {
-                        "tab" => Some(vec![0x1b, b'[', b'Z']), // Shift+Tab
-                        _ => {
-                            // For letters, just uppercase
-                            if base_key.len() == 1 {
-                                Some(base_key.to_uppercase().as_bytes().to_vec())
-                            } else {
-                                None
-                            }
+                "shift" => match base_key.to_lowercase().as_str() {
+                    "tab" => Some(vec![0x1b, b'[', b'Z']),
+                    _ => {
+                        if base_key.len() == 1 {
+                            Some(base_key.to_uppercase().as_bytes().to_vec())
+                        } else {
+                            None
                         }
                     }
-                }
+                },
                 _ => None,
             };
         }
     }
 
-    // Handle single keys
     match key {
-        // Standard keys
         "Enter" | "Return" => Some(vec![b'\r']),
         "Tab" => Some(vec![b'\t']),
         "Escape" | "Esc" => Some(vec![0x1b]),
@@ -242,20 +228,17 @@ pub fn key_to_escape_sequence(key: &str) -> Option<Vec<u8>> {
         "Delete" => Some(vec![0x1b, b'[', b'3', b'~']),
         "Space" => Some(vec![b' ']),
 
-        // Arrow keys
         "ArrowUp" | "Up" => Some(vec![0x1b, b'[', b'A']),
         "ArrowDown" | "Down" => Some(vec![0x1b, b'[', b'B']),
         "ArrowRight" | "Right" => Some(vec![0x1b, b'[', b'C']),
         "ArrowLeft" | "Left" => Some(vec![0x1b, b'[', b'D']),
 
-        // Navigation keys
         "Home" => Some(vec![0x1b, b'[', b'H']),
         "End" => Some(vec![0x1b, b'[', b'F']),
         "PageUp" => Some(vec![0x1b, b'[', b'5', b'~']),
         "PageDown" => Some(vec![0x1b, b'[', b'6', b'~']),
         "Insert" => Some(vec![0x1b, b'[', b'2', b'~']),
 
-        // Function keys
         "F1" => Some(vec![0x1b, b'O', b'P']),
         "F2" => Some(vec![0x1b, b'O', b'Q']),
         "F3" => Some(vec![0x1b, b'O', b'R']),
@@ -269,7 +252,6 @@ pub fn key_to_escape_sequence(key: &str) -> Option<Vec<u8>> {
         "F11" => Some(vec![0x1b, b'[', b'2', b'3', b'~']),
         "F12" => Some(vec![0x1b, b'[', b'2', b'4', b'~']),
 
-        // Single character
         _ if key.len() == 1 => Some(key.as_bytes().to_vec()),
 
         _ => None,

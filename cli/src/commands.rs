@@ -312,7 +312,6 @@ EXAMPLE WORKFLOW:
         verbose: bool,
     },
 
-    // === Extended Commands ===
     /// Select an option in a dropdown/select element
     Select {
         /// Element reference (e.g., @sel1)
@@ -495,7 +494,6 @@ EXAMPLES:
         element_ref: String,
     },
 
-    // === Recording and Debugging Commands ===
     /// Start recording a session
     RecordStart,
 
@@ -613,7 +611,6 @@ EXAMPLES:
     #[command(hide = true, name = "demo-run")]
     DemoRun,
 
-    // === Diagnostic Commands ===
     /// Show version information for CLI and daemon
     #[command(long_about = r#"Show detailed version information.
 
@@ -968,7 +965,7 @@ mod tests {
         assert_eq!(command, "bash");
         assert!(args.is_empty());
         assert!(cwd.is_none());
-        // Document says default is 120x40
+
         assert_eq!(cols, 120, "Default cols should be 120");
         assert_eq!(rows, 40, "Default rows should be 40");
     }
@@ -1114,7 +1111,7 @@ mod tests {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
         assert_eq!(params.text, Some("Loading".to_string()));
-        // Default timeout should be 30000ms
+
         assert_eq!(params.timeout, 30000, "Default timeout should be 30000ms");
     }
 
@@ -1240,7 +1237,7 @@ mod tests {
                 panic!("Expected Scroll command for {arg}, got {:?}", cli.command);
             };
             assert_eq!(direction as u8, expected as u8);
-            // Default amount should be 5
+
             assert_eq!(amount, 5, "Default scroll amount should be 5");
             assert!(element.is_none());
         }
@@ -1263,7 +1260,7 @@ mod tests {
         let Commands::Resize { cols, rows } = cli.command else {
             panic!("Expected Resize command, got {:?}", cli.command);
         };
-        // Default resize should be 120x40
+
         assert_eq!(cols, 120, "Default cols should be 120");
         assert_eq!(rows, 40, "Default rows should be 40");
     }
@@ -1275,7 +1272,7 @@ mod tests {
         let Commands::Trace { count, start, stop } = cli.command else {
             panic!("Expected Trace command, got {:?}", cli.command);
         };
-        // Default count should be 10
+
         assert_eq!(count, 10, "Default trace count should be 10");
         assert!(!start);
         assert!(!stop);
@@ -1288,7 +1285,7 @@ mod tests {
         let Commands::Console { lines, clear } = cli.command else {
             panic!("Expected Console command, got {:?}", cli.command);
         };
-        // Default lines should be 100
+
         assert_eq!(lines, 100, "Default console lines should be 100");
         assert!(!clear, "Default clear should be false");
     }
@@ -1313,7 +1310,6 @@ mod tests {
     /// Test find command combinations
     #[test]
     fn test_find_command() {
-        // Find by role
         let cli = Cli::parse_from(["agent-tui", "find", "--role", "button"]);
         let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
@@ -1326,7 +1322,6 @@ mod tests {
         assert!(params.nth.is_none());
         assert!(!params.exact);
 
-        // Find by role and name
         let cli = Cli::parse_from(["agent-tui", "find", "--role", "button", "--name", "Submit"]);
         let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
@@ -1334,21 +1329,18 @@ mod tests {
         assert_eq!(params.role, Some("button".to_string()));
         assert_eq!(params.name, Some("Submit".to_string()));
 
-        // Find focused element
         let cli = Cli::parse_from(["agent-tui", "find", "--focused"]);
         let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
         };
         assert!(params.focused);
 
-        // Find with nth
         let cli = Cli::parse_from(["agent-tui", "find", "--role", "button", "--nth", "2"]);
         let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
         };
         assert_eq!(params.nth, Some(2));
 
-        // Find with exact
         let cli = Cli::parse_from(["agent-tui", "find", "--text", "Submit", "--exact"]);
         let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
@@ -1356,7 +1348,6 @@ mod tests {
         assert_eq!(params.text, Some("Submit".to_string()));
         assert!(params.exact);
 
-        // Find by placeholder
         let cli = Cli::parse_from(["agent-tui", "find", "--placeholder", "Search..."]);
         let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
@@ -1367,17 +1358,13 @@ mod tests {
     /// Test that missing required arguments fail
     #[test]
     fn test_missing_required_args() {
-        // click requires ref
         assert!(Cli::try_parse_from(["agent-tui", "click"]).is_err());
 
-        // fill requires ref and value
         assert!(Cli::try_parse_from(["agent-tui", "fill"]).is_err());
         assert!(Cli::try_parse_from(["agent-tui", "fill", "@inp1"]).is_err());
 
-        // spawn requires command
         assert!(Cli::try_parse_from(["agent-tui", "spawn"]).is_err());
 
-        // scroll requires direction
         assert!(Cli::try_parse_from(["agent-tui", "scroll"]).is_err());
     }
 
@@ -1390,7 +1377,6 @@ mod tests {
         let cli = Cli::parse_from(["agent-tui", "-f", "json", "health"]);
         assert_eq!(cli.format, OutputFormat::Json);
 
-        // Invalid format should fail
         assert!(Cli::try_parse_from(["agent-tui", "-f", "xml", "health"]).is_err());
     }
 }

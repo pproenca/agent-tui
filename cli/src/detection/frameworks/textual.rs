@@ -21,17 +21,14 @@ impl TextualDetector {
 
     /// Check if the screen appears to be a Textual application
     pub fn looks_like_textual(ctx: &DetectionContext) -> bool {
-        // Textual apps often have a footer with keybindings
         let has_textual_footer = ctx.lines.last().is_some_and(|l| {
             l.contains("^q") || l.contains("^c") || l.contains("F1") || l.contains("ESC")
         });
 
-        // Textual uses specific heavy box drawing for borders
         let has_heavy_borders = ctx.screen_text.contains('┏')
             && ctx.screen_text.contains('┓')
             && ctx.screen_text.contains('┗');
 
-        // Textual data tables have specific patterns
         let has_data_table = ctx.screen_text.contains('│')
             && ctx.screen_text.contains('─')
             && ctx.screen_text.contains('┼');
@@ -55,9 +52,8 @@ struct TextualPatterns {
 fn get_textual_patterns() -> &'static TextualPatterns {
     static PATTERNS: OnceLock<TextualPatterns> = OnceLock::new();
     PATTERNS.get_or_init(|| TextualPatterns {
-        // Footer keybindings like "^q Quit" or "F1 Help"
         footer_key: Regex::new(r"(\^[a-z]|F\d+|ESC|TAB|ENTER)\s+([A-Za-z]+)").unwrap(),
-        // Textual buttons: [ Button ]
+
         button: Regex::new(r"\[\s+([A-Za-z][A-Za-z\s]*?)\s+\]").unwrap(),
     })
 }
@@ -70,7 +66,6 @@ impl ElementDetectorImpl for TextualDetector {
         for (row_idx, line) in ctx.lines.iter().enumerate() {
             let row = row_idx as u16;
 
-            // Detect footer keybindings as buttons
             for cap in patterns.footer_key.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
                 let key = cap.get(1).map(|m| m.as_str().to_string());
@@ -87,12 +82,10 @@ impl ElementDetectorImpl for TextualDetector {
                 });
             }
 
-            // Detect Textual-style buttons with extra spacing
             for cap in patterns.button.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
                 let label = cap.get(1).map(|m| m.as_str().trim().to_string());
 
-                // Skip if already matched as footer key
                 let start = full_match.start() as u16;
                 if matches
                     .iter()
@@ -121,7 +114,7 @@ impl ElementDetectorImpl for TextualDetector {
     }
 
     fn priority(&self) -> i32 {
-        7 // Lower priority (less specific patterns)
+        7
     }
 
     fn can_detect(&self, ctx: &DetectionContext) -> bool {

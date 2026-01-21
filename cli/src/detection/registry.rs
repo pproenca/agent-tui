@@ -29,33 +29,26 @@ impl FrameworkDetector {
     /// Checks each framework detector in priority order and returns the first
     /// one that can handle the screen content. Falls back to GenericDetector.
     pub fn detect(ctx: &DetectionContext) -> Self {
-        // Check detectors in priority order (highest first)
-        // Inquirer has highest priority (15) due to more specific patterns
         if InquirerDetector::looks_like_inquirer(ctx) {
             return FrameworkDetector::Inquirer(InquirerDetector::new());
         }
 
-        // Ink has medium priority (10)
         if InkDetector::looks_like_ink(ctx) {
             return FrameworkDetector::Ink(InkDetector::new());
         }
 
-        // BubbleTea (8)
         if BubbleTeaDetector::looks_like_bubbletea(ctx) {
             return FrameworkDetector::BubbleTea(BubbleTeaDetector::new());
         }
 
-        // Textual (7)
         if TextualDetector::looks_like_textual(ctx) {
             return FrameworkDetector::Textual(TextualDetector::new());
         }
 
-        // Ratatui (5)
         if RatatuiDetector::looks_like_ratatui(ctx) {
             return FrameworkDetector::Ratatui(RatatuiDetector::new());
         }
 
-        // Fall back to generic detector
         FrameworkDetector::Generic(GenericDetector::new())
     }
 }
@@ -80,7 +73,6 @@ macro_rules! delegate_to_detector {
     };
 }
 
-// Implement ElementDetectorImpl by delegating to the wrapped detector
 impl ElementDetectorImpl for FrameworkDetector {
     fn detect_patterns(&self, ctx: &DetectionContext) -> Vec<PatternMatch> {
         delegate_to_detector!(self, detect_patterns, ctx)
@@ -149,6 +141,6 @@ mod tests {
         assert!(ink.can_detect(&ctx));
 
         let generic = FrameworkDetector::default();
-        assert!(generic.can_detect(&ctx)); // Generic always returns true
+        assert!(generic.can_detect(&ctx));
     }
 }

@@ -21,17 +21,14 @@ impl BubbleTeaDetector {
 
     /// Check if the screen appears to be a Bubble Tea application
     pub fn looks_like_bubbletea(ctx: &DetectionContext) -> bool {
-        // Charm-style spinners
         let charm_spinners = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"];
         let has_charm_spinner = charm_spinners.iter().any(|s| ctx.screen_text.contains(s));
 
-        // Common help bar patterns
         let has_help_bar = ctx.screen_text.contains("q: quit")
             || ctx.screen_text.contains("ctrl+c")
             || ctx.screen_text.contains("esc: back")
             || ctx.screen_text.contains("enter: select");
 
-        // Bubble Tea text inputs often show cursor with │
         let has_text_input =
             ctx.screen_text.contains('│') && ctx.lines.iter().any(|l| l.contains('>'));
 
@@ -55,11 +52,10 @@ struct BubbleTeaPatterns {
 fn get_bubbletea_patterns() -> &'static BubbleTeaPatterns {
     static PATTERNS: OnceLock<BubbleTeaPatterns> = OnceLock::new();
     PATTERNS.get_or_init(|| BubbleTeaPatterns {
-        // Charm braille spinners
         charm_spinner: Regex::new(r"[⣾⣽⣻⢿⡿⣟⣯⣷]").unwrap(),
-        // Help bar items like "q: quit" or "enter: select"
+
         help_item: Regex::new(r"([a-z]+(?:\+[a-z]+)?|esc|enter|tab|space):\s+([a-z]+)").unwrap(),
-        // Bubble Tea text input with cursor
+
         text_input: Regex::new(r">\s*([^│]*?)│").unwrap(),
     })
 }
@@ -72,7 +68,6 @@ impl ElementDetectorImpl for BubbleTeaDetector {
         for (row_idx, line) in ctx.lines.iter().enumerate() {
             let row = row_idx as u16;
 
-            // Detect Charm braille spinners
             for cap in patterns.charm_spinner.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
 
@@ -87,7 +82,6 @@ impl ElementDetectorImpl for BubbleTeaDetector {
                 });
             }
 
-            // Detect help bar buttons
             for cap in patterns.help_item.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
                 let key = cap.get(1).map(|m| m.as_str().to_string());
@@ -104,7 +98,6 @@ impl ElementDetectorImpl for BubbleTeaDetector {
                 });
             }
 
-            // Detect text inputs with │ cursor
             if let Some(cap) = patterns.text_input.captures(line) {
                 let full_match = cap.get(0).unwrap();
                 let value = cap
@@ -132,7 +125,7 @@ impl ElementDetectorImpl for BubbleTeaDetector {
     }
 
     fn priority(&self) -> i32 {
-        8 // Lower than Ink/Inquirer (less specific patterns)
+        8
     }
 
     fn can_detect(&self, ctx: &DetectionContext) -> bool {

@@ -1353,19 +1353,18 @@ impl DaemonServer {
                 let count = elements
                     .iter()
                     .filter(|el| {
-                        // Filter by role if specified
                         if let Some(r) = role {
                             if el.element_type.as_str() != r {
                                 return false;
                             }
                         }
-                        // Filter by name/label if specified
+
                         if let Some(n) = name {
                             if !el.label.as_ref().map(|l| l.contains(n)).unwrap_or(false) {
                                 return false;
                             }
                         }
-                        // Filter by text content (label or value)
+
                         if let Some(t) = text {
                             let in_label =
                                 el.label.as_ref().map(|l| l.contains(t)).unwrap_or(false);
@@ -1408,12 +1407,11 @@ impl DaemonServer {
         let amount = params.get("amount").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
         let session_id = params.get("session").and_then(|v| v.as_str());
 
-        // Determine the escape sequence for the direction
         let key_seq: &[u8] = match direction {
-            "up" => b"\x1b[A",    // Arrow up
-            "down" => b"\x1b[B",  // Arrow down
-            "left" => b"\x1b[D",  // Arrow left
-            "right" => b"\x1b[C", // Arrow right
+            "up" => b"\x1b[A",
+            "down" => b"\x1b[B",
+            "left" => b"\x1b[D",
+            "right" => b"\x1b[C",
             _ => {
                 return Response::error(
                     request.id,
@@ -1429,7 +1427,6 @@ impl DaemonServer {
                     return lock_timeout_response(request.id, session_id);
                 };
 
-                // Send the key sequence 'amount' times
                 for _ in 0..amount {
                     if let Err(e) = sess.pty_write(key_seq) {
                         return Response::error(
@@ -1470,7 +1467,7 @@ impl DaemonServer {
         };
 
         let session_id = params.get("session").and_then(|v| v.as_str());
-        let max_scrolls = 50; // Safety limit
+        let max_scrolls = 50;
 
         match self.session_manager.resolve(session_id) {
             Ok(session) => {
@@ -1485,7 +1482,6 @@ impl DaemonServer {
                     let _ = sess.update();
                     sess.detect_elements();
 
-                    // Check if element is now visible
                     if sess.find_element(element_ref).is_some() {
                         return Response::success(
                             request.id,
@@ -1497,9 +1493,7 @@ impl DaemonServer {
                         );
                     }
 
-                    // Try scrolling down (most common direction for finding elements)
                     if let Err(e) = sess.pty_write(b"\x1b[B") {
-                        // Arrow down
                         return Response::error(
                             request.id,
                             -32000,
@@ -1507,12 +1501,10 @@ impl DaemonServer {
                         );
                     }
 
-                    // Small delay to let the UI update
                     drop(sess);
                     thread::sleep(Duration::from_millis(50));
                 }
 
-                // Element not found after max scrolls
                 Response::success(
                     request.id,
                     json!({
@@ -1542,7 +1534,6 @@ impl DaemonServer {
                 let _ = sess.update();
                 let elements = sess.detect_elements();
 
-                // Find the focused element
                 if let Some(focused_el) = elements.iter().find(|e| e.focused) {
                     Response::success(
                         request.id,
@@ -1621,7 +1612,6 @@ impl DaemonServer {
                 let _ = sess.update();
                 sess.detect_elements();
 
-                // Check if element exists
                 if sess.find_element(element_ref).is_none() {
                     return Response::success(
                         request.id,
@@ -1632,7 +1622,6 @@ impl DaemonServer {
                     );
                 }
 
-                // Send Tab to navigate (basic implementation)
                 if let Err(e) = sess.pty_write(b"\t") {
                     return Response::error(
                         request.id,
@@ -1674,7 +1663,6 @@ impl DaemonServer {
                 let _ = sess.update();
                 sess.detect_elements();
 
-                // Check if element exists
                 if sess.find_element(element_ref).is_none() {
                     return Response::success(
                         request.id,
@@ -1685,20 +1673,14 @@ impl DaemonServer {
                     );
                 }
 
-                // Framework-aware clear: use appropriate sequence based on detected TUI framework
                 let screen_text = sess.screen_text();
                 let framework = detect_framework(&screen_text);
 
                 let result = match framework {
-                    Framework::Textual => {
-                        // Textual (Python) needs Ctrl+A (select all) then Delete
-                        sess.pty_write(b"\x01")
-                            .and_then(|_| sess.pty_write(b"\x7f"))
-                    }
-                    _ => {
-                        // Ctrl+U works for readline, Ink, Inquirer, BubbleTea, etc.
-                        sess.pty_write(b"\x15")
-                    }
+                    Framework::Textual => sess
+                        .pty_write(b"\x01")
+                        .and_then(|_| sess.pty_write(b"\x7f")),
+                    _ => sess.pty_write(b"\x15"),
                 };
 
                 if let Err(e) = result {
@@ -1746,7 +1728,6 @@ impl DaemonServer {
                 let _ = sess.update();
                 sess.detect_elements();
 
-                // Check if element exists
                 if sess.find_element(element_ref).is_none() {
                     return Response::success(
                         request.id,
@@ -1757,7 +1738,6 @@ impl DaemonServer {
                     );
                 }
 
-                // Send Ctrl+A to select all
                 if let Err(e) = sess.pty_write(b"\x01") {
                     return Response::error(
                         request.id,
@@ -1808,7 +1788,6 @@ impl DaemonServer {
                 let _ = sess.update();
                 sess.detect_elements();
 
-                // Check if element exists and is toggleable
                 let current_checked = match sess.find_element(element_ref) {
                     Some(el) => {
                         let el_type = el.element_type.as_str();
@@ -1837,14 +1816,12 @@ impl DaemonServer {
                     }
                 };
 
-                // Determine if we need to toggle based on force_state
                 let should_toggle = match force_state {
                     Some(desired_state) => desired_state != current_checked,
-                    None => true, // Always toggle if no state specified
+                    None => true,
                 };
 
                 let new_checked = if should_toggle {
-                    // Send Space to toggle
                     if let Err(e) = sess.pty_write(b" ") {
                         return Response::error(
                             request.id,
@@ -1896,7 +1873,6 @@ impl DaemonServer {
                 let _ = sess.update();
                 sess.detect_elements();
 
-                // Check if element exists and is a select
                 match sess.find_element(element_ref) {
                     Some(el) => {
                         if el.element_type.as_str() != "select" {
@@ -1920,22 +1896,16 @@ impl DaemonServer {
                     }
                 }
 
-                // Framework-aware select: use arrow navigation for known TUI frameworks
                 let screen_text = sess.screen_text();
                 let framework = detect_framework(&screen_text);
 
                 let result = match framework {
-                    Framework::Unknown => {
-                        // Fallback: type to filter + Enter (current behavior)
-                        sess.pty_write(b"\r")
-                            .and_then(|_| sess.pty_write(option.as_bytes()))
-                            .and_then(|_| sess.pty_write(b"\r"))
-                    }
-                    _ => {
-                        // Arrow navigation for known TUI frameworks (Ink, Inquirer, BubbleTea, etc.)
-                        navigate_to_option(&mut sess, option, &screen_text)
-                            .and_then(|_| sess.pty_write(b"\r"))
-                    }
+                    Framework::Unknown => sess
+                        .pty_write(b"\r")
+                        .and_then(|_| sess.pty_write(option.as_bytes()))
+                        .and_then(|_| sess.pty_write(b"\r")),
+                    _ => navigate_to_option(&mut sess, option, &screen_text)
+                        .and_then(|_| sess.pty_write(b"\r")),
                 };
 
                 if let Err(e) = result {
@@ -1996,7 +1966,6 @@ impl DaemonServer {
                 let _ = sess.update();
                 sess.detect_elements();
 
-                // Verify element exists
                 if sess.find_element(element_ref).is_none() {
                     return Response::success(
                         request.id,
@@ -2008,18 +1977,8 @@ impl DaemonServer {
                     );
                 }
 
-                // Multi-select in TUI typically involves:
-                // 1. Focus the list element
-                // 2. Navigate with arrow keys
-                // 3. Press Space to toggle selection
-                // For each option:
-                // - Type to filter/search
-                // - Press Space to select
-                // - Continue for each option
-
                 let mut selected = Vec::new();
                 for option in &options {
-                    // Type to filter to the option
                     if let Err(e) = sess.pty_write(option.as_bytes()) {
                         return Response::error(
                             request.id,
@@ -2028,10 +1987,8 @@ impl DaemonServer {
                         );
                     }
 
-                    // Small delay for TUI to filter
                     std::thread::sleep(std::time::Duration::from_millis(50));
 
-                    // Press Space to toggle selection
                     if let Err(e) = sess.pty_write(b" ") {
                         return Response::error(
                             request.id,
@@ -2040,9 +1997,7 @@ impl DaemonServer {
                         );
                     }
 
-                    // Clear the filter (Ctrl+U typically clears input)
                     if let Err(e) = sess.pty_write(&[0x15]) {
-                        // Ctrl+U
                         return Response::error(
                             request.id,
                             -32000,
@@ -2053,7 +2008,6 @@ impl DaemonServer {
                     selected.push(option.clone());
                 }
 
-                // Confirm selection with Enter
                 if let Err(e) = sess.pty_write(b"\r") {
                     return Response::error(
                         request.id,
@@ -2153,12 +2107,9 @@ impl DaemonServer {
                 let frames = sess.stop_recording();
 
                 let data = if format == "asciicast" {
-                    // Convert to asciicast v2 format
-                    // Spec: https://github.com/asciinema/asciinema/blob/develop/doc/asciicast-v2.md
                     let (cols, rows) = sess.size();
                     let mut output = Vec::new();
 
-                    // Calculate total duration
                     let duration = if !frames.is_empty() {
                         frames
                             .last()
@@ -2168,7 +2119,6 @@ impl DaemonServer {
                         0.0
                     };
 
-                    // Header (first line, required fields: version, width, height)
                     let header = json!({
                         "version": 2,
                         "width": cols,
@@ -2183,24 +2133,14 @@ impl DaemonServer {
                     });
                     output.push(serde_json::to_string(&header).unwrap());
 
-                    // Event stream (each line is a JSON array: [time, event_type, data])
-                    // time: seconds since recording start (float)
-                    // event_type: "o" for output (terminal writes), "i" for input (user types)
-                    // data: string data
                     let mut prev_screen = String::new();
                     for frame in &frames {
-                        // For asciicast, we should output the diff or full screen
-                        // Using full screen for simplicity, but could optimize with diffs
                         let time_secs = frame.timestamp_ms as f64 / 1000.0;
 
-                        // Only output if screen changed (avoid duplicate frames)
                         if frame.screen != prev_screen {
-                            // Calculate the diff - for now, output full screen with clear
-                            // In a real implementation, we'd compute the actual terminal output
                             let screen_data = if prev_screen.is_empty() {
                                 frame.screen.clone()
                             } else {
-                                // Clear screen and redraw
                                 format!("\x1b[2J\x1b[H{}", frame.screen)
                             };
 
@@ -2316,7 +2256,6 @@ impl DaemonServer {
                     );
                 }
 
-                // Return recent trace entries
                 let entries = sess.get_trace_entries(count);
                 Response::success(
                     request.id,
@@ -2360,7 +2299,6 @@ impl DaemonServer {
                 let _ = sess.update();
                 let screen = sess.screen_text();
 
-                // Get the last N lines
                 let all_lines: Vec<&str> = screen.lines().collect();
                 let start = if all_lines.len() > lines {
                     all_lines.len() - lines
@@ -2577,9 +2515,6 @@ pub fn start_daemon() -> std::io::Result<()> {
     let socket_path = socket_path();
     let lock_path = socket_path.with_extension("lock");
 
-    // Acquire exclusive lock to ensure singleton daemon
-    // Note: Don't truncate on open - we only truncate after acquiring the lock
-    // to avoid clearing another daemon's PID if the lock fails
     let lock_file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -2587,7 +2522,7 @@ pub fn start_daemon() -> std::io::Result<()> {
         .open(&lock_path)?;
 
     let fd = lock_file.as_raw_fd();
-    // SAFETY: flock is a standard POSIX call, fd is valid from open()
+
     let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
     if result != 0 {
         return Err(std::io::Error::new(
@@ -2596,13 +2531,11 @@ pub fn start_daemon() -> std::io::Result<()> {
         ));
     }
 
-    // Write PID to lock file for debugging (truncate first to clear old content)
     use std::io::Write as _;
     lock_file.set_len(0)?;
     let mut lock_file = lock_file;
     writeln!(lock_file, "{}", std::process::id())?;
 
-    // Now safe to remove stale socket - we hold the exclusive lock
     if socket_path.exists() {
         std::fs::remove_file(&socket_path)?;
     }
@@ -2663,7 +2596,6 @@ mod tests {
         let tmp_dir = tempdir().expect("Failed to create temp dir");
         let lock_path = tmp_dir.path().join("agent-tui.lock");
 
-        // First "daemon" acquires the lock
         let lock_file1 = OpenOptions::new()
             .write(true)
             .create(true)
@@ -2675,11 +2607,9 @@ mod tests {
         let result1 = unsafe { libc::flock(fd1, libc::LOCK_EX | libc::LOCK_NB) };
         assert_eq!(result1, 0, "First lock acquisition should succeed");
 
-        // Write PID to lock file
         let mut lock_file1 = lock_file1;
         writeln!(lock_file1, "{}", std::process::id()).expect("Failed to write PID");
 
-        // Second "daemon" tries to acquire the same lock - should fail
         let lock_file2 = OpenOptions::new()
             .write(true)
             .create(true)
@@ -2691,7 +2621,6 @@ mod tests {
         let result2 = unsafe { libc::flock(fd2, libc::LOCK_EX | libc::LOCK_NB) };
         assert_ne!(result2, 0, "Second lock acquisition should fail");
 
-        // Verify the error is EWOULDBLOCK
         let errno = std::io::Error::last_os_error().raw_os_error().unwrap();
         assert!(
             errno == libc::EWOULDBLOCK || errno == libc::EAGAIN,
@@ -2706,7 +2635,6 @@ mod tests {
         let tmp_dir = tempdir().expect("Failed to create temp dir");
         let lock_path = tmp_dir.path().join("agent-tui.lock");
 
-        // Acquire lock in a scope so it gets dropped
         {
             let lock_file = OpenOptions::new()
                 .write(true)
@@ -2718,10 +2646,8 @@ mod tests {
             let fd = lock_file.as_raw_fd();
             let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
             assert_eq!(result, 0, "Lock acquisition should succeed");
-            // lock_file dropped here, releasing the lock
         }
 
-        // Now another process should be able to acquire the lock
         let lock_file2 = OpenOptions::new()
             .write(true)
             .create(true)

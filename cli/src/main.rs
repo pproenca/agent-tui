@@ -35,27 +35,22 @@ fn main() {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    // Initialize color support
     color::init(cli.no_color);
 
-    // Handle daemon command specially - it runs the server
     if matches!(cli.command, Commands::Daemon) {
         return start_daemon().map_err(|e| e.into());
     }
 
-    // Handle demo-run command specially - runs the TUI directly (no daemon needed)
     if matches!(cli.command, Commands::DemoRun) {
         return demo::run_demo();
     }
 
-    // Handle completions command - doesn't need daemon connection
     if let Commands::Completions { shell } = &cli.command {
         let mut cmd = Cli::command();
         generate(*shell, &mut cmd, "agent-tui", &mut std::io::stdout());
         return Ok(());
     }
 
-    // For all other commands, connect to daemon (auto-starting if needed)
     let mut client = match ensure_daemon() {
         Ok(c) => c,
         Err(e) => {
@@ -73,20 +68,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // Determine output format (--json overrides --format)
     let format = if cli.json {
         commands::OutputFormat::Json
     } else {
         cli.format
     };
 
-    // Create handler context
     let mut ctx = HandlerContext::new(&mut client, cli.session, format);
 
     match cli.command {
-        Commands::Daemon => unreachable!(),             // Handled above
-        Commands::DemoRun => unreachable!(),            // Handled above
-        Commands::Completions { .. } => unreachable!(), // Handled above
+        Commands::Daemon => unreachable!(),
+        Commands::DemoRun => unreachable!(),
+        Commands::Completions { .. } => unreachable!(),
 
         Commands::Demo => handlers::handle_demo(&mut ctx)?,
         Commands::Spawn {

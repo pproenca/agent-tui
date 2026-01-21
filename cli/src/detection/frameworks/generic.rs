@@ -34,11 +34,11 @@ impl ElementDetectorImpl for GenericDetector {
     }
 
     fn priority(&self) -> i32 {
-        -100 // Lowest priority - used as fallback
+        -100
     }
 
     fn can_detect(&self, _ctx: &DetectionContext) -> bool {
-        true // Always matches as fallback
+        true
     }
 }
 

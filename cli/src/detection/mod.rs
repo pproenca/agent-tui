@@ -184,16 +184,13 @@ impl ElementDetector {
     ) -> Vec<Element> {
         use traits::ElementDetectorImpl;
 
-        // Reset for each snapshot (agent-browser pattern: refs are per-snapshot)
         self.ref_counter = 0;
         self.used_refs.clear();
 
         let mut elements = Vec::new();
 
-        // Create detection context
         let ctx = DetectionContext::new(screen_text, screen_buffer);
 
-        // Use provided detector or auto-detect
         let default_detector;
         let detector = match framework_detector {
             Some(d) => d,
@@ -203,7 +200,6 @@ impl ElementDetector {
             }
         };
 
-        // Pattern-based detection using the framework detector
         let pattern_matches = detector.detect_patterns(&ctx);
 
         for m in pattern_matches {
@@ -231,7 +227,6 @@ impl ElementDetector {
             elements.push(element);
         }
 
-        // Sort elements by position (top-to-bottom, left-to-right)
         elements.sort_by(|a, b| {
             if a.position.row != b.position.row {
                 a.position.row.cmp(&b.position.row)
@@ -263,7 +258,6 @@ impl ElementDetector {
         let start = col as usize;
         let end = (col + width) as usize;
 
-        // Check if any cell in the region has focus-indicating styles
         row_cells
             .iter()
             .take(end.min(row_cells.len()))
@@ -271,16 +265,13 @@ impl ElementDetector {
             .any(|cell| {
                 let style = &cell.style;
 
-                // Inverse is the strongest focus indicator
                 if style.inverse {
                     return true;
                 }
 
-                // Bold combined with non-default color often indicates focus
                 if style.bold {
-                    // Check if we have a non-default foreground color
                     let has_colored_fg = match &style.fg_color {
-                        Some(Color::Indexed(idx)) => *idx != 7 && *idx != 15, // Not white/bright white
+                        Some(Color::Indexed(idx)) => *idx != 7 && *idx != 15,
                         Some(Color::Rgb(_, _, _)) => true,
                         Some(Color::Default) | None => false,
                     };
@@ -289,17 +280,15 @@ impl ElementDetector {
                     }
                 }
 
-                // Non-default background color (not just black) with content
                 let has_highlight_bg = match &style.bg_color {
-                    Some(Color::Indexed(idx)) => *idx != 0 && *idx != 16, // Not black
-                    Some(Color::Rgb(r, g, b)) => *r > 20 || *g > 20 || *b > 20, // Not near-black
+                    Some(Color::Indexed(idx)) => *idx != 0 && *idx != 16,
+                    Some(Color::Rgb(r, g, b)) => *r > 20 || *g > 20 || *b > 20,
                     Some(Color::Default) | None => false,
                 };
                 if has_highlight_bg && cell.char != ' ' {
                     return true;
                 }
 
-                // Underline on interactive element text
                 if style.underline && cell.char != ' ' && cell.char != '_' {
                     return true;
                 }
@@ -337,12 +326,10 @@ impl ElementDetector {
             format!("@{}", ref_str)
         };
 
-        // Exact match first (handles @e1, @e2, etc.)
         if let Some(el) = elements.iter().find(|e| e.element_ref == normalized) {
             return Some(el);
         }
 
-        // Support legacy type-prefixed format (@btn1, @inp2, etc.) for backwards compatibility
         if let Some(caps) = legacy_ref_regex().captures(&normalized) {
             let prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let index: usize = caps
@@ -351,7 +338,6 @@ impl ElementDetector {
                 .unwrap_or(0);
 
             if index > 0 && prefix != "e" {
-                // Map legacy prefix to element type
                 let target_type = match prefix {
                     "btn" => Some("button"),
                     "inp" => Some("input"),
@@ -365,7 +351,6 @@ impl ElementDetector {
                 };
 
                 if let Some(type_str) = target_type {
-                    // Find nth element of this type
                     let matching: Vec<_> = elements
                         .iter()
                         .filter(|e| e.element_type.as_str() == type_str)
@@ -393,7 +378,6 @@ mod tests {
         let ref2 = detector.generate_ref(&ElementType::Input, Some("Name"), None, 6, 10);
         let ref3 = detector.generate_ref(&ElementType::Button, Some("Cancel"), None, 7, 10);
 
-        // Sequential refs: @e1, @e2, @e3 (agent-browser pattern)
         assert_eq!(ref1, "@e1");
         assert_eq!(ref2, "@e2");
         assert_eq!(ref3, "@e3");
@@ -403,12 +387,10 @@ mod tests {
     fn test_refs_reset_on_detect() {
         let mut detector = ElementDetector::new();
 
-        // First detection
         let elements1 = detector.detect("[Submit] [Cancel]", None);
         assert!(elements1.iter().any(|e| e.element_ref == "@e1"));
         assert!(elements1.iter().any(|e| e.element_ref == "@e2"));
 
-        // Second detection should reset refs
         let elements2 = detector.detect("[OK]", None);
         assert!(elements2.iter().any(|e| e.element_ref == "@e1"));
     }
@@ -418,7 +400,6 @@ mod tests {
         let mut detector = ElementDetector::new();
         let elements = detector.detect("[Submit] [Cancel]", None);
 
-        // Find by sequential ref
         assert!(detector.find_by_ref(&elements, "@e1").is_some());
         assert!(detector.find_by_ref(&elements, "@e2").is_some());
         assert!(detector.find_by_ref(&elements, "@e3").is_none());
@@ -429,7 +410,6 @@ mod tests {
         let mut detector = ElementDetector::new();
         let elements = detector.detect("[Submit] [Cancel]", None);
 
-        // Legacy refs (@btn1, @btn2) should still work via type lookup
         let btn1 = detector.find_by_ref(&elements, "@btn1");
         assert!(btn1.is_some());
         assert_eq!(btn1.unwrap().element_type.as_str(), "button");

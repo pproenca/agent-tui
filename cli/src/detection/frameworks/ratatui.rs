@@ -21,14 +21,12 @@ impl RatatuiDetector {
 
     /// Check if the screen appears to be a Ratatui application
     pub fn looks_like_ratatui(ctx: &DetectionContext) -> bool {
-        // Ratatui gauge/progress uses block characters
         let block_chars = ['█', '▓', '▒', '░', '▏', '▎', '▍', '▌', '▋', '▊', '▉'];
         let block_count = block_chars
             .iter()
             .filter(|c| ctx.screen_text.contains(**c))
             .count();
 
-        // Ratatui sparklines use specific characters
         let sparkline_chars = ['▁', '▂', '▃', '▄', '▅', '▆', '▇'];
         let sparkline_count = sparkline_chars
             .iter()
@@ -55,11 +53,10 @@ struct RatatuiPatterns {
 fn get_ratatui_patterns() -> &'static RatatuiPatterns {
     static PATTERNS: OnceLock<RatatuiPatterns> = OnceLock::new();
     PATTERNS.get_or_init(|| RatatuiPatterns {
-        // Progress bar with block characters
         progress_bar: Regex::new(r"[█▓▒░]{3,}").unwrap(),
-        // Sparkline visualization
+
         sparkline: Regex::new(r"[▁▂▃▄▅▆▇█]{3,}").unwrap(),
-        // Percentage display
+
         percentage: Regex::new(r"(\d+)\s*%").unwrap(),
     })
 }
@@ -72,7 +69,6 @@ impl ElementDetectorImpl for RatatuiDetector {
         for (row_idx, line) in ctx.lines.iter().enumerate() {
             let row = row_idx as u16;
 
-            // Detect progress bars
             for cap in patterns.progress_bar.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
 
@@ -87,12 +83,10 @@ impl ElementDetectorImpl for RatatuiDetector {
                 });
             }
 
-            // Detect sparklines as progress indicators
             for cap in patterns.sparkline.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
                 let start = full_match.start() as u16;
 
-                // Skip if overlapping with progress bar
                 if matches
                     .iter()
                     .any(|m| m.row == row && m.col <= start && start < m.col + m.width)
@@ -111,7 +105,6 @@ impl ElementDetectorImpl for RatatuiDetector {
                 });
             }
 
-            // Detect percentage values
             for cap in patterns.percentage.captures_iter(line) {
                 let full_match = cap.get(0).unwrap();
                 let value = cap.get(1).map(|m| m.as_str().to_string());
@@ -136,7 +129,7 @@ impl ElementDetectorImpl for RatatuiDetector {
     }
 
     fn priority(&self) -> i32 {
-        5 // Lower priority (visual patterns can overlap with others)
+        5
     }
 
     fn can_detect(&self, ctx: &DetectionContext) -> bool {
@@ -156,7 +149,6 @@ mod tests {
 
     #[test]
     fn test_looks_like_ratatui_with_blocks() {
-        // Need at least 3 unique block characters to trigger detection
         let ctx = DetectionContext::new("Progress: [████▓▓▒▒░░░░░░░░] 50%", None);
         assert!(RatatuiDetector::looks_like_ratatui(&ctx));
     }

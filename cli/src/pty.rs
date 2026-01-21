@@ -153,6 +153,11 @@ impl PtyHandle {
     }
 
     pub fn kill(&mut self) -> Result<(), PtyError> {
+        // If the process is already stopped, the desired state is achieved
+        if !self.is_running() {
+            return Ok(());
+        }
+
         self.child
             .kill()
             .map_err(|e| PtyError::Spawn(e.to_string()))

@@ -281,20 +281,11 @@ impl DaemonServer {
     }
 
     fn handle_snapshot(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-        let include_elements = params
-            .get("include_elements")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let interactive_only = params
-            .get("interactive_only")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let compact = params
-            .get("compact")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let params = request.params.as_ref().cloned().unwrap_or(json!({}));
+        let session_id = request.param_str("session");
+        let include_elements = params.bool_or("include_elements", false);
+        let interactive_only = params.bool_or("interactive_only", false);
+        let compact = params.bool_or("compact", false);
 
         match self.session_manager.resolve(session_id) {
             Ok(session) => {
@@ -637,8 +628,7 @@ impl DaemonServer {
     }
 
     fn handle_kill(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
+        let session_id = request.param_str("session");
 
         let session_to_kill = match session_id {
             Some(id) => id.to_string(),
@@ -665,8 +655,7 @@ impl DaemonServer {
     }
 
     fn handle_restart(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
+        let session_id = request.param_str("session");
 
         let (old_session_id, command, cols, rows) = match self.session_manager.resolve(session_id) {
             Ok(session) => {
@@ -1133,30 +1122,18 @@ impl DaemonServer {
     }
 
     fn handle_get_title(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-
-                Response::success(
-                    request.id,
-                    json!({
-                        "session_id": sess.id,
-                        "title": sess.command,
-                        "command": sess.command
-                    }),
-                )
-            }
-            Err(e) => Response::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
-        }
+        let req_id = request.id;
+        let session_id = request.param_str("session");
+        self.with_session(&request, session_id, |sess| {
+            Response::success(
+                req_id,
+                json!({
+                    "session_id": sess.id,
+                    "title": sess.command,
+                    "command": sess.command
+                }),
+            )
+        })
     }
 
     fn handle_focus(&self, request: Request) -> Response {
@@ -1402,313 +1379,226 @@ impl DaemonServer {
     }
 
     fn handle_record_start(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-
-                sess.start_recording();
-
-                Response::success(
-                    request.id,
-                    json!({
-                        "success": true,
-                        "session_id": sess.id,
-                        "recording": true
-                    }),
-                )
-            }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+        let req_id = request.id;
+        let session_id = request.param_str("session");
+        self.with_session(&request, session_id, |sess| {
+            sess.start_recording();
+            Response::success(
+                req_id,
+                json!({
+                    "success": true,
+                    "session_id": sess.id,
+                    "recording": true
+                }),
+            )
+        })
     }
 
     fn handle_record_stop(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-        let format = params
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("json");
+        let req_id = request.id;
+        let session_id = request.param_str("session");
+        let format = request.param_str("format").unwrap_or("json");
 
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
+        self.with_session(&request, session_id, |sess| {
+            let frames = sess.stop_recording();
 
-                let frames = sess.stop_recording();
+            let data = if format == "asciicast" {
+                let (cols, rows) = sess.size();
+                let mut output = Vec::new();
 
-                let data = if format == "asciicast" {
-                    let (cols, rows) = sess.size();
-                    let mut output = Vec::new();
-
-                    let duration = if !frames.is_empty() {
-                        frames
-                            .last()
-                            .map(|f| f.timestamp_ms as f64 / 1000.0)
-                            .unwrap_or(0.0)
-                    } else {
-                        0.0
-                    };
-
-                    let header = json!({
-                        "version": 2,
-                        "width": cols,
-                        "height": rows,
-                        "timestamp": chrono::Utc::now().timestamp(),
-                        "duration": duration,
-                        "title": format!("agent-tui recording - {}", sess.id),
-                        "env": {
-                            "TERM": "xterm-256color",
-                            "SHELL": std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
-                        }
-                    });
-                    output.push(serde_json::to_string(&header).unwrap());
-
-                    let mut prev_screen = String::new();
-                    for frame in &frames {
-                        let time_secs = frame.timestamp_ms as f64 / 1000.0;
-
-                        if frame.screen != prev_screen {
-                            let screen_data = if prev_screen.is_empty() {
-                                frame.screen.clone()
-                            } else {
-                                format!("\x1b[2J\x1b[H{}", frame.screen)
-                            };
-
-                            let event = json!([time_secs, "o", screen_data]);
-                            output.push(serde_json::to_string(&event).unwrap());
-                            prev_screen = frame.screen.clone();
-                        }
-                    }
-
-                    json!({
-                        "format": "asciicast",
-                        "version": 2,
-                        "data": output.join("\n")
-                    })
+                let duration = if !frames.is_empty() {
+                    frames
+                        .last()
+                        .map(|f| f.timestamp_ms as f64 / 1000.0)
+                        .unwrap_or(0.0)
                 } else {
-                    json!({
-                        "format": "json",
-                        "frames": frames.iter().map(|f| json!({
-                            "timestamp_ms": f.timestamp_ms,
-                            "screen": f.screen
-                        })).collect::<Vec<_>>()
-                    })
+                    0.0
                 };
 
-                Response::success(
-                    request.id,
-                    json!({
-                        "success": true,
-                        "session_id": sess.id,
-                        "frame_count": frames.len(),
-                        "data": data
-                    }),
-                )
-            }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+                let header = json!({
+                    "version": 2,
+                    "width": cols,
+                    "height": rows,
+                    "timestamp": chrono::Utc::now().timestamp(),
+                    "duration": duration,
+                    "title": format!("agent-tui recording - {}", sess.id),
+                    "env": {
+                        "TERM": "xterm-256color",
+                        "SHELL": std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+                    }
+                });
+                output.push(serde_json::to_string(&header).unwrap());
+
+                let mut prev_screen = String::new();
+                for frame in &frames {
+                    let time_secs = frame.timestamp_ms as f64 / 1000.0;
+
+                    if frame.screen != prev_screen {
+                        let screen_data = if prev_screen.is_empty() {
+                            frame.screen.clone()
+                        } else {
+                            format!("\x1b[2J\x1b[H{}", frame.screen)
+                        };
+
+                        let event = json!([time_secs, "o", screen_data]);
+                        output.push(serde_json::to_string(&event).unwrap());
+                        prev_screen = frame.screen.clone();
+                    }
+                }
+
+                json!({
+                    "format": "asciicast",
+                    "version": 2,
+                    "data": output.join("\n")
+                })
+            } else {
+                json!({
+                    "format": "json",
+                    "frames": frames.iter().map(|f| json!({
+                        "timestamp_ms": f.timestamp_ms,
+                        "screen": f.screen
+                    })).collect::<Vec<_>>()
+                })
+            };
+
+            Response::success(
+                req_id,
+                json!({
+                    "success": true,
+                    "session_id": sess.id,
+                    "frame_count": frames.len(),
+                    "data": data
+                }),
+            )
+        })
     }
 
     fn handle_record_status(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-
-                let status = sess.recording_status();
-
-                Response::success(
-                    request.id,
-                    json!({
-                        "session_id": sess.id,
-                        "recording": status.is_recording,
-                        "frame_count": status.frame_count,
-                        "duration_ms": status.duration_ms
-                    }),
-                )
-            }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+        let req_id = request.id;
+        let session_id = request.param_str("session");
+        self.with_session(&request, session_id, |sess| {
+            let status = sess.recording_status();
+            Response::success(
+                req_id,
+                json!({
+                    "session_id": sess.id,
+                    "recording": status.is_recording,
+                    "frame_count": status.frame_count,
+                    "duration_ms": status.duration_ms
+                }),
+            )
+        })
     }
 
     fn handle_trace(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-        let start = params
-            .get("start")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let stop = params
-            .get("stop")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let count = params.get("count").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+        let req_id = request.id;
+        let session_id = request.param_str("session");
+        let start = request.param_bool("start").unwrap_or(false);
+        let stop = request.param_bool("stop").unwrap_or(false);
+        let count = request.param_u64("count", 10) as usize;
 
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-
-                if start {
-                    sess.start_trace();
-                    return Response::success(
-                        request.id,
-                        json!({
-                            "success": true,
-                            "session_id": sess.id,
-                            "tracing": true
-                        }),
-                    );
-                }
-
-                if stop {
-                    sess.stop_trace();
-                    return Response::success(
-                        request.id,
-                        json!({
-                            "success": true,
-                            "session_id": sess.id,
-                            "tracing": false
-                        }),
-                    );
-                }
-
-                let entries = sess.get_trace_entries(count);
-                Response::success(
-                    request.id,
+        self.with_session(&request, session_id, |sess| {
+            if start {
+                sess.start_trace();
+                return Response::success(
+                    req_id,
                     json!({
+                        "success": true,
                         "session_id": sess.id,
-                        "tracing": sess.is_tracing(),
-                        "entries": entries.iter().map(|e| json!({
-                            "timestamp_ms": e.timestamp_ms,
-                            "action": e.action,
-                            "details": e.details
-                        })).collect::<Vec<_>>()
+                        "tracing": true
                     }),
-                )
+                );
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+
+            if stop {
+                sess.stop_trace();
+                return Response::success(
+                    req_id,
+                    json!({
+                        "success": true,
+                        "session_id": sess.id,
+                        "tracing": false
+                    }),
+                );
+            }
+
+            let entries = sess.get_trace_entries(count);
+            Response::success(
+                req_id,
+                json!({
+                    "session_id": sess.id,
+                    "tracing": sess.is_tracing(),
+                    "entries": entries.iter().map(|e| json!({
+                        "timestamp_ms": e.timestamp_ms,
+                        "action": e.action,
+                        "details": e.details
+                    })).collect::<Vec<_>>()
+                }),
+            )
+        })
     }
 
     fn handle_console(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-        let lines = params
+        let req_id = request.id;
+        let params = request.params.as_ref().cloned().unwrap_or(json!({}));
+        let session_id = request.param_str("session");
+        let line_count = params
             .get("count")
             .or_else(|| params.get("lines"))
             .and_then(|v| v.as_u64())
             .unwrap_or(100) as usize;
-        let clear = params
-            .get("clear")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let clear = request.param_bool("clear").unwrap_or(false);
 
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                let screen = sess.screen_text();
+        self.with_session(&request, session_id, |sess| {
+            let _ = sess.update();
+            let screen = sess.screen_text();
 
-                let all_lines: Vec<&str> = screen.lines().collect();
-                let start = if all_lines.len() > lines {
-                    all_lines.len() - lines
-                } else {
-                    0
-                };
-                let output_lines: Vec<&str> = all_lines[start..].to_vec();
+            let all_lines: Vec<&str> = screen.lines().collect();
+            let start = all_lines.len().saturating_sub(line_count);
+            let output_lines: Vec<&str> = all_lines[start..].to_vec();
 
-                let mut result = json!({
-                    "session_id": sess.id,
-                    "lines": output_lines,
-                    "total_lines": all_lines.len()
-                });
+            let mut result = json!({
+                "session_id": sess.id,
+                "lines": output_lines,
+                "total_lines": all_lines.len()
+            });
 
-                if clear {
-                    sess.clear_console();
-                    result["cleared"] = json!(true);
-                }
-
-                Response::success(request.id, result)
+            if clear {
+                sess.clear_console();
+                result["cleared"] = json!(true);
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+
+            Response::success(req_id, result)
+        })
     }
 
     fn handle_errors(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-        let count = params.get("count").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
-        let clear = params
-            .get("clear")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let req_id = request.id;
+        let session_id = request.param_str("session");
+        let count = request.param_u64("count", 50) as usize;
+        let clear = request.param_bool("clear").unwrap_or(false);
 
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
+        self.with_session(&request, session_id, |sess| {
+            let errors = sess.get_errors(count);
+            let total = sess.error_count();
 
-                let errors = sess.get_errors(count);
-                let total = sess.error_count();
+            let mut result = json!({
+                "session_id": sess.id,
+                "errors": errors.iter().map(|e| json!({
+                    "timestamp": e.timestamp,
+                    "message": e.message,
+                    "source": e.source
+                })).collect::<Vec<_>>(),
+                "total_count": total
+            });
 
-                let mut result = json!({
-                    "session_id": sess.id,
-                    "errors": errors.iter().map(|e| json!({
-                        "timestamp": e.timestamp,
-                        "message": e.message,
-                        "source": e.source
-                    })).collect::<Vec<_>>(),
-                    "total_count": total
-                });
-
-                if clear {
-                    sess.clear_errors();
-                    result["cleared"] = json!(true);
-                }
-
-                Response::success(request.id, result)
+            if clear {
+                sess.clear_errors();
+                result["cleared"] = json!(true);
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+
+            Response::success(req_id, result)
+        })
     }
 
     fn handle_pty_read(&self, request: Request) -> Response {

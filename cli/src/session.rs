@@ -7,7 +7,7 @@
 use crate::detection::{Element, ElementDetector};
 use crate::pty::{key_to_escape_sequence, PtyError, PtyHandle};
 use crate::sync_utils::{mutex_lock_or_recover, rwlock_read_or_recover, rwlock_write_or_recover};
-use crate::terminal::{CursorPosition, ScreenBuffer, VirtualTerminal};
+use crate::terminal::{CursorPosition, VirtualTerminal};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -22,14 +22,6 @@ use uuid::Uuid;
 // ============================================================================
 // Bounded Queue Helpers
 // ============================================================================
-
-/// Push an item to a bounded queue, removing oldest items if necessary
-fn push_bounded<T>(queue: &mut VecDeque<T>, item: T, max: usize) {
-    queue.push_back(item);
-    while queue.len() > max {
-        queue.pop_front();
-    }
-}
 
 /// Get the last N items from a queue
 fn get_last_n<T: Clone>(queue: &VecDeque<T>, count: usize) -> Vec<T> {
@@ -131,7 +123,6 @@ struct TraceState {
     is_tracing: bool,
     start_time: Instant,
     entries: VecDeque<TraceEntry>,
-    max_entries: usize,
 }
 
 impl TraceState {
@@ -140,7 +131,6 @@ impl TraceState {
             is_tracing: false,
             start_time: Instant::now(),
             entries: VecDeque::new(),
-            max_entries: 1000,
         }
     }
 }
@@ -163,14 +153,12 @@ pub struct ErrorEntry {
 /// Error state for a session
 struct ErrorState {
     entries: VecDeque<ErrorEntry>,
-    max_entries: usize,
 }
 
 impl ErrorState {
     fn new() -> Self {
         Self {
             entries: VecDeque::new(),
-            max_entries: 500,
         }
     }
 }
@@ -187,8 +175,6 @@ pub enum SessionError {
     ElementNotFound(String),
     #[error("Invalid key: {0}")]
     InvalidKey(String),
-    #[error("Timeout waiting for condition")]
-    Timeout,
 }
 
 /// Modifier key types for keydown/keyup sequences
@@ -309,11 +295,6 @@ impl Session {
         self.terminal.screen_text()
     }
 
-    /// Get screen buffer with style data
-    pub fn screen_buffer(&self) -> ScreenBuffer {
-        self.terminal.screen_buffer()
-    }
-
     /// Get cursor position
     pub fn cursor(&self) -> CursorPosition {
         self.terminal.cursor()
@@ -324,11 +305,6 @@ impl Session {
         let screen_text = self.terminal.screen_text();
         let screen_buffer = self.terminal.screen_buffer();
         self.cached_elements = self.detector.detect(&screen_text, Some(&screen_buffer));
-        &self.cached_elements
-    }
-
-    /// Get cached elements
-    pub fn elements(&self) -> &[Element] {
         &self.cached_elements
     }
 
@@ -442,11 +418,6 @@ impl Session {
             .map_err(SessionError::Pty)
     }
 
-    /// Get the PTY reader file descriptor (for polling in attach mode)
-    pub fn pty_reader_fd(&self) -> std::os::fd::RawFd {
-        self.pty.reader_fd()
-    }
-
     /// Start recording
     pub fn start_recording(&mut self) {
         self.recording.is_recording = true;
@@ -479,18 +450,6 @@ impl Session {
         }
     }
 
-    /// Capture a recording frame if recording is active
-    pub fn capture_frame(&mut self) {
-        if self.recording.is_recording {
-            let screen = self.terminal.screen_text();
-            let timestamp_ms = self.recording.start_time.elapsed().as_millis() as u64;
-            self.recording.frames.push(RecordingFrame {
-                timestamp_ms,
-                screen,
-            });
-        }
-    }
-
     /// Start tracing
     pub fn start_trace(&mut self) {
         self.trace.is_tracing = true;
@@ -508,33 +467,9 @@ impl Session {
         self.trace.is_tracing
     }
 
-    /// Add a trace entry
-    pub fn add_trace_entry(&mut self, action: &str, details: Option<&str>) {
-        if self.trace.is_tracing {
-            let timestamp_ms = self.trace.start_time.elapsed().as_millis() as u64;
-            let entry = TraceEntry {
-                timestamp_ms,
-                action: action.to_string(),
-                details: details.map(String::from),
-            };
-            push_bounded(&mut self.trace.entries, entry, self.trace.max_entries);
-        }
-    }
-
     /// Get recent trace entries
     pub fn get_trace_entries(&self, count: usize) -> Vec<TraceEntry> {
         get_last_n(&self.trace.entries, count)
-    }
-
-    /// Add an error entry
-    pub fn add_error(&mut self, message: &str, source: &str) {
-        let timestamp = Utc::now().to_rfc3339();
-        let entry = ErrorEntry {
-            timestamp,
-            message: message.to_string(),
-            source: source.to_string(),
-        };
-        push_bounded(&mut self.errors.entries, entry, self.errors.max_entries);
     }
 
     /// Get recent errors
@@ -562,7 +497,6 @@ impl Session {
 pub struct SessionManager {
     sessions: RwLock<HashMap<SessionId, Arc<Mutex<Session>>>>,
     active_session: RwLock<Option<SessionId>>,
-    start_time: Instant,
     persistence: SessionPersistence,
 }
 
@@ -580,7 +514,6 @@ impl SessionManager {
         Self {
             sessions: RwLock::new(HashMap::new()),
             active_session: RwLock::new(None),
-            start_time: Instant::now(),
             persistence,
         }
     }
@@ -692,8 +625,6 @@ impl SessionManager {
                 .collect()
         };
 
-        let active_id = rwlock_read_or_recover(&self.active_session).clone();
-
         session_refs
             .into_iter()
             .map(|(id, session)| {
@@ -706,7 +637,6 @@ impl SessionManager {
                         running: sess.is_running(),
                         created_at: sess.created_at.to_rfc3339(),
                         size: sess.size(),
-                        is_active: active_id.as_ref() == Some(&id),
                     },
                     Err(_) => {
                         // Session is busy - report with "busy" indicator
@@ -718,7 +648,6 @@ impl SessionManager {
                             running: true,
                             created_at: "".to_string(),
                             size: (80, 24),
-                            is_active: active_id.as_ref() == Some(&id),
                         }
                     }
                 }
@@ -766,21 +695,6 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Get persisted sessions from previous daemon runs
-    pub fn get_persisted_sessions(&self) -> Vec<PersistedSession> {
-        self.persistence.load()
-    }
-
-    /// Clean up stale persisted sessions
-    pub fn cleanup_persisted(&self) -> std::io::Result<usize> {
-        self.persistence.cleanup_stale_sessions()
-    }
-
-    /// Get uptime in milliseconds
-    pub fn uptime_ms(&self) -> u64 {
-        self.start_time.elapsed().as_millis() as u64
-    }
-
     /// Get session count
     pub fn session_count(&self) -> usize {
         rwlock_read_or_recover(&self.sessions).len()
@@ -801,7 +715,6 @@ pub struct SessionInfo {
     pub running: bool,
     pub created_at: String,
     pub size: (u16, u16),
-    pub is_active: bool,
 }
 
 lazy_static::lazy_static! {
@@ -913,26 +826,6 @@ impl SessionPersistence {
         self.save(&sessions)
     }
 
-    /// Update a session in persistence
-    pub fn update_session(&self, session: PersistedSession) -> std::io::Result<()> {
-        let mut sessions = self.load();
-
-        if let Some(existing) = sessions.iter_mut().find(|s| s.id == session.id) {
-            *existing = session;
-        } else {
-            sessions.push(session);
-        }
-
-        self.save(&sessions)
-    }
-
-    /// Get a persisted session by ID
-    pub fn get_session(&self, session_id: &str) -> Option<PersistedSession> {
-        self.load()
-            .into_iter()
-            .find(|s| s.id.as_str() == session_id)
-    }
-
     /// Clean up stale sessions (processes that are no longer running)
     pub fn cleanup_stale_sessions(&self) -> std::io::Result<usize> {
         let sessions = self.load();
@@ -951,19 +844,6 @@ impl SessionPersistence {
 
         self.save(&active_sessions)?;
         Ok(cleaned)
-    }
-
-    /// Clear all persisted sessions
-    pub fn clear(&self) -> std::io::Result<()> {
-        if self.path.exists() {
-            fs::remove_file(&self.path).map_err(|e| {
-                std::io::Error::new(
-                    e.kind(),
-                    format!("Failed to remove file '{}': {}", self.path.display(), e),
-                )
-            })?;
-        }
-        Ok(())
     }
 }
 

@@ -82,7 +82,6 @@ fn get_patterns() -> &'static PatternRegexes {
 #[derive(Debug, Clone)]
 pub struct PatternMatch {
     pub element_type: ElementType,
-    pub text: String,
     pub label: Option<String>,
     pub value: Option<String>,
     pub row: u16,
@@ -128,7 +127,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
 
                 matches.push(PatternMatch {
                     element_type: ElementType::Button,
-                    text: text.to_string(),
                     label,
                     value: None,
                     row,
@@ -151,7 +149,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
 
                 matches.push(PatternMatch {
                     element_type: ElementType::Input,
-                    text: full_match.as_str().to_string(),
                     label,
                     value,
                     row,
@@ -173,7 +170,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
 
                 matches.push(PatternMatch {
                     element_type: ElementType::Checkbox,
-                    text: full_match.as_str().to_string(),
                     label,
                     value: Some(if is_checked { "checked" } else { "unchecked" }.to_string()),
                     row,
@@ -195,7 +191,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
 
                 matches.push(PatternMatch {
                     element_type: ElementType::Radio,
-                    text: full_match.as_str().to_string(),
                     label,
                     value: Some(
                         if is_selected {
@@ -222,7 +217,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
 
                 matches.push(PatternMatch {
                     element_type: ElementType::Select,
-                    text: full_match.as_str().to_string(),
                     label,
                     value,
                     row,
@@ -244,7 +238,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
 
                 matches.push(PatternMatch {
                     element_type: ElementType::MenuItem,
-                    text: full_match.as_str().to_string(),
                     label,
                     value: None,
                     row,
@@ -263,7 +256,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
 
                 matches.push(PatternMatch {
                     element_type: ElementType::ListItem,
-                    text: full_match.as_str().to_string(),
                     label,
                     value: None,
                     row,
@@ -281,7 +273,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
 
                 matches.push(PatternMatch {
                     element_type: ElementType::Spinner,
-                    text: full_match.as_str().to_string(),
                     label: None,
                     value: None,
                     row,
@@ -300,7 +291,6 @@ pub fn detect_by_pattern(screen_text: &str) -> Vec<PatternMatch> {
 
                 matches.push(PatternMatch {
                     element_type: ElementType::Progress,
-                    text: full_match.as_str().to_string(),
                     label: None,
                     value,
                     row,
@@ -328,15 +318,11 @@ fn type_priority(t: &ElementType) -> i32 {
         ElementType::ListItem => 5,
         ElementType::Spinner => 4,
         ElementType::Progress => 3,
-        ElementType::Link => 2,
-        ElementType::Text => 1,
-        ElementType::Container => 1,
-        ElementType::Unknown => 0,
     }
 }
 
 /// Remove overlapping matches, preferring higher-priority types
-fn deduplicate_matches(mut matches: Vec<PatternMatch>) -> Vec<PatternMatch> {
+pub fn deduplicate_matches(mut matches: Vec<PatternMatch>) -> Vec<PatternMatch> {
     // Sort by priority (higher first), then by position
     matches.sort_by(|a, b| {
         let priority_cmp = type_priority(&b.element_type).cmp(&type_priority(&a.element_type));

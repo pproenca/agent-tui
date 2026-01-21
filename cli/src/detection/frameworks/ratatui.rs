@@ -1,0 +1,198 @@
+//! Ratatui (Rust) framework detector
+//!
+//! Detects elements specific to Ratatui applications using patterns like:
+//! - Block characters for progress: █▓▒░
+//! - Sparkline characters: ▁▂▃▄▅▆▇
+//! - Various fractional block elements: ▏▎▍▌▋▊▉
+
+use crate::detection::pattern::{deduplicate_matches, PatternMatch};
+use crate::detection::traits::{DetectionContext, ElementDetectorImpl};
+use crate::detection::ElementType;
+use regex::Regex;
+use std::sync::OnceLock;
+
+/// Ratatui (Rust) framework detector
+pub struct RatatuiDetector;
+
+impl RatatuiDetector {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Check if the screen appears to be a Ratatui application
+    pub fn looks_like_ratatui(ctx: &DetectionContext) -> bool {
+        // Ratatui gauge/progress uses block characters
+        let block_chars = ['█', '▓', '▒', '░', '▏', '▎', '▍', '▌', '▋', '▊', '▉'];
+        let block_count = block_chars
+            .iter()
+            .filter(|c| ctx.screen_text.contains(**c))
+            .count();
+
+        // Ratatui sparklines use specific characters
+        let sparkline_chars = ['▁', '▂', '▃', '▄', '▅', '▆', '▇'];
+        let sparkline_count = sparkline_chars
+            .iter()
+            .filter(|c| ctx.screen_text.contains(**c))
+            .count();
+
+        block_count >= 3 || sparkline_count >= 3
+    }
+}
+
+impl Default for RatatuiDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Cached regex patterns for Ratatui-specific elements
+struct RatatuiPatterns {
+    progress_bar: Regex,
+    sparkline: Regex,
+    percentage: Regex,
+}
+
+fn get_ratatui_patterns() -> &'static RatatuiPatterns {
+    static PATTERNS: OnceLock<RatatuiPatterns> = OnceLock::new();
+    PATTERNS.get_or_init(|| RatatuiPatterns {
+        // Progress bar with block characters
+        progress_bar: Regex::new(r"[█▓▒░]{3,}").unwrap(),
+        // Sparkline visualization
+        sparkline: Regex::new(r"[▁▂▃▄▅▆▇█]{3,}").unwrap(),
+        // Percentage display
+        percentage: Regex::new(r"(\d+)\s*%").unwrap(),
+    })
+}
+
+impl ElementDetectorImpl for RatatuiDetector {
+    fn detect_patterns(&self, ctx: &DetectionContext) -> Vec<PatternMatch> {
+        let mut matches = Vec::new();
+        let patterns = get_ratatui_patterns();
+
+        for (row_idx, line) in ctx.lines.iter().enumerate() {
+            let row = row_idx as u16;
+
+            // Detect progress bars
+            for cap in patterns.progress_bar.captures_iter(line) {
+                let full_match = cap.get(0).unwrap();
+
+                matches.push(PatternMatch {
+                    element_type: ElementType::Progress,
+                    label: None,
+                    value: Some(full_match.as_str().to_string()),
+                    row,
+                    col: full_match.start() as u16,
+                    width: full_match.as_str().len() as u16,
+                    checked: None,
+                });
+            }
+
+            // Detect sparklines as progress indicators
+            for cap in patterns.sparkline.captures_iter(line) {
+                let full_match = cap.get(0).unwrap();
+                let start = full_match.start() as u16;
+
+                // Skip if overlapping with progress bar
+                if matches
+                    .iter()
+                    .any(|m| m.row == row && m.col <= start && start < m.col + m.width)
+                {
+                    continue;
+                }
+
+                matches.push(PatternMatch {
+                    element_type: ElementType::Progress,
+                    label: Some("sparkline".to_string()),
+                    value: Some(full_match.as_str().to_string()),
+                    row,
+                    col: full_match.start() as u16,
+                    width: full_match.as_str().len() as u16,
+                    checked: None,
+                });
+            }
+
+            // Detect percentage values
+            for cap in patterns.percentage.captures_iter(line) {
+                let full_match = cap.get(0).unwrap();
+                let value = cap.get(1).map(|m| m.as_str().to_string());
+
+                matches.push(PatternMatch {
+                    element_type: ElementType::Progress,
+                    label: None,
+                    value,
+                    row,
+                    col: full_match.start() as u16,
+                    width: full_match.as_str().len() as u16,
+                    checked: None,
+                });
+            }
+        }
+
+        deduplicate_matches(matches)
+    }
+
+    fn framework_name(&self) -> &'static str {
+        "ratatui"
+    }
+
+    fn priority(&self) -> i32 {
+        5 // Lower priority (visual patterns can overlap with others)
+    }
+
+    fn can_detect(&self, ctx: &DetectionContext) -> bool {
+        Self::looks_like_ratatui(ctx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ratatui_detector_framework_name() {
+        let detector = RatatuiDetector::new();
+        assert_eq!(detector.framework_name(), "ratatui");
+    }
+
+    #[test]
+    fn test_looks_like_ratatui_with_blocks() {
+        // Need at least 3 unique block characters to trigger detection
+        let ctx = DetectionContext::new("Progress: [████▓▓▒▒░░░░░░░░] 50%", None);
+        assert!(RatatuiDetector::looks_like_ratatui(&ctx));
+    }
+
+    #[test]
+    fn test_looks_like_ratatui_with_sparkline() {
+        let ctx = DetectionContext::new("Usage: ▁▂▃▄▅▆▇█▇▆▅▄▃▂▁", None);
+        assert!(RatatuiDetector::looks_like_ratatui(&ctx));
+    }
+
+    #[test]
+    fn test_does_not_look_like_ratatui() {
+        let ctx = DetectionContext::new("[Submit] [Cancel]", None);
+        assert!(!RatatuiDetector::looks_like_ratatui(&ctx));
+    }
+
+    #[test]
+    fn test_detect_progress_bar() {
+        let detector = RatatuiDetector::new();
+        let ctx = DetectionContext::new("████████░░░░", None);
+        let matches = detector.detect_patterns(&ctx);
+
+        assert!(!matches.is_empty());
+        assert!(matches
+            .iter()
+            .any(|m| m.element_type == ElementType::Progress));
+    }
+
+    #[test]
+    fn test_detect_percentage() {
+        let detector = RatatuiDetector::new();
+        let ctx = DetectionContext::new("Loading: 75%", None);
+        let matches = detector.detect_patterns(&ctx);
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].element_type, ElementType::Progress);
+        assert_eq!(matches[0].value, Some("75".to_string()));
+    }
+}

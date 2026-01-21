@@ -24,7 +24,6 @@ mod codes {
     pub const GREEN: &str = "\x1b[32m";
     pub const RED: &str = "\x1b[31m";
     pub const CYAN: &str = "\x1b[36m";
-    pub const YELLOW: &str = "\x1b[33m";
     pub const DIM: &str = "\x1b[90m";
     pub const BOLD: &str = "\x1b[1m";
 }
@@ -57,15 +56,6 @@ impl Colors {
             text.to_string()
         } else {
             format!("{}{}{}", codes::CYAN, text, codes::RESET)
-        }
-    }
-
-    /// Warning messages (yellow)
-    pub fn warning(text: &str) -> String {
-        if is_disabled() {
-            text.to_string()
-        } else {
-            format!("{}{}{}", codes::YELLOW, text, codes::RESET)
         }
     }
 
@@ -102,15 +92,6 @@ impl Colors {
             text.to_string()
         } else {
             format!("{}{}{}{}", codes::BOLD, codes::CYAN, text, codes::RESET)
-        }
-    }
-
-    /// Status indicator based on boolean
-    pub fn status(running: bool) -> String {
-        if running {
-            Self::success("running")
-        } else {
-            Self::dim("exited")
         }
     }
 }

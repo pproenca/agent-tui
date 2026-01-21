@@ -20,33 +20,10 @@ pub enum Framework {
     Inquirer,
     /// Prompts (Node.js)
     Prompts,
-    /// Charm (Go libraries)
-    Charm,
     /// Ratatui (Rust)
     Ratatui,
-    /// Crossterm/Termion (Rust)
-    CrosstermRust,
     /// Unknown framework
     Unknown,
-}
-
-impl Framework {
-    /// Get the framework name as a string
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Framework::Ink => "ink",
-            Framework::Blessed => "blessed",
-            Framework::BubbleTea => "bubbletea",
-            Framework::Textual => "textual",
-            Framework::Ncurses => "ncurses",
-            Framework::Inquirer => "inquirer",
-            Framework::Prompts => "prompts",
-            Framework::Charm => "charm",
-            Framework::Ratatui => "ratatui",
-            Framework::CrosstermRust => "crossterm",
-            Framework::Unknown => "unknown",
-        }
-    }
 }
 
 /// Detect the TUI framework based on screen content and patterns

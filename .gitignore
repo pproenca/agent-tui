@@ -141,7 +141,6 @@ temp/
 # npm Distribution
 # ============================================
 node_modules/
-package-lock.json
 # Downloaded platform binaries (postinstall creates these)
 bin/agent-tui-*
 

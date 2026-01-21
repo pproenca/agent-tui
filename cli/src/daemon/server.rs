@@ -1,6 +1,6 @@
 //! JSON-RPC server over Unix socket
 
-use crate::detection::Element;
+use crate::detection::{detect_framework, Element, Framework};
 use crate::session::{Session, SessionManager};
 use crate::wait::{check_condition, StableTracker, WaitCondition};
 use serde::{Deserialize, Serialize};
@@ -108,6 +108,73 @@ fn lock_timeout_response(request_id: u64, session_context: Option<&str>) -> Resp
         None => ai_friendly_error("lock timeout", None),
     };
     Response::error(request_id, -32000, &msg)
+}
+
+// ============================================================================
+// Select Widget Navigation Helpers
+// ============================================================================
+
+/// Arrow key escape sequences
+const ARROW_UP: &[u8] = b"\x1b[A";
+const ARROW_DOWN: &[u8] = b"\x1b[B";
+
+/// Navigate to a select option using arrow keys
+fn navigate_to_option(
+    sess: &mut Session,
+    target: &str,
+    screen_text: &str,
+) -> Result<(), crate::session::SessionError> {
+    let (options, current_idx) = parse_select_options(screen_text);
+
+    // Find target option (case-insensitive partial match)
+    let target_lower = target.to_lowercase();
+    let target_idx = options
+        .iter()
+        .position(|opt| opt.to_lowercase().contains(&target_lower))
+        .unwrap_or(0);
+
+    // Calculate steps and direction
+    let steps = target_idx as i32 - current_idx as i32;
+    let key = if steps > 0 { ARROW_DOWN } else { ARROW_UP };
+
+    // Send arrow keys with small delay for TUI to update
+    for _ in 0..steps.unsigned_abs() {
+        sess.pty_write(key)?;
+        thread::sleep(Duration::from_millis(30));
+    }
+
+    Ok(())
+}
+
+/// Parse select options from screen text
+/// Returns (options, currently_selected_index)
+fn parse_select_options(screen_text: &str) -> (Vec<String>, usize) {
+    let mut options = Vec::new();
+    let mut selected_idx = 0;
+
+    for line in screen_text.lines() {
+        let trimmed = line.trim();
+
+        // Ink/Inquirer selection markers: ❯ or ›
+        if trimmed.starts_with('❯') || trimmed.starts_with('›') {
+            selected_idx = options.len();
+            options.push(trimmed.trim_start_matches(['❯', '›', ' ']).to_string());
+        }
+        // Inquirer radio buttons: ◉ (selected) or ◯ (unselected)
+        else if trimmed.starts_with('◉') {
+            selected_idx = options.len();
+            options.push(trimmed.trim_start_matches(['◉', ' ']).to_string());
+        } else if trimmed.starts_with('◯') {
+            options.push(trimmed.trim_start_matches(['◯', ' ']).to_string());
+        }
+        // BubbleTea/generic: > marker (but not >>)
+        else if trimmed.starts_with('>') && !trimmed.starts_with(">>") {
+            selected_idx = options.len();
+            options.push(trimmed.trim_start_matches(['>', ' ']).to_string());
+        }
+    }
+
+    (options, selected_idx)
 }
 
 /// Get the socket path
@@ -1904,11 +1971,23 @@ impl DaemonServer {
                     );
                 }
 
-                // TODO: Implement cross-widget clear operation. Current implementation
-                // only sends Ctrl+U which works for readline-based inputs. Should detect
-                // input type and use appropriate clear sequence (e.g., Ctrl+A then Delete
-                // for other input types). Doesn't verify the input was actually cleared.
-                if let Err(e) = sess.pty_write(b"\x15") {
+                // Framework-aware clear: use appropriate sequence based on detected TUI framework
+                let screen_text = sess.screen_text();
+                let framework = detect_framework(&screen_text);
+
+                let result = match framework {
+                    Framework::Textual => {
+                        // Textual (Python) needs Ctrl+A (select all) then Delete
+                        sess.pty_write(b"\x01")
+                            .and_then(|_| sess.pty_write(b"\x7f"))
+                    }
+                    _ => {
+                        // Ctrl+U works for readline, Ink, Inquirer, BubbleTea, etc.
+                        sess.pty_write(b"\x15")
+                    }
+                };
+
+                if let Err(e) = result {
                     return Response::error(
                         request.id,
                         -32000,
@@ -2127,30 +2206,25 @@ impl DaemonServer {
                     }
                 }
 
-                // TODO: Implement robust select interaction that works with various TUI
-                // select widget types. Current implementation assumes typing filters options
-                // and Enter confirms. Should support arrow-key navigation for widgets that
-                // don't filter on typing, handle multi-select dropdowns, and verify selection
-                // succeeded. Won't work with autocomplete/fuzzy-search selects properly.
-                if let Err(e) = sess.pty_write(b"\r") {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), None),
-                    );
-                }
+                // Framework-aware select: use arrow navigation for known TUI frameworks
+                let screen_text = sess.screen_text();
+                let framework = detect_framework(&screen_text);
 
-                // Type the option to filter/select
-                if let Err(e) = sess.pty_write(option.as_bytes()) {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), None),
-                    );
-                }
+                let result = match framework {
+                    Framework::Unknown => {
+                        // Fallback: type to filter + Enter (current behavior)
+                        sess.pty_write(b"\r")
+                            .and_then(|_| sess.pty_write(option.as_bytes()))
+                            .and_then(|_| sess.pty_write(b"\r"))
+                    }
+                    _ => {
+                        // Arrow navigation for known TUI frameworks (Ink, Inquirer, BubbleTea, etc.)
+                        navigate_to_option(&mut sess, option, &screen_text)
+                            .and_then(|_| sess.pty_write(b"\r"))
+                    }
+                };
 
-                // Confirm selection
-                if let Err(e) = sess.pty_write(b"\r") {
+                if let Err(e) = result {
                     return Response::error(
                         request.id,
                         -32000,

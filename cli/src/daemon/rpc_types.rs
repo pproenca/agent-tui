@@ -28,6 +28,18 @@ impl Request {
         self.params.as_ref()?.get(key)?.as_array()
     }
 
+    pub fn param_u64(&self, key: &str, default: u64) -> u64 {
+        self.params
+            .as_ref()
+            .and_then(|p| p.get(key))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(default)
+    }
+
+    pub fn param_u16(&self, key: &str, default: u16) -> u16 {
+        self.param_u64(key, default as u64) as u16
+    }
+
     #[allow(clippy::result_large_err)]
     pub fn require_str(&self, key: &str) -> Result<&str, Response> {
         self.param_str(key)

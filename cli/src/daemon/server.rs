@@ -3,6 +3,7 @@ use super::lock_helpers::{acquire_session_lock, LOCK_TIMEOUT};
 use super::rpc_types::{Request, Response};
 use super::select_helpers::{navigate_to_option, strip_ansi_codes};
 use crate::detection::{detect_framework, Element, Framework};
+use crate::json_ext::ValueExt;
 use crate::session::SessionManager;
 use crate::sync_utils::mutex_lock_or_recover;
 use crate::wait::{check_condition, StableTracker, WaitCondition};
@@ -498,15 +499,11 @@ impl DaemonServer {
     }
 
     fn handle_wait(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-        let text = params.get("text").and_then(|v| v.as_str());
-        let condition_str = params.get("condition").and_then(|v| v.as_str());
-        let target = params.get("target").and_then(|v| v.as_str());
-        let timeout_ms = params
-            .get("timeout_ms")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(30000);
+        let session_id = request.param_str("session");
+        let text = request.param_str("text");
+        let condition_str = request.param_str("condition");
+        let target = request.param_str("target");
+        let timeout_ms = request.param_u64("timeout_ms", 30000);
 
         let condition = match WaitCondition::parse(condition_str, target, text) {
             Some(c) => c,
@@ -742,214 +739,162 @@ impl DaemonServer {
     }
 
     fn handle_resize(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
-        };
+        let cols = request.param_u16("cols", 80);
+        let rows = request.param_u16("rows", 24);
+        let session_id = request.param_str("session");
 
-        let cols = params.get("cols").and_then(|v| v.as_u64()).unwrap_or(80) as u16;
-        let rows = params.get("rows").and_then(|v| v.as_u64()).unwrap_or(24) as u16;
-        let session_id = params.get("session").and_then(|v| v.as_str());
-
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                match sess.resize(cols, rows) {
-                    Ok(()) => Response::success(
-                        request.id,
-                        json!({
-                            "success": true,
-                            "session_id": sess.id,
-                            "size": { "cols": cols, "rows": rows }
-                        }),
-                    ),
-                    Err(e) => Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), session_id),
-                    ),
-                }
-            }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
+        let req_id = request.id;
+        self.with_session(&request, session_id, |sess| match sess.resize(cols, rows) {
+            Ok(()) => Response::success(
+                req_id,
+                json!({
+                    "success": true,
+                    "session_id": sess.id,
+                    "size": { "cols": cols, "rows": rows }
+                }),
             ),
-        }
+            Err(e) => Response::action_failed(req_id, None, &e.to_string()),
+        })
     }
 
     fn handle_screen(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
-        let strip_ansi = params
-            .get("strip_ansi")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let include_cursor = params
-            .get("include_cursor")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let params = request.params.as_ref().cloned().unwrap_or(json!({}));
+        let session_id = request.param_str("session");
+        let strip_ansi = params.bool_or("strip_ansi", false);
+        let include_cursor = params.bool_or("include_cursor", false);
 
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                let mut screen = sess.screen_text();
-                let (cols, rows) = sess.size();
-                let cursor = sess.cursor();
+        let req_id = request.id;
+        self.with_session(&request, session_id, |sess| {
+            let _ = sess.update();
+            let mut screen = sess.screen_text();
+            let (cols, rows) = sess.size();
+            let cursor = sess.cursor();
 
-                if strip_ansi {
-                    screen = strip_ansi_codes(&screen);
-                }
-
-                let mut result = json!({
-                    "session_id": sess.id,
-                    "screen": screen,
-                    "size": { "cols": cols, "rows": rows }
-                });
-
-                if include_cursor {
-                    result["cursor"] = json!({
-                        "row": cursor.row,
-                        "col": cursor.col,
-                        "visible": cursor.visible
-                    });
-                }
-
-                Response::success(request.id, result)
+            if strip_ansi {
+                screen = strip_ansi_codes(&screen);
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+
+            let mut result = json!({
+                "session_id": sess.id,
+                "screen": screen,
+                "size": { "cols": cols, "rows": rows }
+            });
+
+            if include_cursor {
+                result["cursor"] = json!({
+                    "row": cursor.row,
+                    "col": cursor.col,
+                    "visible": cursor.visible
+                });
+            }
+
+            Response::success(req_id, result)
+        })
     }
 
     fn handle_find(&self, request: Request) -> Response {
-        let params = request.params.unwrap_or(json!({}));
-        let session_id = params.get("session").and_then(|v| v.as_str());
+        let params = request.params.as_ref().cloned().unwrap_or(json!({}));
         let role = params.get("role").and_then(|v| v.as_str());
         let name = params.get("name").and_then(|v| v.as_str());
         let text = params.get("text").and_then(|v| v.as_str());
         let placeholder = params.get("placeholder").and_then(|v| v.as_str());
-        let focused_only = params
-            .get("focused")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let focused_only = params.bool_or("focused", false);
         let nth = params
             .get("nth")
             .and_then(|v| v.as_u64())
             .map(|n| n as usize);
-        let exact = params
-            .get("exact")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let exact = params.bool_or("exact", false);
 
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-                let _ = sess.update();
-                let elements = sess.detect_elements();
+        let req_id = request.id;
+        self.with_detected_session(&request, |sess| {
+            let elements = sess.cached_elements();
 
-                let matches: Vec<_> = elements
-                    .iter()
-                    .filter(|el| {
-                        if let Some(r) = role {
-                            if el.element_type.as_str() != r {
-                                return false;
-                            }
-                        }
-                        if let Some(n) = name {
-                            let matches = if exact {
-                                el.label.as_ref().map(|l| l == n).unwrap_or(false)
-                            } else {
-                                let n_lower = n.to_lowercase();
-                                el.label
-                                    .as_ref()
-                                    .map(|l| l.to_lowercase().contains(&n_lower))
-                                    .unwrap_or(false)
-                            };
-                            if !matches {
-                                return false;
-                            }
-                        }
-                        if let Some(t) = text {
-                            let in_label = if exact {
-                                el.label.as_ref().map(|l| l == t).unwrap_or(false)
-                            } else {
-                                let t_lower = t.to_lowercase();
-                                el.label
-                                    .as_ref()
-                                    .map(|l| l.to_lowercase().contains(&t_lower))
-                                    .unwrap_or(false)
-                            };
-                            let in_value = if exact {
-                                el.value.as_ref().map(|v| v == t).unwrap_or(false)
-                            } else {
-                                let t_lower = t.to_lowercase();
-                                el.value
-                                    .as_ref()
-                                    .map(|v| v.to_lowercase().contains(&t_lower))
-                                    .unwrap_or(false)
-                            };
-                            if !in_label && !in_value {
-                                return false;
-                            }
-                        }
-                        if let Some(p) = placeholder {
-                            let matches = if exact {
-                                el.hint.as_ref().map(|h| h == p).unwrap_or(false)
-                            } else {
-                                let p_lower = p.to_lowercase();
-                                el.hint
-                                    .as_ref()
-                                    .map(|h| h.to_lowercase().contains(&p_lower))
-                                    .unwrap_or(false)
-                            };
-                            if !matches {
-                                return false;
-                            }
-                        }
-                        if focused_only && !el.focused {
+            let matches: Vec<_> = elements
+                .iter()
+                .filter(|el| {
+                    if let Some(r) = role {
+                        if el.element_type.as_str() != r {
                             return false;
                         }
-                        true
-                    })
-                    .map(element_to_json)
-                    .collect();
-
-                let final_matches = if let Some(n) = nth {
-                    if n < matches.len() {
-                        vec![matches[n].clone()]
-                    } else {
-                        vec![]
                     }
-                } else {
-                    matches
-                };
+                    if let Some(n) = name {
+                        let matches = if exact {
+                            el.label.as_ref().map(|l| l == n).unwrap_or(false)
+                        } else {
+                            let n_lower = n.to_lowercase();
+                            el.label
+                                .as_ref()
+                                .map(|l| l.to_lowercase().contains(&n_lower))
+                                .unwrap_or(false)
+                        };
+                        if !matches {
+                            return false;
+                        }
+                    }
+                    if let Some(t) = text {
+                        let in_label = if exact {
+                            el.label.as_ref().map(|l| l == t).unwrap_or(false)
+                        } else {
+                            let t_lower = t.to_lowercase();
+                            el.label
+                                .as_ref()
+                                .map(|l| l.to_lowercase().contains(&t_lower))
+                                .unwrap_or(false)
+                        };
+                        let in_value = if exact {
+                            el.value.as_ref().map(|v| v == t).unwrap_or(false)
+                        } else {
+                            let t_lower = t.to_lowercase();
+                            el.value
+                                .as_ref()
+                                .map(|v| v.to_lowercase().contains(&t_lower))
+                                .unwrap_or(false)
+                        };
+                        if !in_label && !in_value {
+                            return false;
+                        }
+                    }
+                    if let Some(p) = placeholder {
+                        let matches = if exact {
+                            el.hint.as_ref().map(|h| h == p).unwrap_or(false)
+                        } else {
+                            let p_lower = p.to_lowercase();
+                            el.hint
+                                .as_ref()
+                                .map(|h| h.to_lowercase().contains(&p_lower))
+                                .unwrap_or(false)
+                        };
+                        if !matches {
+                            return false;
+                        }
+                    }
+                    if focused_only && !el.focused {
+                        return false;
+                    }
+                    true
+                })
+                .map(element_to_json)
+                .collect();
 
-                Response::success(
-                    request.id,
-                    json!({
-                        "session_id": sess.id,
-                        "elements": final_matches,
-                        "count": final_matches.len()
-                    }),
-                )
-            }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+            let final_matches = if let Some(n) = nth {
+                if n < matches.len() {
+                    vec![matches[n].clone()]
+                } else {
+                    vec![]
+                }
+            } else {
+                matches
+            };
+
+            Response::success(
+                req_id,
+                json!({
+                    "session_id": sess.id,
+                    "elements": final_matches,
+                    "count": final_matches.len()
+                }),
+            )
+        })
     }
 
     fn handle_get_text(&self, request: Request) -> Response {
@@ -1063,18 +1008,12 @@ impl DaemonServer {
     }
 
     fn handle_scroll(&self, request: Request) -> Response {
-        let params = match request.params {
-            Some(p) => p,
-            None => return Response::error(request.id, -32602, "Missing params"),
+        let direction = match request.require_str("direction") {
+            Ok(d) => d,
+            Err(resp) => return resp,
         };
-
-        let direction = match params.get("direction").and_then(|v| v.as_str()) {
-            Some(d) => d,
-            None => return Response::error(request.id, -32602, "Missing 'direction' param"),
-        };
-
-        let amount = params.get("amount").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
-        let session_id = params.get("session").and_then(|v| v.as_str());
+        let amount = request.param_u64("amount", 5) as usize;
+        let session_id = request.param_str("session");
 
         let key_seq: &[u8] = match direction {
             "up" => b"\x1b[A",
@@ -1090,37 +1029,18 @@ impl DaemonServer {
             }
         };
 
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return lock_timeout_response(request.id, session_id);
-                };
-
-                for _ in 0..amount {
-                    if let Err(e) = sess.pty_write(key_seq) {
-                        return Response::error(
-                            request.id,
-                            -32000,
-                            &ai_friendly_error(&e.to_string(), None),
-                        );
-                    }
+        let req_id = request.id;
+        self.with_session(&request, session_id, |sess| {
+            for _ in 0..amount {
+                if let Err(e) = sess.pty_write(key_seq) {
+                    return Response::action_failed(req_id, None, &e.to_string());
                 }
-
-                Response::success(
-                    request.id,
-                    json!({
-                        "success": true,
-                        "direction": direction,
-                        "amount": amount
-                    }),
-                )
             }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+            Response::success(
+                req_id,
+                json!({ "success": true, "direction": direction, "amount": amount }),
+            )
+        })
     }
 
     fn handle_scroll_into_view(&self, request: Request) -> Response {

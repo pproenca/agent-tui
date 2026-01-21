@@ -21,7 +21,7 @@ Basic demonstration of the spawn -> interact -> kill workflow.
 Demonstrates:
 - `spawn` - Starting a bash session
 - `type` - Typing text
-- `keystroke` - Sending Enter
+- `press` - Sending Enter
 - `wait` - Waiting for text
 - `snapshot` - Capturing screen
 - `kill` - Cleaning up

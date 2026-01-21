@@ -45,7 +45,7 @@ show_usage() {
     echo ""
     echo "Interactive commands:"
     echo "  type <text>       - Type text into the terminal"
-    echo "  key <key>         - Send a keystroke (Enter, Tab, ArrowDown, etc.)"
+    echo "  key <key>         - Press a key (Enter, Tab, ArrowDown, etc.)"
     echo "  wait <text>       - Wait for text to appear"
     echo "  stable            - Wait for screen to stabilize"
     echo "  snapshot          - Take and display a snapshot"
@@ -85,7 +85,7 @@ interactive_loop() {
             key)
                 if [ -n "$args" ]; then
                     log_step "Sending key: $args"
-                    agent-tui keystroke "$args"
+                    agent-tui press "$args"
                 else
                     log_warn "Usage: key <key> (e.g., Enter, Tab, ArrowDown)"
                 fi
@@ -125,7 +125,7 @@ interactive_loop() {
             help|h|\?)
                 echo "Commands:"
                 echo "  type <text>  - Type text"
-                echo "  key <key>    - Send keystroke"
+                echo "  key <key>    - Press key"
                 echo "  wait <text>  - Wait for text"
                 echo "  stable       - Wait for stability"
                 echo "  snapshot     - Show snapshot"

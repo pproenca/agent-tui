@@ -37,7 +37,7 @@ agent-tui snapshot -i
 # Type name and confirm
 echo "4. Entering name..."
 agent-tui type "Alice"
-agent-tui keystroke Enter
+agent-tui press Enter
 
 # Wait for color prompt
 echo "5. Waiting for color prompt..."
@@ -46,7 +46,7 @@ agent-tui wait "favorite color"
 # Type color and confirm
 echo "6. Entering color..."
 agent-tui type "blue"
-agent-tui keystroke Enter
+agent-tui press Enter
 
 # Wait for completion
 echo "7. Waiting for completion..."

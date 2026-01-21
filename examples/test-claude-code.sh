@@ -100,7 +100,7 @@ main() {
     # Send a test task
     log_info "Sending test task: Create hello.py..."
     agent-tui type "Create a file called hello.py that prints 'Hello World'"
-    agent-tui keystroke Enter
+    agent-tui press Enter
 
     # Wait for completion (screen stabilizes)
     log_info "Waiting for task completion..."

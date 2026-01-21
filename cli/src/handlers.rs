@@ -402,24 +402,7 @@ pub fn handle_press(ctx: &mut HandlerContext, key: String) -> HandlerResult {
     });
 
     let result = ctx.client.call("keystroke", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Key pressed");
-            } else {
-                eprintln!("Press failed");
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(&result, "Key pressed", "Press failed")?;
     Ok(())
 }
 
@@ -430,24 +413,7 @@ pub fn handle_type(ctx: &mut HandlerContext, text: String) -> HandlerResult {
     });
 
     let result = ctx.client.call("type", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Text typed");
-            } else {
-                eprintln!("Type failed");
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(&result, "Text typed", "Type failed")?;
     Ok(())
 }
 
@@ -948,16 +914,16 @@ pub fn handle_multiselect(
     });
 
     let result = ctx.client.call("multiselect", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
 
     match ctx.format {
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         OutputFormat::Text | OutputFormat::Tree => {
+            let success = result
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             if success {
                 let selected = result
                     .get("selected_options")
@@ -1002,24 +968,11 @@ pub fn handle_scroll(
     });
 
     let result = ctx.client.call("scroll", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Scrolled {} {} times", dir_str, amount);
-            } else {
-                eprintln!("Scroll failed");
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(
+        &result,
+        &format!("Scrolled {} {} times", dir_str, amount),
+        "Scroll failed",
+    )?;
     Ok(())
 }
 

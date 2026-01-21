@@ -413,92 +413,79 @@ impl DaemonServer {
         let include_elements = params.bool_or("include_elements", false);
         let interactive_only = params.bool_or("interactive_only", false);
         let compact = params.bool_or("compact", false);
+        let req_id = request.id;
 
-        match self.session_manager.resolve(session_id) {
-            Ok(session) => {
-                let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                    return Response::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error("lock timeout", None),
-                    );
-                };
-                let _ = sess.update();
+        self.with_session(&request, session_id, |sess| {
+            let _ = sess.update();
 
-                let screen = sess.screen_text();
-                let cursor = sess.cursor();
-                let (cols, rows) = sess.size();
+            let screen = sess.screen_text();
+            let cursor = sess.cursor();
+            let (cols, rows) = sess.size();
 
-                let (elements, stats) = if include_elements {
-                    let all_elements = sess.detect_elements();
-                    let elements_total = all_elements.len();
-                    let elements_interactive =
-                        all_elements.iter().filter(|e| e.is_interactive()).count();
+            let (elements, stats) = if include_elements {
+                let all_elements = sess.detect_elements();
+                let elements_total = all_elements.len();
+                let elements_interactive =
+                    all_elements.iter().filter(|e| e.is_interactive()).count();
 
-                    let filtered_elements: Vec<_> = all_elements
-                        .iter()
-                        .filter(|el| {
-                            if interactive_only && !el.is_interactive() {
-                                return false;
-                            }
-                            if compact && !el.is_interactive() && !el.has_content() {
-                                return false;
-                            }
-                            true
-                        })
-                        .map(element_to_json)
-                        .collect();
+                let filtered_elements: Vec<_> = all_elements
+                    .iter()
+                    .filter(|el| {
+                        if interactive_only && !el.is_interactive() {
+                            return false;
+                        }
+                        if compact && !el.is_interactive() && !el.has_content() {
+                            return false;
+                        }
+                        true
+                    })
+                    .map(element_to_json)
+                    .collect();
 
-                    let elements_shown = filtered_elements.len();
+                let elements_shown = filtered_elements.len();
 
-                    (
-                        Some(filtered_elements),
-                        json!({
-                            "lines": screen.lines().count(),
-                            "chars": screen.len(),
-                            "elements_total": elements_total,
-                            "elements_interactive": elements_interactive,
-                            "elements_shown": elements_shown
-                        }),
-                    )
-                } else {
-                    (
-                        None,
-                        json!({
-                            "lines": screen.lines().count(),
-                            "chars": screen.len(),
-                            "elements_total": 0,
-                            "elements_interactive": 0,
-                            "elements_shown": 0
-                        }),
-                    )
-                };
-
-                Response::success(
-                    request.id,
+                (
+                    Some(filtered_elements),
                     json!({
-                        "session_id": sess.id,
-                        "screen": screen,
-                        "elements": elements,
-                        "cursor": {
-                            "row": cursor.row,
-                            "col": cursor.col,
-                            "visible": cursor.visible
-                        },
-                        "size": {
-                            "cols": cols,
-                            "rows": rows
-                        },
-                        "stats": stats
+                        "lines": screen.lines().count(),
+                        "chars": screen.len(),
+                        "elements_total": elements_total,
+                        "elements_interactive": elements_interactive,
+                        "elements_shown": elements_shown
                     }),
                 )
-            }
-            Err(e) => Response::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
-        }
+            } else {
+                (
+                    None,
+                    json!({
+                        "lines": screen.lines().count(),
+                        "chars": screen.len(),
+                        "elements_total": 0,
+                        "elements_interactive": 0,
+                        "elements_shown": 0
+                    }),
+                )
+            };
+
+            Response::success(
+                req_id,
+                json!({
+                    "session_id": sess.id,
+                    "screen": screen,
+                    "elements": elements,
+                    "cursor": {
+                        "row": cursor.row,
+                        "col": cursor.col,
+                        "visible": cursor.visible
+                    },
+                    "size": {
+                        "cols": cols,
+                        "rows": rows
+                    },
+                    "stats": stats
+                }),
+            )
+        })
     }
 
     fn handle_click(&self, request: Request) -> Response {
@@ -1051,11 +1038,7 @@ impl DaemonServer {
             Ok(session) => {
                 for scroll_count in 0..max_scrolls {
                     let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                        return Response::error(
-                            request.id,
-                            -32000,
-                            &ai_friendly_error("lock timeout", None),
-                        );
+                        return lock_timeout_response(request.id, session_id);
                     };
                     let _ = sess.update();
                     sess.detect_elements();

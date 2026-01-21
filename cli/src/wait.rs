@@ -40,25 +40,20 @@ impl WaitCondition {
             Some("not_visible") => target.map(|t| WaitCondition::NotVisible(t.to_string())),
             Some("stable") => Some(WaitCondition::Stable),
             Some("text_gone") => target.map(|t| WaitCondition::TextGone(t.to_string())),
-            Some("value") => {
-                // Parse target as "ref=value" OR use target for element and text for value
-                target.and_then(|t| {
-                    let parts: Vec<&str> = t.splitn(2, '=').collect();
-                    if parts.len() == 2 {
-                        // Format: --target @ref=expected_value
-                        Some(WaitCondition::Value {
-                            element: parts[0].to_string(),
-                            expected: parts[1].to_string(),
-                        })
-                    } else {
-                        // Format: --target @ref --text "expected_value"
-                        text.map(|expected_value| WaitCondition::Value {
-                            element: t.to_string(),
-                            expected: expected_value.to_string(),
-                        })
-                    }
-                })
-            }
+            Some("value") => target.and_then(|t| {
+                let parts: Vec<&str> = t.splitn(2, '=').collect();
+                if parts.len() == 2 {
+                    Some(WaitCondition::Value {
+                        element: parts[0].to_string(),
+                        expected: parts[1].to_string(),
+                    })
+                } else {
+                    text.map(|expected_value| WaitCondition::Value {
+                        element: t.to_string(),
+                        expected: expected_value.to_string(),
+                    })
+                }
+            }),
             None => text.map(|t| WaitCondition::Text(t.to_string())),
             _ => None,
         }
@@ -201,7 +196,6 @@ mod tests {
 
     #[test]
     fn test_parse_value_condition_with_separate_text() {
-        // Spec format: --condition value --target @e2 --text "expected value"
         let cond = WaitCondition::parse(Some("value"), Some("@e2"), Some("expected value"));
         assert!(
             matches!(cond, Some(WaitCondition::Value { element, expected }) if element == "@e2" && expected == "expected value")
@@ -212,12 +206,10 @@ mod tests {
     fn test_stable_tracker() {
         let mut tracker = StableTracker::new(3);
 
-        // Different screens
         assert!(!tracker.add_hash("screen1"));
         assert!(!tracker.add_hash("screen2"));
         assert!(!tracker.add_hash("screen3"));
 
-        // Same screen 3 times
         assert!(!tracker.add_hash("stable"));
         assert!(!tracker.add_hash("stable"));
         assert!(tracker.add_hash("stable"));

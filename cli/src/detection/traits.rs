@@ -33,7 +33,7 @@ impl<'a> DetectionContext<'a> {
 ///
 /// Methods beyond `detect_patterns` are used for framework auto-detection
 /// and are accessed through the `FrameworkDetector` enum dispatch.
-#[allow(dead_code)] // Methods accessed through FrameworkDetector enum delegation
+#[allow(dead_code)]
 pub trait ElementDetectorImpl: Send + Sync {
     /// Detect pattern matches in the screen content
     ///

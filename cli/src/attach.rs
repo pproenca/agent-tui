@@ -139,26 +139,23 @@ fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
     match key_event.code {
         Char(c) => {
             if ctrl {
-                // Ctrl+A through Ctrl+Z map to 0x01-0x1A
                 if c.is_ascii_lowercase() {
                     Some(vec![c as u8 - b'a' + 1])
                 } else if c.is_ascii_uppercase() {
                     Some(vec![c as u8 - b'A' + 1])
                 } else {
-                    // Other ctrl combinations
                     match c {
-                        '[' | '3' => Some(vec![0x1b]),       // Escape
-                        '\\' | '4' => Some(vec![0x1c]),      // Ctrl+\ (File separator)
-                        ']' | '5' => Some(vec![0x1d]),       // Ctrl+] (Group separator)
-                        '^' | '6' => Some(vec![0x1e]),       // Ctrl+^ (Record separator)
-                        '_' | '7' => Some(vec![0x1f]),       // Ctrl+_ (Unit separator)
-                        '?' | '8' => Some(vec![0x7f]),       // Delete
-                        ' ' | '2' | '@' => Some(vec![0x00]), // Ctrl+Space (NUL)
+                        '[' | '3' => Some(vec![0x1b]),
+                        '\\' | '4' => Some(vec![0x1c]),
+                        ']' | '5' => Some(vec![0x1d]),
+                        '^' | '6' => Some(vec![0x1e]),
+                        '_' | '7' => Some(vec![0x1f]),
+                        '?' | '8' => Some(vec![0x7f]),
+                        ' ' | '2' | '@' => Some(vec![0x00]),
                         _ => None,
                     }
                 }
             } else if alt {
-                // Alt+key sends ESC followed by the key
                 Some(vec![0x1b, c as u8])
             } else {
                 let mut buf = [0u8; 4];
@@ -169,7 +166,7 @@ fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
         Enter => Some(vec![b'\r']),
         Tab => {
             if key_event.modifiers.contains(KeyModifiers::SHIFT) {
-                Some(vec![0x1b, b'[', b'Z']) // Shift+Tab (backtab)
+                Some(vec![0x1b, b'[', b'Z'])
             } else {
                 Some(vec![b'\t'])
             }
@@ -187,7 +184,6 @@ fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
         PageDown => Some(vec![0x1b, b'[', b'6', b'~']),
         Insert => Some(vec![0x1b, b'[', b'2', b'~']),
         F(n) => {
-            // Function keys
             let seq = match n {
                 1 => vec![0x1b, b'O', b'P'],
                 2 => vec![0x1b, b'O', b'Q'],
@@ -222,7 +218,7 @@ mod tests {
     #[test]
     fn test_key_event_to_bytes_ctrl() {
         let event = event::KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        assert_eq!(key_event_to_bytes(&event), Some(vec![0x03])); // Ctrl+C
+        assert_eq!(key_event_to_bytes(&event), Some(vec![0x03]));
     }
 
     #[test]

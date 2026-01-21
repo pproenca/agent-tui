@@ -157,10 +157,8 @@ fn render(
     let start_x = width.saturating_sub(box_width) / 2;
     let start_y = height.saturating_sub(box_height) / 2;
 
-    // Draw box border
     draw_box(stdout, start_x, start_y, box_width, box_height)?;
 
-    // Title
     execute!(
         stdout,
         MoveTo(start_x + 2, start_y + 1),
@@ -169,7 +167,6 @@ fn render(
         ResetColor
     )?;
 
-    // Name input field - uses pattern: "Label: [value___]"
     let name_focused = state.focused_field == 0;
     let input_label = "Name";
     let input_value = &state.name_value;
@@ -196,7 +193,6 @@ fn render(
         ResetColor
     )?;
 
-    // Checkbox - uses pattern: "[x] Label" or "[ ] Label"
     let checkbox_focused = state.focused_field == 1;
     let checkbox_marker = if state.notifications_checked {
         "x"
@@ -216,7 +212,6 @@ fn render(
         ResetColor
     )?;
 
-    // Buttons - uses pattern: "[Button Text]"
     let submit_focused = state.focused_field == 2;
     let cancel_focused = state.focused_field == 3;
 
@@ -250,7 +245,6 @@ fn render(
         ResetColor
     )?;
 
-    // Help text
     execute!(
         stdout,
         MoveTo(start_x + 2, start_y + 9),
@@ -270,7 +264,6 @@ fn draw_box(
     width: u16,
     height: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Top border
     execute!(
         stdout,
         MoveTo(x, y),
@@ -279,7 +272,6 @@ fn draw_box(
         Print("┐")
     )?;
 
-    // Side borders
     for row in 1..height - 1 {
         execute!(
             stdout,
@@ -290,7 +282,6 @@ fn draw_box(
         )?;
     }
 
-    // Bottom border
     execute!(
         stdout,
         MoveTo(x, y + height - 1),

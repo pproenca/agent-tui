@@ -341,7 +341,12 @@ fn extract_title(line: &[char], left: usize, right: usize) -> Option<String> {
 
 /// Extract a label from a side border (left or right edge of a region)
 /// Some TUIs place labels along vertical borders
-pub fn extract_side_label(lines: &[Vec<char>], col: usize, top: usize, bottom: usize) -> Option<String> {
+pub fn extract_side_label(
+    lines: &[Vec<char>],
+    col: usize,
+    top: usize,
+    bottom: usize,
+) -> Option<String> {
     if bottom <= top + 2 {
         return None;
     }

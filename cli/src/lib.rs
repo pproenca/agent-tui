@@ -14,6 +14,7 @@
 pub mod detection;
 pub mod pty;
 pub mod session;
+pub mod sync_utils;
 pub mod terminal;
 pub mod wait;
 

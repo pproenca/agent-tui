@@ -2,32 +2,36 @@
 # Basic agent-tui workflow example
 # Demonstrates: spawn, snapshot, type, press, wait, kill
 
-set -e
+set -euo pipefail
 
-echo "=== Basic agent-tui Workflow ==="
-echo
+main() {
+    echo "=== Basic agent-tui Workflow ==="
+    echo
 
-# Start a bash session
-echo "1. Starting bash session..."
-agent-tui spawn bash
-sleep 1
+    # Start a bash session
+    echo "1. Starting bash session..."
+    agent-tui spawn bash
+    sleep 1
 
-# Type a command
-echo "2. Typing a command..."
-agent-tui type "echo 'Hello from agent-tui!'"
-agent-tui press Enter
+    # Type a command
+    echo "2. Typing a command..."
+    agent-tui type "echo 'Hello from agent-tui!'"
+    agent-tui press Enter
 
-# Wait for output
-echo "3. Waiting for output..."
-agent-tui wait "Hello from agent-tui"
+    # Wait for output
+    echo "3. Waiting for output..."
+    agent-tui wait "Hello from agent-tui"
 
-# Take a snapshot to verify
-echo "4. Taking snapshot..."
-agent-tui snapshot
+    # Take a snapshot to verify
+    echo "4. Taking snapshot..."
+    agent-tui snapshot
 
-# Clean up
-echo "5. Cleaning up..."
-agent-tui kill
+    # Clean up
+    echo "5. Cleaning up..."
+    agent-tui kill
 
-echo
-echo "=== Workflow Complete ==="
+    echo
+    echo "=== Workflow Complete ==="
+}
+
+main "$@"

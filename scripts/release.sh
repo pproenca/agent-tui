@@ -4,9 +4,18 @@
 # Usage: ./scripts/release.sh <version>
 # Example: ./scripts/release.sh 0.2.0
 
-set -e
+set -euo pipefail
 
-if [ -z "$1" ]; then
+# Portable in-place sed (works on both macOS and Linux)
+sed_inplace() {
+    if [[ "$OSTYPE" == darwin* ]]; then
+        sed -i '' "$@"
+    else
+        sed -i "$@"
+    fi
+}
+
+if [[ -z "$1" ]]; then
     echo "Usage: $0 <version>"
     echo "Example: $0 0.2.0"
     exit 1
@@ -36,16 +45,16 @@ fi
 echo "Releasing version $VERSION..."
 
 # Get the directory where this script is located
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Update package.json
 echo "Updating package.json..."
-sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$ROOT_DIR/package.json"
+sed_inplace "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$ROOT_DIR/package.json"
 
 # Update Cargo.toml
 echo "Updating cli/Cargo.toml..."
-sed -i '' "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" "$ROOT_DIR/cli/Cargo.toml"
+sed_inplace "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" "$ROOT_DIR/cli/Cargo.toml"
 
 # Verify updates
 echo ""

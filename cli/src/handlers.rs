@@ -2,7 +2,8 @@ use crate::client::DaemonClient;
 use crate::color::Colors;
 use crate::commands::{OutputFormat, RecordFormat, ScrollDirection};
 use crate::daemon;
-use serde_json::json;
+use crate::json_ext::ValueExt;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
@@ -32,10 +33,7 @@ impl<'a> HandlerContext<'a> {
         success_msg: &str,
         failure_prefix: &str,
     ) -> Result<bool, Box<dyn std::error::Error>> {
-        let success = result
-            .get("success")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let success = result.bool_or("success", false);
 
         match self.format {
             OutputFormat::Json => {
@@ -45,10 +43,7 @@ impl<'a> HandlerContext<'a> {
                 if success {
                     println!("{}", success_msg);
                 } else {
-                    let msg = result
-                        .get("message")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Unknown error");
+                    let msg = result.str_or("message", "Unknown error");
                     eprintln!("{}: {}", failure_prefix, msg);
                     std::process::exit(1);
                 }
@@ -85,11 +80,8 @@ impl<'a> HandlerContext<'a> {
         state_name: &str,
         negative_state_name: &str,
     ) -> HandlerResult {
-        let found = result
-            .get("found")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-        let state = result.get(field).and_then(|v| v.as_bool()).unwrap_or(false);
+        let found = result.bool_or("found", true);
+        let state = result.bool_or(field, false);
 
         match self.format {
             OutputFormat::Json => {
@@ -122,10 +114,7 @@ impl<'a> HandlerContext<'a> {
         element_ref: &str,
         field: &str,
     ) -> HandlerResult {
-        let found = result
-            .get("found")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let found = result.bool_or("found", false);
 
         match self.format {
             OutputFormat::Json => {
@@ -133,7 +122,7 @@ impl<'a> HandlerContext<'a> {
             }
             OutputFormat::Text | OutputFormat::Tree => {
                 if found {
-                    let value = result.get(field).and_then(|v| v.as_str()).unwrap_or("");
+                    let value = result.str_or(field, "");
                     println!("{}", value);
                 } else {
                     eprintln!("Element not found: {}", element_ref);
@@ -142,6 +131,66 @@ impl<'a> HandlerContext<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Build params with just session
+    fn session_params(&self) -> Value {
+        json!({ "session": self.session })
+    }
+
+    /// Output JSON or run text formatting closure
+    fn output_json_or<F>(&self, result: &Value, text_fn: F) -> HandlerResult
+    where
+        F: FnOnce(),
+    {
+        match self.format {
+            OutputFormat::Json => {
+                println!("{}", serde_json::to_string_pretty(result)?);
+            }
+            OutputFormat::Text | OutputFormat::Tree => {
+                text_fn();
+            }
+        }
+        Ok(())
+    }
+}
+
+/// View wrapper for element JSON for consistent field extraction.
+struct ElementView<'a>(&'a Value);
+
+impl<'a> ElementView<'a> {
+    fn ref_str(&self) -> &str {
+        self.0.str_or("ref", "")
+    }
+    fn el_type(&self) -> &str {
+        self.0.str_or("type", "")
+    }
+    fn label(&self) -> &str {
+        self.0.str_or("label", "")
+    }
+    fn focused(&self) -> bool {
+        self.0.bool_or("focused", false)
+    }
+    fn selected(&self) -> bool {
+        self.0.bool_or("selected", false)
+    }
+    fn checked(&self) -> Option<bool> {
+        self.0.get("checked").and_then(|v| v.as_bool())
+    }
+    fn value(&self) -> Option<&str> {
+        self.0.get("value").and_then(|v| v.as_str())
+    }
+    fn position(&self) -> (u64, u64) {
+        let pos = self.0.get("position");
+        let row = pos
+            .and_then(|p| p.get("row"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let col = pos
+            .and_then(|p| p.get("col"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        (row, col)
     }
 }
 
@@ -160,42 +209,33 @@ pub fn handle_demo(ctx: &mut HandlerContext) -> HandlerResult {
 
     let result = ctx.client.call("spawn", Some(params))?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            let session_id = result
-                .get("session_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            println!(
-                "{} {}",
-                Colors::success("Demo started:"),
-                Colors::session_id(session_id)
-            );
-            println!();
-            println!("Try these commands:");
-            println!(
-                "  {} - See detected elements",
-                Colors::dim("agent-tui snapshot -i")
-            );
-            println!(
-                "  {} - Fill the name input",
-                Colors::dim("agent-tui fill @e1 \"Hello\"")
-            );
-            println!(
-                "  {} - Toggle the checkbox",
-                Colors::dim("agent-tui toggle @e2")
-            );
-            println!(
-                "  {} - Click Submit button",
-                Colors::dim("agent-tui click @e3")
-            );
-            println!("  {} - End session", Colors::dim("agent-tui kill"));
-        }
-    }
-    Ok(())
+    ctx.output_json_or(&result, || {
+        let session_id = result.str_or("session_id", "unknown");
+        println!(
+            "{} {}",
+            Colors::success("Demo started:"),
+            Colors::session_id(session_id)
+        );
+        println!();
+        println!("Try these commands:");
+        println!(
+            "  {} - See detected elements",
+            Colors::dim("agent-tui snapshot -i")
+        );
+        println!(
+            "  {} - Fill the name input",
+            Colors::dim("agent-tui fill @e1 \"Hello\"")
+        );
+        println!(
+            "  {} - Toggle the checkbox",
+            Colors::dim("agent-tui toggle @e2")
+        );
+        println!(
+            "  {} - Click Submit button",
+            Colors::dim("agent-tui click @e3")
+        );
+        println!("  {} - End session", Colors::dim("agent-tui kill"));
+    })
 }
 
 pub fn handle_spawn(
@@ -217,25 +257,16 @@ pub fn handle_spawn(
 
     let result = ctx.client.call("spawn", Some(params))?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            let session_id = result
-                .get("session_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let pid = result.get("pid").and_then(|v| v.as_u64()).unwrap_or(0);
-            println!(
-                "{} {}",
-                Colors::success("Session started:"),
-                Colors::session_id(session_id)
-            );
-            println!("  PID: {}", pid);
-        }
-    }
-    Ok(())
+    ctx.output_json_or(&result, || {
+        let session_id = result.str_or("session_id", "unknown");
+        let pid = result.u64_or("pid", 0);
+        println!(
+            "{} {}",
+            Colors::success("Session started:"),
+            Colors::session_id(session_id)
+        );
+        println!("  PID: {}", pid);
+    })
 }
 
 pub fn handle_snapshot(
@@ -262,35 +293,34 @@ pub fn handle_snapshot(
         OutputFormat::Tree => {
             if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
                 for el in elements {
-                    let ref_str = el.get("ref").and_then(|v| v.as_str()).unwrap_or("");
-                    let el_type = el.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    let label = el.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                    let focused = el.get("focused").and_then(|v| v.as_bool()).unwrap_or(false);
-                    let checked = el.get("checked").and_then(|v| v.as_bool());
-                    let value = el.get("value").and_then(|v| v.as_str());
-
-                    let mut attrs = vec![format!("ref={}", ref_str)];
-                    if focused {
+                    let ev = ElementView(el);
+                    let mut attrs = vec![format!("ref={}", ev.ref_str())];
+                    if ev.focused() {
                         attrs.push("focused".to_string());
                     }
-                    if let Some(true) = checked {
+                    if let Some(true) = ev.checked() {
                         attrs.push("checked".to_string());
                     }
-                    if let Some(v) = value {
-                        if !v.is_empty() && el_type == "input" {
+                    if let Some(v) = ev.value() {
+                        if !v.is_empty() && ev.el_type() == "input" {
                             attrs.push(format!("value=\"{}\"", v));
                         }
                     }
 
-                    let display_text = if !label.is_empty() {
-                        label.to_string()
-                    } else if let Some(v) = value {
+                    let display_text = if !ev.label().is_empty() {
+                        ev.label().to_string()
+                    } else if let Some(v) = ev.value() {
                         v.to_string()
                     } else {
                         String::new()
                     };
 
-                    println!("- {} \"{}\" [{}]", el_type, display_text, attrs.join("] ["));
+                    println!(
+                        "- {} \"{}\" [{}]",
+                        ev.el_type(),
+                        display_text,
+                        attrs.join("] [")
+                    );
                 }
             }
             println!();
@@ -303,49 +333,32 @@ pub fn handle_snapshot(
                 if !elements.is_empty() {
                     println!("{}", Colors::bold("Elements:"));
                     for el in elements {
-                        let ref_str = el.get("ref").and_then(|v| v.as_str()).unwrap_or("");
-                        let el_type = el.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                        let label = el.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                        let focused = el.get("focused").and_then(|v| v.as_bool()).unwrap_or(false);
-                        let selected = el
-                            .get("selected")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        let row = el
-                            .get("position")
-                            .and_then(|p| p.get("row"))
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                        let col = el
-                            .get("position")
-                            .and_then(|p| p.get("col"))
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
+                        let ev = ElementView(el);
+                        let (row, col) = ev.position();
 
-                        let focused_str = if focused {
+                        let focused_str = if ev.focused() {
                             Colors::success(" *focused*")
                         } else {
                             String::new()
                         };
-                        let selected_str = if selected {
+                        let selected_str = if ev.selected() {
                             Colors::info(" *selected*")
                         } else {
                             String::new()
                         };
-                        let value = el
-                            .get("value")
-                            .and_then(|v| v.as_str())
+                        let value = ev
+                            .value()
                             .map(|v| format!(" \"{}\"", v))
                             .unwrap_or_default();
 
                         println!(
                             "{} [{}{}]{} {}{}{}",
-                            Colors::element_ref(ref_str),
-                            el_type,
-                            if label.is_empty() {
+                            Colors::element_ref(ev.ref_str()),
+                            ev.el_type(),
+                            if ev.label().is_empty() {
                                 "".to_string()
                             } else {
-                                format!(":{}", label)
+                                format!(":{}", ev.label())
                             },
                             value,
                             Colors::dim(&format!("({},{})", row, col)),
@@ -469,14 +482,8 @@ pub fn handle_wait(ctx: &mut HandlerContext, params: crate::commands::WaitParams
     });
 
     let result = ctx.client.call("wait", Some(rpc_params))?;
-    let found = result
-        .get("found")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let elapsed_ms = result
-        .get("elapsed_ms")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let found = result.bool_or("found", false);
+    let elapsed_ms = result.u64_or("elapsed_ms", 0);
 
     match ctx.format {
         OutputFormat::Json => {
@@ -495,188 +502,127 @@ pub fn handle_wait(ctx: &mut HandlerContext, params: crate::commands::WaitParams
 }
 
 pub fn handle_kill(ctx: &mut HandlerContext) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session
-    });
+    let result = ctx.client.call("kill", Some(ctx.session_params()))?;
 
-    let result = ctx.client.call("kill", Some(params))?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            let session_id = result
-                .get("session_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            println!("Session {} killed", session_id);
-        }
-    }
-    Ok(())
+    ctx.output_json_or(&result, || {
+        println!("Session {} killed", result.str_or("session_id", "unknown"));
+    })
 }
 
 pub fn handle_restart(ctx: &mut HandlerContext) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session
-    });
+    let result = ctx.client.call("restart", Some(ctx.session_params()))?;
 
-    let result = ctx.client.call("restart", Some(params))?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            let old_id = result
-                .get("old_session_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let new_id = result
-                .get("new_session_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let command = result
-                .get("command")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            println!("Restarted '{}': {} -> {}", command, old_id, new_id);
-        }
-    }
-    Ok(())
+    ctx.output_json_or(&result, || {
+        println!(
+            "Restarted '{}': {} -> {}",
+            result.str_or("command", "unknown"),
+            result.str_or("old_session_id", "unknown"),
+            result.str_or("new_session_id", "unknown")
+        );
+    })
 }
 
 pub fn handle_sessions(ctx: &mut HandlerContext) -> HandlerResult {
     let result = ctx.client.call("sessions", None)?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            let active_id = result.get("active_session").and_then(|v| v.as_str());
+    ctx.output_json_or(&result, || {
+        let active_id = result.get("active_session").and_then(|v| v.as_str());
 
-            match result.get("sessions").and_then(|v| v.as_array()) {
-                Some(sessions) if !sessions.is_empty() => {
-                    println!("{}", Colors::bold("Active sessions:"));
-                    for session in sessions {
-                        let id = session.get("id").and_then(|v| v.as_str()).unwrap_or("?");
-                        let command = session
-                            .get("command")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("?");
-                        let pid = session.get("pid").and_then(|v| v.as_u64()).unwrap_or(0);
-                        let running = session
-                            .get("running")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        let cols = session
-                            .get("size")
-                            .and_then(|s| s.get("cols"))
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                        let rows = session
-                            .get("size")
-                            .and_then(|s| s.get("rows"))
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
+        match result.get("sessions").and_then(|v| v.as_array()) {
+            Some(sessions) if !sessions.is_empty() => {
+                println!("{}", Colors::bold("Active sessions:"));
+                for session in sessions {
+                    let id = session.str_or("id", "?");
+                    let command = session.str_or("command", "?");
+                    let pid = session.u64_or("pid", 0);
+                    let running = session.bool_or("running", false);
+                    let cols = session
+                        .get("size")
+                        .and_then(|s| s.get("cols"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let rows = session
+                        .get("size")
+                        .and_then(|s| s.get("rows"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
 
-                        let is_active = active_id == Some(id);
-                        let active = if is_active {
-                            Colors::success(" (active)")
-                        } else {
-                            String::new()
-                        };
-                        let status = if running {
-                            Colors::success("running")
-                        } else {
-                            Colors::error("stopped")
-                        };
+                    let is_active = active_id == Some(id);
+                    let active = if is_active {
+                        Colors::success(" (active)")
+                    } else {
+                        String::new()
+                    };
+                    let status = if running {
+                        Colors::success("running")
+                    } else {
+                        Colors::error("stopped")
+                    };
 
-                        println!(
-                            "  {} - {} [{}] {}x{} pid:{}{}",
-                            Colors::session_id(id),
-                            command,
-                            status,
-                            cols,
-                            rows,
-                            pid,
-                            active
-                        );
-                    }
-                }
-                _ => {
-                    println!("{}", Colors::dim("No active sessions"));
+                    println!(
+                        "  {} - {} [{}] {}x{} pid:{}{}",
+                        Colors::session_id(id),
+                        command,
+                        status,
+                        cols,
+                        rows,
+                        pid,
+                        active
+                    );
                 }
             }
+            _ => {
+                println!("{}", Colors::dim("No active sessions"));
+            }
         }
-    }
-    Ok(())
+    })
 }
 
 pub fn handle_health(ctx: &mut HandlerContext, verbose: bool) -> HandlerResult {
     let result = ctx.client.call("health", None)?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+    ctx.output_json_or(&result, || {
+        let status = result.str_or("status", "unknown");
+        let pid = result.u64_or("pid", 0);
+        let uptime_ms = result.u64_or("uptime_ms", 0);
+        let session_count = result.u64_or("session_count", 0);
+        let version = result.str_or("version", "?");
+
+        let uptime_secs = uptime_ms / 1000;
+        let uptime_mins = uptime_secs / 60;
+        let uptime_hours = uptime_mins / 60;
+        let uptime_display = if uptime_hours > 0 {
+            format!(
+                "{}h {}m {}s",
+                uptime_hours,
+                uptime_mins % 60,
+                uptime_secs % 60
+            )
+        } else if uptime_mins > 0 {
+            format!("{}m {}s", uptime_mins, uptime_secs % 60)
+        } else {
+            format!("{}s", uptime_secs)
+        };
+
+        println!(
+            "{} {}",
+            Colors::bold("Daemon status:"),
+            Colors::success(status)
+        );
+        println!("  PID: {}", pid);
+        println!("  Uptime: {}", uptime_display);
+        println!("  Sessions: {}", session_count);
+        println!("  Version: {}", Colors::dim(version));
+
+        if verbose {
+            let socket = daemon::socket_path();
+            let pid_file = socket.with_extension("pid");
+            println!();
+            println!("{}", Colors::bold("Connection:"));
+            println!("  Socket: {}", socket.display());
+            println!("  PID file: {}", pid_file.display());
         }
-        OutputFormat::Text | OutputFormat::Tree => {
-            let status = result
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let pid = result.get("pid").and_then(|v| v.as_u64()).unwrap_or(0);
-            let uptime_ms = result
-                .get("uptime_ms")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let session_count = result
-                .get("session_count")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let version = result
-                .get("version")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?");
-
-            let uptime_secs = uptime_ms / 1000;
-            let uptime_mins = uptime_secs / 60;
-            let uptime_hours = uptime_mins / 60;
-            let uptime_display = if uptime_hours > 0 {
-                format!(
-                    "{}h {}m {}s",
-                    uptime_hours,
-                    uptime_mins % 60,
-                    uptime_secs % 60
-                )
-            } else if uptime_mins > 0 {
-                format!("{}m {}s", uptime_mins, uptime_secs % 60)
-            } else {
-                format!("{}s", uptime_secs)
-            };
-
-            println!(
-                "{} {}",
-                Colors::bold("Daemon status:"),
-                Colors::success(status)
-            );
-            println!("  PID: {}", pid);
-            println!("  Uptime: {}", uptime_display);
-            println!("  Sessions: {}", session_count);
-            println!("  Version: {}", Colors::dim(version));
-
-            if verbose {
-                let socket = daemon::socket_path();
-                let pid_file = socket.with_extension("pid");
-                println!();
-                println!("{}", Colors::bold("Connection:"));
-                println!("  Socket: {}", socket.display());
-                println!("  PID file: {}", pid_file.display());
-            }
-        }
-    }
-    Ok(())
+    })
 }
 
 pub fn handle_screenshot(
@@ -692,29 +638,20 @@ pub fn handle_screenshot(
 
     let result = ctx.client.call("screen", Some(params))?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+    ctx.output_json_or(&result, || {
+        if let Some(screen) = result.get("screen").and_then(|v| v.as_str()) {
+            println!("{}", screen);
         }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if let Some(screen) = result.get("screen").and_then(|v| v.as_str()) {
-                println!("{}", screen);
-            }
-            if include_cursor {
-                if let Some(cursor) = result.get("cursor") {
-                    let row = cursor.get("row").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let col = cursor.get("col").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let visible = cursor
-                        .get("visible")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    let vis_str = if visible { "visible" } else { "hidden" };
-                    println!("\nCursor: row={}, col={} ({})", row, col, vis_str);
-                }
+        if include_cursor {
+            if let Some(cursor) = result.get("cursor") {
+                let row = cursor.u64_or("row", 0);
+                let col = cursor.u64_or("col", 0);
+                let visible = cursor.bool_or("visible", false);
+                let vis_str = if visible { "visible" } else { "hidden" };
+                println!("\nCursor: row={}, col={} ({})", row, col, vis_str);
             }
         }
-    }
-    Ok(())
+    })
 }
 
 pub fn handle_resize(ctx: &mut HandlerContext, cols: u16, rows: u16) -> HandlerResult {
@@ -726,24 +663,14 @@ pub fn handle_resize(ctx: &mut HandlerContext, cols: u16, rows: u16) -> HandlerR
 
     let result = ctx.client.call("resize", Some(params))?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            let session_id = result
-                .get("session_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?");
-            println!(
-                "Session {} resized to {}x{}",
-                Colors::session_id(session_id),
-                cols,
-                rows
-            );
-        }
-    }
-    Ok(())
+    ctx.output_json_or(&result, || {
+        println!(
+            "Session {} resized to {}x{}",
+            Colors::session_id(result.str_or("session_id", "?")),
+            cols,
+            rows
+        );
+    })
 }
 
 pub fn handle_version(ctx: &mut HandlerContext) -> HandlerResult {
@@ -786,12 +713,7 @@ pub fn handle_cleanup(ctx: &mut HandlerContext, all: bool) -> HandlerResult {
     if let Some(sessions) = sessions {
         for session in sessions {
             let id = session.get("id").and_then(|v| v.as_str());
-            let running = session
-                .get("running")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-
-            let should_cleanup = all || !running;
+            let should_cleanup = all || !session.bool_or("running", false);
             if should_cleanup {
                 if let Some(id) = id {
                     let params = json!({ "session": id });
@@ -846,36 +768,35 @@ pub fn handle_find(ctx: &mut HandlerContext, params: crate::commands::FindParams
         OutputFormat::Tree => {
             if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
                 for el in elements {
-                    let ref_str = el.get("ref").and_then(|v| v.as_str()).unwrap_or("");
-                    let el_type = el.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    let label = el.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                    println!("- {} \"{}\" [ref={}]", el_type, label, ref_str);
+                    let ev = ElementView(el);
+                    println!(
+                        "- {} \"{}\" [ref={}]",
+                        ev.el_type(),
+                        ev.label(),
+                        ev.ref_str()
+                    );
                 }
             }
         }
         OutputFormat::Text => {
-            let count = result.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+            let count = result.u64_or("count", 0);
             if count == 0 {
                 println!("{}", Colors::dim("No elements found"));
             } else {
                 println!("{} Found {} element(s):", Colors::success("✓"), count);
                 if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
                     for el in elements {
-                        let ref_str = el.get("ref").and_then(|v| v.as_str()).unwrap_or("");
-                        let el_type = el.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                        let label = el.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                        let el_focused =
-                            el.get("focused").and_then(|v| v.as_bool()).unwrap_or(false);
-                        let focused_str = if el_focused {
+                        let ev = ElementView(el);
+                        let focused_str = if ev.focused() {
                             Colors::success(" *focused*")
                         } else {
                             String::new()
                         };
                         println!(
                             "  {} [{}:{}]{}",
-                            Colors::element_ref(ref_str),
-                            el_type,
-                            label,
+                            Colors::element_ref(ev.ref_str()),
+                            ev.el_type(),
+                            ev.label(),
                             focused_str
                         );
                     }
@@ -920,11 +841,7 @@ pub fn handle_multiselect(
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         OutputFormat::Text | OutputFormat::Tree => {
-            let success = result
-                .get("success")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            if success {
+            if result.bool_or("success", false) {
                 let selected = result
                     .get("selected_options")
                     .and_then(|v| v.as_array())
@@ -937,11 +854,10 @@ pub fn handle_multiselect(
                     .unwrap_or_default();
                 println!("Selected: {}", selected);
             } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Multiselect failed: {}", msg);
+                eprintln!(
+                    "Multiselect failed: {}",
+                    result.str_or("message", "Unknown error")
+                );
                 std::process::exit(1);
             }
         }
@@ -983,28 +899,20 @@ pub fn handle_scroll_into_view(ctx: &mut HandlerContext, element_ref: String) ->
     });
 
     let result = ctx.client.call("scroll_into_view", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
 
     match ctx.format {
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                let scrolls = result
-                    .get("scrolls_needed")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                println!("Scrolled to {} ({} scrolls)", element_ref, scrolls);
+            if result.bool_or("success", false) {
+                println!(
+                    "Scrolled to {} ({} scrolls)",
+                    element_ref,
+                    result.u64_or("scrolls_needed", 0)
+                );
             } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Element not found");
-                eprintln!("{}", msg);
+                eprintln!("{}", result.str_or("message", "Element not found"));
                 std::process::exit(1);
             }
         }
@@ -1013,36 +921,30 @@ pub fn handle_scroll_into_view(ctx: &mut HandlerContext, element_ref: String) ->
 }
 
 pub fn handle_focus(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = ctx.ref_params(&element_ref);
-    let result = ctx.client.call("focus", Some(params))?;
-    ctx.output_success_result(
-        &result,
+    ctx.call_ref_action(
+        "focus",
+        &element_ref,
         &format!("Focused: {}", element_ref),
         "Focus failed",
-    )?;
-    Ok(())
+    )
 }
 
 pub fn handle_clear(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = ctx.ref_params(&element_ref);
-    let result = ctx.client.call("clear", Some(params))?;
-    ctx.output_success_result(
-        &result,
+    ctx.call_ref_action(
+        "clear",
+        &element_ref,
         &format!("Cleared: {}", element_ref),
         "Clear failed",
-    )?;
-    Ok(())
+    )
 }
 
 pub fn handle_select_all(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = ctx.ref_params(&element_ref);
-    let result = ctx.client.call("select_all", Some(params))?;
-    ctx.output_success_result(
-        &result,
+    ctx.call_ref_action(
+        "select_all",
+        &element_ref,
         &format!("Selected all in: {}", element_ref),
         "Select all failed",
-    )?;
-    Ok(())
+    )
 }
 
 pub fn handle_get_text(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
@@ -1058,26 +960,20 @@ pub fn handle_get_value(ctx: &mut HandlerContext, element_ref: String) -> Handle
 }
 
 pub fn handle_get_focused(ctx: &mut HandlerContext) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session
-    });
-
-    let result = ctx.client.call("get_focused", Some(params))?;
-    let found = result
-        .get("found")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let result = ctx.client.call("get_focused", Some(ctx.session_params()))?;
 
     match ctx.format {
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         OutputFormat::Text | OutputFormat::Tree => {
-            if found {
-                let ref_str = result.get("ref").and_then(|v| v.as_str()).unwrap_or("");
-                let el_type = result.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                let label = result.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                println!("- {} \"{}\" [ref={}] [focused]", el_type, label, ref_str);
+            if result.bool_or("found", false) {
+                println!(
+                    "- {} \"{}\" [ref={}] [focused]",
+                    result.str_or("type", ""),
+                    result.str_or("label", ""),
+                    result.str_or("ref", "")
+                );
             } else {
                 eprintln!("No focused element found");
                 std::process::exit(1);
@@ -1088,26 +984,15 @@ pub fn handle_get_focused(ctx: &mut HandlerContext) -> HandlerResult {
 }
 
 pub fn handle_get_title(ctx: &mut HandlerContext) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session
-    });
+    let result = ctx.client.call("get_title", Some(ctx.session_params()))?;
 
-    let result = ctx.client.call("get_title", Some(params))?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            let title = result.get("title").and_then(|v| v.as_str()).unwrap_or("");
-            let session_id = result
-                .get("session_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            println!("Session: {} | Command: {}", session_id, title);
-        }
-    }
-    Ok(())
+    ctx.output_json_or(&result, || {
+        println!(
+            "Session: {} | Command: {}",
+            result.str_or("session_id", ""),
+            result.str_or("title", "")
+        );
+    })
 }
 
 pub fn handle_is_visible(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
@@ -1148,17 +1033,10 @@ pub fn handle_count(
     });
 
     let result = ctx.client.call("count", Some(params))?;
-    let count = result.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
 
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            println!("{}", count);
-        }
-    }
-    Ok(())
+    ctx.output_json_or(&result, || {
+        println!("{}", result.u64_or("count", 0));
+    })
 }
 
 pub fn handle_toggle(
@@ -1173,29 +1051,24 @@ pub fn handle_toggle(
     });
 
     let result = ctx.client.call("toggle", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let checked = result
-        .get("checked")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
 
     match ctx.format {
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                let state = if checked { "checked" } else { "unchecked" };
+            if result.bool_or("success", false) {
+                let state = if result.bool_or("checked", true) {
+                    "checked"
+                } else {
+                    "unchecked"
+                };
                 println!("{} is now {}", element_ref, state);
             } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Toggle failed: {}", msg);
+                eprintln!(
+                    "Toggle failed: {}",
+                    result.str_or("message", "Unknown error")
+                );
                 std::process::exit(1);
             }
         }
@@ -1232,15 +1105,11 @@ pub fn handle_attach(
 ) -> HandlerResult {
     use crate::attach;
 
-    if interactive {
-        let params = json!({ "session": session_id });
-        let result = ctx.client.call("attach", Some(params))?;
-        let success = result
-            .get("success")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+    let params = json!({ "session": session_id });
+    let result = ctx.client.call("attach", Some(params))?;
 
-        if !success {
+    if interactive {
+        if !result.bool_or("success", false) {
             eprintln!("Failed to attach to session: {}", session_id);
             std::process::exit(1);
         }
@@ -1250,22 +1119,12 @@ pub fn handle_attach(
             std::process::exit(1);
         }
     } else {
-        let params = json!({
-            "session": session_id
-        });
-
-        let result = ctx.client.call("attach", Some(params))?;
-        let success = result
-            .get("success")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
         match ctx.format {
             OutputFormat::Json => {
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
             OutputFormat::Text | OutputFormat::Tree => {
-                if success {
+                if result.bool_or("success", false) {
                     println!("Attached to session {}", Colors::session_id(&session_id));
                 } else {
                     eprintln!("Failed to attach to session: {}", session_id);
@@ -1278,29 +1137,17 @@ pub fn handle_attach(
 }
 
 pub fn handle_record_start(ctx: &mut HandlerContext) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session
-    });
+    let result = ctx
+        .client
+        .call("record_start", Some(ctx.session_params()))?;
 
-    let result = ctx.client.call("record_start", Some(params))?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            let session_id = result
-                .get("session_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?");
-            println!(
-                "{} Recording started for session {}",
-                Colors::success("●"),
-                Colors::session_id(session_id)
-            );
-        }
-    }
-    Ok(())
+    ctx.output_json_or(&result, || {
+        println!(
+            "{} Recording started for session {}",
+            Colors::success("●"),
+            Colors::session_id(result.str_or("session_id", "?"))
+        );
+    })
 }
 
 pub fn handle_record_stop(
@@ -1325,23 +1172,16 @@ pub fn handle_record_stop(
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         OutputFormat::Text | OutputFormat::Tree => {
-            let frame_count = result
-                .get("frame_count")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
             println!(
                 "{} Recording stopped ({} frames captured)",
                 Colors::success("■"),
-                frame_count
+                result.u64_or("frame_count", 0)
             );
 
             if let Some(output_path) = output {
                 if let Some(data) = result.get("data") {
                     let content = if format_str == "asciicast" {
-                        data.get("data")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string()
+                        data.str_or("data", "").to_string()
                     } else {
                         serde_json::to_string_pretty(data).unwrap_or_default()
                     };
@@ -1355,41 +1195,20 @@ pub fn handle_record_stop(
 }
 
 pub fn handle_record_status(ctx: &mut HandlerContext) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session
-    });
+    let result = ctx
+        .client
+        .call("record_status", Some(ctx.session_params()))?;
 
-    let result = ctx.client.call("record_status", Some(params))?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+    ctx.output_json_or(&result, || {
+        if result.bool_or("recording", false) {
+            let duration_secs = result.u64_or("duration_ms", 0) / 1000;
+            println!("{} Recording in progress", Colors::success("●"));
+            println!("  Frames: {}", result.u64_or("frame_count", 0));
+            println!("  Duration: {}s", duration_secs);
+        } else {
+            println!("{}", Colors::dim("Not recording"));
         }
-        OutputFormat::Text | OutputFormat::Tree => {
-            let recording = result
-                .get("recording")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let frame_count = result
-                .get("frame_count")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let duration_ms = result
-                .get("duration_ms")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-
-            if recording {
-                let duration_secs = duration_ms / 1000;
-                println!("{} Recording in progress", Colors::success("●"));
-                println!("  Frames: {}", frame_count);
-                println!("  Duration: {}s", duration_secs);
-            } else {
-                println!("{}", Colors::dim("Not recording"));
-            }
-        }
-    }
-    Ok(())
+    })
 }
 
 pub fn handle_trace(
@@ -1407,49 +1226,37 @@ pub fn handle_trace(
 
     let result = ctx.client.call("trace", Some(params))?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if start {
-                println!("{} Tracing started", Colors::success("●"));
-            } else if stop {
-                println!("{} Tracing stopped", Colors::dim("■"));
+    ctx.output_json_or(&result, || {
+        if start {
+            println!("{} Tracing started", Colors::success("●"));
+        } else if stop {
+            println!("{} Tracing stopped", Colors::dim("■"));
+        } else {
+            let status = if result.bool_or("tracing", false) {
+                Colors::success("(active)")
             } else {
-                let tracing = result
-                    .get("tracing")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let status = if tracing {
-                    Colors::success("(active)")
-                } else {
-                    Colors::dim("(inactive)")
-                };
-                println!("{} Trace {}", Colors::bold("Trace:"), status);
+                Colors::dim("(inactive)")
+            };
+            println!("{} Trace {}", Colors::bold("Trace:"), status);
 
-                if let Some(entries) = result.get("entries").and_then(|v| v.as_array()) {
-                    if entries.is_empty() {
-                        println!("{}", Colors::dim("  No trace entries"));
-                    } else {
-                        for entry in entries {
-                            let ts = entry
-                                .get("timestamp_ms")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(0);
-                            let action =
-                                entry.get("action").and_then(|v| v.as_str()).unwrap_or("?");
-                            let details = entry.get("details").and_then(|v| v.as_str());
-                            let details_str =
-                                details.map(|d| format!(" {}", d)).unwrap_or_default();
-                            println!("  [{}ms] {}{}", ts, action, Colors::dim(&details_str));
-                        }
+            if let Some(entries) = result.get("entries").and_then(|v| v.as_array()) {
+                if entries.is_empty() {
+                    println!("{}", Colors::dim("  No trace entries"));
+                } else {
+                    for entry in entries {
+                        let details = entry.get("details").and_then(|v| v.as_str());
+                        let details_str = details.map(|d| format!(" {}", d)).unwrap_or_default();
+                        println!(
+                            "  [{}ms] {}{}",
+                            entry.u64_or("timestamp_ms", 0),
+                            entry.str_or("action", "?"),
+                            Colors::dim(&details_str)
+                        );
                     }
                 }
             }
         }
-    }
-    Ok(())
+    })
 }
 
 pub fn handle_console(ctx: &mut HandlerContext, lines: usize, clear: bool) -> HandlerResult {
@@ -1461,24 +1268,18 @@ pub fn handle_console(ctx: &mut HandlerContext, lines: usize, clear: bool) -> Ha
 
     let result = ctx.client.call("console", Some(params))?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+    ctx.output_json_or(&result, || {
+        if clear {
+            println!("{}", Colors::success("Console cleared"));
         }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if clear {
-                println!("{}", Colors::success("Console cleared"));
-            }
-            if let Some(output_lines) = result.get("lines").and_then(|v| v.as_array()) {
-                for line in output_lines {
-                    if let Some(s) = line.as_str() {
-                        println!("{}", s);
-                    }
+        if let Some(output_lines) = result.get("lines").and_then(|v| v.as_array()) {
+            for line in output_lines {
+                if let Some(s) = line.as_str() {
+                    println!("{}", s);
                 }
             }
         }
-    }
-    Ok(())
+    })
 }
 
 pub fn handle_errors(ctx: &mut HandlerContext, count: usize, clear: bool) -> HandlerResult {
@@ -1490,45 +1291,31 @@ pub fn handle_errors(ctx: &mut HandlerContext, count: usize, clear: bool) -> Han
 
     let result = ctx.client.call("errors", Some(params))?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+    ctx.output_json_or(&result, || {
+        if clear {
+            println!("{}", Colors::success("Errors cleared"));
         }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if clear {
-                println!("{}", Colors::success("Errors cleared"));
-            }
-            let total = result
-                .get("total_count")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            if let Some(errors) = result.get("errors").and_then(|v| v.as_array()) {
-                if errors.is_empty() {
-                    println!("{}", Colors::dim("No errors captured"));
-                } else {
+        if let Some(errors) = result.get("errors").and_then(|v| v.as_array()) {
+            if errors.is_empty() {
+                println!("{}", Colors::dim("No errors captured"));
+            } else {
+                println!(
+                    "{} {} error(s) (showing last {}):",
+                    Colors::bold("Errors:"),
+                    result.u64_or("total_count", 0),
+                    errors.len()
+                );
+                for err in errors {
                     println!(
-                        "{} {} error(s) (showing last {}):",
-                        Colors::bold("Errors:"),
-                        total,
-                        errors.len()
+                        "  {} [{}] {}",
+                        Colors::dim(err.str_or("timestamp", "?")),
+                        Colors::error(err.str_or("source", "?")),
+                        err.str_or("message", "?")
                     );
-                    for err in errors {
-                        let timestamp =
-                            err.get("timestamp").and_then(|v| v.as_str()).unwrap_or("?");
-                        let message = err.get("message").and_then(|v| v.as_str()).unwrap_or("?");
-                        let source = err.get("source").and_then(|v| v.as_str()).unwrap_or("?");
-                        println!(
-                            "  {} [{}] {}",
-                            Colors::dim(timestamp),
-                            Colors::error(source),
-                            message
-                        );
-                    }
                 }
             }
         }
-    }
-    Ok(())
+    })
 }
 
 pub fn handle_env(ctx: &HandlerContext) -> HandlerResult {
@@ -1597,27 +1384,20 @@ pub fn handle_assert(ctx: &mut HandlerContext, condition: String) -> HandlerResu
 
     let passed = match cond_type {
         "text" => {
-            let params = json!({ "session": ctx.session });
-            let result = ctx.client.call("screen", Some(params))?;
-            let screen = result.get("screen").and_then(|v| v.as_str()).unwrap_or("");
-            screen.contains(cond_value)
+            let result = ctx.client.call("screen", Some(ctx.session_params()))?;
+            result.str_or("screen", "").contains(cond_value)
         }
         "element" => {
             let params = json!({ "ref": cond_value, "session": ctx.session });
             let result = ctx.client.call("is_visible", Some(params))?;
-            result
-                .get("visible")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
+            result.bool_or("visible", false)
         }
         "session" => {
             let result = ctx.client.call("sessions", None)?;
             if let Some(sessions) = result.get("sessions").and_then(|v| v.as_array()) {
-                sessions.iter().any(|s| {
-                    let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                    let running = s.get("running").and_then(|v| v.as_bool()).unwrap_or(false);
-                    id == cond_value && running
-                })
+                sessions
+                    .iter()
+                    .any(|s| s.str_or("id", "") == cond_value && s.bool_or("running", false))
             } else {
                 false
             }

@@ -6,6 +6,7 @@ mod daemon;
 mod demo;
 mod detection;
 mod handlers;
+mod json_ext;
 mod pty;
 mod session;
 mod sync_utils;

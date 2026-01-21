@@ -54,7 +54,6 @@ pub fn attach_sync(session: Arc<Mutex<Session>>, session_id: &str) -> Result<(),
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = Arc::clone(&running);
 
-    // Get terminal size and resize PTY to match
     let (cols, rows) = terminal::size().map_err(AttachError::Terminal)?;
     {
         let mut sess = session.lock().unwrap();
@@ -201,7 +200,6 @@ fn attach_ipc_loop(client: &mut DaemonClient, session_id: &str) -> Result<(), At
                         break;
                     }
 
-                    // Convert key event to bytes and send to PTY via IPC
                     if let Some(bytes) = key_event_to_bytes(&key_event) {
                         let data_b64 = STANDARD.encode(&bytes);
                         let params = json!({
@@ -214,7 +212,6 @@ fn attach_ipc_loop(client: &mut DaemonClient, session_id: &str) -> Result<(), At
                     }
                 }
                 Ok(Event::Resize(cols, rows)) => {
-                    // Resize PTY to match terminal
                     let params = json!({
                         "cols": cols,
                         "rows": rows,
@@ -247,7 +244,6 @@ fn attach_ipc_loop(client: &mut DaemonClient, session_id: &str) -> Result<(), At
                 }
             }
             Err(_) => {
-                // Session may have ended
                 break;
             }
         }
@@ -288,7 +284,6 @@ fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
                 // Alt+key sends ESC followed by the key
                 Some(vec![0x1b, c as u8])
             } else {
-                // Regular character
                 let mut buf = [0u8; 4];
                 let s = c.encode_utf8(&mut buf);
                 Some(s.as_bytes().to_vec())

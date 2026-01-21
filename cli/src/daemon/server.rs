@@ -468,22 +468,18 @@ impl DaemonServer {
                 let cursor = sess.cursor();
                 let (cols, rows) = sess.size();
 
-                // Get and process elements
                 let (elements, stats) = if include_elements {
                     let all_elements = sess.detect_elements();
                     let elements_total = all_elements.len();
                     let elements_interactive =
                         all_elements.iter().filter(|e| e.is_interactive()).count();
 
-                    // Apply filtering
                     let filtered_elements: Vec<_> = all_elements
                         .iter()
                         .filter(|el| {
-                            // Apply interactive-only filter
                             if interactive_only && !el.is_interactive() {
                                 return false;
                             }
-                            // Apply compact filter (keep interactive OR has content)
                             if compact && !el.is_interactive() && !el.has_content() {
                                 return false;
                             }
@@ -596,7 +592,6 @@ impl DaemonServer {
 
         match self.session_manager.resolve(session_id) {
             Ok(session) => {
-                // First click - acquire lock, click, then release
                 {
                     let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
                         return Response::error(
@@ -615,13 +610,10 @@ impl DaemonServer {
                             }),
                         );
                     }
-                    // Lock released here
                 }
 
-                // Small delay between clicks - no lock held during sleep
                 thread::sleep(Duration::from_millis(50));
 
-                // Second click - reacquire lock
                 {
                     let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
                         return Response::error(
@@ -848,11 +840,9 @@ impl DaemonServer {
             .and_then(|v| v.as_u64())
             .unwrap_or(30000);
 
-        // Parse the wait condition
         let condition = match WaitCondition::parse(condition_str, target, text) {
             Some(c) => c,
             None => {
-                // If no valid condition, require at least text
                 if text.is_none() {
                     return Response::error(
                         request.id,
@@ -886,7 +876,6 @@ impl DaemonServer {
             if let Some(mut sess) = acquire_session_lock(&session, Duration::from_millis(100)) {
                 if check_condition(&mut sess, &condition, &mut stable_tracker) {
                     found = true;
-                    // Capture match details based on condition type
                     match &condition {
                         WaitCondition::Text(t) => {
                             matched_text = Some(t.clone());
@@ -911,7 +900,6 @@ impl DaemonServer {
 
         let elapsed_ms = start.elapsed().as_millis() as u64;
 
-        // Build response with additional context on timeout
         let mut response = json!({
             "found": found,
             "elapsed_ms": elapsed_ms,
@@ -925,64 +913,59 @@ impl DaemonServer {
             if let Some(el_ref) = element_ref {
                 response["element_ref"] = json!(el_ref);
             }
-        } else {
-            // On timeout, provide helpful context
-            if let Some(sess) = acquire_session_lock(&session, Duration::from_millis(100)) {
-                let screen = sess.screen_text();
-                // Truncate screen context to first 200 chars
-                let screen_preview: String = screen.chars().take(200).collect();
-                let screen_context = if screen.len() > 200 {
-                    format!("{}...", screen_preview)
-                } else {
-                    screen_preview
-                };
-                response["screen_context"] = json!(screen_context);
+        } else if let Some(sess) = acquire_session_lock(&session, Duration::from_millis(100)) {
+            let screen = sess.screen_text();
+            let screen_preview: String = screen.chars().take(200).collect();
+            let screen_context = if screen.len() > 200 {
+                format!("{}...", screen_preview)
+            } else {
+                screen_preview
+            };
+            response["screen_context"] = json!(screen_context);
 
-                // Generate helpful suggestion based on condition
-                let suggestion = match &condition {
-                    WaitCondition::Text(t) => {
-                        format!(
-                            "Text '{}' not found. Check if the app finished loading or try 'snapshot -i' to see current screen.",
-                            t
-                        )
-                    }
-                    WaitCondition::Element(e) => {
-                        format!(
-                            "Element {} not found. Try 'snapshot -i' to see available elements.",
-                            e
-                        )
-                    }
-                    WaitCondition::Focused(e) => {
-                        format!(
-                            "Element {} exists but is not focused. Try 'click {}' to focus it.",
-                            e, e
-                        )
-                    }
-                    WaitCondition::NotVisible(e) => {
-                        format!(
-                            "Element {} is still visible. The app may still be processing.",
-                            e
-                        )
-                    }
-                    WaitCondition::Stable => {
-                        "Screen is still changing. The app may have animations or be loading."
-                            .to_string()
-                    }
-                    WaitCondition::TextGone(t) => {
-                        format!(
-                            "Text '{}' is still visible. The operation may not have completed.",
-                            t
-                        )
-                    }
-                    WaitCondition::Value { element, expected } => {
-                        format!(
-                            "Element {} does not have value '{}'. Check if input was accepted.",
-                            element, expected
-                        )
-                    }
-                };
-                response["suggestion"] = json!(suggestion);
-            }
+            let suggestion = match &condition {
+                WaitCondition::Text(t) => {
+                    format!(
+                        "Text '{}' not found. Check if the app finished loading or try 'snapshot -i' to see current screen.",
+                        t
+                    )
+                }
+                WaitCondition::Element(e) => {
+                    format!(
+                        "Element {} not found. Try 'snapshot -i' to see available elements.",
+                        e
+                    )
+                }
+                WaitCondition::Focused(e) => {
+                    format!(
+                        "Element {} exists but is not focused. Try 'click {}' to focus it.",
+                        e, e
+                    )
+                }
+                WaitCondition::NotVisible(e) => {
+                    format!(
+                        "Element {} is still visible. The app may still be processing.",
+                        e
+                    )
+                }
+                WaitCondition::Stable => {
+                    "Screen is still changing. The app may have animations or be loading."
+                        .to_string()
+                }
+                WaitCondition::TextGone(t) => {
+                    format!(
+                        "Text '{}' is still visible. The operation may not have completed.",
+                        t
+                    )
+                }
+                WaitCondition::Value { element, expected } => {
+                    format!(
+                        "Element {} does not have value '{}'. Check if input was accepted.",
+                        element, expected
+                    )
+                }
+            };
+            response["suggestion"] = json!(suggestion);
         }
 
         Response::success(request.id, response)
@@ -1020,7 +1003,6 @@ impl DaemonServer {
         let params = request.params.unwrap_or(json!({}));
         let session_id = params.get("session").and_then(|v| v.as_str());
 
-        // Get the session info before killing
         let (old_session_id, command, cols, rows) = match self.session_manager.resolve(session_id) {
             Ok(session) => {
                 let Some(sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
@@ -1038,7 +1020,6 @@ impl DaemonServer {
             }
         };
 
-        // Kill the old session
         if let Err(e) = self.session_manager.kill(&old_session_id) {
             return Response::error(
                 request.id,
@@ -1047,7 +1028,6 @@ impl DaemonServer {
             );
         }
 
-        // Spawn a new session with the same command
         match self
             .session_manager
             .spawn(&command, &[], None, None, None, cols, rows)
@@ -1213,18 +1193,15 @@ impl DaemonServer {
                 let matches: Vec<_> = elements
                     .iter()
                     .filter(|el| {
-                        // Filter by role if specified
                         if let Some(r) = role {
                             if el.element_type.as_str() != r {
                                 return false;
                             }
                         }
-                        // Filter by name/label if specified
                         if let Some(n) = name {
                             let matches = if exact {
                                 el.label.as_ref().map(|l| l == n).unwrap_or(false)
                             } else {
-                                // Case-insensitive substring match by default
                                 let n_lower = n.to_lowercase();
                                 el.label
                                     .as_ref()
@@ -1235,12 +1212,10 @@ impl DaemonServer {
                                 return false;
                             }
                         }
-                        // Filter by text content (label or value)
                         if let Some(t) = text {
                             let in_label = if exact {
                                 el.label.as_ref().map(|l| l == t).unwrap_or(false)
                             } else {
-                                // Case-insensitive substring match by default
                                 let t_lower = t.to_lowercase();
                                 el.label
                                     .as_ref()
@@ -1250,7 +1225,6 @@ impl DaemonServer {
                             let in_value = if exact {
                                 el.value.as_ref().map(|v| v == t).unwrap_or(false)
                             } else {
-                                // Case-insensitive substring match by default
                                 let t_lower = t.to_lowercase();
                                 el.value
                                     .as_ref()
@@ -1261,12 +1235,10 @@ impl DaemonServer {
                                 return false;
                             }
                         }
-                        // Filter by placeholder (maps to internal 'hint' field)
                         if let Some(p) = placeholder {
                             let matches = if exact {
                                 el.hint.as_ref().map(|h| h == p).unwrap_or(false)
                             } else {
-                                // Case-insensitive substring match by default
                                 let p_lower = p.to_lowercase();
                                 el.hint
                                     .as_ref()
@@ -1277,7 +1249,6 @@ impl DaemonServer {
                                 return false;
                             }
                         }
-                        // Filter by focused state
                         if focused_only && !el.focused {
                             return false;
                         }
@@ -1286,7 +1257,6 @@ impl DaemonServer {
                     .map(element_to_json)
                     .collect();
 
-                // Apply nth filter if specified
                 let final_matches = if let Some(n) = nth {
                     if n < matches.len() {
                         vec![matches[n].clone()]

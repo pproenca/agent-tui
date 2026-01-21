@@ -318,8 +318,6 @@ impl Session {
             .find_element(element_ref)
             .ok_or_else(|| SessionError::ElementNotFound(element_ref.to_string()))?;
 
-        // For most TUI elements, we just send Enter or Space
-        // The specific action depends on the element type
         match element.element_type.as_str() {
             "checkbox" | "radio" => {
                 self.pty.write(b" ")?; // Space to toggle
@@ -341,8 +339,6 @@ impl Session {
             .find_element(element_ref)
             .ok_or_else(|| SessionError::ElementNotFound(element_ref.to_string()))?;
 
-        // Clear existing value and type new value
-        // For most TUI inputs, we can just type the text
         self.pty.write_str(value)?;
 
         Ok(())
@@ -741,7 +737,6 @@ pub struct SessionInfo {
     pub is_active: bool,
 }
 
-// Global session manager
 lazy_static::lazy_static! {
     pub static ref SESSION_MANAGER: SessionManager = SessionManager::new();
 }

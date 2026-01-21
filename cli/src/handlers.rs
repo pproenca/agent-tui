@@ -56,6 +56,93 @@ impl<'a> HandlerContext<'a> {
         }
         Ok(success)
     }
+
+    /// Build params with ref and session
+    fn ref_params(&self, element_ref: &str) -> serde_json::Value {
+        json!({ "ref": element_ref, "session": self.session })
+    }
+
+    /// Call RPC method with ref params and output success/failure
+    fn call_ref_action(
+        &mut self,
+        method: &str,
+        element_ref: &str,
+        success_msg: &str,
+        failure_prefix: &str,
+    ) -> HandlerResult {
+        let params = self.ref_params(element_ref);
+        let result = self.client.call(method, Some(params))?;
+        self.output_success_result(&result, success_msg, failure_prefix)?;
+        Ok(())
+    }
+
+    /// Output for boolean state checks
+    fn output_state_check(
+        &self,
+        result: &serde_json::Value,
+        element_ref: &str,
+        field: &str,
+        state_name: &str,
+        negative_state_name: &str,
+    ) -> HandlerResult {
+        let found = result
+            .get("found")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let state = result.get(field).and_then(|v| v.as_bool()).unwrap_or(false);
+
+        match self.format {
+            OutputFormat::Json => {
+                println!("{}", serde_json::to_string_pretty(result)?);
+            }
+            OutputFormat::Text | OutputFormat::Tree => {
+                if !found {
+                    eprintln!("Element not found: {}", element_ref);
+                    std::process::exit(1);
+                } else if state {
+                    println!("{} {} is {}", Colors::success("✓"), element_ref, state_name);
+                } else {
+                    println!(
+                        "{} {} is {}",
+                        Colors::error("✗"),
+                        element_ref,
+                        negative_state_name
+                    );
+                    std::process::exit(1);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Output for value retrieval (get_text, get_value)
+    fn output_get_result(
+        &self,
+        result: &serde_json::Value,
+        element_ref: &str,
+        field: &str,
+    ) -> HandlerResult {
+        let found = result
+            .get("found")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        match self.format {
+            OutputFormat::Json => {
+                println!("{}", serde_json::to_string_pretty(result)?);
+            }
+            OutputFormat::Text | OutputFormat::Tree => {
+                if found {
+                    let value = result.get(field).and_then(|v| v.as_str()).unwrap_or("");
+                    println!("{}", value);
+                } else {
+                    eprintln!("Element not found: {}", element_ref);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 pub fn handle_demo(ctx: &mut HandlerContext) -> HandlerResult {
@@ -279,29 +366,21 @@ pub fn handle_snapshot(
 }
 
 pub fn handle_click(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
-    let result = ctx.client.call("click", Some(params))?;
-    ctx.output_success_result(&result, "Clicked successfully", "Click failed")?;
-    Ok(())
+    ctx.call_ref_action(
+        "click",
+        &element_ref,
+        "Clicked successfully",
+        "Click failed",
+    )
 }
 
 pub fn handle_dbl_click(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
-    let result = ctx.client.call("dbl_click", Some(params))?;
-    ctx.output_success_result(
-        &result,
+    ctx.call_ref_action(
+        "dbl_click",
+        &element_ref,
         "Double-clicked successfully",
         "Double-click failed",
-    )?;
-    Ok(())
+    )
 }
 
 pub fn handle_fill(ctx: &mut HandlerContext, element_ref: String, value: String) -> HandlerResult {
@@ -981,11 +1060,7 @@ pub fn handle_scroll_into_view(ctx: &mut HandlerContext, element_ref: String) ->
 }
 
 pub fn handle_focus(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
+    let params = ctx.ref_params(&element_ref);
     let result = ctx.client.call("focus", Some(params))?;
     ctx.output_success_result(
         &result,
@@ -996,11 +1071,7 @@ pub fn handle_focus(ctx: &mut HandlerContext, element_ref: String) -> HandlerRes
 }
 
 pub fn handle_clear(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
+    let params = ctx.ref_params(&element_ref);
     let result = ctx.client.call("clear", Some(params))?;
     ctx.output_success_result(
         &result,
@@ -1011,11 +1082,7 @@ pub fn handle_clear(ctx: &mut HandlerContext, element_ref: String) -> HandlerRes
 }
 
 pub fn handle_select_all(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
+    let params = ctx.ref_params(&element_ref);
     let result = ctx.client.call("select_all", Some(params))?;
     ctx.output_success_result(
         &result,
@@ -1026,61 +1093,15 @@ pub fn handle_select_all(ctx: &mut HandlerContext, element_ref: String) -> Handl
 }
 
 pub fn handle_get_text(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
+    let params = ctx.ref_params(&element_ref);
     let result = ctx.client.call("get_text", Some(params))?;
-    let found = result
-        .get("found")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if found {
-                let text = result.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                println!("{}", text);
-            } else {
-                eprintln!("Element not found: {}", element_ref);
-                std::process::exit(1);
-            }
-        }
-    }
-    Ok(())
+    ctx.output_get_result(&result, &element_ref, "text")
 }
 
 pub fn handle_get_value(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
+    let params = ctx.ref_params(&element_ref);
     let result = ctx.client.call("get_value", Some(params))?;
-    let found = result
-        .get("found")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if found {
-                let value = result.get("value").and_then(|v| v.as_str()).unwrap_or("");
-                println!("{}", value);
-            } else {
-                eprintln!("Element not found: {}", element_ref);
-                std::process::exit(1);
-            }
-        }
-    }
-    Ok(())
+    ctx.output_get_result(&result, &element_ref, "value")
 }
 
 pub fn handle_get_focused(ctx: &mut HandlerContext) -> HandlerResult {
@@ -1137,136 +1158,27 @@ pub fn handle_get_title(ctx: &mut HandlerContext) -> HandlerResult {
 }
 
 pub fn handle_is_visible(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
+    let params = ctx.ref_params(&element_ref);
     let result = ctx.client.call("is_visible", Some(params))?;
-    let visible = result
-        .get("visible")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if visible {
-                println!("{} {} is visible", Colors::success("✓"), element_ref);
-            } else {
-                println!("{} {} is not visible", Colors::error("✗"), element_ref);
-                std::process::exit(1);
-            }
-        }
-    }
-    Ok(())
+    ctx.output_state_check(&result, &element_ref, "visible", "visible", "not visible")
 }
 
 pub fn handle_is_focused(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
+    let params = ctx.ref_params(&element_ref);
     let result = ctx.client.call("is_focused", Some(params))?;
-    let found = result
-        .get("found")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let focused = result
-        .get("focused")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if !found {
-                eprintln!("Element not found: {}", element_ref);
-                std::process::exit(1);
-            } else if focused {
-                println!("{} {} is focused", Colors::success("✓"), element_ref);
-            } else {
-                println!("{} {} is not focused", Colors::error("✗"), element_ref);
-                std::process::exit(1);
-            }
-        }
-    }
-    Ok(())
+    ctx.output_state_check(&result, &element_ref, "focused", "focused", "not focused")
 }
 
 pub fn handle_is_enabled(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
+    let params = ctx.ref_params(&element_ref);
     let result = ctx.client.call("is_enabled", Some(params))?;
-    let found = result
-        .get("found")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let enabled = result
-        .get("enabled")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if !found {
-                eprintln!("Element not found: {}", element_ref);
-                std::process::exit(1);
-            } else if enabled {
-                println!("{} {} is enabled", Colors::success("✓"), element_ref);
-            } else {
-                println!("{} {} is disabled", Colors::error("✗"), element_ref);
-                std::process::exit(1);
-            }
-        }
-    }
-    Ok(())
+    ctx.output_state_check(&result, &element_ref, "enabled", "enabled", "disabled")
 }
 
 pub fn handle_is_checked(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
+    let params = ctx.ref_params(&element_ref);
     let result = ctx.client.call("is_checked", Some(params))?;
-    let found = result
-        .get("found")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let checked = result
-        .get("checked")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if !found {
-                eprintln!("Element not found: {}", element_ref);
-                std::process::exit(1);
-            } else if checked {
-                println!("{} {} is checked", Colors::success("✓"), element_ref);
-            } else {
-                println!("{} {} is not checked", Colors::error("✗"), element_ref);
-                std::process::exit(1);
-            }
-        }
-    }
-    Ok(())
+    ctx.output_state_check(&result, &element_ref, "checked", "checked", "not checked")
 }
 
 pub fn handle_count(
@@ -1339,12 +1251,7 @@ pub fn handle_toggle(
 }
 
 pub fn handle_check(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session,
-        "state": true
-    });
-
+    let params = json!({ "ref": element_ref, "session": ctx.session, "state": true });
     let result = ctx.client.call("toggle", Some(params))?;
     ctx.output_success_result(
         &result,
@@ -1355,12 +1262,7 @@ pub fn handle_check(ctx: &mut HandlerContext, element_ref: String) -> HandlerRes
 }
 
 pub fn handle_uncheck(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session,
-        "state": false
-    });
-
+    let params = json!({ "ref": element_ref, "session": ctx.session, "state": false });
     let result = ctx.client.call("toggle", Some(params))?;
     ctx.output_success_result(
         &result,

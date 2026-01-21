@@ -596,6 +596,11 @@ impl SessionManager {
     pub fn active_session_id(&self) -> Option<SessionId> {
         rwlock_read_or_recover(&self.active_session).clone()
     }
+
+    /// Clean up stale sessions from persistence storage
+    pub fn cleanup_persistence(&self) -> std::io::Result<usize> {
+        self.persistence.cleanup_stale_sessions()
+    }
 }
 
 #[derive(Debug, Clone)]

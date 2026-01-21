@@ -99,7 +99,7 @@ impl ElementFilter<'_> {
 }
 
 pub struct DaemonServer {
-    pub session_manager: Arc<SessionManager>,
+    session_manager: Arc<SessionManager>,
     start_time: Instant,
 }
 
@@ -1710,7 +1710,6 @@ pub fn start_daemon() -> std::io::Result<()> {
 
     let server = Arc::new(DaemonServer::new());
 
-    // Spawn periodic cleanup thread (runs every 5 minutes)
     {
         let server = Arc::clone(&server);
         thread::spawn(move || loop {

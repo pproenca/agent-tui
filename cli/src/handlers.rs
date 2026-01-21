@@ -325,7 +325,11 @@ pub fn handle_snapshot(
             }
             println!();
             if let Some(screen) = result.get("screen").and_then(|v| v.as_str()) {
-                println!("{}", screen);
+                if screen.trim().is_empty() {
+                    println!("{}", Colors::dim("(screen is empty)"));
+                } else {
+                    println!("{}", screen);
+                }
             }
         }
         OutputFormat::Text => {
@@ -371,7 +375,11 @@ pub fn handle_snapshot(
             }
             println!("{}", Colors::bold("Screen:"));
             if let Some(screen) = result.get("screen").and_then(|v| v.as_str()) {
-                println!("{}", screen);
+                if screen.trim().is_empty() {
+                    println!("{}", Colors::dim("(screen is empty)"));
+                } else {
+                    println!("{}", screen);
+                }
             }
         }
     }
@@ -640,7 +648,11 @@ pub fn handle_screenshot(
 
     ctx.output_json_or(&result, || {
         if let Some(screen) = result.get("screen").and_then(|v| v.as_str()) {
-            println!("{}", screen);
+            if screen.trim().is_empty() {
+                println!("{}", Colors::dim("(screen is empty)"));
+            } else {
+                println!("{}", screen);
+            }
         }
         if include_cursor {
             if let Some(cursor) = result.get("cursor") {

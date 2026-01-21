@@ -661,7 +661,17 @@ impl SessionPersistence {
         match fs::File::open(&self.path) {
             Ok(file) => {
                 let reader = BufReader::new(file);
-                serde_json::from_reader(reader).unwrap_or_default()
+                match serde_json::from_reader(reader) {
+                    Ok(sessions) => sessions,
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: Failed to parse sessions file '{}': {}",
+                            self.path.display(),
+                            e
+                        );
+                        Vec::new()
+                    }
+                }
             }
             Err(e) => {
                 eprintln!(

@@ -1,17 +1,9 @@
-//! Ratatui (Rust) framework detector
-//!
-//! Detects elements specific to Ratatui applications using patterns like:
-//! - Block characters for progress: █▓▒░
-//! - Sparkline characters: ▁▂▃▄▅▆▇
-//! - Various fractional block elements: ▏▎▍▌▋▊▉
-
 use crate::detection::pattern::{deduplicate_matches, PatternMatch};
 use crate::detection::traits::{DetectionContext, ElementDetectorImpl};
 use crate::detection::ElementType;
 use regex::Regex;
 use std::sync::OnceLock;
 
-/// Ratatui (Rust) framework detector
 pub struct RatatuiDetector;
 
 impl RatatuiDetector {
@@ -19,7 +11,6 @@ impl RatatuiDetector {
         Self
     }
 
-    /// Check if the screen appears to be a Ratatui application
     pub fn looks_like_ratatui(ctx: &DetectionContext) -> bool {
         let block_chars = ['█', '▓', '▒', '░', '▏', '▎', '▍', '▌', '▋', '▊', '▉'];
         let block_count = block_chars
@@ -43,7 +34,6 @@ impl Default for RatatuiDetector {
     }
 }
 
-/// Cached regex patterns for Ratatui-specific elements
 struct RatatuiPatterns {
     progress_bar: Regex,
     sparkline: Regex,

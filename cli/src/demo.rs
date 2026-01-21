@@ -1,8 +1,3 @@
-//! Built-in demo TUI for testing agent-tui element detection
-//!
-//! This module provides a simple TUI form that can be spawned to test
-//! element detection without requiring external applications.
-
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
@@ -13,7 +8,6 @@ use crossterm::{
 use std::io::{stdout, Write};
 use std::time::Duration;
 
-/// State for the demo TUI form
 struct DemoState {
     name_value: String,
     notifications_checked: bool,
@@ -36,7 +30,6 @@ impl Default for DemoState {
     }
 }
 
-/// Run the demo TUI
 pub fn run_demo() -> Result<(), Box<dyn std::error::Error>> {
     let mut stdout = stdout();
     let mut state = DemoState::default();

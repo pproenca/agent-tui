@@ -1,14 +1,10 @@
-//! Select widget navigation helpers
-
 use crate::session::Session;
 use std::thread;
 use std::time::Duration;
 
-/// Arrow key escape sequences
 const ARROW_UP: &[u8] = b"\x1b[A";
 const ARROW_DOWN: &[u8] = b"\x1b[B";
 
-/// Navigate to a select option using arrow keys
 pub fn navigate_to_option(
     sess: &mut Session,
     target: &str,
@@ -33,8 +29,6 @@ pub fn navigate_to_option(
     Ok(())
 }
 
-/// Parse select options from screen text
-/// Returns (options, currently_selected_index)
 pub fn parse_select_options(screen_text: &str) -> (Vec<String>, usize) {
     let mut options = Vec::new();
     let mut selected_idx = 0;
@@ -59,7 +53,6 @@ pub fn parse_select_options(screen_text: &str) -> (Vec<String>, usize) {
     (options, selected_idx)
 }
 
-/// Strip ANSI escape codes from a string
 pub fn strip_ansi_codes(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();

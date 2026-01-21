@@ -1,8 +1,3 @@
-//! Framework detector registry
-//!
-//! Provides the `FrameworkDetector` enum that dispatches to the appropriate
-//! framework-specific detector. Uses enum dispatch for zero-cost abstraction.
-
 use super::frameworks::{
     BubbleTeaDetector, GenericDetector, InkDetector, InquirerDetector, RatatuiDetector,
     TextualDetector,
@@ -10,10 +5,6 @@ use super::frameworks::{
 use super::pattern::PatternMatch;
 use super::traits::{DetectionContext, ElementDetectorImpl};
 
-/// Enum-based framework detector for zero-cost dispatch
-///
-/// Each variant wraps a framework-specific detector. The enum implements
-/// `ElementDetectorImpl` by delegating to the wrapped detector.
 pub enum FrameworkDetector {
     Generic(GenericDetector),
     Ink(InkDetector),
@@ -24,10 +15,6 @@ pub enum FrameworkDetector {
 }
 
 impl FrameworkDetector {
-    /// Auto-detect the framework and return the appropriate detector
-    ///
-    /// Checks each framework detector in priority order and returns the first
-    /// one that can handle the screen content. Falls back to GenericDetector.
     pub fn detect(ctx: &DetectionContext) -> Self {
         if InquirerDetector::looks_like_inquirer(ctx) {
             return FrameworkDetector::Inquirer(InquirerDetector::new());
@@ -59,7 +46,6 @@ impl Default for FrameworkDetector {
     }
 }
 
-/// Macro to generate trait delegation for all variants
 macro_rules! delegate_to_detector {
     ($self:expr, $method:ident $(, $arg:expr)*) => {
         match $self {

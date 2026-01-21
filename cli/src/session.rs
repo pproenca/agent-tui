@@ -1,9 +1,3 @@
-//! Session management for agent-tui
-//!
-//! This module manages PTY sessions, providing a unified interface
-//! for spawning processes, taking snapshots, and interacting with
-//! terminal applications.
-
 use crate::detection::{Element, ElementDetector};
 use crate::pty::{key_to_escape_sequence, PtyError, PtyHandle};
 use crate::sync_utils::{mutex_lock_or_recover, rwlock_read_or_recover, rwlock_write_or_recover};
@@ -19,32 +13,24 @@ use std::time::Instant;
 use thiserror::Error;
 use uuid::Uuid;
 
-/// Get the last N items from a queue
 fn get_last_n<T: Clone>(queue: &VecDeque<T>, count: usize) -> Vec<T> {
     let start = queue.len().saturating_sub(count);
     queue.iter().skip(start).cloned().collect()
 }
 
-/// A unique identifier for a session.
-///
-/// This newtype wrapper provides type safety by distinguishing session IDs
-/// from other strings in the codebase, preventing accidental misuse.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SessionId(String);
 
 impl SessionId {
-    /// Create a new SessionId from a string
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
-    /// Generate a new random session ID (first 8 chars of UUID)
     pub fn generate() -> Self {
         Self(Uuid::new_v4().to_string()[..8].to_string())
     }
 
-    /// Get the underlying string
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -74,14 +60,12 @@ impl From<&str> for SessionId {
     }
 }
 
-/// A single frame captured during recording
 #[derive(Clone, Debug)]
 pub struct RecordingFrame {
     pub timestamp_ms: u64,
     pub screen: String,
 }
 
-/// Recording state for a session
 struct RecordingState {
     is_recording: bool,
     start_time: Instant,
@@ -98,7 +82,6 @@ impl RecordingState {
     }
 }
 
-/// A trace entry recording an action
 #[derive(Clone, Debug)]
 pub struct TraceEntry {
     pub timestamp_ms: u64,
@@ -106,7 +89,6 @@ pub struct TraceEntry {
     pub details: Option<String>,
 }
 
-/// Trace state for a session
 struct TraceState {
     is_tracing: bool,
     start_time: Instant,
@@ -123,14 +105,12 @@ impl TraceState {
     }
 }
 
-/// Recording status summary
 pub struct RecordingStatus {
     pub is_recording: bool,
     pub frame_count: usize,
     pub duration_ms: u64,
 }
 
-/// An error entry captured from the session
 #[derive(Clone, Debug)]
 pub struct ErrorEntry {
     pub timestamp: String,
@@ -138,7 +118,6 @@ pub struct ErrorEntry {
     pub source: String,
 }
 
-/// Error state for a session
 struct ErrorState {
     entries: VecDeque<ErrorEntry>,
 }
@@ -165,7 +144,6 @@ pub enum SessionError {
     InvalidKey(String),
 }
 
-/// Modifier key types for keydown/keyup sequences
 #[derive(Clone, Copy)]
 enum ModifierKey {
     Ctrl,
@@ -175,7 +153,6 @@ enum ModifierKey {
 }
 
 impl ModifierKey {
-    /// Parse a modifier key from a string
     fn from_str(key: &str) -> Option<Self> {
         match key.to_lowercase().as_str() {
             "ctrl" | "control" => Some(Self::Ctrl),
@@ -187,7 +164,6 @@ impl ModifierKey {
     }
 }
 
-/// Held modifier keys state for keydown/keyup sequences
 #[derive(Default)]
 struct ModifierState {
     ctrl: bool,
@@ -197,7 +173,6 @@ struct ModifierState {
 }
 
 impl ModifierState {
-    /// Set a modifier key state
     fn set(&mut self, key: ModifierKey, value: bool) {
         match key {
             ModifierKey::Ctrl => self.ctrl = value,
@@ -208,7 +183,6 @@ impl ModifierState {
     }
 }
 
-/// Session state
 pub struct Session {
     pub id: SessionId,
     pub command: String,
@@ -216,15 +190,10 @@ pub struct Session {
     pty: PtyHandle,
     terminal: VirtualTerminal,
     detector: ElementDetector,
-    /// Cached elements from last detection
     cached_elements: Vec<Element>,
-    /// Recording state
     recording: RecordingState,
-    /// Trace state
     trace: TraceState,
-    /// Held modifier keys for keydown/keyup sequences
     held_modifiers: ModifierState,
-    /// Error state
     errors: ErrorState,
 }
 
@@ -245,22 +214,18 @@ impl Session {
         }
     }
 
-    /// Get process ID
     pub fn pid(&self) -> Option<u32> {
         self.pty.pid()
     }
 
-    /// Check if process is running
     pub fn is_running(&mut self) -> bool {
         self.pty.is_running()
     }
 
-    /// Get terminal size
     pub fn size(&self) -> (u16, u16) {
         self.terminal.size()
     }
 
-    /// Process any pending PTY output and update the terminal
     pub fn update(&mut self) -> Result<(), SessionError> {
         let mut buf = [0u8; 4096];
 
@@ -277,17 +242,14 @@ impl Session {
         Ok(())
     }
 
-    /// Get screen text
     pub fn screen_text(&self) -> String {
         self.terminal.screen_text()
     }
 
-    /// Get cursor position
     pub fn cursor(&self) -> CursorPosition {
         self.terminal.cursor()
     }
 
-    /// Detect elements and cache them
     pub fn detect_elements(&mut self) -> &[Element] {
         let screen_text = self.terminal.screen_text();
         let screen_buffer = self.terminal.screen_buffer();
@@ -295,13 +257,11 @@ impl Session {
         &self.cached_elements
     }
 
-    /// Find element by ref
     pub fn find_element(&self, element_ref: &str) -> Option<&Element> {
         self.detector
             .find_by_ref(&self.cached_elements, element_ref)
     }
 
-    /// Send a keystroke
     pub fn keystroke(&self, key: &str) -> Result<(), SessionError> {
         let seq =
             key_to_escape_sequence(key).ok_or_else(|| SessionError::InvalidKey(key.to_string()))?;
@@ -309,12 +269,6 @@ impl Session {
         Ok(())
     }
 
-    /// Hold a modifier key down
-    ///
-    /// This tracks the modifier state for subsequent keystrokes. In PTY terminals,
-    /// modifier keys don't have separate "down" events - they're combined with
-    /// other keys. This method allows sequences like:
-    ///   keydown("Shift") -> click(@item1) -> click(@item2) -> keyup("Shift")
     pub fn keydown(&mut self, key: &str) -> Result<(), SessionError> {
         let modifier = ModifierKey::from_str(key).ok_or_else(|| {
             SessionError::InvalidKey(format!(
@@ -326,7 +280,6 @@ impl Session {
         Ok(())
     }
 
-    /// Release a held modifier key
     pub fn keyup(&mut self, key: &str) -> Result<(), SessionError> {
         let modifier = ModifierKey::from_str(key).ok_or_else(|| {
             SessionError::InvalidKey(format!(
@@ -338,13 +291,11 @@ impl Session {
         Ok(())
     }
 
-    /// Type text
     pub fn type_text(&self, text: &str) -> Result<(), SessionError> {
         self.pty.write_str(text)?;
         Ok(())
     }
 
-    /// Click an element (move cursor and press Enter/Space)
     pub fn click(&mut self, element_ref: &str) -> Result<(), SessionError> {
         self.update()?;
         self.detect_elements();
@@ -365,7 +316,6 @@ impl Session {
         Ok(())
     }
 
-    /// Fill an input with a value
     pub fn fill(&mut self, element_ref: &str, value: &str) -> Result<(), SessionError> {
         self.update()?;
         self.detect_elements();
@@ -379,33 +329,28 @@ impl Session {
         Ok(())
     }
 
-    /// Resize the terminal
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), SessionError> {
         self.pty.resize(cols, rows)?;
         self.terminal.resize(cols, rows);
         Ok(())
     }
 
-    /// Kill the session
     pub fn kill(&mut self) -> Result<(), SessionError> {
         self.pty.kill()?;
         Ok(())
     }
 
-    /// Write raw bytes to the PTY
     pub fn pty_write(&self, data: &[u8]) -> Result<(), SessionError> {
         self.pty.write(data)?;
         Ok(())
     }
 
-    /// Read from PTY with timeout (for attach mode)
     pub fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
         self.pty
             .try_read(buf, timeout_ms)
             .map_err(SessionError::Pty)
     }
 
-    /// Start recording
     pub fn start_recording(&mut self) {
         self.recording.is_recording = true;
         self.recording.start_time = Instant::now();
@@ -418,13 +363,11 @@ impl Session {
         });
     }
 
-    /// Stop recording and return captured frames
     pub fn stop_recording(&mut self) -> Vec<RecordingFrame> {
         self.recording.is_recording = false;
         std::mem::take(&mut self.recording.frames)
     }
 
-    /// Get recording status
     pub fn recording_status(&self) -> RecordingStatus {
         RecordingStatus {
             is_recording: self.recording.is_recording,
@@ -437,50 +380,41 @@ impl Session {
         }
     }
 
-    /// Start tracing
     pub fn start_trace(&mut self) {
         self.trace.is_tracing = true;
         self.trace.start_time = Instant::now();
         self.trace.entries.clear();
     }
 
-    /// Stop tracing
     pub fn stop_trace(&mut self) {
         self.trace.is_tracing = false;
     }
 
-    /// Check if tracing is active
     pub fn is_tracing(&self) -> bool {
         self.trace.is_tracing
     }
 
-    /// Get recent trace entries
     pub fn get_trace_entries(&self, count: usize) -> Vec<TraceEntry> {
         get_last_n(&self.trace.entries, count)
     }
 
-    /// Get recent errors
     pub fn get_errors(&self, count: usize) -> Vec<ErrorEntry> {
         get_last_n(&self.errors.entries, count)
     }
 
-    /// Get total error count
     pub fn error_count(&self) -> usize {
         self.errors.entries.len()
     }
 
-    /// Clear all errors
     pub fn clear_errors(&mut self) {
         self.errors.entries.clear();
     }
 
-    /// Clear console (resets terminal screen buffer)
     pub fn clear_console(&mut self) {
         self.terminal.clear();
     }
 }
 
-/// Session manager
 pub struct SessionManager {
     sessions: RwLock<HashMap<SessionId, Arc<Mutex<Session>>>>,
     active_session: RwLock<Option<SessionId>>,
@@ -505,7 +439,6 @@ impl SessionManager {
         }
     }
 
-    /// Spawn a new session
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         &self,
@@ -554,7 +487,6 @@ impl SessionManager {
         Ok((id, pid))
     }
 
-    /// Get a session by ID
     pub fn get(&self, session_id: &str) -> Result<Arc<Mutex<Session>>, SessionError> {
         let sessions = rwlock_read_or_recover(&self.sessions);
         let id = SessionId::new(session_id);
@@ -564,7 +496,6 @@ impl SessionManager {
             .ok_or_else(|| SessionError::NotFound(session_id.to_string()))
     }
 
-    /// Get the active session
     pub fn active(&self) -> Result<Arc<Mutex<Session>>, SessionError> {
         let active_id = {
             let active = rwlock_read_or_recover(&self.active_session);
@@ -577,7 +508,6 @@ impl SessionManager {
         }
     }
 
-    /// Get session, using provided ID or falling back to active session
     pub fn resolve(&self, session_id: Option<&str>) -> Result<Arc<Mutex<Session>>, SessionError> {
         match session_id {
             Some(id) => self.get(id),
@@ -585,7 +515,6 @@ impl SessionManager {
         }
     }
 
-    /// Set active session
     pub fn set_active(&self, session_id: &str) -> Result<(), SessionError> {
         let _ = self.get(session_id)?;
 
@@ -594,9 +523,6 @@ impl SessionManager {
         Ok(())
     }
 
-    /// List all sessions
-    /// Note: Uses try_lock to avoid blocking; sessions that can't be locked
-    /// are reported with status "busy" via the running field.
     pub fn list(&self) -> Vec<SessionInfo> {
         let session_refs: Vec<(SessionId, Arc<Mutex<Session>>)> = {
             let sessions = rwlock_read_or_recover(&self.sessions);
@@ -629,10 +555,6 @@ impl SessionManager {
             .collect()
     }
 
-    /// Kill a session
-    ///
-    /// Lock ordering: sessions.write() -> active_session.write() -> session.lock()
-    /// This order prevents deadlock with list() which acquires sessions.read() first.
     pub fn kill(&self, session_id: &str) -> Result<(), SessionError> {
         let id = SessionId::new(session_id);
 
@@ -663,18 +585,15 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Get session count
     pub fn session_count(&self) -> usize {
         rwlock_read_or_recover(&self.sessions).len()
     }
 
-    /// Get active session ID
     pub fn active_session_id(&self) -> Option<SessionId> {
         rwlock_read_or_recover(&self.active_session).clone()
     }
 }
 
-/// Session info for listing
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
     pub id: SessionId,
@@ -689,7 +608,6 @@ lazy_static::lazy_static! {
     pub static ref SESSION_MANAGER: SessionManager = SessionManager::new();
 }
 
-/// Persisted session metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedSession {
     pub id: SessionId,
@@ -700,19 +618,16 @@ pub struct PersistedSession {
     pub rows: u16,
 }
 
-/// Session persistence manager
 pub struct SessionPersistence {
     path: PathBuf,
 }
 
 impl SessionPersistence {
-    /// Create a new persistence manager
     pub fn new() -> Self {
         let path = Self::sessions_file_path();
         Self { path }
     }
 
-    /// Get the path to the sessions file
     fn sessions_file_path() -> PathBuf {
         let home = std::env::var("HOME")
             .map(PathBuf::from)
@@ -721,7 +636,6 @@ impl SessionPersistence {
         dir.join("sessions.json")
     }
 
-    /// Ensure the directory exists
     fn ensure_dir(&self) -> std::io::Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
@@ -734,7 +648,6 @@ impl SessionPersistence {
         Ok(())
     }
 
-    /// Load persisted sessions
     pub fn load(&self) -> Vec<PersistedSession> {
         if !self.path.exists() {
             return Vec::new();
@@ -756,7 +669,6 @@ impl SessionPersistence {
         }
     }
 
-    /// Save sessions to disk
     pub fn save(&self, sessions: &[PersistedSession]) -> std::io::Result<()> {
         self.ensure_dir()?;
 
@@ -777,7 +689,6 @@ impl SessionPersistence {
         Ok(())
     }
 
-    /// Add a session to persistence
     pub fn add_session(&self, session: PersistedSession) -> std::io::Result<()> {
         let mut sessions = self.load();
 
@@ -787,14 +698,12 @@ impl SessionPersistence {
         self.save(&sessions)
     }
 
-    /// Remove a session from persistence
     pub fn remove_session(&self, session_id: &str) -> std::io::Result<()> {
         let mut sessions = self.load();
         sessions.retain(|s| s.id.as_str() != session_id);
         self.save(&sessions)
     }
 
-    /// Clean up stale sessions (processes that are no longer running)
     pub fn cleanup_stale_sessions(&self) -> std::io::Result<usize> {
         let sessions = self.load();
         let mut cleaned = 0;
@@ -821,12 +730,10 @@ impl Default for SessionPersistence {
     }
 }
 
-/// Check if a process is still running
 fn is_process_running(pid: u32) -> bool {
     unsafe { libc::kill(pid as i32, 0) == 0 }
 }
 
-/// Convert a SessionInfo to PersistedSession
 impl From<&SessionInfo> for PersistedSession {
     fn from(info: &SessionInfo) -> Self {
         PersistedSession {

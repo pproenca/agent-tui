@@ -18,7 +18,7 @@ echo "   PID: $PID"
 # Type something to create content
 echo "2. Creating some content..."
 agent-tui type "ls -la"
-agent-tui keystroke Enter
+agent-tui press Enter
 sleep 1
 
 # Get snapshot as JSON

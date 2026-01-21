@@ -73,7 +73,7 @@ agent-tui snapshot -i
 # Step 4: Type a request to Claude
 log "Sending request to Claude..."
 agent-tui type "Create hello.py that prints Hello World"
-agent-tui keystroke Enter
+agent-tui press Enter
 
 # Step 5: Wait for Claude to complete (stable screen)
 log "Waiting for Claude to finish..."
@@ -114,7 +114,7 @@ fi
 # Step 8: Send exit command
 log "Exiting Claude..."
 agent-tui type "/exit"
-agent-tui keystroke Enter
+agent-tui press Enter
 sleep 2
 
 # Step 9: Kill session

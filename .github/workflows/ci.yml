@@ -188,7 +188,7 @@ jobs:
         run: |
           agent-tui spawn bash
           agent-tui type "echo 'test'"
-          agent-tui keystroke Enter
+          agent-tui press Enter
           agent-tui wait "test"
           agent-tui snapshot
           agent-tui kill

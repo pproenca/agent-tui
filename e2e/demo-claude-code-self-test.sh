@@ -78,7 +78,7 @@ echo
 # Test: Ask Claude to write a simple file
 echo -e "${YELLOW}[6/6]${NC} Asking Claude to write hello.py..."
 agent-tui type "Write a Python file called hello.py that prints 'Hello from agent-tui!' - just write the file, no explanation needed"
-agent-tui keystroke Enter
+agent-tui press Enter
 
 # Wait for Claude to complete
 echo "Waiting for Claude to respond..."
@@ -116,7 +116,7 @@ fi
 # Cleanup
 echo "Cleaning up..."
 agent-tui type "/exit"
-agent-tui keystroke Enter
+agent-tui press Enter
 sleep 2
 agent-tui kill 2>/dev/null || true
 rm -rf "$TEST_DIR"
@@ -129,7 +129,7 @@ echo
 echo "This demo showed how agent-tui can:"
 echo "  1. Spawn Claude Code in a virtual terminal"
 echo "  2. Wait for the interface to be ready"
-echo "  3. Send commands and keystrokes"
+echo "  3. Send commands and key presses"
 echo "  4. Wait for task completion"
 echo "  5. Verify the results"
 echo

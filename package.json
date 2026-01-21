@@ -36,7 +36,6 @@
     "format:check": "cargo fmt --manifest-path cli/Cargo.toml -- --check",
     "version:sync": "node scripts/sync-version.js",
     "preversion": "npm run format:check && npm run lint && npm run test",
-    "version": "0.3.1",
     "postinstall": "node scripts/postinstall.js"
   },
   "files": [

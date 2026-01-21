@@ -11,7 +11,7 @@ CLI_DIR="$(dirname "$SCRIPT_DIR")"
 # Check if ast-grep is installed
 if ! command -v sg &> /dev/null; then
     echo "Error: ast-grep (sg) not installed"
-    echo "Install with: cargo install ast-grep"
+    echo "Install with: brew install ast-grep"
     exit 1
 fi
 

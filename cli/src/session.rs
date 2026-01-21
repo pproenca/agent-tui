@@ -608,10 +608,6 @@ pub struct SessionInfo {
     pub size: (u16, u16),
 }
 
-lazy_static::lazy_static! {
-    pub static ref SESSION_MANAGER: SessionManager = SessionManager::new();
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedSession {
     pub id: SessionId,

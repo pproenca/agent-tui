@@ -257,48 +257,8 @@ EXAMPLES:
     agent-tui wait --stable             # Wait for screen stability
     agent-tui wait -t 5000 "Loading"    # 5 second timeout"#)]
     Wait {
-        /// Text to wait for (legacy mode, use --condition for more options)
-        text: Option<String>,
-
-        /// Timeout in milliseconds (default: 30000)
-        #[arg(short, long, default_value = "30000")]
-        timeout: u64,
-
-        /// Wait condition type
-        #[arg(long, value_enum)]
-        condition: Option<WaitConditionArg>,
-
-        /// Target for the condition (element ref or text pattern)
-        #[arg(long)]
-        target: Option<String>,
-
-        /// Wait for element to appear
-        #[arg(long, conflicts_with_all = ["condition", "text", "visible"])]
-        element: Option<String>,
-
-        /// Wait for element to appear (alias for --element, agent-browser parity)
-        #[arg(long, conflicts_with_all = ["condition", "text", "element"])]
-        visible: Option<String>,
-
-        /// Wait for element to be focused
-        #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible"])]
-        focused: Option<String>,
-
-        /// Wait for element to disappear
-        #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused"])]
-        not_visible: Option<String>,
-
-        /// Wait for text to disappear
-        #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible"])]
-        text_gone: Option<String>,
-
-        /// Wait for screen to stabilize
-        #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible", "text_gone", "value"])]
-        stable: bool,
-
-        /// Wait for input to have specific value (format: @ref=value)
-        #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible", "text_gone", "stable"])]
-        value: Option<String>,
+        #[command(flatten)]
+        params: WaitParams,
     },
 
     /// Kill the TUI application
@@ -738,33 +698,8 @@ EXAMPLES:
     agent-tui find --role button --nth 1        # Get second button (0-indexed)
     agent-tui find --text "Log" --exact         # Exact match only"#)]
     Find {
-        /// Element role to find (button, input, checkbox, etc.)
-        #[arg(long)]
-        role: Option<String>,
-
-        /// Element name/label to match (supports regex)
-        #[arg(long)]
-        name: Option<String>,
-
-        /// Text content to find (searches label and value)
-        #[arg(long)]
-        text: Option<String>,
-
-        /// Placeholder text to match (for inputs)
-        #[arg(long)]
-        placeholder: Option<String>,
-
-        /// Find the currently focused element
-        #[arg(long)]
-        focused: bool,
-
-        /// Select the nth matching element (0-indexed)
-        #[arg(long)]
-        nth: Option<usize>,
-
-        /// Use exact string matching instead of substring matching
-        #[arg(long)]
-        exact: bool,
+        #[command(flatten)]
+        params: FindParams,
     },
 
     /// Generate shell completion scripts
@@ -889,6 +824,85 @@ impl std::fmt::Display for WaitConditionArg {
             WaitConditionArg::Value => write!(f, "value"),
         }
     }
+}
+
+/// Parameters for the wait command
+#[derive(Debug, Clone, Default, Parser)]
+pub struct WaitParams {
+    /// Text to wait for (legacy mode, use --condition for more options)
+    pub text: Option<String>,
+
+    /// Timeout in milliseconds (default: 30000)
+    #[arg(short, long, default_value = "30000")]
+    pub timeout: u64,
+
+    /// Wait condition type
+    #[arg(long, value_enum)]
+    pub condition: Option<WaitConditionArg>,
+
+    /// Target for the condition (element ref or text pattern)
+    #[arg(long)]
+    pub target: Option<String>,
+
+    /// Wait for element to appear
+    #[arg(long, conflicts_with_all = ["condition", "text", "visible"])]
+    pub element: Option<String>,
+
+    /// Wait for element to appear (alias for --element, agent-browser parity)
+    #[arg(long, conflicts_with_all = ["condition", "text", "element"])]
+    pub visible: Option<String>,
+
+    /// Wait for element to be focused
+    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible"])]
+    pub focused: Option<String>,
+
+    /// Wait for element to disappear
+    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused"])]
+    pub not_visible: Option<String>,
+
+    /// Wait for text to disappear
+    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible"])]
+    pub text_gone: Option<String>,
+
+    /// Wait for screen to stabilize
+    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible", "text_gone", "value"])]
+    pub stable: bool,
+
+    /// Wait for input to have specific value (format: @ref=value)
+    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible", "text_gone", "stable"])]
+    pub value: Option<String>,
+}
+
+/// Parameters for the find command
+#[derive(Debug, Clone, Default, Parser)]
+pub struct FindParams {
+    /// Element role to find (button, input, checkbox, etc.)
+    #[arg(long)]
+    pub role: Option<String>,
+
+    /// Element name/label to match (supports regex)
+    #[arg(long)]
+    pub name: Option<String>,
+
+    /// Text content to find (searches label and value)
+    #[arg(long)]
+    pub text: Option<String>,
+
+    /// Placeholder text to match (for inputs)
+    #[arg(long)]
+    pub placeholder: Option<String>,
+
+    /// Find the currently focused element
+    #[arg(long)]
+    pub focused: bool,
+
+    /// Select the nth matching element (0-indexed)
+    #[arg(long)]
+    pub nth: Option<usize>,
+
+    /// Use exact string matching instead of substring matching
+    #[arg(long)]
+    pub exact: bool,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum, Default, PartialEq)]
@@ -1096,97 +1110,97 @@ mod tests {
     #[test]
     fn test_wait_defaults() {
         let cli = Cli::parse_from(["agent-tui", "wait", "Loading"]);
-        let Commands::Wait { text, timeout, .. } = cli.command else {
+        let Commands::Wait { params } = cli.command else {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert_eq!(text, Some("Loading".to_string()));
+        assert_eq!(params.text, Some("Loading".to_string()));
         // Default timeout should be 30000ms
-        assert_eq!(timeout, 30000, "Default timeout should be 30000ms");
+        assert_eq!(params.timeout, 30000, "Default timeout should be 30000ms");
     }
 
     /// Test wait with custom timeout
     #[test]
     fn test_wait_custom_timeout() {
         let cli = Cli::parse_from(["agent-tui", "wait", "-t", "5000", "Done"]);
-        let Commands::Wait { text, timeout, .. } = cli.command else {
+        let Commands::Wait { params } = cli.command else {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert_eq!(text, Some("Done".to_string()));
-        assert_eq!(timeout, 5000);
+        assert_eq!(params.text, Some("Done".to_string()));
+        assert_eq!(params.timeout, 5000);
     }
 
     /// Test wait with --stable flag
     #[test]
     fn test_wait_stable() {
         let cli = Cli::parse_from(["agent-tui", "wait", "--stable"]);
-        let Commands::Wait { stable, text, .. } = cli.command else {
+        let Commands::Wait { params } = cli.command else {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert!(stable);
-        assert!(text.is_none());
+        assert!(params.stable);
+        assert!(params.text.is_none());
     }
 
     /// Test wait with --element flag
     #[test]
     fn test_wait_element() {
         let cli = Cli::parse_from(["agent-tui", "wait", "--element", "@btn1"]);
-        let Commands::Wait { element, text, .. } = cli.command else {
+        let Commands::Wait { params } = cli.command else {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert_eq!(element, Some("@btn1".to_string()));
-        assert!(text.is_none());
+        assert_eq!(params.element, Some("@btn1".to_string()));
+        assert!(params.text.is_none());
     }
 
     /// Test wait with --visible flag (alias for --element)
     #[test]
     fn test_wait_visible() {
         let cli = Cli::parse_from(["agent-tui", "wait", "--visible", "@btn1"]);
-        let Commands::Wait { visible, text, .. } = cli.command else {
+        let Commands::Wait { params } = cli.command else {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert_eq!(visible, Some("@btn1".to_string()));
-        assert!(text.is_none());
+        assert_eq!(params.visible, Some("@btn1".to_string()));
+        assert!(params.text.is_none());
     }
 
     /// Test wait with --focused flag
     #[test]
     fn test_wait_focused() {
         let cli = Cli::parse_from(["agent-tui", "wait", "--focused", "@inp1"]);
-        let Commands::Wait { focused, text, .. } = cli.command else {
+        let Commands::Wait { params } = cli.command else {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert_eq!(focused, Some("@inp1".to_string()));
-        assert!(text.is_none());
+        assert_eq!(params.focused, Some("@inp1".to_string()));
+        assert!(params.text.is_none());
     }
 
     /// Test wait with --not-visible flag
     #[test]
     fn test_wait_not_visible() {
         let cli = Cli::parse_from(["agent-tui", "wait", "--not-visible", "@spinner"]);
-        let Commands::Wait { not_visible, .. } = cli.command else {
+        let Commands::Wait { params } = cli.command else {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert_eq!(not_visible, Some("@spinner".to_string()));
+        assert_eq!(params.not_visible, Some("@spinner".to_string()));
     }
 
     /// Test wait with --text-gone flag
     #[test]
     fn test_wait_text_gone() {
         let cli = Cli::parse_from(["agent-tui", "wait", "--text-gone", "Loading..."]);
-        let Commands::Wait { text_gone, .. } = cli.command else {
+        let Commands::Wait { params } = cli.command else {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert_eq!(text_gone, Some("Loading...".to_string()));
+        assert_eq!(params.text_gone, Some("Loading...".to_string()));
     }
 
     /// Test wait with --value flag
     #[test]
     fn test_wait_value() {
         let cli = Cli::parse_from(["agent-tui", "wait", "--value", "@inp1=hello"]);
-        let Commands::Wait { value, .. } = cli.command else {
+        let Commands::Wait { params } = cli.command else {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert_eq!(value, Some("@inp1=hello".to_string()));
+        assert_eq!(params.value, Some("@inp1=hello".to_string()));
     }
 
     /// Test wait with --condition and --target flags
@@ -1200,14 +1214,11 @@ mod tests {
             "--target",
             "@btn1",
         ]);
-        let Commands::Wait {
-            condition, target, ..
-        } = cli.command
-        else {
+        let Commands::Wait { params } = cli.command else {
             panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert!(matches!(condition, Some(WaitConditionArg::Element)));
-        assert_eq!(target, Some("@btn1".to_string()));
+        assert!(matches!(params.condition, Some(WaitConditionArg::Element)));
+        assert_eq!(params.target, Some("@btn1".to_string()));
     }
 
     /// Test scroll direction enum values
@@ -1304,62 +1315,53 @@ mod tests {
     fn test_find_command() {
         // Find by role
         let cli = Cli::parse_from(["agent-tui", "find", "--role", "button"]);
-        let Commands::Find {
-            role,
-            name,
-            text,
-            placeholder,
-            focused,
-            nth,
-            exact,
-        } = cli.command
-        else {
+        let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
         };
-        assert_eq!(role, Some("button".to_string()));
-        assert!(name.is_none());
-        assert!(text.is_none());
-        assert!(placeholder.is_none());
-        assert!(!focused);
-        assert!(nth.is_none());
-        assert!(!exact);
+        assert_eq!(params.role, Some("button".to_string()));
+        assert!(params.name.is_none());
+        assert!(params.text.is_none());
+        assert!(params.placeholder.is_none());
+        assert!(!params.focused);
+        assert!(params.nth.is_none());
+        assert!(!params.exact);
 
         // Find by role and name
         let cli = Cli::parse_from(["agent-tui", "find", "--role", "button", "--name", "Submit"]);
-        let Commands::Find { role, name, .. } = cli.command else {
+        let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
         };
-        assert_eq!(role, Some("button".to_string()));
-        assert_eq!(name, Some("Submit".to_string()));
+        assert_eq!(params.role, Some("button".to_string()));
+        assert_eq!(params.name, Some("Submit".to_string()));
 
         // Find focused element
         let cli = Cli::parse_from(["agent-tui", "find", "--focused"]);
-        let Commands::Find { focused, .. } = cli.command else {
+        let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
         };
-        assert!(focused);
+        assert!(params.focused);
 
         // Find with nth
         let cli = Cli::parse_from(["agent-tui", "find", "--role", "button", "--nth", "2"]);
-        let Commands::Find { nth, .. } = cli.command else {
+        let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
         };
-        assert_eq!(nth, Some(2));
+        assert_eq!(params.nth, Some(2));
 
         // Find with exact
         let cli = Cli::parse_from(["agent-tui", "find", "--text", "Submit", "--exact"]);
-        let Commands::Find { text, exact, .. } = cli.command else {
+        let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
         };
-        assert_eq!(text, Some("Submit".to_string()));
-        assert!(exact);
+        assert_eq!(params.text, Some("Submit".to_string()));
+        assert!(params.exact);
 
         // Find by placeholder
         let cli = Cli::parse_from(["agent-tui", "find", "--placeholder", "Search..."]);
-        let Commands::Find { placeholder, .. } = cli.command else {
+        let Commands::Find { params } = cli.command else {
             panic!("Expected Find command, got {:?}", cli.command);
         };
-        assert_eq!(placeholder, Some("Search...".to_string()));
+        assert_eq!(params.placeholder, Some("Search...".to_string()));
     }
 
     /// Test that missing required arguments fail

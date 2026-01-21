@@ -5,7 +5,7 @@
 
 use crate::client::DaemonClient;
 use crate::color::Colors;
-use crate::commands::{OutputFormat, RecordFormat, ScrollDirection, WaitConditionArg};
+use crate::commands::{OutputFormat, RecordFormat, ScrollDirection};
 use crate::daemon;
 use serde_json::json;
 use std::collections::HashMap;
@@ -31,6 +31,52 @@ impl<'a> HandlerContext<'a> {
             session,
             format,
         }
+    }
+
+    /// Output a JSON result with proper formatting based on output format
+    pub fn output_json(
+        &self,
+        result: &serde_json::Value,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.format == OutputFormat::Json {
+            println!("{}", serde_json::to_string_pretty(result)?);
+        }
+        Ok(())
+    }
+
+    /// Handle a success/failure result with standard output formatting
+    ///
+    /// Returns true if success, false otherwise. In text mode, prints appropriate message
+    /// and exits with code 1 on failure.
+    pub fn output_success_result(
+        &self,
+        result: &serde_json::Value,
+        success_msg: &str,
+        failure_prefix: &str,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let success = result
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        match self.format {
+            OutputFormat::Json => {
+                println!("{}", serde_json::to_string_pretty(result)?);
+            }
+            OutputFormat::Text | OutputFormat::Tree => {
+                if success {
+                    println!("{}", success_msg);
+                } else {
+                    let msg = result
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown error");
+                    eprintln!("{}: {}", failure_prefix, msg);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Ok(success)
     }
 }
 
@@ -261,28 +307,7 @@ pub fn handle_click(ctx: &mut HandlerContext, element_ref: String) -> HandlerRes
     });
 
     let result = ctx.client.call("click", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Clicked successfully");
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Click failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(&result, "Clicked successfully", "Click failed")?;
     Ok(())
 }
 
@@ -293,28 +318,11 @@ pub fn handle_dbl_click(ctx: &mut HandlerContext, element_ref: String) -> Handle
     });
 
     let result = ctx.client.call("dbl_click", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Double-clicked successfully");
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Double-click failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(
+        &result,
+        "Double-clicked successfully",
+        "Double-click failed",
+    )?;
     Ok(())
 }
 
@@ -326,28 +334,7 @@ pub fn handle_fill(ctx: &mut HandlerContext, element_ref: String, value: String)
     });
 
     let result = ctx.client.call("fill", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Filled successfully");
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Fill failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(&result, "Filled successfully", "Fill failed")?;
     Ok(())
 }
 
@@ -414,28 +401,7 @@ pub fn handle_keydown(ctx: &mut HandlerContext, key: String) -> HandlerResult {
     });
 
     let result = ctx.client.call("keydown", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Key held: {}", key);
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Keydown failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(&result, &format!("Key held: {}", key), "Keydown failed")?;
     Ok(())
 }
 
@@ -446,75 +412,40 @@ pub fn handle_keyup(ctx: &mut HandlerContext, key: String) -> HandlerResult {
     });
 
     let result = ctx.client.call("keyup", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Key released: {}", key);
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Keyup failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(&result, &format!("Key released: {}", key), "Keyup failed")?;
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn handle_wait(
-    ctx: &mut HandlerContext,
-    text: Option<String>,
-    timeout: u64,
-    condition: Option<WaitConditionArg>,
-    target: Option<String>,
-    element: Option<String>,
-    visible: Option<String>,
-    focused: Option<String>,
-    not_visible: Option<String>,
-    text_gone: Option<String>,
-    stable: bool,
-    value: Option<String>,
-) -> HandlerResult {
-    let (cond, tgt) = if stable {
+pub fn handle_wait(ctx: &mut HandlerContext, params: crate::commands::WaitParams) -> HandlerResult {
+    let (cond, tgt) = if params.stable {
         (Some("stable".to_string()), None)
-    } else if let Some(el) = element {
+    } else if let Some(el) = params.element {
         (Some("element".to_string()), Some(el))
-    } else if let Some(vis) = visible {
+    } else if let Some(vis) = params.visible {
         (Some("element".to_string()), Some(vis))
-    } else if let Some(f) = focused {
+    } else if let Some(f) = params.focused {
         (Some("focused".to_string()), Some(f))
-    } else if let Some(nv) = not_visible {
+    } else if let Some(nv) = params.not_visible {
         (Some("not_visible".to_string()), Some(nv))
-    } else if let Some(tg) = text_gone {
+    } else if let Some(tg) = params.text_gone {
         (Some("text_gone".to_string()), Some(tg))
-    } else if let Some(v) = value {
+    } else if let Some(v) = params.value {
         (Some("value".to_string()), Some(v))
-    } else if let Some(c) = condition {
-        (Some(c.to_string()), target)
+    } else if let Some(c) = params.condition {
+        (Some(c.to_string()), params.target)
     } else {
         (None, None)
     };
 
-    let params = json!({
-        "text": text,
-        "timeout_ms": timeout,
+    let rpc_params = json!({
+        "text": params.text,
+        "timeout_ms": params.timeout,
         "session": ctx.session,
         "condition": cond,
         "target": tgt
     });
 
-    let result = ctx.client.call("wait", Some(params))?;
+    let result = ctx.client.call("wait", Some(rpc_params))?;
     let found = result
         .get("found")
         .and_then(|v| v.as_bool())
@@ -871,29 +802,19 @@ pub fn handle_cleanup(ctx: &mut HandlerContext, all: bool) -> HandlerResult {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn handle_find(
-    ctx: &mut HandlerContext,
-    role: Option<String>,
-    name: Option<String>,
-    text: Option<String>,
-    placeholder: Option<String>,
-    focused: bool,
-    nth: Option<usize>,
-    exact: bool,
-) -> HandlerResult {
-    let params = json!({
+pub fn handle_find(ctx: &mut HandlerContext, params: crate::commands::FindParams) -> HandlerResult {
+    let rpc_params = json!({
         "session": ctx.session,
-        "role": role,
-        "name": name,
-        "text": text,
-        "placeholder": placeholder,
-        "focused": focused,
-        "nth": nth,
-        "exact": exact
+        "role": params.role,
+        "name": params.name,
+        "text": params.text,
+        "placeholder": params.placeholder,
+        "focused": params.focused,
+        "nth": params.nth,
+        "exact": params.exact
     });
 
-    let result = ctx.client.call("find", Some(params))?;
+    let result = ctx.client.call("find", Some(rpc_params))?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -954,28 +875,7 @@ pub fn handle_select(
     });
 
     let result = ctx.client.call("select", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Selected: {}", option);
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Select failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(&result, &format!("Selected: {}", option), "Select failed")?;
     Ok(())
 }
 
@@ -1109,28 +1009,11 @@ pub fn handle_focus(ctx: &mut HandlerContext, element_ref: String) -> HandlerRes
     });
 
     let result = ctx.client.call("focus", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Focused: {}", element_ref);
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Focus failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(
+        &result,
+        &format!("Focused: {}", element_ref),
+        "Focus failed",
+    )?;
     Ok(())
 }
 
@@ -1141,28 +1024,11 @@ pub fn handle_clear(ctx: &mut HandlerContext, element_ref: String) -> HandlerRes
     });
 
     let result = ctx.client.call("clear", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Cleared: {}", element_ref);
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Clear failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(
+        &result,
+        &format!("Cleared: {}", element_ref),
+        "Clear failed",
+    )?;
     Ok(())
 }
 
@@ -1173,28 +1039,11 @@ pub fn handle_select_all(ctx: &mut HandlerContext, element_ref: String) -> Handl
     });
 
     let result = ctx.client.call("select_all", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("Selected all in: {}", element_ref);
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Select all failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(
+        &result,
+        &format!("Selected all in: {}", element_ref),
+        "Select all failed",
+    )?;
     Ok(())
 }
 
@@ -1519,28 +1368,11 @@ pub fn handle_check(ctx: &mut HandlerContext, element_ref: String) -> HandlerRes
     });
 
     let result = ctx.client.call("toggle", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("{} is now checked", element_ref);
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Check failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(
+        &result,
+        &format!("{} is now checked", element_ref),
+        "Check failed",
+    )?;
     Ok(())
 }
 
@@ -1552,28 +1384,11 @@ pub fn handle_uncheck(ctx: &mut HandlerContext, element_ref: String) -> HandlerR
     });
 
     let result = ctx.client.call("toggle", Some(params))?;
-    let success = result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text | OutputFormat::Tree => {
-            if success {
-                println!("{} is now unchecked", element_ref);
-            } else {
-                let msg = result
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                eprintln!("Uncheck failed: {}", msg);
-                std::process::exit(1);
-            }
-        }
-    }
+    ctx.output_success_result(
+        &result,
+        &format!("{} is now unchecked", element_ref),
+        "Uncheck failed",
+    )?;
     Ok(())
 }
 

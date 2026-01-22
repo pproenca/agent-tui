@@ -567,19 +567,6 @@ impl Session {
         Ok(())
     }
 
-    pub fn fill(&mut self, element_ref: &str, value: &str) -> Result<(), SessionError> {
-        self.update()?;
-        self.detect_elements();
-
-        let _element = self
-            .find_element(element_ref)
-            .ok_or_else(|| SessionError::ElementNotFound(element_ref.to_string()))?;
-
-        self.pty.write_str(value)?;
-
-        Ok(())
-    }
-
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), SessionError> {
         self.pty.resize(cols, rows)?;
         self.terminal.resize(cols, rows);

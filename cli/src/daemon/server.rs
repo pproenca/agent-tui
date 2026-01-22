@@ -552,11 +552,42 @@ impl DaemonServer {
             Ok(v) => v.to_string(),
             Err(resp) => return resp,
         };
-        self.with_session_and_ref(&request, |sess, element_ref| {
-            match sess.fill(element_ref, &value) {
-                Ok(()) => Response::action_success(req_id),
-                Err(e) => Response::action_failed(req_id, Some(element_ref), &e.to_string()),
+        self.with_detected_session_and_ref(&request, |sess, element_ref| {
+            // Check if the element exists and validate its type
+            let warning = match sess.find_element(element_ref) {
+                Some(el) => {
+                    let el_type = el.element_type.as_str();
+                    if el_type != "input" {
+                        Some(format!(
+                            "Warning: '{}' is a {} not an input field. Fill may not work as expected. \
+                             Use 'snapshot -i' to see element types.",
+                            element_ref, el_type
+                        ))
+                    } else {
+                        None
+                    }
+                }
+                None => {
+                    return Response::element_not_found(req_id, element_ref);
+                }
+            };
+
+            // Proceed with fill operation
+            if let Err(e) = sess.pty_write(value.as_bytes()) {
+                return Response::action_failed(req_id, Some(element_ref), &e.to_string());
             }
+
+            let mut response = json!({
+                "success": true,
+                "ref": element_ref,
+                "value": value
+            });
+
+            if let Some(warn_msg) = warning {
+                response["warning"] = json!(warn_msg);
+            }
+
+            Response::success(req_id, response)
         })
     }
 
@@ -1641,7 +1672,14 @@ impl DaemonServer {
     }
 
     fn handle_client(&self, stream: UnixStream) {
-        let reader = BufReader::new(stream.try_clone().unwrap());
+        let reader_stream = match stream.try_clone() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to clone stream for reading: {}", e);
+                return;
+            }
+        };
+        let reader = BufReader::new(reader_stream);
         let mut writer = stream;
 
         for line in reader.lines() {
@@ -1671,7 +1709,24 @@ impl DaemonServer {
             };
 
             let response = self.handle_request(request);
-            let response_json = serde_json::to_string(&response).unwrap();
+            let response_json = match serde_json::to_string(&response) {
+                Ok(json) => json,
+                Err(e) => {
+                    eprintln!("Failed to serialize response: {}", e);
+                    let fallback = json!({
+                        "jsonrpc": "2.0",
+                        "id": null,
+                        "error": {
+                            "code": -32603,
+                            "message": "Internal error: failed to serialize response"
+                        }
+                    });
+                    // This fallback should always serialize successfully
+                    serde_json::to_string(&fallback).unwrap_or_else(|_| {
+                        r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error"}}"#.to_string()
+                    })
+                }
+            };
 
             if writeln!(writer, "{}", response_json).is_err() {
                 break;

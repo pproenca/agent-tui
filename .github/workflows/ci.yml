@@ -5,7 +5,7 @@ on:
     branches: [main, master]
     paths:
       - 'cli/**'
-      - 'Cargo.lock'
+      - 'cli/Cargo.lock'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ci.yml'
@@ -13,7 +13,7 @@ on:
     branches: [main, master]
     paths:
       - 'cli/**'
-      - 'Cargo.lock'
+      - 'cli/Cargo.lock'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ci.yml'

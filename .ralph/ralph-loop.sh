@@ -97,7 +97,8 @@ update_status() {
   local now
   now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   local started_at
-  started_at=$(jq -r '.startedAt // null' "${STATUS_FILE}" 2>/dev/null || echo null)
+  # Use jq to output proper JSON (quoted string or null)
+  started_at=$(jq '.startedAt' "${STATUS_FILE}" 2>/dev/null || echo null)
 
   cat > "${STATUS_FILE}" << EOF
 {

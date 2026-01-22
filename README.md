@@ -36,10 +36,6 @@ That's it. You're automating TUI apps.
 
 ---
 
-![Demo: agent-tui automating create-next-app](assets/demo.gif)
-
----
-
 ## AI controlling AI
 
 agent-tui can automate Claude Code itself:
@@ -262,8 +258,6 @@ agent-tui --session project-a snapshot -i
 agent-tui --session project-b fill @e1 "value"
 ```
 
-For comprehensive AI agent integration, see [SKILL.md](./SKILL.md) and [AGENTS.md](./AGENTS.md).
-
 ---
 
 ## Architecture
@@ -326,8 +320,6 @@ agent-tui/
 │           ├── terminal.rs       # Terminal emulation
 │           └── detection/        # Element detection
 │
-├── docs/                         # Documentation site
-├── assets/                       # Demo GIFs, images
 └── README.md
 ```
 
@@ -355,14 +347,6 @@ cargo clippy                   # Lint
 | `AGENT_TUI_TRANSPORT` | `unix` or `tcp` | unix |
 | `AGENT_TUI_TCP_PORT` | TCP port | 19847 |
 | `XDG_RUNTIME_DIR` | Socket directory | /tmp |
-
----
-
-## Documentation
-
-- [SKILL.md](./SKILL.md) — Full guide for AI agent integration
-- [AGENTS.md](./AGENTS.md) — Quick reference for AI agents
-- [docs/](./docs/) — Full documentation site
 
 ---
 

@@ -2,7 +2,7 @@ use crate::sync_utils::mutex_lock_or_recover;
 use std::sync::{Arc, Mutex};
 use vt100::Parser;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct CellStyle {
     pub bold: bool,
     pub underline: bool,
@@ -11,7 +11,7 @@ pub struct CellStyle {
     pub bg_color: Option<Color>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Color {
     Default,
     Indexed(u8),
@@ -142,6 +142,15 @@ impl VirtualTerminal {
         let cols = self.cols;
         let mut parser = mutex_lock_or_recover(&self.parser);
         parser.set_size(rows, cols);
+    }
+
+    /// Check if the terminal has mouse reporting enabled
+    #[allow(dead_code)] // VOM shadow mode
+    pub fn mouse_reporting_enabled(&self) -> bool {
+        let parser = mutex_lock_or_recover(&self.parser);
+        let screen = parser.screen();
+        // Check for any mouse tracking mode (1000, 1002, 1003, 1006, etc.)
+        screen.mouse_protocol_mode() != vt100::MouseProtocolMode::None
     }
 }
 

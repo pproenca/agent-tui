@@ -132,15 +132,32 @@ impl Response {
 
     /// Shorthand for wrong element type response.
     pub fn wrong_element_type(id: u64, element_ref: &str, actual: &str, expected: &str) -> Self {
+        let suggestion = suggest_command_for_type(actual, element_ref);
+        let hint = if suggestion.is_empty() {
+            "Run 'snapshot -i' to see element types.".to_string()
+        } else {
+            suggestion
+        };
         Self::success(
             id,
             json!({
                 "success": false,
                 "message": format!(
-                    "Element {} is a {} not a {}. Run 'snapshot -i' to see element types.",
-                    element_ref, actual, expected
+                    "Element {} is a {} not a {}. {}",
+                    element_ref, actual, expected, hint
                 )
             }),
         )
+    }
+}
+
+/// Suggest the correct command based on element type
+fn suggest_command_for_type(element_type: &str, element_ref: &str) -> String {
+    match element_type {
+        "button" | "menuitem" | "listitem" => format!("Try: click {}", element_ref),
+        "checkbox" | "radio" => format!("Try: toggle {} or click {}", element_ref, element_ref),
+        "input" => format!("Try: fill {} <value>", element_ref),
+        "select" => format!("Try: select {} <option>", element_ref),
+        _ => String::new(),
     }
 }

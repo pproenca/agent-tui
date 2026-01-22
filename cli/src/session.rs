@@ -1026,6 +1026,19 @@ pub struct SessionInfo {
     pub size: (u16, u16),
 }
 
+impl SessionInfo {
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "id": self.id,
+            "command": self.command,
+            "pid": self.pid,
+            "running": self.running,
+            "created_at": self.created_at,
+            "size": { "cols": self.size.0, "rows": self.size.1 }
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedSession {
     pub id: SessionId,

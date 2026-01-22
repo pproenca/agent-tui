@@ -755,17 +755,10 @@ pub fn handle_multiselect(
         }
         OutputFormat::Text => {
             if result.bool_or("success", false) {
-                let selected = result
-                    .get("selected_options")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    })
-                    .unwrap_or_default();
-                println!("Selected: {}", selected);
+                println!(
+                    "Selected: {}",
+                    result.str_array_join("selected_options", ", ")
+                );
             } else {
                 eprintln!(
                     "Multiselect failed: {}",

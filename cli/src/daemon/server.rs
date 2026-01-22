@@ -16,6 +16,12 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+// ANSI escape sequences for cursor/arrow keys
+const ANSI_UP: &[u8] = b"\x1b[A";
+const ANSI_DOWN: &[u8] = b"\x1b[B";
+const ANSI_RIGHT: &[u8] = b"\x1b[C";
+const ANSI_LEFT: &[u8] = b"\x1b[D";
+
 pub fn socket_path() -> PathBuf {
     std::env::var("XDG_RUNTIME_DIR")
         .map(|dir| PathBuf::from(dir).join("agent-tui.sock"))
@@ -28,6 +34,15 @@ fn matches_text(haystack: Option<&String>, needle: &str, exact: bool) -> bool {
         Some(h) if exact => h == needle,
         Some(h) => h.to_lowercase().contains(&needle.to_lowercase()),
         None => false,
+    }
+}
+
+/// Combine two optional warnings, joining them if both are present.
+fn combine_warnings(a: Option<String>, b: Option<String>) -> Option<String> {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(format!("{}. {}", x, y)),
+        (w @ Some(_), None) | (None, w @ Some(_)) => w,
+        (None, None) => None,
     }
 }
 
@@ -69,6 +84,20 @@ impl ElementFilter<'_> {
             return false;
         }
         true
+    }
+
+    /// Filter elements and map to JSON values.
+    fn apply(&self, elements: &[Element]) -> Vec<Value> {
+        elements
+            .iter()
+            .filter(|el| self.matches(el))
+            .map(element_to_json)
+            .collect()
+    }
+
+    /// Count matching elements.
+    fn count(&self, elements: &[Element]) -> usize {
+        elements.iter().filter(|el| self.matches(el)).count()
     }
 }
 
@@ -553,13 +582,7 @@ impl DaemonServer {
                 "value": value
             });
 
-            // Combine warnings: update warning takes precedence, then type warning
-            let combined_warning = match (update_warning, type_warning) {
-                (Some(uw), Some(tw)) => Some(format!("{}. {}", uw, tw)),
-                (Some(w), None) | (None, Some(w)) => Some(w),
-                (None, None) => None,
-            };
-            if let Some(warn_msg) = combined_warning {
+            if let Some(warn_msg) = combine_warnings(update_warning, type_warning) {
                 response["warning"] = json!(warn_msg);
             }
 
@@ -816,14 +839,7 @@ impl DaemonServer {
         Response::success(
             request.id,
             json!({
-                "sessions": sessions.iter().map(|s| json!({
-                    "id": s.id,
-                    "command": s.command,
-                    "pid": s.pid,
-                    "running": s.running,
-                    "created_at": s.created_at,
-                    "size": { "cols": s.size.0, "rows": s.size.1 }
-                })).collect::<Vec<_>>(),
+                "sessions": sessions.iter().map(|s| s.to_json()).collect::<Vec<_>>(),
                 "active_session": active_id
             }),
         )
@@ -865,22 +881,11 @@ impl DaemonServer {
 
         let req_id = request.id;
         self.with_detected_session(&request, |sess, update_warning| {
-            let elements = sess.cached_elements();
-
-            let matches: Vec<_> = elements
-                .iter()
-                .filter(|el| filter.matches(el))
-                .map(element_to_json)
-                .collect();
-
-            let final_matches = if let Some(n) = nth {
-                if n < matches.len() {
-                    vec![matches[n].clone()]
-                } else {
-                    vec![]
-                }
-            } else {
-                matches
+            let matches = filter.apply(sess.cached_elements());
+            let final_matches = match nth {
+                Some(n) if n < matches.len() => vec![matches[n].clone()],
+                Some(_) => vec![],
+                None => matches,
             };
 
             let mut response = json!({
@@ -968,8 +973,7 @@ impl DaemonServer {
         let req_id = request.id;
 
         self.with_detected_session(&request, |sess, update_warning| {
-            let elements = sess.cached_elements();
-            let count = elements.iter().filter(|el| filter.matches(el)).count();
+            let count = filter.count(sess.cached_elements());
             let mut response = json!({ "count": count });
             if let Some(warning) = update_warning {
                 response["warning"] = json!(warning);
@@ -987,10 +991,10 @@ impl DaemonServer {
         let session_id = request.param_str("session");
 
         let key_seq: &[u8] = match direction {
-            "up" => b"\x1b[A",
-            "down" => b"\x1b[B",
-            "left" => b"\x1b[D",
-            "right" => b"\x1b[C",
+            "up" => ANSI_UP,
+            "down" => ANSI_DOWN,
+            "left" => ANSI_LEFT,
+            "right" => ANSI_RIGHT,
             _ => {
                 return Response::error(
                     request.id,
@@ -1053,7 +1057,7 @@ impl DaemonServer {
                         );
                     }
 
-                    if let Err(e) = sess.pty_write(b"\x1b[B") {
+                    if let Err(e) = sess.pty_write(ANSI_DOWN) {
                         return Response::error(
                             request.id,
                             -32000,

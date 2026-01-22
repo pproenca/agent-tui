@@ -8,6 +8,20 @@ use std::collections::HashMap;
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
+/// Format milliseconds as human-readable duration (e.g., "1h 30m 45s").
+fn format_uptime_ms(uptime_ms: u64) -> String {
+    let secs = uptime_ms / 1000;
+    let mins = secs / 60;
+    let hours = mins / 60;
+    if hours > 0 {
+        format!("{}h {}m {}s", hours, mins % 60, secs % 60)
+    } else if mins > 0 {
+        format!("{}m {}s", mins, secs % 60)
+    } else {
+        format!("{}s", secs)
+    }
+}
+
 /// Macro to generate get_* handlers that follow the same pattern
 macro_rules! get_handler {
     ($name:ident, $method:literal, $field:literal) => {
@@ -183,6 +197,17 @@ impl<'a> HandlerContext<'a> {
                 text_fn();
             }
         }
+        Ok(())
+    }
+
+    /// Output success/failure result and return Ok(())
+    pub fn output_success_and_ok(
+        &self,
+        result: &serde_json::Value,
+        success_msg: &str,
+        failure_prefix: &str,
+    ) -> HandlerResult {
+        self.output_success_result(result, success_msg, failure_prefix)?;
         Ok(())
     }
 }
@@ -407,36 +432,31 @@ pub fn handle_dbl_click(ctx: &mut HandlerContext, element_ref: String) -> Handle
 pub fn handle_fill(ctx: &mut HandlerContext, element_ref: String, value: String) -> HandlerResult {
     let params = ctx.params_with(json!({ "ref": element_ref, "value": value }));
     let result = ctx.client.call("fill", Some(params))?;
-    ctx.output_success_result(&result, "Filled successfully", "Fill failed")?;
-    Ok(())
+    ctx.output_success_and_ok(&result, "Filled successfully", "Fill failed")
 }
 
 pub fn handle_press(ctx: &mut HandlerContext, key: String) -> HandlerResult {
     let params = ctx.params_with(json!({ "key": key }));
     let result = ctx.client.call("keystroke", Some(params))?;
-    ctx.output_success_result(&result, "Key pressed", "Press failed")?;
-    Ok(())
+    ctx.output_success_and_ok(&result, "Key pressed", "Press failed")
 }
 
 pub fn handle_type(ctx: &mut HandlerContext, text: String) -> HandlerResult {
     let params = ctx.params_with(json!({ "text": text }));
     let result = ctx.client.call("type", Some(params))?;
-    ctx.output_success_result(&result, "Text typed", "Type failed")?;
-    Ok(())
+    ctx.output_success_and_ok(&result, "Text typed", "Type failed")
 }
 
 pub fn handle_keydown(ctx: &mut HandlerContext, key: String) -> HandlerResult {
     let params = ctx.params_with(json!({ "key": key }));
     let result = ctx.client.call("keydown", Some(params))?;
-    ctx.output_success_result(&result, &format!("Key held: {}", key), "Keydown failed")?;
-    Ok(())
+    ctx.output_success_and_ok(&result, &format!("Key held: {}", key), "Keydown failed")
 }
 
 pub fn handle_keyup(ctx: &mut HandlerContext, key: String) -> HandlerResult {
     let params = ctx.params_with(json!({ "key": key }));
     let result = ctx.client.call("keyup", Some(params))?;
-    ctx.output_success_result(&result, &format!("Key released: {}", key), "Keyup failed")?;
-    Ok(())
+    ctx.output_success_and_ok(&result, &format!("Key released: {}", key), "Keyup failed")
 }
 
 pub fn handle_wait(ctx: &mut HandlerContext, params: crate::commands::WaitParams) -> HandlerResult {
@@ -557,29 +577,13 @@ pub fn handle_health(ctx: &mut HandlerContext, verbose: bool) -> HandlerResult {
         let session_count = result.u64_or("session_count", 0);
         let version = result.str_or("version", "?");
 
-        let uptime_secs = uptime_ms / 1000;
-        let uptime_mins = uptime_secs / 60;
-        let uptime_hours = uptime_mins / 60;
-        let uptime_display = if uptime_hours > 0 {
-            format!(
-                "{}h {}m {}s",
-                uptime_hours,
-                uptime_mins % 60,
-                uptime_secs % 60
-            )
-        } else if uptime_mins > 0 {
-            format!("{}m {}s", uptime_mins, uptime_secs % 60)
-        } else {
-            format!("{}s", uptime_secs)
-        };
-
         println!(
             "{} {}",
             Colors::bold("Daemon status:"),
             Colors::success(status)
         );
         println!("  PID: {}", pid);
-        println!("  Uptime: {}", uptime_display);
+        println!("  Uptime: {}", format_uptime_ms(uptime_ms));
         println!("  Sessions: {}", session_count);
         println!("  Version: {}", Colors::dim(version));
 
@@ -736,8 +740,7 @@ pub fn handle_select(
 ) -> HandlerResult {
     let params = ctx.params_with(json!({ "ref": element_ref, "option": option }));
     let result = ctx.client.call("select", Some(params))?;
-    ctx.output_success_result(&result, &format!("Selected: {}", option), "Select failed")?;
-    Ok(())
+    ctx.output_success_and_ok(&result, &format!("Selected: {}", option), "Select failed")
 }
 
 pub fn handle_multiselect(
@@ -779,12 +782,11 @@ pub fn handle_scroll(
     let dir_str = direction.as_str();
     let params = ctx.params_with(json!({ "direction": dir_str, "amount": amount }));
     let result = ctx.client.call("scroll", Some(params))?;
-    ctx.output_success_result(
+    ctx.output_success_and_ok(
         &result,
         &format!("Scrolled {} {} times", dir_str, amount),
         "Scroll failed",
-    )?;
-    Ok(())
+    )
 }
 
 pub fn handle_scroll_into_view(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
@@ -958,26 +960,31 @@ pub fn handle_toggle(
     Ok(())
 }
 
-pub fn handle_check(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({ "ref": element_ref, "session": ctx.session, "state": true });
+fn handle_check_state(
+    ctx: &mut HandlerContext,
+    element_ref: String,
+    checked: bool,
+) -> HandlerResult {
+    let params = json!({ "ref": element_ref, "session": ctx.session, "state": checked });
     let result = ctx.client.call("toggle", Some(params))?;
-    ctx.output_success_result(
+    let (state_str, fail_prefix) = if checked {
+        ("checked", "Check failed")
+    } else {
+        ("unchecked", "Uncheck failed")
+    };
+    ctx.output_success_and_ok(
         &result,
-        &format!("{} is now checked", element_ref),
-        "Check failed",
-    )?;
-    Ok(())
+        &format!("{} is now {}", element_ref, state_str),
+        fail_prefix,
+    )
+}
+
+pub fn handle_check(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+    handle_check_state(ctx, element_ref, true)
 }
 
 pub fn handle_uncheck(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({ "ref": element_ref, "session": ctx.session, "state": false });
-    let result = ctx.client.call("toggle", Some(params))?;
-    ctx.output_success_result(
-        &result,
-        &format!("{} is now unchecked", element_ref),
-        "Uncheck failed",
-    )?;
-    Ok(())
+    handle_check_state(ctx, element_ref, false)
 }
 
 pub fn handle_attach(

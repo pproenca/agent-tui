@@ -73,6 +73,17 @@ pub struct Cli {
     pub debug: bool,
 }
 
+impl Cli {
+    /// Returns the effective output format, considering --json shorthand.
+    pub fn effective_format(&self) -> OutputFormat {
+        if self.json {
+            OutputFormat::Json
+        } else {
+            self.format
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Spawn a new TUI application in a virtual terminal

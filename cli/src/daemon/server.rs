@@ -16,11 +16,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-// ANSI escape sequences for cursor/arrow keys
-const ANSI_UP: &[u8] = b"\x1b[A";
-const ANSI_DOWN: &[u8] = b"\x1b[B";
-const ANSI_RIGHT: &[u8] = b"\x1b[C";
-const ANSI_LEFT: &[u8] = b"\x1b[D";
+use super::ansi_keys;
 
 pub fn socket_path() -> PathBuf {
     std::env::var("XDG_RUNTIME_DIR")
@@ -43,6 +39,89 @@ fn combine_warnings(a: Option<String>, b: Option<String>) -> Option<String> {
         (Some(x), Some(y)) => Some(format!("{}. {}", x, y)),
         (w @ Some(_), None) | (None, w @ Some(_)) => w,
         (None, None) => None,
+    }
+}
+
+/// Build asciicast v2 format data from recording frames.
+fn build_asciicast(
+    session_id: &str,
+    cols: u16,
+    rows: u16,
+    frames: &[crate::session::RecordingFrame],
+) -> Value {
+    let mut output = Vec::new();
+
+    let duration = frames
+        .last()
+        .map(|f| f.timestamp_ms as f64 / 1000.0)
+        .unwrap_or(0.0);
+
+    let header = json!({
+        "version": 2,
+        "width": cols,
+        "height": rows,
+        "timestamp": chrono::Utc::now().timestamp(),
+        "duration": duration,
+        "title": format!("agent-tui recording - {}", session_id),
+        "env": {
+            "TERM": "xterm-256color",
+            "SHELL": std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+        }
+    });
+    output.push(serde_json::to_string(&header).unwrap());
+
+    let mut prev_screen = String::new();
+    for frame in frames {
+        let time_secs = frame.timestamp_ms as f64 / 1000.0;
+        if frame.screen != prev_screen {
+            let screen_data = if prev_screen.is_empty() {
+                frame.screen.clone()
+            } else {
+                format!("\x1b[2J\x1b[H{}", frame.screen)
+            };
+            let event = json!([time_secs, "o", screen_data]);
+            output.push(serde_json::to_string(&event).unwrap());
+            prev_screen = frame.screen.clone();
+        }
+    }
+
+    json!({
+        "format": "asciicast",
+        "version": 2,
+        "data": output.join("\n")
+    })
+}
+
+/// Build a suggestion message for a failed wait condition.
+fn build_wait_suggestion(condition: &WaitCondition) -> String {
+    match condition {
+        WaitCondition::Text(t) => format!(
+            "Text '{}' not found. Check if the app finished loading or try 'snapshot -i' to see current screen.",
+            t
+        ),
+        WaitCondition::Element(e) => format!(
+            "Element {} not found. Try 'snapshot -i' to see available elements.",
+            e
+        ),
+        WaitCondition::Focused(e) => format!(
+            "Element {} exists but is not focused. Try 'click {}' to focus it.",
+            e, e
+        ),
+        WaitCondition::NotVisible(e) => format!(
+            "Element {} is still visible. The app may still be processing.",
+            e
+        ),
+        WaitCondition::Stable => {
+            "Screen is still changing. The app may have animations or be loading.".to_string()
+        }
+        WaitCondition::TextGone(t) => format!(
+            "Text '{}' is still visible. The operation may not have completed.",
+            t
+        ),
+        WaitCondition::Value { element, expected } => format!(
+            "Element {} does not have value '{}'. Check if input was accepted.",
+            element, expected
+        ),
     }
 }
 
@@ -703,50 +782,7 @@ impl DaemonServer {
                 screen_preview
             };
             response["screen_context"] = json!(screen_context);
-
-            let suggestion = match &condition {
-                WaitCondition::Text(t) => {
-                    format!(
-                        "Text '{}' not found. Check if the app finished loading or try 'snapshot -i' to see current screen.",
-                        t
-                    )
-                }
-                WaitCondition::Element(e) => {
-                    format!(
-                        "Element {} not found. Try 'snapshot -i' to see available elements.",
-                        e
-                    )
-                }
-                WaitCondition::Focused(e) => {
-                    format!(
-                        "Element {} exists but is not focused. Try 'click {}' to focus it.",
-                        e, e
-                    )
-                }
-                WaitCondition::NotVisible(e) => {
-                    format!(
-                        "Element {} is still visible. The app may still be processing.",
-                        e
-                    )
-                }
-                WaitCondition::Stable => {
-                    "Screen is still changing. The app may have animations or be loading."
-                        .to_string()
-                }
-                WaitCondition::TextGone(t) => {
-                    format!(
-                        "Text '{}' is still visible. The operation may not have completed.",
-                        t
-                    )
-                }
-                WaitCondition::Value { element, expected } => {
-                    format!(
-                        "Element {} does not have value '{}'. Check if input was accepted.",
-                        element, expected
-                    )
-                }
-            };
-            response["suggestion"] = json!(suggestion);
+            response["suggestion"] = json!(build_wait_suggestion(&condition));
         }
 
         Response::success(request.id, response)
@@ -991,10 +1027,10 @@ impl DaemonServer {
         let session_id = request.param_str("session");
 
         let key_seq: &[u8] = match direction {
-            "up" => ANSI_UP,
-            "down" => ANSI_DOWN,
-            "left" => ANSI_LEFT,
-            "right" => ANSI_RIGHT,
+            "up" => ansi_keys::UP,
+            "down" => ansi_keys::DOWN,
+            "left" => ansi_keys::LEFT,
+            "right" => ansi_keys::RIGHT,
             _ => {
                 return Response::error(
                     request.id,
@@ -1057,7 +1093,7 @@ impl DaemonServer {
                         );
                     }
 
-                    if let Err(e) = sess.pty_write(ANSI_DOWN) {
+                    if let Err(e) = sess.pty_write(ansi_keys::DOWN) {
                         return Response::error(
                             request.id,
                             -32000,
@@ -1350,56 +1386,10 @@ impl DaemonServer {
 
         self.with_session(&request, session_id, |sess| {
             let frames = sess.stop_recording();
+            let (cols, rows) = sess.size();
 
             let data = if format == "asciicast" {
-                let (cols, rows) = sess.size();
-                let mut output = Vec::new();
-
-                let duration = if !frames.is_empty() {
-                    frames
-                        .last()
-                        .map(|f| f.timestamp_ms as f64 / 1000.0)
-                        .unwrap_or(0.0)
-                } else {
-                    0.0
-                };
-
-                let header = json!({
-                    "version": 2,
-                    "width": cols,
-                    "height": rows,
-                    "timestamp": chrono::Utc::now().timestamp(),
-                    "duration": duration,
-                    "title": format!("agent-tui recording - {}", sess.id),
-                    "env": {
-                        "TERM": "xterm-256color",
-                        "SHELL": std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
-                    }
-                });
-                output.push(serde_json::to_string(&header).unwrap());
-
-                let mut prev_screen = String::new();
-                for frame in &frames {
-                    let time_secs = frame.timestamp_ms as f64 / 1000.0;
-
-                    if frame.screen != prev_screen {
-                        let screen_data = if prev_screen.is_empty() {
-                            frame.screen.clone()
-                        } else {
-                            format!("\x1b[2J\x1b[H{}", frame.screen)
-                        };
-
-                        let event = json!([time_secs, "o", screen_data]);
-                        output.push(serde_json::to_string(&event).unwrap());
-                        prev_screen = frame.screen.clone();
-                    }
-                }
-
-                json!({
-                    "format": "asciicast",
-                    "version": 2,
-                    "data": output.join("\n")
-                })
+                build_asciicast(sess.id.as_str(), cols, rows, &frames)
             } else {
                 json!({
                     "format": "json",

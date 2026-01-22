@@ -87,10 +87,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         } => handlers::handle_spawn(&mut ctx, command, args, cwd, cols, rows)?,
         Commands::Snapshot {
             elements,
-            interactive_only,
-            compact,
             region,
-        } => handlers::handle_snapshot(&mut ctx, elements, interactive_only, compact, region)?,
+            strip_ansi,
+            include_cursor,
+        } => handlers::handle_snapshot(&mut ctx, elements, region, strip_ansi, include_cursor)?,
         Commands::Click { element_ref } => handlers::handle_click(&mut ctx, element_ref)?,
         Commands::DblClick { element_ref } => handlers::handle_dbl_click(&mut ctx, element_ref)?,
         Commands::Fill { element_ref, value } => {
@@ -105,10 +105,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Restart => handlers::handle_restart(&mut ctx)?,
         Commands::Sessions => handlers::handle_sessions(&mut ctx)?,
         Commands::Health { verbose } => handlers::handle_health(&mut ctx, verbose)?,
-        Commands::Screenshot {
-            strip_ansi,
-            include_cursor,
-        } => handlers::handle_screenshot(&mut ctx, strip_ansi, include_cursor)?,
         Commands::Resize { cols, rows } => handlers::handle_resize(&mut ctx, cols, rows)?,
         Commands::Version => handlers::handle_version(&mut ctx)?,
         Commands::Cleanup { all } => handlers::handle_cleanup(&mut ctx, all)?,

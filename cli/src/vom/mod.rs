@@ -135,6 +135,18 @@ pub enum Role {
     MenuItem,
 }
 
+impl Role {
+    /// Returns true if this role represents an interactive element.
+    /// Used by both snapshot (for element listing) and click (for ref indexing)
+    /// to ensure refs (@e1, @e2, etc.) are consistent across commands.
+    pub fn is_interactive(&self) -> bool {
+        matches!(
+            self,
+            Role::Button | Role::Tab | Role::Input | Role::Checkbox | Role::MenuItem
+        )
+    }
+}
+
 impl std::fmt::Display for Role {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

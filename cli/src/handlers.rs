@@ -272,16 +272,16 @@ pub fn handle_spawn(
 pub fn handle_snapshot(
     ctx: &mut HandlerContext,
     elements: bool,
-    interactive_only: bool,
-    compact: bool,
     region: Option<String>,
+    strip_ansi: bool,
+    include_cursor: bool,
 ) -> HandlerResult {
     let params = json!({
         "session": ctx.session,
         "include_elements": elements,
-        "interactive_only": interactive_only,
-        "compact": compact,
-        "region": region
+        "region": region,
+        "strip_ansi": strip_ansi,
+        "include_cursor": include_cursor
     });
 
     let result = ctx.client.call("snapshot", Some(params))?;
@@ -326,6 +326,17 @@ pub fn handle_snapshot(
             println!();
             if let Some(screen) = result.get("screen").and_then(|v| v.as_str()) {
                 println!("{}", screen);
+            }
+            if include_cursor {
+                if let Some(cursor) = result.get("cursor") {
+                    let row = cursor.u64_or("row", 0);
+                    let col = cursor.u64_or("col", 0);
+                    let visible = cursor.bool_or("visible", false);
+                    let vis_str = if visible { "visible" } else { "hidden" };
+                    println!("\nCursor: row={}, col={} ({})", row, col, vis_str);
+                } else {
+                    eprintln!("Warning: Cursor position requested but not available from session");
+                }
             }
         }
         OutputFormat::Text => {
@@ -372,6 +383,17 @@ pub fn handle_snapshot(
             println!("{}", Colors::bold("Screen:"));
             if let Some(screen) = result.get("screen").and_then(|v| v.as_str()) {
                 println!("{}", screen);
+            }
+            if include_cursor {
+                if let Some(cursor) = result.get("cursor") {
+                    let row = cursor.u64_or("row", 0);
+                    let col = cursor.u64_or("col", 0);
+                    let visible = cursor.bool_or("visible", false);
+                    let vis_str = if visible { "visible" } else { "hidden" };
+                    println!("\nCursor: row={}, col={} ({})", row, col, vis_str);
+                } else {
+                    eprintln!("Warning: Cursor position requested but not available from session");
+                }
             }
         }
     }
@@ -621,35 +643,6 @@ pub fn handle_health(ctx: &mut HandlerContext, verbose: bool) -> HandlerResult {
             println!("{}", Colors::bold("Connection:"));
             println!("  Socket: {}", socket.display());
             println!("  PID file: {}", pid_file.display());
-        }
-    })
-}
-
-pub fn handle_screenshot(
-    ctx: &mut HandlerContext,
-    strip_ansi: bool,
-    include_cursor: bool,
-) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session,
-        "strip_ansi": strip_ansi,
-        "include_cursor": include_cursor
-    });
-
-    let result = ctx.client.call("screen", Some(params))?;
-
-    ctx.output_json_or(&result, || {
-        if let Some(screen) = result.get("screen").and_then(|v| v.as_str()) {
-            println!("{}", screen);
-        }
-        if include_cursor {
-            if let Some(cursor) = result.get("cursor") {
-                let row = cursor.u64_or("row", 0);
-                let col = cursor.u64_or("col", 0);
-                let visible = cursor.bool_or("visible", false);
-                let vis_str = if visible { "visible" } else { "hidden" };
-                println!("\nCursor: row={}, col={} ({})", row, col, vis_str);
-            }
         }
     })
 }
@@ -1384,7 +1377,12 @@ pub fn handle_assert(ctx: &mut HandlerContext, condition: String) -> HandlerResu
 
     let passed = match cond_type {
         "text" => {
-            let result = ctx.client.call("screen", Some(ctx.session_params()))?;
+            // Strip ANSI codes for consistent text matching
+            let params = json!({
+                "session": ctx.session,
+                "strip_ansi": true
+            });
+            let result = ctx.client.call("snapshot", Some(params))?;
             result.str_or("screen", "").contains(cond_value)
         }
         "element" => {

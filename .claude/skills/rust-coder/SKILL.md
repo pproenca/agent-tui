@@ -26,6 +26,7 @@ Load the relevant reference file based on what you're implementing:
 | **TUI** | screens, view state, events, rendering, keyboard nav, refresh | [tui-patterns.md](references/tui-patterns.md) |
 | **CLI** | clap derive, subcommands, validation, config integration, dispatch, completions | [cli-patterns.md](references/cli-patterns.md) |
 | **Serialization** | serde, CBOR storage, JSON, CSV, OpenMetrics, custom serializers | [serialization.md](references/serialization.md) |
+| **Daemon & RPC** | Unix sockets, JSON-RPC 2.0, PTY emulation, session management, signal handling | [daemon-rpc-patterns.md](references/daemon-rpc-patterns.md) |
 | **Logging** | slog setup, structured, threading, levels, contextual | [logging.md](references/logging.md) |
 | **Testing** | unit organization, fixtures, property, integration, mocks, utilities | [testing.md](references/testing.md) |
 | **File I/O** | buffered, mmap, atomic writes, locking, directories | [file-io.md](references/file-io.md) |

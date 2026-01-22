@@ -194,12 +194,12 @@ pub fn write_durable(path: &Path, content: &[u8]) -> Result<()> {
 
     let mut temp = NamedTempFile::new_in(parent)?;
     temp.write_all(content)?;
-    temp.as_file().sync_all()?; // Fsync data
+    temp.as_file().sync_all()?;
 
     let temp_path = temp.path().to_owned();
     temp.persist(path)?;
 
-    // Fsync parent directory for rename durability
+    // Fsync directory ensures rename survives power loss
     let dir = File::open(parent)?;
     dir.sync_all()?;
 
@@ -228,11 +228,9 @@ impl AppendOnlyFile {
         let crc = crc32fast::hash(data);
         let start_offset = self.offset;
 
-        // Write length prefix
+        // Frame format: [4-byte length][4-byte CRC][data...]
         self.file.write_all(&(data.len() as u32).to_le_bytes())?;
-        // Write CRC
         self.file.write_all(&crc.to_le_bytes())?;
-        // Write data
         self.file.write_all(data)?;
 
         self.offset += 8 + data.len() as u64;

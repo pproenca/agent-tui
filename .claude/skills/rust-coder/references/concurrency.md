@@ -91,7 +91,6 @@ impl ViewState {
     }
 }
 
-// Clone Arc for thread sharing
 let state = Arc::new(ViewState::new(initial_model));
 let state_clone = Arc::clone(&state);
 

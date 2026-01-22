@@ -417,6 +417,111 @@ impl Session {
     pub fn clear_console(&mut self) {
         self.terminal.clear();
     }
+
+    // ========== VOM Integration ==========
+    // VOM is in shadow mode - allow unused during verification phase
+
+    /// Analyze the current screen using the Visual Object Model.
+    /// Returns semantic components (buttons, inputs, tabs, etc.)
+    #[allow(dead_code)]
+    pub fn analyze_screen(&self) -> Vec<crate::vom::Component> {
+        let buffer = self.terminal.screen_buffer();
+        let cursor = self.terminal.cursor();
+        crate::vom::analyze(&buffer, cursor.row, cursor.col)
+    }
+
+    /// Find a VOM component by text content (partial match)
+    #[allow(dead_code)]
+    pub fn find_vom_component(&self, text: &str) -> Option<crate::vom::Component> {
+        let components = self.analyze_screen();
+        crate::vom::find_by_text(&components, text).cloned()
+    }
+
+    /// Find all VOM components with a specific role
+    #[allow(dead_code)]
+    pub fn find_vom_by_role(&self, role: crate::vom::Role) -> Vec<crate::vom::Component> {
+        let components = self.analyze_screen();
+        crate::vom::find_by_role(&components, role)
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Check if the terminal supports mouse reporting
+    #[allow(dead_code)]
+    pub fn mouse_reporting_enabled(&self) -> bool {
+        self.terminal.mouse_reporting_enabled()
+    }
+
+    /// Inject a mouse click at the center of a component.
+    /// Uses SGR 1006 format mouse sequences.
+    #[allow(dead_code)]
+    pub fn click_vom_component(
+        &mut self,
+        component: &crate::vom::Component,
+    ) -> Result<(), SessionError> {
+        use crate::vom::interaction::{click_component, MouseButton};
+
+        let seq = click_component(component, MouseButton::Left);
+        self.pty.write(&seq)?;
+        Ok(())
+    }
+
+    /// Inject a mouse click at specific coordinates.
+    #[allow(dead_code)]
+    pub fn inject_mouse_click(&mut self, x: u16, y: u16) -> Result<(), SessionError> {
+        use crate::vom::interaction::{click_at, MouseButton};
+
+        let seq = click_at(x, y, MouseButton::Left);
+        self.pty.write(&seq)?;
+        Ok(())
+    }
+
+    /// Compute the current layout signature for change detection.
+    #[allow(dead_code)]
+    pub fn layout_signature(&self) -> u64 {
+        let components = self.analyze_screen();
+        crate::vom::feedback::compute_layout_signature(&components)
+    }
+
+    /// Wait for the layout to change from a previous signature.
+    /// Returns true if layout changed, false if timeout.
+    #[allow(dead_code)]
+    pub fn wait_for_layout_change(&mut self, old_sig: u64, timeout: std::time::Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+
+        while std::time::Instant::now() < deadline {
+            // Process any pending output
+            let _ = self.update();
+
+            let new_sig = self.layout_signature();
+            if new_sig != old_sig {
+                return true;
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        false
+    }
+
+    /// Click a VOM component and wait for the layout to change.
+    /// Returns true if the click had a visible effect.
+    #[allow(dead_code)]
+    pub fn robust_vom_click(
+        &mut self,
+        component: &crate::vom::Component,
+        timeout: std::time::Duration,
+    ) -> Result<bool, SessionError> {
+        // Capture layout before click
+        let before_sig = self.layout_signature();
+
+        // Perform the click
+        self.click_vom_component(component)?;
+
+        // Wait for layout to change
+        Ok(self.wait_for_layout_change(before_sig, timeout))
+    }
 }
 
 pub struct SessionManager {

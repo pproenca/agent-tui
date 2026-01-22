@@ -706,7 +706,7 @@ impl DaemonServer {
                         "Missing condition: provide 'text' or 'condition' with 'target'",
                     );
                 }
-                WaitCondition::Text(text.unwrap().to_string())
+                WaitCondition::Text(text.expect("verified Some above").to_string())
             }
         };
 

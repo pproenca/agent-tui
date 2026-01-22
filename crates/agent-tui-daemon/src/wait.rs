@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -82,14 +83,14 @@ impl WaitCondition {
 
 #[derive(Default)]
 pub struct StableTracker {
-    last_hashes: Vec<u64>,
+    last_hashes: VecDeque<u64>,
     required_consecutive: usize,
 }
 
 impl StableTracker {
     pub fn new(required_consecutive: usize) -> Self {
         Self {
-            last_hashes: Vec::new(),
+            last_hashes: VecDeque::new(),
             required_consecutive,
         }
     }
@@ -99,10 +100,10 @@ impl StableTracker {
         screen.hash(&mut hasher);
         let hash = hasher.finish();
 
-        self.last_hashes.push(hash);
+        self.last_hashes.push_back(hash);
 
         if self.last_hashes.len() > self.required_consecutive {
-            self.last_hashes.remove(0);
+            self.last_hashes.pop_front();
         }
 
         if self.last_hashes.len() >= self.required_consecutive {

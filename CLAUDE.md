@@ -94,24 +94,13 @@ Run with `cargo test`. Tests are co-located in source files.
 
 | File | Purpose |
 |------|---------|
-| `cli_spawn_tests.rs` | CLI invocation tests with mock daemon |
-| `e2e_daemon_tests.rs` | Full daemon integration tests |
+| `e2e_daemon_tests.rs` | Mock daemon integration tests |
+| `e2e_workflow_tests.rs` | Real daemon E2E workflow tests |
 | `common/mock_daemon.rs` | Mock JSON-RPC server |
 | `common/test_harness.rs` | Sync wrapper for async mock |
+| `common/real_test_harness.rs` | Real daemon test harness |
 
-### CLI Snapshot Tests (`cli/tests/cmd/`)
-
-Uses `trycmd` for file-based CLI snapshot testing. Each `.md` file contains expected input/output:
-
-```
-00-help.md       # Help text verification
-01-health.md     # Health command
-02-spawn.md      # Spawn command
-...
-99-errors.md     # Error message verification
-```
-
-Run: `cargo test --test cmd_e2e_tests`
+**Note:** E2E workflow tests require `--test-threads=1` due to shared daemon state.
 
 ### E2E Tests (`e2e/`)
 

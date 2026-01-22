@@ -150,3 +150,123 @@ pub fn ensure_daemon() -> Result<DaemonClient, ClientError> {
 
     DaemonClient::connect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // =========================================================================
+    // Request serialization tests
+    // =========================================================================
+
+    #[test]
+    fn test_request_serializes_to_jsonrpc_2_0() {
+        let request = Request {
+            jsonrpc: "2.0".to_string(),
+            id: 1,
+            method: "health".to_string(),
+            params: None,
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"jsonrpc\":\"2.0\""));
+        assert!(json.contains("\"id\":1"));
+        assert!(json.contains("\"method\":\"health\""));
+        assert!(!json.contains("\"params\"")); // skip_serializing_if = None
+    }
+
+    #[test]
+    fn test_request_serializes_with_params() {
+        let request = Request {
+            jsonrpc: "2.0".to_string(),
+            id: 42,
+            method: "spawn".to_string(),
+            params: Some(serde_json::json!({"command": "bash", "cols": 80})),
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"params\""));
+        assert!(json.contains("\"command\":\"bash\""));
+        assert!(json.contains("\"cols\":80"));
+    }
+
+    #[test]
+    fn test_request_id_increments() {
+        let id1 = REQUEST_ID.load(std::sync::atomic::Ordering::SeqCst);
+        let _ = REQUEST_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id2 = REQUEST_ID.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(id2, id1 + 1);
+    }
+
+    // =========================================================================
+    // Response deserialization tests
+    // =========================================================================
+
+    #[test]
+    fn test_response_deserializes_success_result() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}"#;
+        let response: Response = serde_json::from_str(json).unwrap();
+        assert!(response.result.is_some());
+        assert!(response.error.is_none());
+        let result = response.result.unwrap();
+        assert_eq!(result["status"], "ok");
+    }
+
+    #[test]
+    fn test_response_deserializes_error() {
+        let json =
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}"#;
+        let response: Response = serde_json::from_str(json).unwrap();
+        assert!(response.result.is_none());
+        assert!(response.error.is_some());
+        let error = response.error.unwrap();
+        assert_eq!(error.code, -32600);
+        assert_eq!(error.message, "Invalid Request");
+    }
+
+    #[test]
+    fn test_response_deserializes_with_null_result() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"result":null}"#;
+        let response: Response = serde_json::from_str(json).unwrap();
+        assert!(response.error.is_none());
+    }
+
+    // =========================================================================
+    // ClientError display tests
+    // =========================================================================
+
+    #[test]
+    fn test_client_error_daemon_not_running_display() {
+        let err = ClientError::DaemonNotRunning;
+        assert_eq!(err.to_string(), "Daemon not running");
+    }
+
+    #[test]
+    fn test_client_error_invalid_response_display() {
+        let err = ClientError::InvalidResponse;
+        assert_eq!(err.to_string(), "Invalid response from daemon");
+    }
+
+    #[test]
+    fn test_client_error_rpc_error_display() {
+        let err = ClientError::RpcError {
+            code: -32601,
+            message: "Method not found".to_string(),
+        };
+        assert_eq!(err.to_string(), "RPC error (-32601): Method not found");
+    }
+
+    #[test]
+    fn test_client_error_connection_failed_display() {
+        let io_err =
+            std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "connection refused");
+        let err = ClientError::ConnectionFailed(io_err);
+        assert!(err.to_string().contains("Failed to connect to daemon"));
+    }
+
+    #[test]
+    fn test_client_error_serialization_failed_display() {
+        // Create a JSON error by attempting to parse invalid JSON
+        let json_err = serde_json::from_str::<Value>("invalid").unwrap_err();
+        let err = ClientError::SerializationFailed(json_err);
+        assert!(err.to_string().contains("Failed to serialize request"));
+    }
+}

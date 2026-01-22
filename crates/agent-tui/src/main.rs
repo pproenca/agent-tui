@@ -59,6 +59,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Sessions => handlers::handle_sessions(&mut ctx)?,
         Commands::Version => handlers::handle_version(&mut ctx)?,
         Commands::Env => handlers::handle_env(&ctx)?,
+        // TODO: Migrate remaining handlers from old handlers.rs
+        _ => {
+            eprintln!(
+                "{} This command is not yet migrated to the new workspace structure",
+                Colors::error("Error:")
+            );
+            std::process::exit(1);
+        }
     }
 
     Ok(())

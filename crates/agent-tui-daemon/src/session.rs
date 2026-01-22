@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::io::BufReader;
 use std::io::BufWriter;
+use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -28,9 +29,20 @@ use agent_tui_terminal::PtyHandle;
 use agent_tui_terminal::VirtualTerminal;
 use agent_tui_terminal::key_to_escape_sequence;
 
+const MAX_RECORDING_FRAMES: usize = 1000;
+const MAX_TRACE_ENTRIES: usize = 500;
+const MAX_ERROR_ENTRIES: usize = 500;
+
 fn get_last_n<T: Clone>(queue: &VecDeque<T>, count: usize) -> Vec<T> {
     let start = queue.len().saturating_sub(count);
     queue.iter().skip(start).cloned().collect()
+}
+
+fn push_bounded<T>(queue: &mut VecDeque<T>, item: T, max_size: usize) {
+    if queue.len() >= max_size {
+        queue.pop_front();
+    }
+    queue.push_back(item);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -84,7 +96,7 @@ pub struct RecordingFrame {
 struct RecordingState {
     is_recording: bool,
     start_time: Instant,
-    frames: Vec<RecordingFrame>,
+    frames: VecDeque<RecordingFrame>,
 }
 
 impl RecordingState {
@@ -92,7 +104,7 @@ impl RecordingState {
         Self {
             is_recording: false,
             start_time: Instant::now(),
-            frames: Vec::new(),
+            frames: VecDeque::new(),
         }
     }
 }
@@ -378,15 +390,36 @@ impl Session {
         self.recording.frames.clear();
 
         let screen = self.terminal.screen_text();
-        self.recording.frames.push(RecordingFrame {
-            timestamp_ms: 0,
-            screen,
-        });
+        push_bounded(
+            &mut self.recording.frames,
+            RecordingFrame {
+                timestamp_ms: 0,
+                screen,
+            },
+            MAX_RECORDING_FRAMES,
+        );
     }
 
     pub fn stop_recording(&mut self) -> Vec<RecordingFrame> {
         self.recording.is_recording = false;
         std::mem::take(&mut self.recording.frames)
+            .into_iter()
+            .collect()
+    }
+
+    pub fn add_recording_frame(&mut self, screen: String) {
+        if !self.recording.is_recording {
+            return;
+        }
+        let timestamp_ms = self.recording.start_time.elapsed().as_millis() as u64;
+        push_bounded(
+            &mut self.recording.frames,
+            RecordingFrame {
+                timestamp_ms,
+                screen,
+            },
+            MAX_RECORDING_FRAMES,
+        );
     }
 
     pub fn recording_status(&self) -> RecordingStatus {
@@ -419,8 +452,37 @@ impl Session {
         get_last_n(&self.trace.entries, count)
     }
 
+    pub fn add_trace_entry(&mut self, action: String, details: Option<String>) {
+        if !self.trace.is_tracing {
+            return;
+        }
+        let timestamp_ms = self.trace.start_time.elapsed().as_millis() as u64;
+        push_bounded(
+            &mut self.trace.entries,
+            TraceEntry {
+                timestamp_ms,
+                action,
+                details,
+            },
+            MAX_TRACE_ENTRIES,
+        );
+    }
+
     pub fn get_errors(&self, count: usize) -> Vec<ErrorEntry> {
         get_last_n(&self.errors.entries, count)
+    }
+
+    pub fn add_error(&mut self, message: String, source: String) {
+        let timestamp = Utc::now().to_rfc3339();
+        push_bounded(
+            &mut self.errors.entries,
+            ErrorEntry {
+                timestamp,
+                message,
+                source,
+            },
+            MAX_ERROR_ENTRIES,
+        );
     }
 
     pub fn error_count(&self) -> usize {
@@ -658,12 +720,14 @@ pub struct PersistedSession {
 
 pub struct SessionPersistence {
     path: PathBuf,
+    lock_path: PathBuf,
 }
 
 impl SessionPersistence {
     pub fn new() -> Self {
         let path = Self::sessions_file_path();
-        Self { path }
+        let lock_path = path.with_extension("json.lock");
+        Self { path, lock_path }
     }
 
     fn sessions_file_path() -> PathBuf {
@@ -686,12 +750,29 @@ impl SessionPersistence {
         Ok(())
     }
 
-    pub fn load(&self) -> Vec<PersistedSession> {
+    fn acquire_lock(&self) -> std::io::Result<File> {
+        self.ensure_dir()?;
+        let lock_file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&self.lock_path)?;
+
+        let fd = lock_file.as_raw_fd();
+        let result = unsafe { libc::flock(fd, libc::LOCK_EX) };
+        if result != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        Ok(lock_file)
+    }
+
+    fn load_unlocked(&self) -> Vec<PersistedSession> {
         if !self.path.exists() {
             return Vec::new();
         }
 
-        match fs::File::open(&self.path) {
+        match File::open(&self.path) {
             Ok(file) => {
                 let reader = BufReader::new(file);
                 match serde_json::from_reader(reader) {
@@ -717,43 +798,81 @@ impl SessionPersistence {
         }
     }
 
-    pub fn save(&self, sessions: &[PersistedSession]) -> std::io::Result<()> {
-        self.ensure_dir()?;
+    fn save_unlocked(&self, sessions: &[PersistedSession]) -> std::io::Result<()> {
+        let temp_path = self.path.with_extension("json.tmp");
 
-        let file = fs::File::create(&self.path).map_err(|e| {
+        let file = File::create(&temp_path).map_err(|e| {
             std::io::Error::new(
                 e.kind(),
-                format!("Failed to create file '{}': {}", self.path.display(), e),
+                format!(
+                    "Failed to create temp file '{}': {}",
+                    temp_path.display(),
+                    e
+                ),
             )
         })?;
         let writer = BufWriter::new(file);
         serde_json::to_writer_pretty(writer, sessions).map_err(|e| {
             std::io::Error::other(format!(
                 "Failed to write sessions to '{}': {}",
-                self.path.display(),
+                temp_path.display(),
                 e
             ))
         })?;
+
+        fs::rename(&temp_path, &self.path).map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to rename '{}' to '{}': {}",
+                    temp_path.display(),
+                    self.path.display(),
+                    e
+                ),
+            )
+        })?;
+
         Ok(())
     }
 
+    pub fn load(&self) -> Vec<PersistedSession> {
+        match self.acquire_lock() {
+            Ok(_lock) => self.load_unlocked(),
+            Err(e) => {
+                eprintln!(
+                    "Warning: Failed to acquire lock for loading sessions: {}",
+                    e
+                );
+                self.load_unlocked()
+            }
+        }
+    }
+
+    pub fn save(&self, sessions: &[PersistedSession]) -> std::io::Result<()> {
+        let _lock = self.acquire_lock()?;
+        self.save_unlocked(sessions)
+    }
+
     pub fn add_session(&self, session: PersistedSession) -> std::io::Result<()> {
-        let mut sessions = self.load();
+        let _lock = self.acquire_lock()?;
+        let mut sessions = self.load_unlocked();
 
         sessions.retain(|s| s.id != session.id);
         sessions.push(session);
 
-        self.save(&sessions)
+        self.save_unlocked(&sessions)
     }
 
     pub fn remove_session(&self, session_id: &str) -> std::io::Result<()> {
-        let mut sessions = self.load();
+        let _lock = self.acquire_lock()?;
+        let mut sessions = self.load_unlocked();
         sessions.retain(|s| s.id.as_str() != session_id);
-        self.save(&sessions)
+        self.save_unlocked(&sessions)
     }
 
     pub fn cleanup_stale_sessions(&self) -> std::io::Result<usize> {
-        let sessions = self.load();
+        let _lock = self.acquire_lock()?;
+        let sessions = self.load_unlocked();
         let mut cleaned = 0;
 
         let active_sessions: Vec<PersistedSession> = sessions
@@ -767,7 +886,7 @@ impl SessionPersistence {
             })
             .collect();
 
-        self.save(&active_sessions)?;
+        self.save_unlocked(&active_sessions)?;
         Ok(cleaned)
     }
 }

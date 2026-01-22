@@ -9,11 +9,15 @@ use agent_tui_ipc::lock_timeout_response;
 use agent_tui_ipc::socket_path;
 use serde_json::Value;
 use serde_json::json;
+use signal_hook::consts::{SIGINT, SIGTERM};
+use signal_hook::iterator::Signals;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -186,14 +190,84 @@ impl ElementFilter<'_> {
     }
 }
 
+const MAX_CONNECTIONS: usize = 64;
+
 pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
     start_time: Instant,
+    #[allow(dead_code)] // Stored to keep Arc alive; accessed via clone in start_daemon
+    shutdown: Arc<AtomicBool>,
+    active_connections: Arc<AtomicUsize>,
 }
 
 impl Default for DaemonServer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+struct ThreadPool {
+    workers: Vec<thread::JoinHandle<()>>,
+    sender: Sender<UnixStream>,
+}
+
+impl ThreadPool {
+    fn new(size: usize, server: Arc<DaemonServer>, shutdown: Arc<AtomicBool>) -> Self {
+        let (sender, receiver) = mpsc::channel::<UnixStream>();
+        let receiver = Arc::new(std::sync::Mutex::new(receiver));
+
+        let mut workers = Vec::with_capacity(size);
+
+        for id in 0..size {
+            let receiver = Arc::clone(&receiver);
+            let server = Arc::clone(&server);
+            let shutdown = Arc::clone(&shutdown);
+
+            let handle = thread::Builder::new()
+                .name(format!("worker-{}", id))
+                .spawn(move || {
+                    loop {
+                        if shutdown.load(Ordering::Relaxed) {
+                            break;
+                        }
+
+                        let stream = {
+                            let lock = match receiver.lock() {
+                                Ok(l) => l,
+                                Err(e) => {
+                                    eprintln!("Worker {} receiver lock poisoned: {}", id, e);
+                                    break;
+                                }
+                            };
+                            match lock.recv_timeout(Duration::from_millis(100)) {
+                                Ok(stream) => stream,
+                                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                            }
+                        };
+
+                        server.active_connections.fetch_add(1, Ordering::Relaxed);
+                        server.handle_client(stream);
+                        server.active_connections.fetch_sub(1, Ordering::Relaxed);
+                    }
+                })
+                .expect("Failed to spawn worker thread");
+
+            workers.push(handle);
+        }
+
+        ThreadPool { workers, sender }
+    }
+
+    fn execute(&self, stream: UnixStream) -> Result<(), UnixStream> {
+        self.sender.send(stream).map_err(|e| e.0)
+    }
+
+    fn shutdown(self) {
+        drop(self.sender);
+        for worker in self.workers {
+            let _ = worker.join();
+        }
     }
 }
 
@@ -210,6 +284,26 @@ impl DaemonServer {
         Self {
             session_manager: Arc::new(SessionManager::new()),
             start_time: Instant::now(),
+            shutdown: Arc::new(AtomicBool::new(false)),
+            active_connections: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn with_shutdown(shutdown: Arc<AtomicBool>) -> Self {
+        Self {
+            session_manager: Arc::new(SessionManager::new()),
+            start_time: Instant::now(),
+            shutdown,
+            active_connections: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn shutdown_all_sessions(&self) {
+        let sessions = self.session_manager.list();
+        for info in sessions {
+            if let Err(e) = self.session_manager.kill(info.id.as_str()) {
+                eprintln!("Warning: Failed to kill session {}: {}", info.id, e);
+            }
         }
     }
 
@@ -1711,30 +1805,72 @@ pub fn start_daemon() -> std::io::Result<()> {
     }
 
     let listener = UnixListener::bind(&socket_path)?;
+    listener.set_nonblocking(true)?;
+
     eprintln!("agent-tui daemon started on {}", socket_path.display());
     eprintln!("PID: {}", std::process::id());
 
-    let server = Arc::new(DaemonServer::new());
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let server = Arc::new(DaemonServer::with_shutdown(Arc::clone(&shutdown)));
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                let server = Arc::clone(&server);
-                if let Err(e) = thread::Builder::new()
-                    .name("client-handler".to_string())
-                    .spawn(move || {
-                        server.handle_client(stream);
-                    })
-                {
-                    eprintln!("Failed to spawn client handler thread: {}", e);
+    let mut signals = Signals::new([SIGINT, SIGTERM])?;
+    let shutdown_signal = Arc::clone(&shutdown);
+    thread::Builder::new()
+        .name("signal-handler".to_string())
+        .spawn(move || {
+            if let Some(sig) = signals.forever().next() {
+                eprintln!("\nReceived signal {}, initiating graceful shutdown...", sig);
+                shutdown_signal.store(true, Ordering::SeqCst);
+            }
+        })?;
+
+    let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server), Arc::clone(&shutdown));
+
+    while !shutdown.load(Ordering::Relaxed) {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                if let Err(stream) = pool.execute(stream) {
+                    eprintln!("Thread pool channel closed, dropping connection");
+                    drop(stream);
                 }
             }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(10));
+            }
             Err(e) => {
-                eprintln!("Error accepting connection: {}", e);
+                if !shutdown.load(Ordering::Relaxed) {
+                    eprintln!("Error accepting connection: {}", e);
+                }
             }
         }
     }
 
+    eprintln!("Shutting down daemon...");
+
+    eprintln!(
+        "Waiting for {} active connections to complete...",
+        server.active_connections.load(Ordering::Relaxed)
+    );
+    let shutdown_deadline = Instant::now() + Duration::from_secs(5);
+    while server.active_connections.load(Ordering::Relaxed) > 0 {
+        if Instant::now() > shutdown_deadline {
+            eprintln!("Shutdown timeout, forcing close");
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    eprintln!("Cleaning up sessions...");
+    server.shutdown_all_sessions();
+
+    eprintln!("Stopping thread pool...");
+    pool.shutdown();
+
+    if socket_path.exists() {
+        let _ = std::fs::remove_file(&socket_path);
+    }
+
+    eprintln!("Daemon shutdown complete");
     Ok(())
 }
 

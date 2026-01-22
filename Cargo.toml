@@ -17,11 +17,11 @@ repository = "https://github.com/pproenca/agent-tui"
 
 [workspace.dependencies]
 # Internal
-agent-tui-core = { path = "crates/agent-tui-core" }
-agent-tui-terminal = { path = "crates/agent-tui-terminal" }
-agent-tui-daemon = { path = "crates/agent-tui-daemon" }
-agent-tui-ipc = { path = "crates/agent-tui-ipc" }
-agent-tui-common = { path = "crates/agent-tui-common" }
+agent-tui-core = { path = "crates/agent-tui-core", version = "0.3.6" }
+agent-tui-terminal = { path = "crates/agent-tui-terminal", version = "0.3.6" }
+agent-tui-daemon = { path = "crates/agent-tui-daemon", version = "0.3.6" }
+agent-tui-ipc = { path = "crates/agent-tui-ipc", version = "0.3.6" }
+agent-tui-common = { path = "crates/agent-tui-common", version = "0.3.6" }
 
 # External (pinned)
 thiserror = "1.0"
@@ -39,6 +39,7 @@ vt100 = "0.15"
 regex = "1.10"
 rand = "0.8"
 libc = "0.2"
+signal-hook = "0.3"
 
 # Dev dependencies (used in [dev-dependencies] sections)
 assert_cmd = "2.0"

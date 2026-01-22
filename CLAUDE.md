@@ -96,7 +96,6 @@ Supported roles: `Button`, `Tab`, `Input`, `StaticText`, `Panel`, `Checkbox`, `M
 ### IPC Protocol
 
 - JSON-RPC 2.0 over Unix socket: `$XDG_RUNTIME_DIR/agent-tui.sock` or `/tmp/agent-tui.sock`
-- TCP fallback on port 19847 via `AGENT_TUI_TRANSPORT=tcp`
 - Methods: `spawn`, `snapshot`, `click`, `fill`, `keystroke`, `type`, `wait`, `scroll`, `kill`, `sessions`, `health`
 
 ## Testing
@@ -152,8 +151,6 @@ Shell scripts for full system testing:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AGENT_TUI_SOCKET` | Custom socket path | (uses XDG_RUNTIME_DIR) |
-| `AGENT_TUI_TRANSPORT` | `unix` or `tcp` | unix |
-| `AGENT_TUI_TCP_PORT` | TCP port | 19847 |
 | `XDG_RUNTIME_DIR` | Socket directory | /tmp |
 
 ## Getting Started

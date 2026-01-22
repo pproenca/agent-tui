@@ -489,15 +489,11 @@ impl Session {
         let cursor = self.terminal.cursor();
         let components = crate::vom::analyze(&buffer, cursor.row, cursor.col);
 
-        // Filter to interactive elements and convert to Element API
+        // Filter to interactive elements using Role::is_interactive()
+        // This ensures refs (@e1, @e2, etc.) are consistent with handle_snapshot in server.rs
         self.cached_elements = components
             .iter()
-            .filter(|c| {
-                matches!(
-                    c.role,
-                    Role::Button | Role::Tab | Role::Input | Role::Checkbox | Role::MenuItem
-                )
-            })
+            .filter(|c| c.role.is_interactive())
             .enumerate()
             .map(|(i, c)| component_to_element(c, i, cursor.row, cursor.col))
             .collect();

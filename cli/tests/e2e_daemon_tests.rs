@@ -366,14 +366,15 @@ fn test_snapshot_with_elements() {
 }
 
 #[test]
-fn test_snapshot_compact_mode() {
+fn test_snapshot_json_format() {
     let harness = TestHarness::new();
 
-    harness.run(&["snapshot", "-i", "-c"]).success();
-
-    let request = harness.last_request_for("snapshot").unwrap();
-    let params = request.params.unwrap();
-    assert_eq!(params["compact"], true);
+    harness
+        .run(&["-f", "json", "snapshot"])
+        .success()
+        .stdout(predicate::str::contains("\"session_id\":"))
+        .stdout(predicate::str::contains("\"screen\":"))
+        .stdout(predicate::str::contains("\"size\":"));
 }
 
 #[test]
@@ -425,18 +426,6 @@ fn test_snapshot_with_elements_uses_vom() {
     let request = harness.last_request_for("snapshot").unwrap();
     let params = request.params.unwrap();
     assert_eq!(params["include_elements"], true);
-}
-
-#[test]
-fn test_snapshot_with_compact_elements() {
-    let harness = TestHarness::new();
-
-    harness.run(&["snapshot", "-i", "-c"]).success();
-
-    let request = harness.last_request_for("snapshot").unwrap();
-    let params = request.params.unwrap();
-    assert_eq!(params["include_elements"], true);
-    assert_eq!(params["compact"], true);
 }
 
 // =============================================================================
@@ -581,19 +570,122 @@ fn test_type_text() {
 }
 
 // =============================================================================
-// Screenshot Command Tests
+// Snapshot with strip-ansi and include-cursor Tests
 // =============================================================================
 
 #[test]
-fn test_screenshot_returns_raw_content() {
+fn test_snapshot_strip_ansi() {
+    let harness = TestHarness::new();
+
+    harness.run(&["snapshot", "--strip-ansi"]).success();
+
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["strip_ansi"], true);
+}
+
+#[test]
+fn test_snapshot_include_cursor() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "screen": "Test screen\n",
+            "cursor": { "row": 5, "col": 10, "visible": true },
+            "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
+        }),
+    );
+
+    harness
+        .run(&["snapshot", "--include-cursor"])
+        .success()
+        .stdout(predicate::str::contains("Cursor: row=5, col=10"));
+
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["include_cursor"], true);
+}
+
+#[test]
+fn test_snapshot_strip_ansi_and_include_cursor_together() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "screen": "Plain text screen\n",
+            "cursor": { "row": 3, "col": 7, "visible": true },
+            "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
+        }),
+    );
+
+    harness
+        .run(&["snapshot", "--strip-ansi", "--include-cursor"])
+        .success()
+        .stdout(predicate::str::contains("Cursor: row=3, col=7"));
+
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["strip_ansi"], true);
+    assert_eq!(params["include_cursor"], true);
+}
+
+#[test]
+fn test_snapshot_elements_with_strip_ansi() {
+    let harness = TestHarness::new();
+
+    harness.run(&["snapshot", "-i", "--strip-ansi"]).success();
+
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["include_elements"], true);
+    assert_eq!(params["strip_ansi"], true);
+}
+
+#[test]
+fn test_snapshot_include_cursor_hidden() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "screen": "Test screen\n",
+            "cursor": { "row": 0, "col": 0, "visible": false },
+            "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
+        }),
+    );
+
+    harness
+        .run(&["snapshot", "--include-cursor"])
+        .success()
+        .stdout(predicate::str::contains("(hidden)"));
+}
+
+#[test]
+fn test_snapshot_all_flags_e2e() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["screenshot"])
-        .success()
-        .stdout(predicate::str::contains("Test screen content"));
+        .run(&[
+            "snapshot",
+            "-i",
+            "--region",
+            "modal",
+            "--strip-ansi",
+            "--include-cursor",
+        ])
+        .success();
 
-    harness.assert_method_called("screen");
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["include_elements"], true);
+    assert_eq!(params["region"], "modal");
+    assert_eq!(params["strip_ansi"], true);
+    assert_eq!(params["include_cursor"], true);
 }
 
 // =============================================================================
@@ -1480,14 +1572,19 @@ fn test_errors_with_count() {
 fn test_assert_text_condition() {
     let harness = TestHarness::new();
 
-    // Assert uses screen internally to check for text
+    // Assert uses snapshot internally to check for text
     harness
         .run(&["assert", "text:Test screen"])
         .success()
         .stdout(predicate::str::contains("Assertion passed"));
 
-    // Verify screen was called to get the content
-    harness.assert_method_called("screen");
+    // Verify snapshot was called with strip_ansi for consistent text matching
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(
+        params["strip_ansi"], true,
+        "assert text should strip ANSI codes"
+    );
 }
 
 // =============================================================================

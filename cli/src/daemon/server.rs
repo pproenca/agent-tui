@@ -306,6 +306,12 @@ impl DaemonServer {
 
             "spawn" => self.handle_spawn(request),
             "snapshot" => self.handle_snapshot(request),
+            // Deprecated: Use "snapshot" with strip_ansi=true instead
+            "screen" => Response::error(
+                request.id,
+                -32601,
+                "Method 'screen' is deprecated. Use 'snapshot' with strip_ansi=true instead.",
+            ),
             "click" => self.handle_click(request),
             "dbl_click" => self.handle_dbl_click(request),
             "fill" => self.handle_fill(request),
@@ -318,7 +324,6 @@ impl DaemonServer {
             "restart" => self.handle_restart(request),
             "sessions" => self.handle_sessions(request),
             "resize" => self.handle_resize(request),
-            "screen" => self.handle_screen(request),
             "find" => self.handle_find(request),
             "get_text" => self.handle_get_text(request),
             "get_value" => self.handle_get_value(request),
@@ -426,8 +431,8 @@ impl DaemonServer {
         let params = request.params.as_ref().cloned().unwrap_or(json!({}));
         let session_id = request.param_str("session");
         let include_elements = params.bool_or("include_elements", false);
-        let interactive_only = params.bool_or("interactive_only", false);
-        let compact = params.bool_or("compact", false);
+        let should_strip_ansi = params.bool_or("strip_ansi", false);
+        let include_cursor = params.bool_or("include_cursor", false);
         let req_id = request.id;
 
         self.with_session(&request, session_id, |sess| {
@@ -443,31 +448,31 @@ impl DaemonServer {
                 }
             };
 
-            let screen = sess.screen_text();
+            let mut screen = sess.screen_text();
             let cursor = sess.cursor();
             let (cols, rows) = sess.size();
+
+            if should_strip_ansi {
+                screen = strip_ansi_codes(&screen);
+            }
 
             let (elements, stats) = if include_elements {
                 // Always use VOM (Visual Object Model) for element detection
                 let vom_components = sess.analyze_screen();
                 let elements_total = vom_components.len();
-                let elements_interactive = vom_components
-                    .iter()
-                    .filter(|c| c.role != crate::vom::Role::StaticText)
-                    .count();
 
-                let filtered_elements: Vec<_> = vom_components
+                // Filter to interactive elements using Role::is_interactive()
+                // This ensures refs (@e1, @e2, etc.) are consistent with detect_elements() in session.rs
+                let interactive: Vec<_> = vom_components
+                    .iter()
+                    .filter(|c| c.role.is_interactive())
+                    .collect();
+                let elements_interactive = interactive.len();
+
+                // Enumerate from the filtered list so refs match detect_elements()
+                let filtered_elements: Vec<_> = interactive
                     .iter()
                     .enumerate()
-                    .filter(|(_, comp)| {
-                        if interactive_only && comp.role == crate::vom::Role::StaticText {
-                            return false;
-                        }
-                        if compact && comp.role == crate::vom::Role::StaticText {
-                            return false;
-                        }
-                        true
-                    })
                     .map(|(i, comp)| vom_component_to_json(comp, i))
                     .collect();
 
@@ -501,17 +506,21 @@ impl DaemonServer {
                 "session_id": sess.id,
                 "screen": screen,
                 "elements": elements,
-                "cursor": {
-                    "row": cursor.row,
-                    "col": cursor.col,
-                    "visible": cursor.visible
-                },
                 "size": {
                     "cols": cols,
                     "rows": rows
                 },
                 "stats": stats
             });
+
+            // Include cursor info only when requested or when elements are included
+            if include_cursor || include_elements {
+                response["cursor"] = json!({
+                    "row": cursor.row,
+                    "col": cursor.col,
+                    "visible": cursor.visible
+                });
+            }
 
             if let Some(warning) = update_warning {
                 response["warning"] = serde_json::Value::String(warning);
@@ -894,41 +903,6 @@ impl DaemonServer {
         })
     }
 
-    fn handle_screen(&self, request: Request) -> Response {
-        let params = request.params.as_ref().cloned().unwrap_or(json!({}));
-        let session_id = request.param_str("session");
-        let strip_ansi = params.bool_or("strip_ansi", false);
-        let include_cursor = params.bool_or("include_cursor", false);
-
-        let req_id = request.id;
-        self.with_session(&request, session_id, |sess| {
-            let _ = sess.update();
-            let mut screen = sess.screen_text();
-            let (cols, rows) = sess.size();
-            let cursor = sess.cursor();
-
-            if strip_ansi {
-                screen = strip_ansi_codes(&screen);
-            }
-
-            let mut result = json!({
-                "session_id": sess.id,
-                "screen": screen,
-                "size": { "cols": cols, "rows": rows }
-            });
-
-            if include_cursor {
-                result["cursor"] = json!({
-                    "row": cursor.row,
-                    "col": cursor.col,
-                    "visible": cursor.visible
-                });
-            }
-
-            Response::success(req_id, result)
-        })
-    }
-
     fn handle_find(&self, request: Request) -> Response {
         let params = request.params.as_ref().cloned().unwrap_or(json!({}));
         let filter = ElementFilter {
@@ -1115,7 +1089,12 @@ impl DaemonServer {
                     let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
                         return lock_timeout_response(request.id, session_id);
                     };
-                    let _ = sess.update();
+                    if let Err(e) = sess.update() {
+                        eprintln!(
+                            "Warning: Session update failed during scroll_into_view: {}",
+                            e
+                        );
+                    }
                     sess.detect_elements();
 
                     if sess.find_element(element_ref).is_some() {
@@ -1571,7 +1550,9 @@ impl DaemonServer {
         let clear = request.param_bool("clear").unwrap_or(false);
 
         self.with_session(&request, session_id, |sess| {
-            let _ = sess.update();
+            if let Err(e) = sess.update() {
+                eprintln!("Warning: Session update failed during console: {}", e);
+            }
             let screen = sess.screen_text();
 
             let all_lines: Vec<&str> = screen.lines().collect();

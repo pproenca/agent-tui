@@ -92,3 +92,63 @@ pub fn strip_ansi_codes(s: &str) -> String {
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_ansi_removes_color_codes() {
+        // Red text: \x1b[31m ... \x1b[0m
+        assert_eq!(strip_ansi_codes("\x1b[31mRed\x1b[0m"), "Red");
+    }
+
+    #[test]
+    fn test_strip_ansi_handles_sgr_sequences() {
+        // Bold green on dark background: \x1b[1;32;40m ... \x1b[m
+        assert_eq!(
+            strip_ansi_codes("\x1b[1;32;40mBold Green\x1b[m"),
+            "Bold Green"
+        );
+    }
+
+    #[test]
+    fn test_strip_ansi_handles_osc_sequences() {
+        // OSC sequence for window title: \x1b]0;Title\x07
+        assert_eq!(strip_ansi_codes("\x1b]0;Title\x07Content"), "Content");
+    }
+
+    #[test]
+    fn test_strip_ansi_handles_osc_with_st_terminator() {
+        // OSC with ST terminator: \x1b]0;Title\x1b\\
+        assert_eq!(strip_ansi_codes("\x1b]0;Title\x1b\\Content"), "Content");
+    }
+
+    #[test]
+    fn test_strip_ansi_preserves_plain_text() {
+        assert_eq!(strip_ansi_codes("Hello, World!"), "Hello, World!");
+    }
+
+    #[test]
+    fn test_strip_ansi_handles_cursor_movement() {
+        // Cursor up: \x1b[A, cursor down: \x1b[B
+        assert_eq!(strip_ansi_codes("Line1\x1b[ALine2"), "Line1Line2");
+    }
+
+    #[test]
+    fn test_strip_ansi_handles_mixed_content() {
+        let input = "\x1b[32m❯\x1b[0m Option 1\n  Option 2";
+        assert_eq!(strip_ansi_codes(input), "❯ Option 1\n  Option 2");
+    }
+
+    #[test]
+    fn test_strip_ansi_handles_empty_string() {
+        assert_eq!(strip_ansi_codes(""), "");
+    }
+
+    #[test]
+    fn test_strip_ansi_handles_lone_escape() {
+        // Lone escape followed by non-bracket char
+        assert_eq!(strip_ansi_codes("\x1bXtext"), "text");
+    }
+}

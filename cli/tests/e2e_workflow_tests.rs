@@ -1,20 +1,18 @@
 //! E2E workflow tests with real daemon
 //!
-//! These tests verify complete user workflows using the real daemon.
-//! They use #[serial] to ensure sequential execution since they share daemon state.
+//! Each test spawns an isolated daemon instance on a unique socket,
+//! allowing tests to run in parallel without state conflicts.
 
 mod common;
 
 use common::RealTestHarness;
 use serde_json::Value;
-use serial_test::serial;
 
 // =============================================================================
 // Session Lifecycle Tests
 // =============================================================================
 
 #[test]
-#[serial]
 fn test_spawn_snapshot_kill() {
     let h = RealTestHarness::new();
 
@@ -49,7 +47,6 @@ fn test_spawn_snapshot_kill() {
 // =============================================================================
 
 #[test]
-#[serial]
 fn test_type_changes_screen() {
     let h = RealTestHarness::new();
     h.spawn_bash();
@@ -85,7 +82,6 @@ fn test_type_changes_screen() {
 // =============================================================================
 
 #[test]
-#[serial]
 fn test_multi_session_switching() {
     let h = RealTestHarness::new();
 
@@ -156,7 +152,6 @@ fn test_multi_session_switching() {
 // =============================================================================
 
 #[test]
-#[serial]
 fn test_demo_form_interaction() {
     let h = RealTestHarness::new();
     h.spawn_demo();
@@ -218,7 +213,6 @@ fn test_demo_form_interaction() {
 // =============================================================================
 
 #[test]
-#[serial]
 fn test_wait_for_delayed_output() {
     let h = RealTestHarness::new();
     h.spawn_bash();
@@ -298,7 +292,6 @@ fn test_wait_for_delayed_output() {
 }
 
 #[test]
-#[serial]
 fn test_wait_timeout_fails() {
     let h = RealTestHarness::new();
     h.spawn_bash();
@@ -313,7 +306,6 @@ fn test_wait_timeout_fails() {
 }
 
 #[test]
-#[serial]
 fn test_wait_stable_succeeds() {
     let h = RealTestHarness::new();
     h.spawn_bash();
@@ -335,7 +327,6 @@ fn test_wait_stable_succeeds() {
 // =============================================================================
 
 #[test]
-#[serial]
 fn test_keyboard_tab_navigation() {
     let h = RealTestHarness::new();
     h.spawn_demo();
@@ -396,7 +387,6 @@ fn test_keyboard_tab_navigation() {
 // =============================================================================
 
 #[test]
-#[serial]
 fn test_click_nonexistent_element() {
     let h = RealTestHarness::new();
     h.spawn_bash();
@@ -414,7 +404,6 @@ fn test_click_nonexistent_element() {
 }
 
 #[test]
-#[serial]
 fn test_operation_on_dead_session() {
     let h = RealTestHarness::new();
 
@@ -444,4 +433,77 @@ fn test_operation_on_dead_session() {
         .status()
         .unwrap();
     assert!(!status.success(), "Snapshot on dead session should fail");
+}
+
+// =============================================================================
+// Concurrency Tests
+// =============================================================================
+
+#[test]
+fn test_concurrent_session_access() {
+    use std::process::Command;
+    use std::thread;
+
+    let h = RealTestHarness::new();
+    let session_id = h.spawn_bash();
+
+    // Get socket path for thread-safe access
+    let socket_path = h.socket_path().to_path_buf();
+    let socket_path2 = socket_path.clone();
+    let sid1 = session_id.clone();
+    let sid2 = session_id.clone();
+
+    // Thread 1: Type command
+    let t1 = thread::spawn(move || {
+        Command::new(env!("CARGO_BIN_EXE_agent-tui"))
+            .env("AGENT_TUI_SOCKET", &socket_path)
+            .args(["-s", &sid1, "type", "echo concurrent1"])
+            .status()
+            .expect("type command failed")
+    });
+
+    // Thread 2: Take snapshot simultaneously
+    let t2 = thread::spawn(move || {
+        Command::new(env!("CARGO_BIN_EXE_agent-tui"))
+            .env("AGENT_TUI_SOCKET", &socket_path2)
+            .args(["-f", "json", "-s", &sid2, "snapshot"])
+            .output()
+            .expect("snapshot failed")
+    });
+
+    // Both operations should succeed without deadlock
+    let status1 = t1.join().expect("thread 1 panicked");
+    let output2 = t2.join().expect("thread 2 panicked");
+
+    assert!(status1.success(), "type command failed");
+    assert!(output2.status.success(), "snapshot failed");
+
+    // Verify snapshot contains valid JSON
+    let json: Value =
+        serde_json::from_slice(&output2.stdout).expect("snapshot output not valid JSON");
+    assert!(json["screen"].is_string());
+}
+
+#[test]
+fn test_rapid_session_spawn_and_kill() {
+    let h = RealTestHarness::new();
+
+    // Rapidly spawn and kill 10 sessions
+    for i in 0..10 {
+        let output = h.cli_json().args(["spawn", "bash"]).output().unwrap();
+        assert!(output.status.success(), "spawn {} failed", i);
+
+        let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let sid = json["session_id"].as_str().unwrap();
+
+        // Kill immediately
+        let status = h.cli().args(["-s", sid, "kill"]).status().unwrap();
+        assert!(status.success(), "kill {} failed", i);
+    }
+
+    // All sessions should be cleaned up
+    let output = h.cli_json().args(["sessions"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let sessions = json["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 0, "All sessions should be killed");
 }

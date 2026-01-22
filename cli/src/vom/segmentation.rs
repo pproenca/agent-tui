@@ -2,47 +2,15 @@ use crate::terminal::ScreenBuffer;
 use crate::vom::Cluster;
 
 pub fn segment_buffer(buffer: &ScreenBuffer) -> Vec<Cluster> {
-    let mut clusters = Vec::new();
-
-    for (y, row) in buffer.cells.iter().enumerate() {
-        let mut current: Option<Cluster> = None;
-
-        for (x, cell) in row.iter().enumerate() {
-            let style_match = current
-                .as_ref()
-                .map(|c| c.style == cell.style)
-                .unwrap_or(false);
-
-            if style_match {
-                if let Some(c) = &mut current {
-                    c.extend(cell.char);
-                }
-            } else {
-                if let Some(mut c) = current.take() {
-                    c.seal();
-                    clusters.push(c);
-                }
-
-                current = Some(Cluster::new(
-                    x as u16,
-                    y as u16,
-                    cell.char,
-                    cell.style.clone(),
-                ));
-            }
-        }
-
-        if let Some(mut c) = current {
-            c.seal();
-            clusters.push(c);
-        }
-    }
-
-    clusters.into_iter().filter(|c| !c.is_whitespace).collect()
+    segment_buffer_impl(buffer, true)
 }
 
 #[allow(dead_code)]
 pub fn segment_buffer_with_whitespace(buffer: &ScreenBuffer) -> Vec<Cluster> {
+    segment_buffer_impl(buffer, false)
+}
+
+fn segment_buffer_impl(buffer: &ScreenBuffer, filter_whitespace: bool) -> Vec<Cluster> {
     let mut clusters = Vec::new();
 
     for (y, row) in buffer.cells.iter().enumerate() {
@@ -63,6 +31,7 @@ pub fn segment_buffer_with_whitespace(buffer: &ScreenBuffer) -> Vec<Cluster> {
                     c.seal();
                     clusters.push(c);
                 }
+
                 current = Some(Cluster::new(
                     x as u16,
                     y as u16,
@@ -78,7 +47,11 @@ pub fn segment_buffer_with_whitespace(buffer: &ScreenBuffer) -> Vec<Cluster> {
         }
     }
 
-    clusters
+    if filter_whitespace {
+        clusters.into_iter().filter(|c| !c.is_whitespace).collect()
+    } else {
+        clusters
+    }
 }
 
 #[cfg(test)]

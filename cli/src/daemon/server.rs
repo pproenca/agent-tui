@@ -17,6 +17,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 pub fn socket_path() -> PathBuf {
+    if let Ok(custom_path) = std::env::var("AGENT_TUI_SOCKET") {
+        return PathBuf::from(custom_path);
+    }
+
     std::env::var("XDG_RUNTIME_DIR")
         .map(|dir| PathBuf::from(dir).join("agent-tui.sock"))
         .unwrap_or_else(|_| PathBuf::from("/tmp/agent-tui.sock"))
@@ -104,6 +108,14 @@ pub struct DaemonServer {
 impl Default for DaemonServer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn combine_warnings(warning1: Option<String>, warning2: Option<String>) -> Option<String> {
+    match (warning1, warning2) {
+        (Some(w1), Some(w2)) => Some(format!("{}. {}", w1, w2)),
+        (Some(w), None) | (None, Some(w)) => Some(w),
+        (None, None) => None,
     }
 }
 
@@ -595,12 +607,7 @@ impl DaemonServer {
             });
 
 
-            let combined_warning = match (update_warning, type_warning) {
-                (Some(uw), Some(tw)) => Some(format!("{}. {}", uw, tw)),
-                (Some(w), None) | (None, Some(w)) => Some(w),
-                (None, None) => None,
-            };
-            if let Some(warn_msg) = combined_warning {
+            if let Some(warn_msg) = combine_warnings(update_warning, type_warning) {
                 response["warning"] = json!(warn_msg);
             }
 

@@ -138,6 +138,19 @@ fn role_to_element_type(role: Role) -> ElementType {
     }
 }
 
+fn detect_checkbox_state(text: &str) -> Option<bool> {
+    let text = text.to_lowercase();
+
+    if text.contains("[x]") || text.contains("(x)") || text.contains("☑") || text.contains("✓")
+    {
+        Some(true)
+    } else if text.contains("[ ]") || text.contains("( )") || text.contains("☐") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 fn component_to_element(
     comp: &Component,
     index: usize,
@@ -147,15 +160,7 @@ fn component_to_element(
     let focused = comp.bounds.contains(cursor_col, cursor_row);
 
     let checked = if comp.role == Role::Checkbox {
-        let text = comp.text_content.to_lowercase();
-        if text.contains("[x]") || text.contains("(x)") || text.contains("☑") || text.contains("✓")
-        {
-            Some(true)
-        } else if text.contains("[ ]") || text.contains("( )") || text.contains("☐") {
-            Some(false)
-        } else {
-            None
-        }
+        detect_checkbox_state(&comp.text_content)
     } else {
         None
     };

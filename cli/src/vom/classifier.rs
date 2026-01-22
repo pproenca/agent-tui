@@ -61,27 +61,22 @@ fn infer_role(cluster: &Cluster, cursor_row: u16, cursor_col: u16) -> Role {
 }
 
 fn is_button_text(text: &str) -> bool {
-    if text.starts_with('[') && text.ends_with(']') && text.len() > 2 {
-        let inner = &text[1..text.len() - 1].trim();
+    if text.len() <= 2 {
+        return false;
+    }
 
-        if !matches!(*inner, "x" | "X" | " " | "" | "✓" | "✔") {
-            return true;
+    match (text.chars().next(), text.chars().last()) {
+        (Some('['), Some(']')) => {
+            let inner = &text[1..text.len() - 1].trim();
+            !matches!(*inner, "x" | "X" | " " | "" | "✓" | "✔")
         }
-    }
-
-    if text.starts_with('(') && text.ends_with(')') && text.len() > 2 {
-        let inner = &text[1..text.len() - 1].trim();
-
-        if !matches!(*inner, "" | " " | "o" | "O" | "●" | "◉") {
-            return true;
+        (Some('('), Some(')')) => {
+            let inner = &text[1..text.len() - 1].trim();
+            !matches!(*inner, "" | " " | "o" | "O" | "●" | "◉")
         }
+        (Some('<'), Some('>')) => true,
+        _ => false,
     }
-
-    if text.starts_with('<') && text.ends_with('>') && text.len() > 2 {
-        return true;
-    }
-
-    false
 }
 
 fn is_input_field(text: &str) -> bool {

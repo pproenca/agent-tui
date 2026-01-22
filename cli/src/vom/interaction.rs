@@ -23,44 +23,39 @@ impl MouseButton {
 }
 
 pub fn mouse_click_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
-    let mut seq = Vec::new();
-
-    let x = x + 1;
-    let y = y + 1;
+    let (x, y) = adjust_coordinates(x, y);
     let btn = button.code();
 
     let press = format!("\x1b[<{};{};{}M", btn, x, y);
-    seq.extend_from_slice(press.as_bytes());
-
     let release = format!("\x1b[<{};{};{}m", btn, x, y);
-    seq.extend_from_slice(release.as_bytes());
 
+    let mut seq = Vec::new();
+    seq.extend_from_slice(press.as_bytes());
+    seq.extend_from_slice(release.as_bytes());
     seq
+}
+
+fn adjust_coordinates(x: u16, y: u16) -> (u16, u16) {
+    (x + 1, y + 1)
 }
 
 #[allow(dead_code)]
 pub fn mouse_press_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
-    let x = x + 1;
-    let y = y + 1;
+    let (x, y) = adjust_coordinates(x, y);
     let btn = button.code();
-
     format!("\x1b[<{};{};{}M", btn, x, y).into_bytes()
 }
 
 #[allow(dead_code)]
 pub fn mouse_release_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
-    let x = x + 1;
-    let y = y + 1;
+    let (x, y) = adjust_coordinates(x, y);
     let btn = button.code();
-
     format!("\x1b[<{};{};{}m", btn, x, y).into_bytes()
 }
 
 #[allow(dead_code)]
 pub fn mouse_move_sequence(x: u16, y: u16) -> Vec<u8> {
-    let x = x + 1;
-    let y = y + 1;
-
+    let (x, y) = adjust_coordinates(x, y);
     format!("\x1b[<35;{};{}M", x, y).into_bytes()
 }
 

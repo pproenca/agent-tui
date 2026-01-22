@@ -67,7 +67,7 @@ fn test_snapshot_help() {
         .success()
         .stdout(predicate::str::contains("snapshot"))
         .stdout(predicate::str::contains("--elements"))
-        .stdout(predicate::str::contains("--compact"));
+        .stdout(predicate::str::contains("--strip-ansi"));
 }
 
 /// Test click command help

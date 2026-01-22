@@ -419,11 +419,9 @@ impl Session {
     }
 
     // ========== VOM Integration ==========
-    // VOM is in shadow mode - allow unused during verification phase
 
     /// Analyze the current screen using the Visual Object Model.
     /// Returns semantic components (buttons, inputs, tabs, etc.)
-    #[allow(dead_code)]
     pub fn analyze_screen(&self) -> Vec<crate::vom::Component> {
         let buffer = self.terminal.screen_buffer();
         let cursor = self.terminal.cursor();
@@ -455,6 +453,10 @@ impl Session {
 
     /// Inject a mouse click at the center of a component.
     /// Uses SGR 1006 format mouse sequences.
+    ///
+    /// # Errors
+    /// - Returns `SessionError::InvalidKey` if mouse reporting is not enabled
+    /// - Returns `SessionError::ElementNotFound` if the component center is outside terminal bounds
     #[allow(dead_code)]
     pub fn click_vom_component(
         &mut self,
@@ -462,15 +464,58 @@ impl Session {
     ) -> Result<(), SessionError> {
         use crate::vom::interaction::{click_component, MouseButton};
 
+        // Check if target application supports mouse input
+        if !self.mouse_reporting_enabled() {
+            return Err(SessionError::InvalidKey(
+                "Target application does not support mouse input. Use keyboard navigation instead."
+                    .to_string(),
+            ));
+        }
+
+        let (cols, rows) = self.size();
+        let (cx, cy) = component.bounds.center();
+
+        if cx >= cols || cy >= rows {
+            return Err(SessionError::ElementNotFound(format!(
+                "Component '{}' center ({}, {}) is outside terminal bounds ({}x{})",
+                component.text_content.chars().take(20).collect::<String>(),
+                cx,
+                cy,
+                cols,
+                rows
+            )));
+        }
+
         let seq = click_component(component, MouseButton::Left);
         self.pty.write(&seq)?;
         Ok(())
     }
 
     /// Inject a mouse click at specific coordinates.
+    ///
+    /// # Errors
+    /// - Returns `SessionError::InvalidKey` if mouse reporting is not enabled
+    /// - Returns `SessionError::ElementNotFound` if coordinates are outside terminal bounds
     #[allow(dead_code)]
     pub fn inject_mouse_click(&mut self, x: u16, y: u16) -> Result<(), SessionError> {
         use crate::vom::interaction::{click_at, MouseButton};
+
+        // Check if target application supports mouse input
+        if !self.mouse_reporting_enabled() {
+            return Err(SessionError::InvalidKey(
+                "Target application does not support mouse input. Use keyboard navigation instead."
+                    .to_string(),
+            ));
+        }
+
+        let (cols, rows) = self.size();
+
+        if x >= cols || y >= rows {
+            return Err(SessionError::ElementNotFound(format!(
+                "Coordinates ({}, {}) are outside terminal bounds ({}x{})",
+                x, y, cols, rows
+            )));
+        }
 
         let seq = click_at(x, y, MouseButton::Left);
         self.pty.write(&seq)?;
@@ -485,34 +530,68 @@ impl Session {
     }
 
     /// Wait for the layout to change from a previous signature.
-    /// Returns true if layout changed, false if timeout.
+    ///
+    /// # Returns
+    /// - `Ok(true)` if layout changed before timeout
+    /// - `Ok(false)` if timeout was reached without layout change
+    ///
+    /// # Errors
+    /// Returns `SessionError` if the PTY fails during updates (e.g., process died).
     #[allow(dead_code)]
-    pub fn wait_for_layout_change(&mut self, old_sig: u64, timeout: std::time::Duration) -> bool {
+    pub fn wait_for_layout_change(
+        &mut self,
+        old_sig: u64,
+        timeout: std::time::Duration,
+    ) -> Result<bool, SessionError> {
         let deadline = std::time::Instant::now() + timeout;
 
         while std::time::Instant::now() < deadline {
-            // Process any pending output
-            let _ = self.update();
+            // Process any pending output - propagate errors
+            self.update()?;
 
             let new_sig = self.layout_signature();
             if new_sig != old_sig {
-                return true;
+                return Ok(true);
             }
 
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
 
-        false
+        Ok(false)
     }
 
     /// Click a VOM component and wait for the layout to change.
-    /// Returns true if the click had a visible effect.
+    ///
+    /// This method refreshes the screen and verifies the component still exists
+    /// before clicking, preventing stale reference issues.
+    ///
+    /// # Returns
+    /// - `Ok(true)` if the click had a visible effect (layout changed)
+    /// - `Ok(false)` if timeout was reached without layout change
+    ///
+    /// # Errors
+    /// - Returns `SessionError::ElementNotFound` if component no longer exists on screen
+    /// - Returns `SessionError` if click fails or PTY errors occur during wait
     #[allow(dead_code)]
     pub fn robust_vom_click(
         &mut self,
         component: &crate::vom::Component,
         timeout: std::time::Duration,
     ) -> Result<bool, SessionError> {
+        // Refresh screen and verify component still exists
+        self.update()?;
+        let current_components = self.analyze_screen();
+        let still_exists = current_components
+            .iter()
+            .any(|c| c.bounds == component.bounds && c.role == component.role);
+
+        if !still_exists {
+            return Err(SessionError::ElementNotFound(format!(
+                "Component '{}' is no longer visible on screen",
+                component.text_content.chars().take(20).collect::<String>()
+            )));
+        }
+
         // Capture layout before click
         let before_sig = self.layout_signature();
 
@@ -520,7 +599,7 @@ impl Session {
         self.click_vom_component(component)?;
 
         // Wait for layout to change
-        Ok(self.wait_for_layout_change(before_sig, timeout))
+        self.wait_for_layout_change(before_sig, timeout)
     }
 }
 

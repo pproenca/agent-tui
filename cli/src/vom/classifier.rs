@@ -10,7 +10,7 @@
 //! - Geometric properties (position, size)
 
 use crate::terminal::Color;
-use crate::vom::{hash_cluster, Cluster, Component, Rect, Role};
+use crate::vom::{hash_cluster, Cluster, Component, Role};
 
 /// Classify clusters into semantic components.
 ///
@@ -35,14 +35,16 @@ pub fn classify(clusters: Vec<Cluster>, cursor_row: u16, cursor_col: u16) -> Vec
 
 /// Infer the semantic role of a cluster.
 ///
-/// Rules are evaluated in priority order:
+/// Rules are evaluated in priority order (first match wins):
 /// 1. Focus Rule: Cursor intersects cluster → Input
 /// 2. Button Rule: Bracketed text [Label] → Button
 /// 3. Tab Rule: Inverse video or Blue/Cyan background → Tab
 /// 4. Input Rule: Contains underscores → Input
 /// 5. Checkbox Rule: Checkbox patterns → Checkbox
 /// 6. MenuItem Rule: Menu markers → MenuItem
-/// 7. Default: StaticText
+/// 7. Panel Rule: Box-drawing characters → Panel
+///
+/// If no rule matches, defaults to StaticText.
 fn infer_role(cluster: &Cluster, cursor_row: u16, cursor_col: u16) -> Role {
     let text = cluster.text.trim();
 
@@ -206,25 +208,11 @@ fn is_panel_border(text: &str) -> bool {
     box_count > total / 2
 }
 
-/// Merge adjacent clusters that form a single logical component.
-/// For example, merge clusters that together form a bordered panel.
-pub fn merge_adjacent_clusters(components: Vec<Component>) -> Vec<Component> {
-    // For MVP, we don't merge - each cluster becomes its own component
-    // Post-MVP: Implement vertical merging for multi-line buttons/panels
-    components
-}
-
-/// Get the clickable bounds for a component.
-/// For buttons, this is the full bounds.
-/// For inputs, this might be just the editable area.
-pub fn clickable_bounds(component: &Component) -> Rect {
-    component.bounds
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::terminal::CellStyle;
+    use crate::vom::Rect;
 
     fn make_cluster(text: &str, style: CellStyle, x: u16, y: u16) -> Cluster {
         Cluster {
@@ -322,5 +310,32 @@ mod tests {
         assert_eq!(components[0].role, Role::Button);
         assert_eq!(components[1].role, Role::StaticText);
         assert_eq!(components[2].role, Role::Checkbox);
+    }
+
+    #[test]
+    fn test_cursor_at_cluster_start_boundary() {
+        // Cluster at x=10, width=5 ("Hello")
+        let cluster = make_cluster("Hello", CellStyle::default(), 10, 5);
+        // Cursor at start boundary (x=10, y=5) - should be Input
+        let role = infer_role(&cluster, 5, 10);
+        assert_eq!(role, Role::Input);
+    }
+
+    #[test]
+    fn test_cursor_at_cluster_end_boundary() {
+        // Cluster at x=10, width=5 ("Hello") - valid range is 10-14
+        let cluster = make_cluster("Hello", CellStyle::default(), 10, 5);
+        // Cursor at end boundary (x=14, y=5) - should be Input
+        let role = infer_role(&cluster, 5, 14);
+        assert_eq!(role, Role::Input);
+    }
+
+    #[test]
+    fn test_cursor_past_cluster_end() {
+        // Cluster at x=10, width=5 - valid range is 10-14, so 15 is outside
+        let cluster = make_cluster("Hello", CellStyle::default(), 10, 5);
+        // Cursor one past end (x=15) - should NOT be Input
+        let role = infer_role(&cluster, 5, 15);
+        assert_eq!(role, Role::StaticText);
     }
 }

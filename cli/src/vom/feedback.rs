@@ -1,7 +1,7 @@
 //! Feedback Loop ("Observer")
 //!
-//! Algorithm: Perceptual Hashing (SimHash) for Layout Signature
-//! Goal: Deterministic `wait` - verify action had effect
+//! Algorithm: Structural Hashing for Layout Signature
+//! Goal: Deterministic `wait` - verify action had effect via layout hash comparison
 //!
 //! Layout Signature = Hash(Vec<Component.visual_hash>)
 //! More stable than raw screen hash - ignores cursor blink, clock updates
@@ -31,13 +31,15 @@ pub fn compute_layout_signature(components: &[Component]) -> u64 {
 }
 
 /// Check if two layout signatures are identical.
-/// Hamming distance of 0 = stable layout.
+/// Returns true if the hashes are equal (layout unchanged).
+#[allow(dead_code)] // Public API for external consumers
 pub fn is_stable(current: u64, previous: u64) -> bool {
     current == previous
 }
 
 /// Compute a content-only signature (ignores position).
 /// Useful for detecting content changes regardless of layout shifts.
+#[allow(dead_code)] // Public API for external consumers
 pub fn compute_content_signature(components: &[Component]) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
@@ -51,6 +53,7 @@ pub fn compute_content_signature(components: &[Component]) -> u64 {
 
 /// Compute a role-only signature (ignores content and style).
 /// Useful for detecting structural changes (e.g., new buttons appeared).
+#[allow(dead_code)] // Public API for external consumers
 pub fn compute_structure_signature(components: &[Component]) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
@@ -65,6 +68,7 @@ pub fn compute_structure_signature(components: &[Component]) -> u64 {
 
 /// Result of comparing two layouts
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)] // Public API for external consumers
 pub enum LayoutChange {
     /// No change detected
     Stable,
@@ -77,6 +81,7 @@ pub enum LayoutChange {
 }
 
 /// Compare two sets of components and determine what changed.
+#[allow(dead_code)] // Public API for external consumers
 pub fn compare_layouts(before: &[Component], after: &[Component]) -> LayoutChange {
     let before_layout = compute_layout_signature(before);
     let after_layout = compute_layout_signature(after);
@@ -103,6 +108,7 @@ pub fn compare_layouts(before: &[Component], after: &[Component]) -> LayoutChang
 }
 
 /// Find components that appeared in `after` but not in `before`.
+#[allow(dead_code)] // Public API for external consumers
 pub fn find_new_components<'a>(before: &[Component], after: &'a [Component]) -> Vec<&'a Component> {
     after
         .iter()
@@ -111,6 +117,7 @@ pub fn find_new_components<'a>(before: &[Component], after: &'a [Component]) -> 
 }
 
 /// Find components that disappeared from `before` to `after`.
+#[allow(dead_code)] // Public API for external consumers
 pub fn find_removed_components<'a>(
     before: &'a [Component],
     after: &[Component],
@@ -122,6 +129,7 @@ pub fn find_removed_components<'a>(
 }
 
 /// Check if two components are "the same" (same position and similar content).
+#[allow(dead_code)] // Used by find_new_components and find_removed_components
 fn components_match(a: &Component, b: &Component) -> bool {
     // Same position and role
     a.bounds == b.bounds && a.role == b.role
@@ -209,5 +217,34 @@ mod tests {
         let removed = find_removed_components(&before, &after);
         assert_eq!(removed.len(), 1);
         assert_eq!(removed[0].text_content, "[Cancel]");
+    }
+
+    #[test]
+    fn test_empty_components_signature() {
+        let components: Vec<Component> = vec![];
+        let sig = compute_layout_signature(&components);
+        // Should produce a consistent hash (not panic)
+        let empty: Vec<Component> = vec![];
+        assert_eq!(sig, compute_layout_signature(&empty));
+    }
+
+    fn make_component_with_hash(text: &str, role: Role, x: u16, y: u16, hash: u64) -> Component {
+        Component::new(
+            role,
+            Rect::new(x, y, text.len() as u16, 1),
+            text.to_string(),
+            hash,
+        )
+    }
+
+    #[test]
+    fn test_layout_shifted() {
+        // Same text, same role, same position, but different visual_hash
+        // This happens when styles change without content change
+        let before = vec![make_component_with_hash("[OK]", Role::Button, 0, 0, 111)];
+        let after = vec![make_component_with_hash("[OK]", Role::Button, 0, 0, 222)];
+
+        let change = compare_layouts(&before, &after);
+        assert_eq!(change, LayoutChange::LayoutShifted);
     }
 }

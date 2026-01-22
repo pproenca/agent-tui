@@ -417,7 +417,10 @@ impl DaemonServer {
         let req_id = request.id;
 
         self.with_session(&request, session_id, |sess| {
-            let _ = sess.update();
+            // Update session state - log errors but continue with potentially stale data
+            if let Err(e) = sess.update() {
+                eprintln!("Warning: Session update failed during snapshot: {}", e);
+            }
 
             let screen = sess.screen_text();
             let cursor = sess.cursor();

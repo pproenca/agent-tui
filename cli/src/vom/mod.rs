@@ -9,13 +9,6 @@
 //! 2. Classification: Geometric & attribute heuristics → Vec<Component> with Roles
 //! 3. Interaction: Mouse injection via ANSI CSI (O(1) teleport)
 //! 4. Feedback: Layout signatures for change detection
-//!
-//! # Status
-//! This module is in shadow mode - it runs alongside the existing regex-based
-//! detection for verification before becoming the primary system.
-
-// VOM is an intentionally staged feature - allow unused code during shadow mode
-#![allow(dead_code)]
 
 pub mod classifier;
 pub mod feedback;
@@ -45,14 +38,23 @@ impl Rect {
         }
     }
 
-    /// Get the center point of the rectangle
+    /// Get the center point of the rectangle.
+    /// Uses saturating arithmetic to prevent overflow on large coordinates.
     pub fn center(&self) -> (u16, u16) {
-        (self.x + self.width / 2, self.y + self.height / 2)
+        (
+            self.x.saturating_add(self.width / 2),
+            self.y.saturating_add(self.height / 2),
+        )
     }
 
-    /// Check if a point is within this rectangle
+    /// Check if a point is within this rectangle.
+    /// Uses saturating arithmetic to prevent overflow on large coordinates.
+    #[allow(dead_code)] // Public API for external consumers
     pub fn contains(&self, x: u16, y: u16) -> bool {
-        x >= self.x && x < self.x + self.width && y >= self.y && y < self.y + self.height
+        x >= self.x
+            && x < self.x.saturating_add(self.width)
+            && y >= self.y
+            && y < self.y.saturating_add(self.height)
     }
 }
 
@@ -164,6 +166,7 @@ pub fn find_by_text<'a>(components: &'a [Component], text: &str) -> Option<&'a C
 }
 
 /// Find component by exact text content
+#[allow(dead_code)] // Public API for external consumers
 pub fn find_by_exact_text<'a>(components: &'a [Component], text: &str) -> Option<&'a Component> {
     components
         .iter()
@@ -176,6 +179,7 @@ pub fn find_by_role(components: &[Component], role: Role) -> Vec<&Component> {
 }
 
 /// Find component at a specific position
+#[allow(dead_code)] // Public API for external consumers
 pub fn find_at_position(components: &[Component], x: u16, y: u16) -> Option<&Component> {
     components.iter().find(|c| c.bounds.contains(x, y))
 }
@@ -232,5 +236,16 @@ mod tests {
         assert_eq!(Role::Button.to_string(), "button");
         assert_eq!(Role::Tab.to_string(), "tab");
         assert_eq!(Role::Input.to_string(), "input");
+    }
+
+    #[test]
+    fn test_rect_center_odd_dimensions() {
+        // Width 5: center should be at x + 2 (integer division)
+        let rect = Rect::new(0, 0, 5, 3);
+        assert_eq!(rect.center(), (2, 1)); // 5/2=2, 3/2=1
+
+        // Width 1: center should be at x
+        let rect = Rect::new(10, 10, 1, 1);
+        assert_eq!(rect.center(), (10, 10));
     }
 }

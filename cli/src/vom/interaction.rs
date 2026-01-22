@@ -8,15 +8,17 @@
 
 use crate::vom::Component;
 
-/// Mouse button identifiers
+/// Mouse button identifiers for SGR 1006 format.
+/// All variants are part of the public API for external consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // Public API - all variants intentionally available
 pub enum MouseButton {
     Left = 0,
     Middle = 1,
     Right = 2,
-    /// Scroll up (button 4 in X11, encoded as 64 in SGR)
+    /// Scroll up (encoded as 64 in SGR - bit 6 set for scroll wheel)
     ScrollUp = 64,
-    /// Scroll down (button 5 in X11, encoded as 65 in SGR)
+    /// Scroll down (encoded as 65 in SGR - bit 6 set for scroll wheel)
     ScrollDown = 65,
 }
 
@@ -67,6 +69,7 @@ pub fn mouse_click_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
 }
 
 /// Generate a mouse press sequence (no release) in SGR 1006 format.
+#[allow(dead_code)] // Public API for external consumers
 pub fn mouse_press_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
     let x = x + 1;
     let y = y + 1;
@@ -76,6 +79,7 @@ pub fn mouse_press_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
 }
 
 /// Generate a mouse release sequence in SGR 1006 format.
+#[allow(dead_code)] // Public API for external consumers
 pub fn mouse_release_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
     let x = x + 1;
     let y = y + 1;
@@ -85,16 +89,18 @@ pub fn mouse_release_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
 }
 
 /// Generate a mouse move sequence (drag or hover tracking).
-/// Uses button code 35 (32 + 3) for motion with no button pressed.
+/// Uses button code 35 (32 for motion flag + 3 for no button) for mouse movement.
+#[allow(dead_code)] // Public API for external consumers
 pub fn mouse_move_sequence(x: u16, y: u16) -> Vec<u8> {
     let x = x + 1;
     let y = y + 1;
 
-    // Motion event: button code 35 (32 + 3 = motion with no button)
+    // Motion event: button code 35 (32 = motion flag, 3 = no button pressed)
     format!("\x1b[<35;{};{}M", x, y).into_bytes()
 }
 
 /// Generate a scroll sequence.
+#[allow(dead_code)] // Public API for external consumers
 pub fn scroll_sequence(direction: MouseButton, x: u16, y: u16) -> Vec<u8> {
     // Scroll events are just button press, no release
     mouse_press_sequence(direction, x, y)
@@ -120,6 +126,7 @@ pub fn click_at(x: u16, y: u16, button: MouseButton) -> Vec<u8> {
 
 /// Generate a double-click sequence.
 /// This is simply two click sequences in rapid succession.
+#[allow(dead_code)] // Public API for external consumers
 pub fn double_click_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
     let mut seq = mouse_click_sequence(button, x, y);
     seq.extend(mouse_click_sequence(button, x, y));
@@ -127,13 +134,15 @@ pub fn double_click_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
 }
 
 /// Legacy mouse encoding (X10 format) for terminals that don't support SGR.
-/// Encodes position in bytes, limiting to 223 columns/rows.
+/// Encodes position in bytes, limiting to coordinates 0-222 (223 distinct values).
+#[allow(dead_code)] // Public API for external consumers
 pub mod legacy {
     use super::MouseButton;
 
-    /// Generate X10 format mouse click (limited to 223x223 grid)
+    /// Generate X10 format mouse click.
+    /// Returns `None` if coordinates exceed 222 (X10 encodes as value + 33, max byte is 255).
     pub fn mouse_click_x10(button: MouseButton, x: u16, y: u16) -> Option<Vec<u8>> {
-        // X10 format can only encode positions up to 223
+        // X10 format can only encode positions 0-222 (223 distinct values)
         if x > 222 || y > 222 {
             return None;
         }
@@ -210,5 +219,28 @@ mod tests {
     fn test_legacy_x10_out_of_range() {
         let seq = legacy::mouse_click_x10(MouseButton::Left, 300, 5);
         assert!(seq.is_none());
+    }
+
+    #[test]
+    fn test_mouse_click_at_origin() {
+        let seq = mouse_click_sequence(MouseButton::Left, 0, 0);
+        let seq_str = String::from_utf8_lossy(&seq);
+        // Must be 1-indexed: position (0,0) becomes (1,1)
+        assert!(seq_str.contains("\x1b[<0;1;1M"));
+        assert!(seq_str.contains("\x1b[<0;1;1m"));
+    }
+
+    #[test]
+    fn test_legacy_x10_at_boundary() {
+        // Exactly 222 should work (becomes 255 = 222 + 33)
+        let seq = legacy::mouse_click_x10(MouseButton::Left, 222, 222);
+        assert!(seq.is_some());
+        let bytes = seq.unwrap();
+        assert_eq!(bytes[4], 255); // 222 + 33
+        assert_eq!(bytes[5], 255);
+
+        // 223 should fail
+        assert!(legacy::mouse_click_x10(MouseButton::Left, 223, 0).is_none());
+        assert!(legacy::mouse_click_x10(MouseButton::Left, 0, 223).is_none());
     }
 }

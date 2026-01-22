@@ -75,6 +75,7 @@ pub fn segment_buffer(buffer: &ScreenBuffer) -> Vec<Cluster> {
 }
 
 /// Segment without filtering whitespace (for debugging/testing)
+#[allow(dead_code)] // Public API for debugging and testing
 pub fn segment_buffer_with_whitespace(buffer: &ScreenBuffer) -> Vec<Cluster> {
     let mut clusters = Vec::new();
 
@@ -240,5 +241,30 @@ mod tests {
         // All same style, so should be one cluster
         assert_eq!(clusters.len(), 1);
         assert_eq!(clusters[0].text, "[ OK ]");
+    }
+
+    #[test]
+    fn test_empty_buffer() {
+        let buffer = make_buffer(vec![]);
+        let clusters = segment_buffer(&buffer);
+        assert_eq!(clusters.len(), 0);
+    }
+
+    #[test]
+    fn test_empty_row() {
+        let buffer = make_buffer(vec![vec![]]);
+        let clusters = segment_buffer(&buffer);
+        assert_eq!(clusters.len(), 0);
+    }
+
+    #[test]
+    fn test_single_cell() {
+        let cells = vec![vec![make_cell('X', false, None)]];
+        let buffer = make_buffer(cells);
+        let clusters = segment_buffer(&buffer);
+
+        assert_eq!(clusters.len(), 1);
+        assert_eq!(clusters[0].text, "X");
+        assert_eq!(clusters[0].rect.width, 1);
     }
 }

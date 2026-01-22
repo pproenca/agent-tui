@@ -143,15 +143,6 @@ impl VirtualTerminal {
         let mut parser = mutex_lock_or_recover(&self.parser);
         parser.set_size(rows, cols);
     }
-
-    /// Check if the terminal has mouse reporting enabled
-    #[allow(dead_code)] // VOM shadow mode
-    pub fn mouse_reporting_enabled(&self) -> bool {
-        let parser = mutex_lock_or_recover(&self.parser);
-        let screen = parser.screen();
-        // Check for any mouse tracking mode (1000, 1002, 1003, 1006, etc.)
-        screen.mouse_protocol_mode() != vt100::MouseProtocolMode::None
-    }
 }
 
 fn convert_color(color: vt100::Color) -> Option<Color> {

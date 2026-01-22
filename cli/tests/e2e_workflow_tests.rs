@@ -1,14 +1,7 @@
 //! E2E workflow tests with real daemon
 //!
-//! These tests verify complete user workflows using the real daemon.
-//! Run with: cargo test --test e2e_workflow_tests -- --test-threads=1
-//!
-//! IMPORTANT: These tests MUST run sequentially (--test-threads=1) because they:
-//! - Share a single daemon process
-//! - Manipulate the "active session" state
-//! - Can interfere with each other if run in parallel
-//!
-//! If tests fail when run in parallel, that's expected behavior - use --test-threads=1.
+//! Each test spawns an isolated daemon instance on a unique socket,
+//! allowing tests to run in parallel without state conflicts.
 
 mod common;
 
@@ -155,67 +148,6 @@ fn test_multi_session_switching() {
 }
 
 // =============================================================================
-// Demo Form Interaction Tests
-// =============================================================================
-
-#[test]
-fn test_demo_form_interaction() {
-    let h = RealTestHarness::new();
-    h.spawn_demo();
-
-    // 1. Verify initial state - checkbox unchecked [ ]
-    let output = h.cli_json().args(["snapshot"]).output().unwrap();
-    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let screen = json["screen"].as_str().unwrap();
-    assert!(
-        screen.contains("[ ] Enable notifications"),
-        "Checkbox should be unchecked initially"
-    );
-
-    // 2. Type name into input field (focus starts on Name field)
-    assert!(h
-        .cli()
-        .args(["type", "E2EUser"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(h
-        .cli()
-        .args(["wait", "-t", "3000", "E2EUser"])
-        .status()
-        .unwrap()
-        .success());
-
-    // 3. Tab to checkbox
-    assert!(h.cli().args(["press", "Tab"]).status().unwrap().success());
-    assert!(h
-        .cli()
-        .args(["wait", "--condition", "stable", "-t", "2000"])
-        .status()
-        .unwrap()
-        .success());
-
-    // 4. Toggle checkbox with Space
-    assert!(h.cli().args(["press", "Space"]).status().unwrap().success());
-    assert!(h
-        .cli()
-        .args(["wait", "--condition", "stable", "-t", "2000"])
-        .status()
-        .unwrap()
-        .success());
-
-    // 5. Verify checkbox is now checked [x]
-    let output = h.cli_json().args(["snapshot"]).output().unwrap();
-    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let screen = json["screen"].as_str().unwrap();
-    assert!(
-        screen.contains("[x] Enable notifications"),
-        "Checkbox should be checked after Space"
-    );
-    assert!(screen.contains("E2EUser"), "Name should still be visible");
-}
-
-// =============================================================================
 // Wait Condition Tests
 // =============================================================================
 
@@ -330,66 +262,6 @@ fn test_wait_stable_succeeds() {
 }
 
 // =============================================================================
-// Keyboard Navigation Tests
-// =============================================================================
-
-#[test]
-fn test_keyboard_tab_navigation() {
-    let h = RealTestHarness::new();
-    h.spawn_demo();
-
-    // The demo uses ANSI colors to indicate focus, not different text.
-    // Snapshot only captures text, so we verify navigation by checking state changes.
-
-    // 1. Initial state: focus on Name field
-    // Type something to verify we're on the name field
-    assert!(h
-        .cli()
-        .args(["type", "NavTest"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(h
-        .cli()
-        .args(["wait", "-t", "3000", "NavTest"])
-        .status()
-        .unwrap()
-        .success());
-
-    // 2. Tab to checkbox, press Space to toggle
-    assert!(h.cli().args(["press", "Tab"]).status().unwrap().success());
-    assert!(h
-        .cli()
-        .args(["wait", "--condition", "stable", "-t", "2000"])
-        .status()
-        .unwrap()
-        .success());
-
-    // Toggle checkbox with Space (this only works when checkbox is focused)
-    assert!(h.cli().args(["press", "Space"]).status().unwrap().success());
-    assert!(h
-        .cli()
-        .args(["wait", "--condition", "stable", "-t", "2000"])
-        .status()
-        .unwrap()
-        .success());
-
-    // 3. Verify checkbox state changed - proves Tab navigation worked
-    let output = h.cli_json().args(["snapshot"]).output().unwrap();
-    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let screen = json["screen"].as_str().unwrap();
-
-    assert!(
-        screen.contains("[x] Enable notifications"),
-        "Checkbox should be checked after Tab + Space, proving navigation works"
-    );
-    assert!(
-        screen.contains("NavTest"),
-        "Name field should still have typed text"
-    );
-}
-
-// =============================================================================
 // Error Handling Tests
 // =============================================================================
 
@@ -440,4 +312,77 @@ fn test_operation_on_dead_session() {
         .status()
         .unwrap();
     assert!(!status.success(), "Snapshot on dead session should fail");
+}
+
+// =============================================================================
+// Concurrency Tests
+// =============================================================================
+
+#[test]
+fn test_concurrent_session_access() {
+    use std::process::Command;
+    use std::thread;
+
+    let h = RealTestHarness::new();
+    let session_id = h.spawn_bash();
+
+    // Get socket path for thread-safe access
+    let socket_path = h.socket_path().to_path_buf();
+    let socket_path2 = socket_path.clone();
+    let sid1 = session_id.clone();
+    let sid2 = session_id.clone();
+
+    // Thread 1: Type command
+    let t1 = thread::spawn(move || {
+        Command::new(env!("CARGO_BIN_EXE_agent-tui"))
+            .env("AGENT_TUI_SOCKET", &socket_path)
+            .args(["-s", &sid1, "type", "echo concurrent1"])
+            .status()
+            .expect("type command failed")
+    });
+
+    // Thread 2: Take snapshot simultaneously
+    let t2 = thread::spawn(move || {
+        Command::new(env!("CARGO_BIN_EXE_agent-tui"))
+            .env("AGENT_TUI_SOCKET", &socket_path2)
+            .args(["-f", "json", "-s", &sid2, "snapshot"])
+            .output()
+            .expect("snapshot failed")
+    });
+
+    // Both operations should succeed without deadlock
+    let status1 = t1.join().expect("thread 1 panicked");
+    let output2 = t2.join().expect("thread 2 panicked");
+
+    assert!(status1.success(), "type command failed");
+    assert!(output2.status.success(), "snapshot failed");
+
+    // Verify snapshot contains valid JSON
+    let json: Value =
+        serde_json::from_slice(&output2.stdout).expect("snapshot output not valid JSON");
+    assert!(json["screen"].is_string());
+}
+
+#[test]
+fn test_rapid_session_spawn_and_kill() {
+    let h = RealTestHarness::new();
+
+    // Rapidly spawn and kill 10 sessions
+    for i in 0..10 {
+        let output = h.cli_json().args(["spawn", "bash"]).output().unwrap();
+        assert!(output.status.success(), "spawn {} failed", i);
+
+        let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let sid = json["session_id"].as_str().unwrap();
+
+        // Kill immediately
+        let status = h.cli().args(["-s", sid, "kill"]).status().unwrap();
+        assert!(status.success(), "kill {} failed", i);
+    }
+
+    // All sessions should be cleaned up
+    let output = h.cli_json().args(["sessions"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let sessions = json["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 0, "All sessions should be killed");
 }

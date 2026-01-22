@@ -48,6 +48,7 @@ libc = "0.2"
 assert_cmd = "2.0"        # Binary testing - invoke CLI as subprocess
 predicates = "3.0"        # Assertion building for CLI output verification
 tempfile = "3.0"          # Isolated socket paths for mock daemon
+trycmd = "0.15"           # File-based CLI snapshot testing for E2E tests
 
 # cargo-udeps false positives (rand is used in connection.rs for jitter)
 [package.metadata.cargo-udeps.ignore]

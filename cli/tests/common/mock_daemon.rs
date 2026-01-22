@@ -145,14 +145,6 @@ impl MockDaemon {
                 })),
             );
             h.insert(
-                "screen".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "session_id": super::TEST_SESSION_ID,
-                    "screen": "Test screen content\n",
-                    "size": { "cols": super::TEST_COLS, "rows": super::TEST_ROWS }
-                })),
-            );
-            h.insert(
                 "click".to_string(),
                 MockResponse::Success(serde_json::json!({
                     "success": true,

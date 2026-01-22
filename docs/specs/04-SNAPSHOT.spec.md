@@ -7,14 +7,14 @@ Commands for capturing screen state and content.
 | Browser Command | TUI Equivalent | Status | Notes |
 |-----------------|----------------|--------|-------|
 | `snapshot` | `snapshot` | ✅ Exists | Accessibility tree |
-| `screenshot` | `screen` | ✅ Exists | ANSI text capture |
-| `content` | `screen` | ✅ Exists | Raw content = screen |
+| `screenshot` | `snapshot --strip-ansi` | ✅ Exists | Plain text capture |
+| `content` | `snapshot` | ✅ Exists | Raw content = screen |
 
 ---
 
 ## snapshot (Both)
 
-**Purpose**: Capture current screen state with element detection
+**Purpose**: Capture current screen state with optional element detection
 
 ### Browser Signature
 
@@ -44,9 +44,10 @@ pub struct SnapshotParams {
     pub session: Option<String>,
     pub include_elements: Option<bool>,   // Include detected elements
     pub format: Option<SnapshotFormat>,   // text | json | tree
-    pub interactive_only: Option<bool>,   // Only interactive elements
-    pub compact: Option<bool>,            // Compact output
+    pub compact: Option<bool>,            // Compact output (hide static text)
     pub region: Option<String>,           // Scope to region
+    pub strip_ansi: Option<bool>,         // Remove ANSI escape codes
+    pub include_cursor: Option<bool>,     // Include cursor position
 }
 
 pub enum SnapshotFormat {
@@ -59,7 +60,7 @@ pub struct SnapshotResult {
     pub session_id: String,
     pub screen: String,             // Raw screen content
     pub elements: Option<Vec<Element>>,
-    pub cursor: Option<CursorPosition>,
+    pub cursor: Option<CursorPosition>,  // Included with -i or --include-cursor
     pub size: TerminalSize,
 }
 
@@ -83,9 +84,12 @@ pub struct Element {
 agent-browser snapshot --interactive --compact
 
 # TUI
-agent-tui snapshot
-agent-tui snapshot --interactive-only --format json
-agent-tui snapshot --compact
+agent-tui snapshot              # Screen only (most common)
+agent-tui snapshot -i           # Screen + detected elements
+agent-tui snapshot -i -c        # Compact element list
+agent-tui snapshot --strip-ansi # Plain text without colors
+agent-tui snapshot -i -f json   # JSON with elements
+agent-tui snapshot --include-cursor  # Include cursor position
 ```
 
 ### Key Differences
@@ -94,7 +98,7 @@ agent-tui snapshot --compact
 |--------|---------|-----|
 | Element refs | `refs` map | `elements` array |
 | Position | `boundingBox` (pixels) | `position` (row/col) |
-| Cursor | N/A | Included |
+| Cursor | N/A | Included with `-i` or `--include-cursor` |
 | Size | N/A | Included (cols/rows) |
 | Format | Text only | text, json, tree |
 | Depth control | `maxDepth` | Detection algorithm |
@@ -102,15 +106,35 @@ agent-tui snapshot --compact
 ### JSON-RPC Example
 
 ```json
-// Request
+// Request - screen only
+{
+  "jsonrpc": "2.0",
+  "method": "snapshot",
+  "params": {
+    "session": "htop-abc123"
+  },
+  "id": 1
+}
+
+// Request - with elements
 {
   "jsonrpc": "2.0",
   "method": "snapshot",
   "params": {
     "include_elements": true,
-    "interactive_only": true
+    "compact": true
   },
-  "id": 1
+  "id": 2
+}
+
+// Request - plain text (stripped ANSI)
+{
+  "jsonrpc": "2.0",
+  "method": "snapshot",
+  "params": {
+    "strip_ansi": true
+  },
+  "id": 3
 }
 
 // Response
@@ -182,116 +206,16 @@ Screen (120x40)
 
 ---
 
-## screen (TUI) / screenshot + content (Browser)
-
-**Purpose**: Get raw screen content without element detection
-
-### Browser Signature (screenshot)
-
-```typescript
-interface ScreenshotCommand {
-  action: 'screenshot';
-  path?: string;          // Save to file
-  fullPage?: boolean;     // Capture entire page
-  selector?: string;      // Scope to element
-  type?: 'png' | 'jpeg';
-  quality?: number;       // 0-100 for jpeg
-}
-
-// Response
-interface ScreenshotResponse {
-  path?: string;
-  base64?: string;
-}
-```
-
-### Browser Signature (content)
-
-```typescript
-interface ContentCommand {
-  action: 'content';
-  selector?: string;      // Optional: scope to element
-}
-
-// Response
-interface ContentResponse {
-  html: string;
-}
-```
-
-### TUI Signature
-
-```rust
-pub struct ScreenParams {
-    pub session: Option<String>,
-    pub strip_ansi: Option<bool>,     // Remove ANSI codes
-    pub include_cursor: Option<bool>, // Show cursor position
-}
-
-pub struct ScreenResult {
-    pub session_id: String,
-    pub screen: String,       // Raw ANSI text (or plain if stripped)
-    pub size: TerminalSize,
-    pub cursor: Option<CursorPosition>,
-}
-```
-
-### CLI Usage
-
-```bash
-# Browser
-agent-browser screenshot --path ./screenshot.png
-agent-browser content
-
-# TUI
-agent-tui screen
-agent-tui screen --strip-ansi
-```
-
-### Key Differences
-
-| Aspect | Browser (screenshot) | Browser (content) | TUI (screen) |
-|--------|---------------------|-------------------|--------------|
-| Output | Image (PNG/JPEG) | HTML | ANSI text |
-| Scope | Full page or element | Element | Full terminal |
-| Format | Binary/base64 | Text | Text |
-
-### JSON-RPC Example
-
-```json
-// Request
-{
-  "jsonrpc": "2.0",
-  "method": "screen",
-  "params": {
-    "strip_ansi": true
-  },
-  "id": 1
-}
-
-// Response
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "session_id": "htop-abc123",
-    "screen": "  PID USER      PRI  NI  VIRT   RES   SHR S  CPU%  MEM%   TIME+  Command\n...",
-    "size": { "cols": 120, "rows": 40 }
-  },
-  "id": 1
-}
-```
-
----
-
 ## Comparison: When to Use Each
 
 | Use Case | Browser | TUI |
 |----------|---------|-----|
-| Get element references for interaction | `snapshot` | `snapshot` |
-| Get raw visual content | `screenshot` | `screen` |
-| Get structured content | `content` (HTML) | `snapshot --format json` |
-| Debug UI state | `screenshot` | `screen` (with ANSI colors) |
-| Automated testing assertions | `snapshot` | `snapshot` or `screen` |
+| Get element references for interaction | `snapshot` | `snapshot -i` |
+| Get raw visual content | `screenshot` | `snapshot` |
+| Get plain text (no formatting) | `content` | `snapshot --strip-ansi` |
+| Get structured content | `content` (HTML) | `snapshot -f json` |
+| Debug UI state | `screenshot` | `snapshot` (with ANSI colors) |
+| Automated testing assertions | `snapshot` | `snapshot` |
 
 ---
 

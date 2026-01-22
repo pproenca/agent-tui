@@ -19,7 +19,7 @@ This directory contains specifications mapping agent-browser commands to their T
 | [01-SESSION_LIFECYCLE.spec.md](01-SESSION_LIFECYCLE.spec.md) | Session Lifecycle | spawn, kill, sessions, health |
 | [02-NAVIGATION.spec.md](02-NAVIGATION.spec.md) | Navigation | N/A for TUI (browser URLs) |
 | [03-ELEMENT_INTERACTION.spec.md](03-ELEMENT_INTERACTION.spec.md) | Element Interaction | click, fill, type, focus, clear |
-| [04-SNAPSHOT.spec.md](04-SNAPSHOT.spec.md) | Snapshot | snapshot, screen |
+| [04-SNAPSHOT.spec.md](04-SNAPSHOT.spec.md) | Snapshot | snapshot |
 | [05-KEYBOARD_MOUSE.spec.md](05-KEYBOARD_MOUSE.spec.md) | Keyboard & Mouse | keystroke, scroll |
 | [06-WAITING.spec.md](06-WAITING.spec.md) | Waiting | wait, waitfor* |
 | [07-STATE_QUERY.spec.md](07-STATE_QUERY.spec.md) | State Query | get_text, is_visible |
@@ -52,7 +52,7 @@ This directory contains specifications mapping agent-browser commands to their T
 | press | keystroke | ✅ Exists |
 | clear | clear | ✅ Exists |
 | snapshot | snapshot | ✅ Exists |
-| screenshot | screen | ✅ Exists |
+| screenshot | snapshot --strip-ansi | ✅ Exists |
 | keyboard | keystroke | ✅ Exists |
 | scroll | scroll | ✅ Exists |
 | wait | wait | ✅ Exists |

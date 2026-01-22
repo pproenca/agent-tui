@@ -645,19 +645,42 @@ fn test_type_text() {
 }
 
 // =============================================================================
-// Screenshot Command Tests
+// Snapshot with strip-ansi and include-cursor Tests
 // =============================================================================
 
 #[test]
-fn test_screenshot_returns_raw_content() {
+fn test_snapshot_strip_ansi() {
     let harness = TestHarness::new();
 
-    harness
-        .run(&["screenshot"])
-        .success()
-        .stdout(predicate::str::contains("Test screen content"));
+    harness.run(&["snapshot", "--strip-ansi"]).success();
 
-    harness.assert_method_called("screen");
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["strip_ansi"], true);
+}
+
+#[test]
+fn test_snapshot_include_cursor() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "screen": "Test screen\n",
+            "cursor": { "row": 5, "col": 10, "visible": true },
+            "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
+        }),
+    );
+
+    harness
+        .run(&["snapshot", "--include-cursor"])
+        .success()
+        .stdout(predicate::str::contains("Cursor: row=5, col=10"));
+
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["include_cursor"], true);
 }
 
 // =============================================================================
@@ -1544,14 +1567,14 @@ fn test_errors_with_count() {
 fn test_assert_text_condition() {
     let harness = TestHarness::new();
 
-    // Assert uses screen internally to check for text
+    // Assert uses snapshot internally to check for text
     harness
         .run(&["assert", "text:Test screen"])
         .success()
         .stdout(predicate::str::contains("Assertion passed"));
 
-    // Verify screen was called to get the content
-    harness.assert_method_called("screen");
+    // Verify snapshot was called to get the content
+    harness.assert_method_called("snapshot");
 }
 
 // =============================================================================

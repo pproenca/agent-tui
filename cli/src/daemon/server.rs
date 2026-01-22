@@ -302,7 +302,6 @@ impl DaemonServer {
             "restart" => self.handle_restart(request),
             "sessions" => self.handle_sessions(request),
             "resize" => self.handle_resize(request),
-            "screen" => self.handle_screen(request),
             "find" => self.handle_find(request),
             "get_text" => self.handle_get_text(request),
             "get_value" => self.handle_get_value(request),
@@ -410,8 +409,9 @@ impl DaemonServer {
         let params = request.params.as_ref().cloned().unwrap_or(json!({}));
         let session_id = request.param_str("session");
         let include_elements = params.bool_or("include_elements", false);
-        let interactive_only = params.bool_or("interactive_only", false);
         let compact = params.bool_or("compact", false);
+        let should_strip_ansi = params.bool_or("strip_ansi", false);
+        let include_cursor = params.bool_or("include_cursor", false);
         let req_id = request.id;
 
         self.with_session(&request, session_id, |sess| {
@@ -427,9 +427,13 @@ impl DaemonServer {
                 }
             };
 
-            let screen = sess.screen_text();
+            let mut screen = sess.screen_text();
             let cursor = sess.cursor();
             let (cols, rows) = sess.size();
+
+            if should_strip_ansi {
+                screen = strip_ansi_codes(&screen);
+            }
 
             let (elements, stats) = if include_elements {
                 // Always use VOM (Visual Object Model) for element detection
@@ -444,9 +448,6 @@ impl DaemonServer {
                     .iter()
                     .enumerate()
                     .filter(|(_, comp)| {
-                        if interactive_only && comp.role == crate::vom::Role::StaticText {
-                            return false;
-                        }
                         if compact && comp.role == crate::vom::Role::StaticText {
                             return false;
                         }
@@ -485,17 +486,21 @@ impl DaemonServer {
                 "session_id": sess.id,
                 "screen": screen,
                 "elements": elements,
-                "cursor": {
-                    "row": cursor.row,
-                    "col": cursor.col,
-                    "visible": cursor.visible
-                },
                 "size": {
                     "cols": cols,
                     "rows": rows
                 },
                 "stats": stats
             });
+
+            // Include cursor info only when requested or when elements are included
+            if include_cursor || include_elements {
+                response["cursor"] = json!({
+                    "row": cursor.row,
+                    "col": cursor.col,
+                    "visible": cursor.visible
+                });
+            }
 
             if let Some(warning) = update_warning {
                 response["warning"] = serde_json::Value::String(warning);
@@ -838,41 +843,6 @@ impl DaemonServer {
                 }),
             ),
             Err(e) => Response::action_failed(req_id, None, &e.to_string()),
-        })
-    }
-
-    fn handle_screen(&self, request: Request) -> Response {
-        let params = request.params.as_ref().cloned().unwrap_or(json!({}));
-        let session_id = request.param_str("session");
-        let strip_ansi = params.bool_or("strip_ansi", false);
-        let include_cursor = params.bool_or("include_cursor", false);
-
-        let req_id = request.id;
-        self.with_session(&request, session_id, |sess| {
-            let _ = sess.update();
-            let mut screen = sess.screen_text();
-            let (cols, rows) = sess.size();
-            let cursor = sess.cursor();
-
-            if strip_ansi {
-                screen = strip_ansi_codes(&screen);
-            }
-
-            let mut result = json!({
-                "session_id": sess.id,
-                "screen": screen,
-                "size": { "cols": cols, "rows": rows }
-            });
-
-            if include_cursor {
-                result["cursor"] = json!({
-                    "row": cursor.row,
-                    "col": cursor.col,
-                    "visible": cursor.visible
-                });
-            }
-
-            Response::success(req_id, result)
         })
     }
 

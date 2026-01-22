@@ -23,7 +23,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     color_init(cli.no_color);
 
     if matches!(cli.command, Commands::Daemon) {
-        return start_daemon().map_err(|e| e.into());
+        return start_daemon();
     }
 
     if let Commands::Completions { shell } = &cli.command {
@@ -58,10 +58,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Sessions => handlers::handle_sessions(&mut ctx)?,
         Commands::Version => handlers::handle_version(&mut ctx)?,
         Commands::Env => handlers::handle_env(&ctx)?,
-        _ => {
-            eprintln!("Command not yet migrated to workspace structure");
-            std::process::exit(1);
-        }
     }
 
     Ok(())

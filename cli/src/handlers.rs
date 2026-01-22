@@ -42,6 +42,9 @@ impl<'a> HandlerContext<'a> {
             OutputFormat::Text | OutputFormat::Tree => {
                 if success {
                     println!("{}", success_msg);
+                    if let Some(warning) = result.get("warning").and_then(|w| w.as_str()) {
+                        eprintln!("{}", warning);
+                    }
                 } else {
                     let msg = result.str_or("message", "Unknown error");
                     eprintln!("{}: {}", failure_prefix, msg);

@@ -164,27 +164,41 @@ impl DaemonServer {
     }
 
     /// Helper for handlers that need element detection (update + detect_elements).
+    /// Returns update warning message if update fails (data may be stale).
     fn with_detected_session_and_ref<F>(&self, request: &Request, f: F) -> Response
     where
-        F: FnOnce(&mut crate::session::Session, &str) -> Response,
+        F: FnOnce(&mut crate::session::Session, &str, Option<String>) -> Response,
     {
         self.with_session_and_ref(request, |sess, element_ref| {
-            let _ = sess.update();
+            let update_warning = match sess.update() {
+                Ok(()) => None,
+                Err(e) => {
+                    eprintln!("Warning: Session update failed: {}", e);
+                    Some(format!("Element data may be stale: {}", e))
+                }
+            };
             sess.detect_elements();
-            f(sess, element_ref)
+            f(sess, element_ref, update_warning)
         })
     }
 
     /// Helper for handlers that need detection but no ref param.
+    /// Returns update warning message if update fails (data may be stale).
     fn with_detected_session<F>(&self, request: &Request, f: F) -> Response
     where
-        F: FnOnce(&mut crate::session::Session) -> Response,
+        F: FnOnce(&mut crate::session::Session, Option<String>) -> Response,
     {
         let session_id = request.param_str("session");
         self.with_session(request, session_id, |sess| {
-            let _ = sess.update();
+            let update_warning = match sess.update() {
+                Ok(()) => None,
+                Err(e) => {
+                    eprintln!("Warning: Session update failed: {}", e);
+                    Some(format!("Element data may be stale: {}", e))
+                }
+            };
             sess.detect_elements();
-            f(sess)
+            f(sess, update_warning)
         })
     }
 
@@ -233,40 +247,42 @@ impl DaemonServer {
         T: serde::Serialize,
     {
         let req_id = request.id;
-        self.with_detected_session_and_ref(request, |sess, element_ref| {
-            match sess.find_element(element_ref) {
-                Some(el) => Response::success(
-                    req_id,
-                    json!({
-                        "ref": element_ref,
-                        field_name: extract(el),
-                        "found": true
-                    }),
-                ),
-                None => Response::success(
-                    req_id,
-                    json!({
-                        "ref": element_ref,
-                        field_name: serde_json::Value::Null,
-                        "found": false,
-                        "message": ai_friendly_error("Element not found", Some(element_ref))
-                    }),
-                ),
+        self.with_detected_session_and_ref(request, |sess, element_ref, update_warning| {
+            let mut response = match sess.find_element(element_ref) {
+                Some(el) => json!({
+                    "ref": element_ref,
+                    field_name: extract(el),
+                    "found": true
+                }),
+                None => json!({
+                    "ref": element_ref,
+                    field_name: serde_json::Value::Null,
+                    "found": false,
+                    "message": ai_friendly_error("Element not found", Some(element_ref))
+                }),
+            };
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
             }
+            Response::success(req_id, response)
         })
     }
 
     /// Helper for handlers that verify element exists then write PTY bytes.
     fn element_action(&self, request: &Request, pty_bytes: &[u8]) -> Response {
         let req_id = request.id;
-        self.with_detected_session_and_ref(request, |sess, element_ref| {
+        self.with_detected_session_and_ref(request, |sess, element_ref, update_warning| {
             if sess.find_element(element_ref).is_none() {
                 return Response::element_not_found(req_id, element_ref);
             }
             if let Err(e) = sess.pty_write(pty_bytes) {
                 return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
             }
-            Response::success(req_id, json!({ "success": true, "ref": element_ref }))
+            let mut response = json!({ "success": true, "ref": element_ref });
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
+            }
+            Response::success(req_id, response)
         })
     }
 
@@ -552,9 +568,9 @@ impl DaemonServer {
             Ok(v) => v.to_string(),
             Err(resp) => return resp,
         };
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
+        self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
             // Check if the element exists and validate its type
-            let warning = match sess.find_element(element_ref) {
+            let type_warning = match sess.find_element(element_ref) {
                 Some(el) => {
                     let el_type = el.element_type.as_str();
                     if el_type != "input" {
@@ -583,7 +599,13 @@ impl DaemonServer {
                 "value": value
             });
 
-            if let Some(warn_msg) = warning {
+            // Combine warnings: update warning takes precedence, then type warning
+            let combined_warning = match (update_warning, type_warning) {
+                (Some(uw), Some(tw)) => Some(format!("{}. {}", uw, tw)),
+                (Some(w), None) | (None, Some(w)) => Some(w),
+                (None, None) => None,
+            };
+            if let Some(warn_msg) = combined_warning {
                 response["warning"] = json!(warn_msg);
             }
 
@@ -923,7 +945,7 @@ impl DaemonServer {
             .map(|n| n as usize);
 
         let req_id = request.id;
-        self.with_detected_session(&request, |sess| {
+        self.with_detected_session(&request, |sess, update_warning| {
             let elements = sess.cached_elements();
 
             let matches: Vec<_> = elements
@@ -942,14 +964,15 @@ impl DaemonServer {
                 matches
             };
 
-            Response::success(
-                req_id,
-                json!({
-                    "session_id": sess.id,
-                    "elements": final_matches,
-                    "count": final_matches.len()
-                }),
-            )
+            let mut response = json!({
+                "session_id": sess.id,
+                "elements": final_matches,
+                "count": final_matches.len()
+            });
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
+            }
+            Response::success(req_id, response)
         })
     }
 
@@ -965,9 +988,13 @@ impl DaemonServer {
 
     fn handle_is_visible(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
+        self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
             let visible = sess.find_element(element_ref).is_some();
-            Response::success(req_id, json!({ "ref": element_ref, "visible": visible }))
+            let mut response = json!({ "ref": element_ref, "visible": visible });
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
+            }
+            Response::success(req_id, response)
         })
     }
 
@@ -981,36 +1008,32 @@ impl DaemonServer {
 
     fn handle_is_checked(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
-            match sess.find_element(element_ref) {
+        self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
+            let mut response = match sess.find_element(element_ref) {
                 Some(el) => {
                     let el_type = el.element_type.as_str();
                     if el_type != "checkbox" && el_type != "radio" {
-                        return Response::success(
-                            req_id,
-                            json!({
-                                "ref": element_ref, "checked": false, "found": true,
-                                "message": format!(
-                                    "Element {} is a {} not a checkbox/radio. Run 'snapshot -i' to see element types.",
-                                    element_ref, el_type
-                                )
-                            }),
-                        );
+                        json!({
+                            "ref": element_ref, "checked": false, "found": true,
+                            "message": format!(
+                                "Element {} is a {} not a checkbox/radio. Run 'snapshot -i' to see element types.",
+                                element_ref, el_type
+                            )
+                        })
+                    } else {
+                        let checked = el.checked.unwrap_or(false);
+                        json!({ "ref": element_ref, "checked": checked, "found": true })
                     }
-                    let checked = el.checked.unwrap_or(false);
-                    Response::success(
-                        req_id,
-                        json!({ "ref": element_ref, "checked": checked, "found": true }),
-                    )
                 }
-                None => Response::success(
-                    req_id,
-                    json!({
-                        "ref": element_ref, "checked": false, "found": false,
-                        "message": ai_friendly_error("Element not found", Some(element_ref))
-                    }),
-                ),
+                None => json!({
+                    "ref": element_ref, "checked": false, "found": false,
+                    "message": ai_friendly_error("Element not found", Some(element_ref))
+                }),
+            };
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
             }
+            Response::success(req_id, response)
         })
     }
 
@@ -1025,10 +1048,14 @@ impl DaemonServer {
         };
         let req_id = request.id;
 
-        self.with_detected_session(&request, |sess| {
+        self.with_detected_session(&request, |sess, update_warning| {
             let elements = sess.cached_elements();
             let count = elements.iter().filter(|el| filter.matches(el)).count();
-            Response::success(req_id, json!({ "count": count }))
+            let mut response = json!({ "count": count });
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
+            }
+            Response::success(req_id, response)
         })
     }
 
@@ -1128,28 +1155,26 @@ impl DaemonServer {
 
     fn handle_get_focused(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_detected_session(&request, |sess| {
+        self.with_detected_session(&request, |sess, update_warning| {
             let elements = sess.cached_elements();
-            if let Some(focused_el) = elements.iter().find(|e| e.focused) {
-                Response::success(
-                    req_id,
-                    json!({
-                        "ref": focused_el.element_ref,
-                        "type": focused_el.element_type.as_str(),
-                        "label": focused_el.label,
-                        "value": focused_el.value,
-                        "found": true
-                    }),
-                )
+            let mut response = if let Some(focused_el) = elements.iter().find(|e| e.focused) {
+                json!({
+                    "ref": focused_el.element_ref,
+                    "type": focused_el.element_type.as_str(),
+                    "label": focused_el.label,
+                    "value": focused_el.value,
+                    "found": true
+                })
             } else {
-                Response::success(
-                    req_id,
-                    json!({
-                        "found": false,
-                        "message": "No focused element found. Run 'snapshot -i' to see all elements."
-                    }),
-                )
+                json!({
+                    "found": false,
+                    "message": "No focused element found. Run 'snapshot -i' to see all elements."
+                })
+            };
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
             }
+            Response::success(req_id, response)
         })
     }
 
@@ -1174,16 +1199,19 @@ impl DaemonServer {
 
     fn handle_clear(&self, request: Request) -> Response {
         let req_id = request.id;
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
+        self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
             if sess.find_element(element_ref).is_none() {
                 return Response::element_not_found(req_id, element_ref);
             }
             // Send Ctrl+U to clear input (works in most terminals)
-            let result = sess.pty_write(b"\x15");
-            if let Err(e) = result {
+            if let Err(e) = sess.pty_write(b"\x15") {
                 return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
             }
-            Response::success(req_id, json!({ "success": true, "ref": element_ref }))
+            let mut response = json!({ "success": true, "ref": element_ref });
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
+            }
+            Response::success(req_id, response)
         })
     }
 
@@ -1195,7 +1223,7 @@ impl DaemonServer {
         let force_state = request.param_bool("state");
         let req_id = request.id;
 
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
+        self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
             let current_checked = match sess.find_element(element_ref) {
                 Some(el) => {
                     let el_type = el.element_type.as_str();
@@ -1228,10 +1256,12 @@ impl DaemonServer {
                 current_checked
             };
 
-            Response::success(
-                req_id,
-                json!({ "success": true, "ref": element_ref, "checked": new_checked }),
-            )
+            let mut response =
+                json!({ "success": true, "ref": element_ref, "checked": new_checked });
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
+            }
+            Response::success(req_id, response)
         })
     }
 
@@ -1242,7 +1272,7 @@ impl DaemonServer {
         };
         let req_id = request.id;
 
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
+        self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
             match sess.find_element(element_ref) {
                 Some(el) if el.element_type.as_str() != "select" => {
                     return Response::wrong_element_type(
@@ -1268,10 +1298,11 @@ impl DaemonServer {
                 return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
             }
 
-            Response::success(
-                req_id,
-                json!({ "success": true, "ref": element_ref, "option": option }),
-            )
+            let mut response = json!({ "success": true, "ref": element_ref, "option": option });
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
+            }
+            Response::success(req_id, response)
         })
     }
 
@@ -1288,7 +1319,7 @@ impl DaemonServer {
         }
         let req_id = request.id;
 
-        self.with_detected_session_and_ref(&request, |sess, element_ref| {
+        self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
             if sess.find_element(element_ref).is_none() {
                 return Response::success(
                     req_id,
@@ -1331,10 +1362,12 @@ impl DaemonServer {
                 return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
             }
 
-            Response::success(
-                req_id,
-                json!({ "success": true, "ref": element_ref, "selected_options": selected }),
-            )
+            let mut response =
+                json!({ "success": true, "ref": element_ref, "selected_options": selected });
+            if let Some(warning) = update_warning {
+                response["warning"] = json!(warning);
+            }
+            Response::success(req_id, response)
         })
     }
 
@@ -1713,18 +1746,8 @@ impl DaemonServer {
                 Ok(json) => json,
                 Err(e) => {
                     eprintln!("Failed to serialize response: {}", e);
-                    let fallback = json!({
-                        "jsonrpc": "2.0",
-                        "id": null,
-                        "error": {
-                            "code": -32603,
-                            "message": "Internal error: failed to serialize response"
-                        }
-                    });
-                    // This fallback should always serialize successfully
-                    serde_json::to_string(&fallback).unwrap_or_else(|_| {
-                        r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error"}}"#.to_string()
-                    })
+                    // Use pre-validated JSON literal as fallback - guaranteed to be valid
+                    r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error: failed to serialize response"}}"#.to_string()
                 }
             };
 

@@ -219,22 +219,37 @@ fn test_fill_with_spaces_in_value() {
 }
 
 #[test]
-fn test_fill_error_handling() {
+fn test_fill_warning_for_non_input() {
     let harness = TestHarness::new();
 
+    // New server behavior: fill succeeds but includes warning for non-input elements
     harness.set_success_response(
         "fill",
         json!({
-            "success": false,
-            "message": "Element is not an input: @btn1"
+            "success": true,
+            "ref": "@btn1",
+            "value": "value",
+            "warning": "Warning: '@btn1' is a button not an input field. Fill may not work as expected. Use 'snapshot -i' to see element types."
         }),
     );
 
     harness
         .run(&["fill", "@btn1", "value"])
-        .failure()
-        .stderr(predicate::str::contains("Fill failed"))
+        .success()
+        .stdout(predicate::str::contains("Filled successfully"))
         .stderr(predicate::str::contains("not an input"));
+}
+
+#[test]
+fn test_fill_element_not_found() {
+    let harness = TestHarness::new();
+
+    harness.set_error_response("fill", -32000, "Element not found: '@nonexistent'");
+
+    harness
+        .run(&["fill", "@nonexistent", "value"])
+        .failure()
+        .stderr(predicate::str::contains("Element not found"));
 }
 
 // =============================================================================

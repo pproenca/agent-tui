@@ -44,6 +44,26 @@ macro_rules! state_check_handler {
     };
 }
 
+/// Macro to generate key handlers (press, keydown, keyup) that follow the same pattern
+macro_rules! key_handler {
+    ($name:ident, $method:literal, $success:expr) => {
+        pub fn $name(ctx: &mut HandlerContext, key: String) -> HandlerResult {
+            let params = ctx.params_with(json!({ "key": key }));
+            let result = ctx.client.call($method, Some(params))?;
+            ctx.output_success_and_ok(&result, &$success(&key), concat!($method, " failed"))
+        }
+    };
+}
+
+/// Macro to generate element ref action handlers (click, focus, clear, etc.)
+macro_rules! ref_action_handler {
+    ($name:ident, $method:literal, $success:expr, $failure:literal) => {
+        pub fn $name(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+            ctx.call_ref_action($method, &element_ref, &$success(&element_ref), $failure)
+        }
+    };
+}
+
 pub struct HandlerContext<'a> {
     pub client: &'a mut DaemonClient,
     pub session: Option<String>,
@@ -411,23 +431,18 @@ pub fn handle_snapshot(
     Ok(())
 }
 
-pub fn handle_click(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    ctx.call_ref_action(
-        "click",
-        &element_ref,
-        "Clicked successfully",
-        "Click failed",
-    )
-}
-
-pub fn handle_dbl_click(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    ctx.call_ref_action(
-        "dbl_click",
-        &element_ref,
-        "Double-clicked successfully",
-        "Double-click failed",
-    )
-}
+ref_action_handler!(
+    handle_click,
+    "click",
+    |_: &String| "Clicked successfully".to_string(),
+    "Click failed"
+);
+ref_action_handler!(
+    handle_dbl_click,
+    "dbl_click",
+    |_: &String| "Double-clicked successfully".to_string(),
+    "Double-click failed"
+);
 
 pub fn handle_fill(ctx: &mut HandlerContext, element_ref: String, value: String) -> HandlerResult {
     let params = ctx.params_with(json!({ "ref": element_ref, "value": value }));
@@ -435,28 +450,21 @@ pub fn handle_fill(ctx: &mut HandlerContext, element_ref: String, value: String)
     ctx.output_success_and_ok(&result, "Filled successfully", "Fill failed")
 }
 
-pub fn handle_press(ctx: &mut HandlerContext, key: String) -> HandlerResult {
-    let params = ctx.params_with(json!({ "key": key }));
-    let result = ctx.client.call("keystroke", Some(params))?;
-    ctx.output_success_and_ok(&result, "Key pressed", "Press failed")
-}
+key_handler!(handle_press, "keystroke", |_: &String| "Key pressed"
+    .to_string());
+key_handler!(handle_keydown, "keydown", |k: &String| format!(
+    "Key held: {}",
+    k
+));
+key_handler!(handle_keyup, "keyup", |k: &String| format!(
+    "Key released: {}",
+    k
+));
 
 pub fn handle_type(ctx: &mut HandlerContext, text: String) -> HandlerResult {
     let params = ctx.params_with(json!({ "text": text }));
     let result = ctx.client.call("type", Some(params))?;
     ctx.output_success_and_ok(&result, "Text typed", "Type failed")
-}
-
-pub fn handle_keydown(ctx: &mut HandlerContext, key: String) -> HandlerResult {
-    let params = ctx.params_with(json!({ "key": key }));
-    let result = ctx.client.call("keydown", Some(params))?;
-    ctx.output_success_and_ok(&result, &format!("Key held: {}", key), "Keydown failed")
-}
-
-pub fn handle_keyup(ctx: &mut HandlerContext, key: String) -> HandlerResult {
-    let params = ctx.params_with(json!({ "key": key }));
-    let result = ctx.client.call("keyup", Some(params))?;
-    ctx.output_success_and_ok(&result, &format!("Key released: {}", key), "Keyup failed")
 }
 
 pub fn handle_wait(ctx: &mut HandlerContext, params: crate::commands::WaitParams) -> HandlerResult {
@@ -813,32 +821,24 @@ pub fn handle_scroll_into_view(ctx: &mut HandlerContext, element_ref: String) ->
     Ok(())
 }
 
-pub fn handle_focus(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    ctx.call_ref_action(
-        "focus",
-        &element_ref,
-        &format!("Focused: {}", element_ref),
-        "Focus failed",
-    )
-}
-
-pub fn handle_clear(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    ctx.call_ref_action(
-        "clear",
-        &element_ref,
-        &format!("Cleared: {}", element_ref),
-        "Clear failed",
-    )
-}
-
-pub fn handle_select_all(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    ctx.call_ref_action(
-        "select_all",
-        &element_ref,
-        &format!("Selected all in: {}", element_ref),
-        "Select all failed",
-    )
-}
+ref_action_handler!(
+    handle_focus,
+    "focus",
+    |r: &String| format!("Focused: {}", r),
+    "Focus failed"
+);
+ref_action_handler!(
+    handle_clear,
+    "clear",
+    |r: &String| format!("Cleared: {}", r),
+    "Clear failed"
+);
+ref_action_handler!(
+    handle_select_all,
+    "select_all",
+    |r: &String| format!("Selected all in: {}", r),
+    "Select all failed"
+);
 
 get_handler!(handle_get_text, "get_text", "text");
 get_handler!(handle_get_value, "get_value", "value");

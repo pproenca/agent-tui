@@ -42,6 +42,19 @@ fn combine_warnings(a: Option<String>, b: Option<String>) -> Option<String> {
     }
 }
 
+/// Update session and detect elements, returning a warning if update fails.
+fn update_with_warning(sess: &mut crate::session::Session) -> Option<String> {
+    let warning = match sess.update() {
+        Ok(()) => None,
+        Err(e) => {
+            eprintln!("Warning: Session update failed: {}", e);
+            Some(format!("Element data may be stale: {}", e))
+        }
+    };
+    sess.detect_elements();
+    warning
+}
+
 /// Build asciicast v2 format data from recording frames.
 fn build_asciicast(
     session_id: &str,
@@ -253,14 +266,7 @@ impl DaemonServer {
         F: FnOnce(&mut crate::session::Session, &str, Option<String>) -> Response,
     {
         self.with_session_and_ref(request, |sess, element_ref| {
-            let update_warning = match sess.update() {
-                Ok(()) => None,
-                Err(e) => {
-                    eprintln!("Warning: Session update failed: {}", e);
-                    Some(format!("Element data may be stale: {}", e))
-                }
-            };
-            sess.detect_elements();
+            let update_warning = update_with_warning(sess);
             f(sess, element_ref, update_warning)
         })
     }
@@ -273,14 +279,7 @@ impl DaemonServer {
     {
         let session_id = request.param_str("session");
         self.with_session(request, session_id, |sess| {
-            let update_warning = match sess.update() {
-                Ok(()) => None,
-                Err(e) => {
-                    eprintln!("Warning: Session update failed: {}", e);
-                    Some(format!("Element data may be stale: {}", e))
-                }
-            };
-            sess.detect_elements();
+            let update_warning = update_with_warning(sess);
             f(sess, update_warning)
         })
     }
@@ -736,22 +735,8 @@ impl DaemonServer {
             if let Some(mut sess) = acquire_session_lock(&session, Duration::from_millis(100)) {
                 if check_condition(&mut sess, &condition, &mut stable_tracker) {
                     found = true;
-                    match &condition {
-                        WaitCondition::Text(t) => {
-                            matched_text = Some(t.clone());
-                        }
-                        WaitCondition::Element(e) => {
-                            element_ref = Some(e.clone());
-                        }
-                        WaitCondition::Focused(e) => {
-                            element_ref = Some(e.clone());
-                        }
-                        WaitCondition::Value { element, expected } => {
-                            element_ref = Some(element.clone());
-                            matched_text = Some(expected.clone());
-                        }
-                        _ => {}
-                    }
+                    matched_text = condition.matched_text();
+                    element_ref = condition.element_ref();
                     break;
                 }
             }

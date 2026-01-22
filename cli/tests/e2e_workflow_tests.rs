@@ -148,67 +148,6 @@ fn test_multi_session_switching() {
 }
 
 // =============================================================================
-// Demo Form Interaction Tests
-// =============================================================================
-
-#[test]
-fn test_demo_form_interaction() {
-    let h = RealTestHarness::new();
-    h.spawn_demo();
-
-    // 1. Verify initial state - checkbox unchecked [ ]
-    let output = h.cli_json().args(["snapshot"]).output().unwrap();
-    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let screen = json["screen"].as_str().unwrap();
-    assert!(
-        screen.contains("[ ] Enable notifications"),
-        "Checkbox should be unchecked initially"
-    );
-
-    // 2. Type name into input field (focus starts on Name field)
-    assert!(h
-        .cli()
-        .args(["type", "E2EUser"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(h
-        .cli()
-        .args(["wait", "-t", "3000", "E2EUser"])
-        .status()
-        .unwrap()
-        .success());
-
-    // 3. Tab to checkbox
-    assert!(h.cli().args(["press", "Tab"]).status().unwrap().success());
-    assert!(h
-        .cli()
-        .args(["wait", "--condition", "stable", "-t", "2000"])
-        .status()
-        .unwrap()
-        .success());
-
-    // 4. Toggle checkbox with Space
-    assert!(h.cli().args(["press", "Space"]).status().unwrap().success());
-    assert!(h
-        .cli()
-        .args(["wait", "--condition", "stable", "-t", "2000"])
-        .status()
-        .unwrap()
-        .success());
-
-    // 5. Verify checkbox is now checked [x]
-    let output = h.cli_json().args(["snapshot"]).output().unwrap();
-    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let screen = json["screen"].as_str().unwrap();
-    assert!(
-        screen.contains("[x] Enable notifications"),
-        "Checkbox should be checked after Space"
-    );
-    assert!(screen.contains("E2EUser"), "Name should still be visible");
-}
-
-// =============================================================================
 // Wait Condition Tests
 // =============================================================================
 
@@ -319,66 +258,6 @@ fn test_wait_stable_succeeds() {
     assert!(
         status.success(),
         "Wait stable should succeed for idle shell"
-    );
-}
-
-// =============================================================================
-// Keyboard Navigation Tests
-// =============================================================================
-
-#[test]
-fn test_keyboard_tab_navigation() {
-    let h = RealTestHarness::new();
-    h.spawn_demo();
-
-    // The demo uses ANSI colors to indicate focus, not different text.
-    // Snapshot only captures text, so we verify navigation by checking state changes.
-
-    // 1. Initial state: focus on Name field
-    // Type something to verify we're on the name field
-    assert!(h
-        .cli()
-        .args(["type", "NavTest"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(h
-        .cli()
-        .args(["wait", "-t", "3000", "NavTest"])
-        .status()
-        .unwrap()
-        .success());
-
-    // 2. Tab to checkbox, press Space to toggle
-    assert!(h.cli().args(["press", "Tab"]).status().unwrap().success());
-    assert!(h
-        .cli()
-        .args(["wait", "--condition", "stable", "-t", "2000"])
-        .status()
-        .unwrap()
-        .success());
-
-    // Toggle checkbox with Space (this only works when checkbox is focused)
-    assert!(h.cli().args(["press", "Space"]).status().unwrap().success());
-    assert!(h
-        .cli()
-        .args(["wait", "--condition", "stable", "-t", "2000"])
-        .status()
-        .unwrap()
-        .success());
-
-    // 3. Verify checkbox state changed - proves Tab navigation worked
-    let output = h.cli_json().args(["snapshot"]).output().unwrap();
-    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let screen = json["screen"].as_str().unwrap();
-
-    assert!(
-        screen.contains("[x] Enable notifications"),
-        "Checkbox should be checked after Tab + Space, proving navigation works"
-    );
-    assert!(
-        screen.contains("NavTest"),
-        "Name field should still have typed text"
     );
 }
 

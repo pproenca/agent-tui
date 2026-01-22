@@ -3,7 +3,6 @@ mod client;
 mod color;
 mod commands;
 mod daemon;
-mod demo;
 mod handlers;
 mod json_ext;
 mod pty;
@@ -35,10 +34,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     if matches!(cli.command, Commands::Daemon) {
         return start_daemon().map_err(|e| e.into());
-    }
-
-    if matches!(cli.command, Commands::DemoRun) {
-        return demo::run_demo();
     }
 
     if let Commands::Completions { shell } = &cli.command {
@@ -74,10 +69,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Commands::Daemon => unreachable!(),
-        Commands::DemoRun => unreachable!(),
         Commands::Completions { .. } => unreachable!(),
 
-        Commands::Demo => handlers::handle_demo(&mut ctx)?,
         Commands::Spawn {
             command,
             args,

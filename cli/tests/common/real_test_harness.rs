@@ -103,39 +103,6 @@ impl RealTestHarness {
         session_id
     }
 
-    /// Spawn demo TUI, wait for title, return session_id.
-    pub fn spawn_demo(&self) -> String {
-        let output = self
-            .cli_json()
-            .args(["demo"])
-            .output()
-            .expect("spawn demo failed");
-
-        assert!(
-            output.status.success(),
-            "demo spawn failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let json: Value =
-            serde_json::from_slice(&output.stdout).expect("failed to parse demo output as JSON");
-        let session_id = json["session_id"]
-            .as_str()
-            .expect("no session_id in response")
-            .to_string();
-
-        let wait_status = self
-            .cli()
-            .args(["-s", &session_id, "wait", "-t", "5000", "agent-tui Demo"])
-            .status()
-            .expect("wait command failed");
-
-        assert!(wait_status.success(), "wait for demo UI failed");
-
-        self.sessions.borrow_mut().push(session_id.clone());
-        session_id
-    }
-
     /// Kill a specific session with logging on failure.
     pub fn kill_session(&self, session_id: &str) {
         match self.cli().args(["-s", session_id, "kill"]).status() {

@@ -190,50 +190,6 @@ impl<'a> ElementView<'a> {
     }
 }
 
-pub fn handle_demo(ctx: &mut HandlerContext) -> HandlerResult {
-    let exe_path = std::env::current_exe()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "agent-tui".to_string());
-
-    let params = json!({
-        "command": exe_path,
-        "args": ["demo-run"],
-        "session": ctx.session,
-        "cols": 80,
-        "rows": 24
-    });
-
-    let result = ctx.client.call("spawn", Some(params))?;
-
-    ctx.output_json_or(&result, || {
-        let session_id = result.str_or("session_id", "unknown");
-        println!(
-            "{} {}",
-            Colors::success("Demo started:"),
-            Colors::session_id(session_id)
-        );
-        println!();
-        println!("Try these commands:");
-        println!(
-            "  {} - See detected elements",
-            Colors::dim("agent-tui snapshot -i")
-        );
-        println!(
-            "  {} - Fill the name input",
-            Colors::dim("agent-tui fill @e1 \"Hello\"")
-        );
-        println!(
-            "  {} - Toggle the checkbox",
-            Colors::dim("agent-tui toggle @e2")
-        );
-        println!(
-            "  {} - Click Submit button",
-            Colors::dim("agent-tui click @e3")
-        );
-        println!("  {} - End session", Colors::dim("agent-tui kill"));
-    })
-}
-
 pub fn handle_spawn(
     ctx: &mut HandlerContext,
     command: String,

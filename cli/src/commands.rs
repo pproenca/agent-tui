@@ -1365,10 +1365,6 @@ mod tests {
         assert!(Cli::try_parse_from(["agent-tui", "-f", "xml", "health"]).is_err());
     }
 
-    // =========================================================================
-    // Additional CLI Parsing Tests
-    // =========================================================================
-
     /// Test --json shorthand flag
     #[test]
     fn test_json_shorthand_flag() {

@@ -1,25 +1,20 @@
 //! E2E workflow tests with real daemon
 //!
 //! These tests verify complete user workflows using the real daemon.
-//! Run with: cargo test --test e2e_workflow_tests -- --test-threads=1
-//!
-//! IMPORTANT: These tests MUST run sequentially (--test-threads=1) because they:
-//! - Share a single daemon process
-//! - Manipulate the "active session" state
-//! - Can interfere with each other if run in parallel
-//!
-//! If tests fail when run in parallel, that's expected behavior - use --test-threads=1.
+//! They use #[serial] to ensure sequential execution since they share daemon state.
 
 mod common;
 
 use common::RealTestHarness;
 use serde_json::Value;
+use serial_test::serial;
 
 // =============================================================================
 // Session Lifecycle Tests
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_spawn_snapshot_kill() {
     let h = RealTestHarness::new();
 
@@ -54,6 +49,7 @@ fn test_spawn_snapshot_kill() {
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_type_changes_screen() {
     let h = RealTestHarness::new();
     h.spawn_bash();
@@ -89,6 +85,7 @@ fn test_type_changes_screen() {
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_multi_session_switching() {
     let h = RealTestHarness::new();
 
@@ -159,6 +156,7 @@ fn test_multi_session_switching() {
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_demo_form_interaction() {
     let h = RealTestHarness::new();
     h.spawn_demo();
@@ -220,6 +218,7 @@ fn test_demo_form_interaction() {
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_wait_for_delayed_output() {
     let h = RealTestHarness::new();
     h.spawn_bash();
@@ -299,6 +298,7 @@ fn test_wait_for_delayed_output() {
 }
 
 #[test]
+#[serial]
 fn test_wait_timeout_fails() {
     let h = RealTestHarness::new();
     h.spawn_bash();
@@ -313,6 +313,7 @@ fn test_wait_timeout_fails() {
 }
 
 #[test]
+#[serial]
 fn test_wait_stable_succeeds() {
     let h = RealTestHarness::new();
     h.spawn_bash();
@@ -334,6 +335,7 @@ fn test_wait_stable_succeeds() {
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_keyboard_tab_navigation() {
     let h = RealTestHarness::new();
     h.spawn_demo();
@@ -394,6 +396,7 @@ fn test_keyboard_tab_navigation() {
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_click_nonexistent_element() {
     let h = RealTestHarness::new();
     h.spawn_bash();
@@ -411,6 +414,7 @@ fn test_click_nonexistent_element() {
 }
 
 #[test]
+#[serial]
 fn test_operation_on_dead_session() {
     let h = RealTestHarness::new();
 

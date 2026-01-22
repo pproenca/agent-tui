@@ -22,7 +22,6 @@ pub fn socket_path() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("/tmp/agent-tui.sock"))
 }
 
-/// Reusable filter for element queries (find, count).
 struct ElementFilter<'a> {
     role: Option<&'a str>,
     name: Option<&'a str>,
@@ -116,8 +115,6 @@ impl DaemonServer {
         }
     }
 
-    /// Helper that resolves a session, acquires the lock, and runs a closure.
-    /// Returns the closure's result as a Response, handling session resolution and lock errors.
     fn with_session<F>(&self, request: &Request, session_id: Option<&str>, f: F) -> Response
     where
         F: FnOnce(&mut crate::session::Session) -> Response,
@@ -137,7 +134,6 @@ impl DaemonServer {
         }
     }
 
-    /// Helper for handlers that require a 'ref' param and operate on a session.
     fn with_session_and_ref<F>(&self, request: &Request, f: F) -> Response
     where
         F: FnOnce(&mut crate::session::Session, &str) -> Response,
@@ -163,8 +159,6 @@ impl DaemonServer {
         }
     }
 
-    /// Helper for handlers that need element detection (update + detect_elements).
-    /// Returns update warning message if update fails (data may be stale).
     fn with_detected_session_and_ref<F>(&self, request: &Request, f: F) -> Response
     where
         F: FnOnce(&mut crate::session::Session, &str, Option<String>) -> Response,
@@ -182,8 +176,6 @@ impl DaemonServer {
         })
     }
 
-    /// Helper for handlers that need detection but no ref param.
-    /// Returns update warning message if update fails (data may be stale).
     fn with_detected_session<F>(&self, request: &Request, f: F) -> Response
     where
         F: FnOnce(&mut crate::session::Session, Option<String>) -> Response,
@@ -202,7 +194,6 @@ impl DaemonServer {
         })
     }
 
-    /// Helper for handlers that require a string param and perform a session action.
     fn with_session_action<F>(&self, request: &Request, param: &str, f: F) -> Response
     where
         F: FnOnce(&mut crate::session::Session, &str) -> Result<(), Box<dyn std::error::Error>>,
@@ -219,7 +210,6 @@ impl DaemonServer {
         })
     }
 
-    /// Helper that resolves a session and returns the Arc for handlers needing multiple lock acquisitions.
     #[allow(clippy::result_large_err)]
     fn with_resolved_session(
         &self,
@@ -240,7 +230,6 @@ impl DaemonServer {
         }
     }
 
-    /// Helper for handlers that query a single element property.
     fn element_property<F, T>(&self, request: &Request, field_name: &str, extract: F) -> Response
     where
         F: FnOnce(&Element) -> T,
@@ -268,7 +257,6 @@ impl DaemonServer {
         })
     }
 
-    /// Helper for handlers that verify element exists then write PTY bytes.
     fn element_action(&self, request: &Request, pty_bytes: &[u8]) -> Response {
         let req_id = request.id;
         self.with_detected_session_and_ref(request, |sess, element_ref, update_warning| {
@@ -306,7 +294,7 @@ impl DaemonServer {
 
             "spawn" => self.handle_spawn(request),
             "snapshot" => self.handle_snapshot(request),
-            // Deprecated: Use "snapshot" with strip_ansi=true instead
+
             "screen" => Response::error(
                 request.id,
                 -32601,
@@ -436,7 +424,7 @@ impl DaemonServer {
         let req_id = request.id;
 
         self.with_session(&request, session_id, |sess| {
-            // Update session state - track warning if it fails
+
             let update_warning = match sess.update() {
                 Ok(()) => None,
                 Err(e) => {
@@ -457,19 +445,19 @@ impl DaemonServer {
             }
 
             let (elements, stats) = if include_elements {
-                // Always use VOM (Visual Object Model) for element detection
+
                 let vom_components = sess.analyze_screen();
                 let elements_total = vom_components.len();
 
-                // Filter to interactive elements using Role::is_interactive()
-                // This ensures refs (@e1, @e2, etc.) are consistent with detect_elements() in session.rs
+
+
                 let interactive: Vec<_> = vom_components
                     .iter()
                     .filter(|c| c.role.is_interactive())
                     .collect();
                 let elements_interactive = interactive.len();
 
-                // Enumerate from the filtered list so refs match detect_elements()
+
                 let filtered_elements: Vec<_> = interactive
                     .iter()
                     .enumerate()
@@ -513,7 +501,7 @@ impl DaemonServer {
                 "stats": stats
             });
 
-            // Include cursor info only when requested or when elements are included
+
             if include_cursor || include_elements {
                 response["cursor"] = json!({
                     "row": cursor.row,
@@ -547,7 +535,6 @@ impl DaemonServer {
             Err(resp) => return resp,
         };
 
-        // First click
         {
             let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
                 return lock_timeout_response(req_id, request.param_str("session"));
@@ -559,7 +546,6 @@ impl DaemonServer {
 
         thread::sleep(Duration::from_millis(50));
 
-        // Second click
         {
             let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
                 return lock_timeout_response(req_id, request.param_str("session"));
@@ -578,7 +564,7 @@ impl DaemonServer {
             Err(resp) => return resp,
         };
         self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
-            // Check if the element exists and validate its type
+
             let type_warning = match sess.find_element(element_ref) {
                 Some(el) => {
                     let el_type = el.element_type.as_str();
@@ -597,7 +583,7 @@ impl DaemonServer {
                 }
             };
 
-            // Proceed with fill operation
+
             if let Err(e) = sess.pty_write(value.as_bytes()) {
                 return Response::action_failed(req_id, Some(element_ref), &e.to_string());
             }
@@ -608,7 +594,7 @@ impl DaemonServer {
                 "value": value
             });
 
-            // Combine warnings: update warning takes precedence, then type warning
+
             let combined_warning = match (update_warning, type_warning) {
                 (Some(uw), Some(tw)) => Some(format!("{}. {}", uw, tw)),
                 (Some(w), None) | (None, Some(w)) => Some(w),
@@ -1182,7 +1168,7 @@ impl DaemonServer {
             if sess.find_element(element_ref).is_none() {
                 return Response::element_not_found(req_id, element_ref);
             }
-            // Send Ctrl+U to clear input (works in most terminals)
+
             if let Err(e) = sess.pty_write(b"\x15") {
                 return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
             }
@@ -1269,7 +1255,6 @@ impl DaemonServer {
 
             let screen_text = sess.screen_text();
 
-            // Use keyboard navigation to find and select the option
             let result =
                 navigate_to_option(sess, &option, &screen_text).and_then(|_| sess.pty_write(b"\r"));
 
@@ -1727,7 +1712,7 @@ impl DaemonServer {
                 Ok(json) => json,
                 Err(e) => {
                     eprintln!("Failed to serialize response: {}", e);
-                    // Use pre-validated JSON literal as fallback - guaranteed to be valid
+
                     r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error: failed to serialize response"}}"#.to_string()
                 }
             };
@@ -1811,7 +1796,6 @@ fn element_to_json(el: &Element) -> Value {
     })
 }
 
-/// Convert a VOM component to JSON format compatible with element output
 fn vom_component_to_json(comp: &crate::vom::Component, index: usize) -> Value {
     json!({
         "ref": format!("@e{}", index + 1),

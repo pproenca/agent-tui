@@ -55,12 +55,10 @@ impl<'a> HandlerContext<'a> {
         Ok(success)
     }
 
-    /// Build params with ref and session
     fn ref_params(&self, element_ref: &str) -> serde_json::Value {
         json!({ "ref": element_ref, "session": self.session })
     }
 
-    /// Call RPC method with ref params and output success/failure
     fn call_ref_action(
         &mut self,
         method: &str,
@@ -74,7 +72,6 @@ impl<'a> HandlerContext<'a> {
         Ok(())
     }
 
-    /// Output for boolean state checks
     fn output_state_check(
         &self,
         result: &serde_json::Value,
@@ -110,7 +107,6 @@ impl<'a> HandlerContext<'a> {
         Ok(())
     }
 
-    /// Output for value retrieval (get_text, get_value)
     fn output_get_result(
         &self,
         result: &serde_json::Value,
@@ -136,12 +132,10 @@ impl<'a> HandlerContext<'a> {
         Ok(())
     }
 
-    /// Build params with just session
     fn session_params(&self) -> Value {
         json!({ "session": self.session })
     }
 
-    /// Output JSON or run text formatting closure
     fn output_json_or<F>(&self, result: &Value, text_fn: F) -> HandlerResult
     where
         F: FnOnce(),
@@ -158,7 +152,6 @@ impl<'a> HandlerContext<'a> {
     }
 }
 
-/// View wrapper for element JSON for consistent field extraction.
 struct ElementView<'a>(&'a Value);
 
 impl<'a> ElementView<'a> {
@@ -1380,7 +1373,6 @@ pub fn handle_assert(ctx: &mut HandlerContext, condition: String) -> HandlerResu
 
     let passed = match cond_type {
         "text" => {
-            // Strip ANSI codes for consistent text matching
             let params = json!({
                 "session": ctx.session,
                 "strip_ansi": true
@@ -1437,10 +1429,6 @@ pub fn handle_assert(ctx: &mut HandlerContext, condition: String) -> HandlerResu
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // =========================================================================
-    // ElementView tests
-    // =========================================================================
 
     fn make_element(json: serde_json::Value) -> serde_json::Value {
         json
@@ -1602,10 +1590,6 @@ mod tests {
         assert_eq!(view.position(), (3, 15));
     }
 
-    // =========================================================================
-    // Assert condition parsing tests
-    // =========================================================================
-
     #[test]
     fn test_assert_condition_parsing_text() {
         let condition = "text:Submit";
@@ -1648,10 +1632,6 @@ mod tests {
         let parts: Vec<&str> = condition.splitn(2, ':').collect();
         assert_eq!(parts.len(), 1);
     }
-
-    // =========================================================================
-    // Wait condition resolution tests (from handle_wait logic)
-    // =========================================================================
 
     fn resolve_wait_condition(
         params: &crate::commands::WaitParams,

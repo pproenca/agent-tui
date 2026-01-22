@@ -1,29 +1,16 @@
-//! Interaction Module ("Effector")
-//!
-//! Provides O(1) mouse injection using ANSI CSI sequences.
-//! Instead of Tab-navigating through elements, we teleport directly
-//! to the target coordinates.
-//!
-//! Supports SGR 1006 format mouse events (most modern terminals).
-
 use crate::vom::Component;
 
-/// Mouse button identifiers for SGR 1006 format.
-/// All variants are part of the public API for external consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Public API - all variants intentionally available
+#[allow(dead_code)]
 pub enum MouseButton {
     Left = 0,
     Middle = 1,
     Right = 2,
-    /// Scroll up (encoded as 64 in SGR - bit 6 set for scroll wheel)
     ScrollUp = 64,
-    /// Scroll down (encoded as 65 in SGR - bit 6 set for scroll wheel)
     ScrollDown = 65,
 }
 
 impl MouseButton {
-    /// Get the button code for SGR 1006 format
     pub fn code(&self) -> u8 {
         match self {
             MouseButton::Left => 0,
@@ -35,41 +22,23 @@ impl MouseButton {
     }
 }
 
-/// Generate a mouse click sequence (press + release) in SGR 1006 format.
-///
-/// SGR 1006 is the modern mouse encoding format that uses:
-/// - CSI < button ; x ; y M for press
-/// - CSI < button ; x ; y m for release
-///
-/// # Arguments
-/// - `button`: The mouse button to click
-/// - `x`: Column position (0-indexed, will be converted to 1-indexed)
-/// - `y`: Row position (0-indexed, will be converted to 1-indexed)
-///
-/// # Returns
-/// A byte vector containing both press and release sequences
 pub fn mouse_click_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
     let mut seq = Vec::new();
 
-    // Terminal coordinates are 1-based
     let x = x + 1;
     let y = y + 1;
     let btn = button.code();
 
-    // Press event: CSI < button ; x ; y M
     let press = format!("\x1b[<{};{};{}M", btn, x, y);
     seq.extend_from_slice(press.as_bytes());
 
-    // Release event: CSI < button ; x ; y m
-    // CRUCIAL: Many apps wait for release to trigger action
     let release = format!("\x1b[<{};{};{}m", btn, x, y);
     seq.extend_from_slice(release.as_bytes());
 
     seq
 }
 
-/// Generate a mouse press sequence (no release) in SGR 1006 format.
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn mouse_press_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
     let x = x + 1;
     let y = y + 1;
@@ -78,8 +47,7 @@ pub fn mouse_press_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
     format!("\x1b[<{};{};{}M", btn, x, y).into_bytes()
 }
 
-/// Generate a mouse release sequence in SGR 1006 format.
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn mouse_release_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
     let x = x + 1;
     let y = y + 1;
@@ -88,70 +56,48 @@ pub fn mouse_release_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
     format!("\x1b[<{};{};{}m", btn, x, y).into_bytes()
 }
 
-/// Generate a mouse move sequence (drag or hover tracking).
-/// Uses button code 35 (32 for motion flag + 3 for no button) for mouse movement.
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn mouse_move_sequence(x: u16, y: u16) -> Vec<u8> {
     let x = x + 1;
     let y = y + 1;
 
-    // Motion event: button code 35 (32 = motion flag, 3 = no button pressed)
     format!("\x1b[<35;{};{}M", x, y).into_bytes()
 }
 
-/// Generate a scroll sequence.
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn scroll_sequence(direction: MouseButton, x: u16, y: u16) -> Vec<u8> {
-    // Scroll events are just button press, no release
     mouse_press_sequence(direction, x, y)
 }
 
-/// Click a component by generating mouse sequences for its center.
-///
-/// # Arguments
-/// - `component`: The component to click
-/// - `button`: Which mouse button to use (default: Left)
-///
-/// # Returns
-/// Byte sequence to inject into the PTY
 pub fn click_component(component: &Component, button: MouseButton) -> Vec<u8> {
     let (cx, cy) = component.bounds.center();
     mouse_click_sequence(button, cx, cy)
 }
 
-/// Click at specific coordinates.
 pub fn click_at(x: u16, y: u16, button: MouseButton) -> Vec<u8> {
     mouse_click_sequence(button, x, y)
 }
 
-/// Generate a double-click sequence.
-/// This is simply two click sequences in rapid succession.
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn double_click_sequence(button: MouseButton, x: u16, y: u16) -> Vec<u8> {
     let mut seq = mouse_click_sequence(button, x, y);
     seq.extend(mouse_click_sequence(button, x, y));
     seq
 }
 
-/// Legacy mouse encoding (X10 format) for terminals that don't support SGR.
-/// Encodes position in bytes, limiting to coordinates 0-222 (223 distinct values).
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub mod legacy {
     use super::MouseButton;
 
-    /// Generate X10 format mouse click.
-    /// Returns `None` if coordinates exceed 222 (X10 encodes as value + 33, max byte is 255).
     pub fn mouse_click_x10(button: MouseButton, x: u16, y: u16) -> Option<Vec<u8>> {
-        // X10 format can only encode positions 0-222 (223 distinct values)
         if x > 222 || y > 222 {
             return None;
         }
 
-        let btn = button.code() + 32; // X10 adds 32 to button
-        let x_byte = (x as u8) + 33; // X10 adds 33 to position
+        let btn = button.code() + 32;
+        let x_byte = (x as u8) + 33;
         let y_byte = (y as u8) + 33;
 
-        // CSI M button x y (raw bytes)
         Some(vec![0x1b, b'[', b'M', btn, x_byte, y_byte])
     }
 }
@@ -164,7 +110,7 @@ mod tests {
     #[test]
     fn test_mouse_click_sequence() {
         let seq = mouse_click_sequence(MouseButton::Left, 10, 5);
-        let expected_press = "\x1b[<0;11;6M"; // 10+1=11, 5+1=6
+        let expected_press = "\x1b[<0;11;6M";
         let expected_release = "\x1b[<0;11;6m";
 
         let seq_str = String::from_utf8_lossy(&seq);
@@ -176,7 +122,7 @@ mod tests {
     fn test_click_component() {
         let component = Component::new(
             crate::vom::Role::Button,
-            Rect::new(10, 5, 20, 1), // center = (20, 5)
+            Rect::new(10, 5, 20, 1),
             "[Submit]".to_string(),
             12345,
         );
@@ -184,8 +130,6 @@ mod tests {
         let seq = click_component(&component, MouseButton::Left);
         let seq_str = String::from_utf8_lossy(&seq);
 
-        // Center is (10 + 20/2, 5 + 1/2) = (20, 5)
-        // 1-indexed: (21, 6)
         assert!(seq_str.contains("\x1b[<0;21;6M"));
         assert!(seq_str.contains("\x1b[<0;21;6m"));
     }
@@ -194,14 +138,14 @@ mod tests {
     fn test_right_click() {
         let seq = mouse_click_sequence(MouseButton::Right, 0, 0);
         let seq_str = String::from_utf8_lossy(&seq);
-        assert!(seq_str.contains("\x1b[<2;1;1M")); // Button 2 = right
+        assert!(seq_str.contains("\x1b[<2;1;1M"));
     }
 
     #[test]
     fn test_scroll() {
         let seq = scroll_sequence(MouseButton::ScrollUp, 10, 10);
         let seq_str = String::from_utf8_lossy(&seq);
-        assert!(seq_str.contains("\x1b[<64;11;11M")); // 64 = scroll up
+        assert!(seq_str.contains("\x1b[<64;11;11M"));
     }
 
     #[test]
@@ -210,9 +154,9 @@ mod tests {
         assert_eq!(seq[0], 0x1b);
         assert_eq!(seq[1], b'[');
         assert_eq!(seq[2], b'M');
-        assert_eq!(seq[3], 32); // 0 + 32
-        assert_eq!(seq[4], 43); // 10 + 33
-        assert_eq!(seq[5], 38); // 5 + 33
+        assert_eq!(seq[3], 32);
+        assert_eq!(seq[4], 43);
+        assert_eq!(seq[5], 38);
     }
 
     #[test]
@@ -225,21 +169,19 @@ mod tests {
     fn test_mouse_click_at_origin() {
         let seq = mouse_click_sequence(MouseButton::Left, 0, 0);
         let seq_str = String::from_utf8_lossy(&seq);
-        // Must be 1-indexed: position (0,0) becomes (1,1)
+
         assert!(seq_str.contains("\x1b[<0;1;1M"));
         assert!(seq_str.contains("\x1b[<0;1;1m"));
     }
 
     #[test]
     fn test_legacy_x10_at_boundary() {
-        // Exactly 222 should work (becomes 255 = 222 + 33)
         let seq = legacy::mouse_click_x10(MouseButton::Left, 222, 222);
         assert!(seq.is_some());
         let bytes = seq.unwrap();
-        assert_eq!(bytes[4], 255); // 222 + 33
+        assert_eq!(bytes[4], 255);
         assert_eq!(bytes[5], 255);
 
-        // 223 should fail
         assert!(legacy::mouse_click_x10(MouseButton::Left, 223, 0).is_none());
         assert!(legacy::mouse_click_x10(MouseButton::Left, 0, 223).is_none());
     }

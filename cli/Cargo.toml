@@ -48,6 +48,7 @@ libc = "0.2"
 assert_cmd = "2.0"        # Binary testing - invoke CLI as subprocess
 predicates = "3.0"        # Assertion building for CLI output verification
 tempfile = "3.0"          # Isolated socket paths for mock daemon
+serial_test = "3.0"       # Sequential test execution for shared daemon state
 
 # cargo-udeps false positives (rand is used in connection.rs for jitter)
 [package.metadata.cargo-udeps.ignore]

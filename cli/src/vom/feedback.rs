@@ -1,23 +1,6 @@
-//! Feedback Loop ("Observer")
-//!
-//! Algorithm: Structural Hashing for Layout Signature
-//! Goal: Deterministic `wait` - verify action had effect via layout hash comparison
-//!
-//! Layout Signature = Hash(Vec<Component.visual_hash>)
-//! More stable than raw screen hash - ignores cursor blink, clock updates
-
 use crate::vom::Component;
 use std::hash::{Hash, Hasher};
 
-/// Compute a layout signature from a set of components.
-///
-/// The signature captures the structural layout of the screen:
-/// - Position and size of each component
-/// - Role of each component
-/// - Visual hash (content + style)
-///
-/// This is more stable than hashing the raw screen because it
-/// ignores minor changes like cursor blink or clock updates.
 pub fn compute_layout_signature(components: &[Component]) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
@@ -30,16 +13,12 @@ pub fn compute_layout_signature(components: &[Component]) -> u64 {
     hasher.finish()
 }
 
-/// Check if two layout signatures are identical.
-/// Returns true if the hashes are equal (layout unchanged).
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn is_stable(current: u64, previous: u64) -> bool {
     current == previous
 }
 
-/// Compute a content-only signature (ignores position).
-/// Useful for detecting content changes regardless of layout shifts.
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn compute_content_signature(components: &[Component]) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
@@ -51,9 +30,7 @@ pub fn compute_content_signature(components: &[Component]) -> u64 {
     hasher.finish()
 }
 
-/// Compute a role-only signature (ignores content and style).
-/// Useful for detecting structural changes (e.g., new buttons appeared).
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn compute_structure_signature(components: &[Component]) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
@@ -66,22 +43,16 @@ pub fn compute_structure_signature(components: &[Component]) -> u64 {
     hasher.finish()
 }
 
-/// Result of comparing two layouts
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub enum LayoutChange {
-    /// No change detected
     Stable,
-    /// Content changed but structure is same
     ContentChanged,
-    /// New components appeared or disappeared
     StructureChanged,
-    /// Layout positions shifted
     LayoutShifted,
 }
 
-/// Compare two sets of components and determine what changed.
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn compare_layouts(before: &[Component], after: &[Component]) -> LayoutChange {
     let before_layout = compute_layout_signature(before);
     let after_layout = compute_layout_signature(after);
@@ -107,8 +78,7 @@ pub fn compare_layouts(before: &[Component], after: &[Component]) -> LayoutChang
     LayoutChange::LayoutShifted
 }
 
-/// Find components that appeared in `after` but not in `before`.
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn find_new_components<'a>(before: &[Component], after: &'a [Component]) -> Vec<&'a Component> {
     after
         .iter()
@@ -116,8 +86,7 @@ pub fn find_new_components<'a>(before: &[Component], after: &'a [Component]) -> 
         .collect()
 }
 
-/// Find components that disappeared from `before` to `after`.
-#[allow(dead_code)] // Public API for external consumers
+#[allow(dead_code)]
 pub fn find_removed_components<'a>(
     before: &'a [Component],
     after: &[Component],
@@ -128,10 +97,8 @@ pub fn find_removed_components<'a>(
         .collect()
 }
 
-/// Check if two components are "the same" (same position and similar content).
-#[allow(dead_code)] // Used by find_new_components and find_removed_components
+#[allow(dead_code)]
 fn components_match(a: &Component, b: &Component) -> bool {
-    // Same position and role
     a.bounds == b.bounds && a.role == b.role
 }
 
@@ -142,7 +109,6 @@ mod tests {
     use std::hash::{Hash, Hasher};
 
     fn make_component(text: &str, role: Role, x: u16, y: u16) -> Component {
-        // Compute a visual hash based on text content
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         text.hash(&mut hasher);
         let visual_hash = hasher.finish();
@@ -223,7 +189,7 @@ mod tests {
     fn test_empty_components_signature() {
         let components: Vec<Component> = vec![];
         let sig = compute_layout_signature(&components);
-        // Should produce a consistent hash (not panic)
+
         let empty: Vec<Component> = vec![];
         assert_eq!(sig, compute_layout_signature(&empty));
     }
@@ -239,8 +205,6 @@ mod tests {
 
     #[test]
     fn test_layout_shifted() {
-        // Same text, same role, same position, but different visual_hash
-        // This happens when styles change without content change
         let before = vec![make_component_with_hash("[OK]", Role::Button, 0, 0, 111)];
         let after = vec![make_component_with_hash("[OK]", Role::Button, 0, 0, 222)];
 

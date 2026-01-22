@@ -103,12 +103,10 @@ impl Response {
         }
     }
 
-    /// Shorthand for a successful action response with just `{ "success": true }`.
     pub fn action_success(id: u64) -> Self {
         Self::success(id, json!({ "success": true }))
     }
 
-    /// Shorthand for a failed action response with AI-friendly error message.
     pub fn action_failed(id: u64, element_ref: Option<&str>, error: &str) -> Self {
         Self::success(
             id,
@@ -119,7 +117,6 @@ impl Response {
         )
     }
 
-    /// Shorthand for element not found response.
     pub fn element_not_found(id: u64, element_ref: &str) -> Self {
         Self::success(
             id,
@@ -130,7 +127,6 @@ impl Response {
         )
     }
 
-    /// Shorthand for wrong element type response.
     pub fn wrong_element_type(id: u64, element_ref: &str, actual: &str, expected: &str) -> Self {
         let suggestion = suggest_command_for_type(actual, element_ref);
         let hint = if suggestion.is_empty() {
@@ -151,7 +147,6 @@ impl Response {
     }
 }
 
-/// Suggest the correct command based on element type
 fn suggest_command_for_type(element_type: &str, element_ref: &str) -> String {
     match element_type {
         "button" | "menuitem" | "listitem" => format!("Try: click {}", element_ref),
@@ -165,10 +160,6 @@ fn suggest_command_for_type(element_type: &str, element_ref: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // =========================================================================
-    // Request param extraction tests
-    // =========================================================================
 
     fn make_request(params: Option<Value>) -> Request {
         Request {
@@ -254,10 +245,6 @@ mod tests {
         assert_eq!(req.param_i32("offset", 0), -10);
     }
 
-    // =========================================================================
-    // Request require_* tests
-    // =========================================================================
-
     #[test]
     fn test_require_str_returns_value_when_present() {
         let req = make_request(Some(json!({"ref": "@btn1"})));
@@ -270,7 +257,7 @@ mod tests {
         let err = req.require_str("ref").unwrap_err();
         let json = serde_json::to_string(&err).unwrap();
         assert!(json.contains("Missing 'ref' param"));
-        assert!(json.contains("-32602")); // Invalid params error code
+        assert!(json.contains("-32602"));
     }
 
     #[test]
@@ -287,10 +274,6 @@ mod tests {
         let json = serde_json::to_string(&err).unwrap();
         assert!(json.contains("Missing 'options' param"));
     }
-
-    // =========================================================================
-    // Response construction tests
-    // =========================================================================
 
     #[test]
     fn test_response_success_format() {
@@ -346,10 +329,6 @@ mod tests {
         assert!(json.contains("button"));
         assert!(json.contains("input"));
     }
-
-    // =========================================================================
-    // suggest_command_for_type tests
-    // =========================================================================
 
     #[test]
     fn test_suggest_command_for_button() {

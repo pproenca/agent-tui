@@ -143,14 +143,6 @@ impl VirtualTerminal {
         let mut parser = mutex_lock_or_recover(&self.parser);
         parser.set_size(rows, cols);
     }
-
-    #[allow(dead_code)]
-    pub fn mouse_reporting_enabled(&self) -> bool {
-        let parser = mutex_lock_or_recover(&self.parser);
-        let screen = parser.screen();
-
-        screen.mouse_protocol_mode() != vt100::MouseProtocolMode::None
-    }
 }
 
 fn convert_color(color: vt100::Color) -> Option<Color> {

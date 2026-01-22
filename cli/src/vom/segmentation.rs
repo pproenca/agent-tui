@@ -5,11 +5,6 @@ pub fn segment_buffer(buffer: &ScreenBuffer) -> Vec<Cluster> {
     segment_buffer_impl(buffer, true)
 }
 
-#[allow(dead_code)]
-pub fn segment_buffer_with_whitespace(buffer: &ScreenBuffer) -> Vec<Cluster> {
-    segment_buffer_impl(buffer, false)
-}
-
 fn segment_buffer_impl(buffer: &ScreenBuffer, filter_whitespace: bool) -> Vec<Cluster> {
     let mut clusters = Vec::new();
 

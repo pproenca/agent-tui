@@ -1,6 +1,4 @@
 pub mod classifier;
-pub mod feedback;
-pub mod interaction;
 pub mod segmentation;
 
 use crate::terminal::{CellStyle, ScreenBuffer};
@@ -25,14 +23,6 @@ impl Rect {
         }
     }
 
-    pub fn center(&self) -> (u16, u16) {
-        (
-            self.x.saturating_add(self.width / 2),
-            self.y.saturating_add(self.height / 2),
-        )
-    }
-
-    #[allow(dead_code)]
     pub fn contains(&self, x: u16, y: u16) -> bool {
         x >= self.x
             && x < self.x.saturating_add(self.width)
@@ -132,26 +122,6 @@ pub fn analyze(buffer: &ScreenBuffer, cursor_row: u16, cursor_col: u16) -> Vec<C
     classify(clusters, cursor_row, cursor_col)
 }
 
-pub fn find_by_text<'a>(components: &'a [Component], text: &str) -> Option<&'a Component> {
-    components.iter().find(|c| c.text_content.contains(text))
-}
-
-#[allow(dead_code)]
-pub fn find_by_exact_text<'a>(components: &'a [Component], text: &str) -> Option<&'a Component> {
-    components
-        .iter()
-        .find(|c| c.text_content.trim() == text.trim())
-}
-
-pub fn find_by_role(components: &[Component], role: Role) -> Vec<&Component> {
-    components.iter().filter(|c| c.role == role).collect()
-}
-
-#[allow(dead_code)]
-pub fn find_at_position(components: &[Component], x: u16, y: u16) -> Option<&Component> {
-    components.iter().find(|c| c.bounds.contains(x, y))
-}
-
 pub fn hash_cluster(cluster: &Cluster) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     cluster.rect.hash(&mut hasher);
@@ -163,12 +133,6 @@ pub fn hash_cluster(cluster: &Cluster) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_rect_center() {
-        let rect = Rect::new(10, 5, 20, 10);
-        assert_eq!(rect.center(), (20, 10));
-    }
 
     #[test]
     fn test_rect_contains() {
@@ -203,14 +167,5 @@ mod tests {
         assert_eq!(Role::Button.to_string(), "button");
         assert_eq!(Role::Tab.to_string(), "tab");
         assert_eq!(Role::Input.to_string(), "input");
-    }
-
-    #[test]
-    fn test_rect_center_odd_dimensions() {
-        let rect = Rect::new(0, 0, 5, 3);
-        assert_eq!(rect.center(), (2, 1));
-
-        let rect = Rect::new(10, 10, 1, 1);
-        assert_eq!(rect.center(), (10, 10));
     }
 }

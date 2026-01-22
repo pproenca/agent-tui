@@ -7,7 +7,7 @@ description: Write production-quality Rust code with idiomatic patterns and best
 
 Write production-quality Rust code following patterns from production systems like [facebook/below](https://github.com/facebookincubator/below).
 
-## Pattern Reference (60+ patterns)
+## Pattern Reference (80+ patterns)
 
 Load the relevant reference file based on what you're implementing:
 
@@ -27,6 +27,9 @@ Load the relevant reference file based on what you're implementing:
 | **CLI** | clap derive, subcommands, validation, config integration, dispatch, completions | [cli-patterns.md](references/cli-patterns.md) |
 | **Serialization** | serde, CBOR storage, JSON, CSV, OpenMetrics, custom serializers | [serialization.md](references/serialization.md) |
 | **Daemon & RPC** | daemon lifecycle, worker threads, gRPC services, PTY handling, signal handling, store/persistence (below, alacritty, tikv, vector, ripgrep) | [daemon-rpc-patterns.md](references/daemon-rpc-patterns.md) |
+| **Polling & Waiting** | condition polling, timeouts, stability detection, backoff, cancellation (tokio, reqwest, fd) | [polling-patterns.md](references/polling-patterns.md) |
+| **Terminal Raw I/O** | raw mode, termios, terminal size, ANSI sequences, stdin/stdout bridging (alacritty, crossterm, console) | [terminal-raw-io.md](references/terminal-raw-io.md) |
+| **Visual Processing** | grid buffers, raster scanning, connected components, heuristic classification, visual hashing (image-rs, euclid) | [visual-processing.md](references/visual-processing.md) |
 | **Logging** | slog setup, structured, threading, levels, contextual | [logging.md](references/logging.md) |
 | **Testing** | unit organization, fixtures, property, integration, mocks, utilities | [testing.md](references/testing.md) |
 | **File I/O** | buffered, mmap, atomic writes, locking, directories | [file-io.md](references/file-io.md) |

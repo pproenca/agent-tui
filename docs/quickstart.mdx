@@ -40,44 +40,6 @@ Requires Rust 1.70+.
   **Prerequisites:** macOS or Linux, Node.js 16+ (for npm install)
 </Info>
 
-## Built-in Demo
-
-The fastest way to see agent-tui in action:
-
-<Steps>
-  <Step title="Start the demo">
-    ```bash
-    agent-tui demo
-    ```
-    This spawns a simple TUI form with an input, checkbox, and buttons.
-  </Step>
-  <Step title="See detected elements">
-    ```bash
-    agent-tui snapshot -i
-    ```
-    Output:
-    ```
-    Elements:
-    @e1 [input:Name] "" (3,7) *focused*
-    @e2 [checkbox] "Enable notifications" (5,2)
-    @e3 [button:Submit] (7,4)
-    @e4 [button:Cancel] (7,15)
-    ```
-  </Step>
-  <Step title="Interact with elements">
-    ```bash
-    agent-tui fill @e1 "Hello World"
-    agent-tui toggle @e2
-    agent-tui click @e3
-    ```
-  </Step>
-  <Step title="Clean up">
-    ```bash
-    agent-tui kill
-    ```
-  </Step>
-</Steps>
-
 ## Your First Automation
 
 Let's automate `npx create-next-app` — a common interactive wizard:

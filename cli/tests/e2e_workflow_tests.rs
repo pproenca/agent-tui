@@ -1,0 +1,443 @@
+//! E2E workflow tests with real daemon
+//!
+//! These tests verify complete user workflows using the real daemon.
+//! Run with: cargo test --test e2e_workflow_tests -- --test-threads=1
+//!
+//! IMPORTANT: These tests MUST run sequentially (--test-threads=1) because they:
+//! - Share a single daemon process
+//! - Manipulate the "active session" state
+//! - Can interfere with each other if run in parallel
+//!
+//! If tests fail when run in parallel, that's expected behavior - use --test-threads=1.
+
+mod common;
+
+use common::RealTestHarness;
+use serde_json::Value;
+
+// =============================================================================
+// Session Lifecycle Tests
+// =============================================================================
+
+#[test]
+fn test_spawn_snapshot_kill() {
+    let h = RealTestHarness::new();
+
+    // 1. Spawn bash, get session ID
+    let session_id = h.spawn_bash();
+    assert!(!session_id.is_empty());
+
+    // 2. Snapshot should show shell prompt
+    let output = h.cli_json().args(["snapshot"]).output().unwrap();
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let screen = json["screen"].as_str().unwrap();
+    assert!(screen.contains("$"), "Shell prompt should be visible");
+
+    // 3. Kill session
+    assert!(h.cli().args(["kill"]).status().unwrap().success());
+
+    // 4. Sessions list should not contain our session
+    let output = h.cli_json().args(["sessions"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let sessions = json["sessions"].as_array().unwrap();
+    assert!(
+        !sessions
+            .iter()
+            .any(|s| s["session_id"].as_str() == Some(&session_id)),
+        "Killed session should not appear in list"
+    );
+}
+
+// =============================================================================
+// State Change Verification Tests
+// =============================================================================
+
+#[test]
+fn test_type_changes_screen() {
+    let h = RealTestHarness::new();
+    h.spawn_bash();
+
+    // 1. Type command with unique marker
+    assert!(h
+        .cli()
+        .args(["type", "echo E2E_MARKER_ABC123"])
+        .status()
+        .unwrap()
+        .success());
+
+    // 2. Wait for text to appear
+    assert!(h
+        .cli()
+        .args(["wait", "-t", "5000", "E2E_MARKER_ABC123"])
+        .status()
+        .unwrap()
+        .success());
+
+    // 3. Snapshot contains typed text
+    let output = h.cli_json().args(["snapshot"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let screen = json["screen"].as_str().unwrap();
+    assert!(
+        screen.contains("E2E_MARKER_ABC123"),
+        "Screen should contain typed text"
+    );
+}
+
+// =============================================================================
+// Multi-Session Management Tests
+// =============================================================================
+
+#[test]
+fn test_multi_session_switching() {
+    let h = RealTestHarness::new();
+
+    // 1. Spawn first session
+    let sess_a = h.spawn_bash();
+
+    // 2. Spawn second session
+    let sess_b = h.spawn_bash();
+    assert_ne!(sess_a, sess_b, "Sessions should have different IDs");
+
+    // 3. Type unique markers in each session
+    assert!(h
+        .cli()
+        .args(["-s", &sess_a, "type", "MARKER_AAA"])
+        .status()
+        .unwrap()
+        .success());
+    assert!(h
+        .cli()
+        .args(["-s", &sess_b, "type", "MARKER_BBB"])
+        .status()
+        .unwrap()
+        .success());
+
+    // 4. Wait for markers in each
+    assert!(h
+        .cli()
+        .args(["-s", &sess_a, "wait", "-t", "5000", "MARKER_AAA"])
+        .status()
+        .unwrap()
+        .success());
+    assert!(h
+        .cli()
+        .args(["-s", &sess_b, "wait", "-t", "5000", "MARKER_BBB"])
+        .status()
+        .unwrap()
+        .success());
+
+    // 5. Sessions list shows both
+    let output = h.cli_json().args(["sessions"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let sessions = json["sessions"].as_array().unwrap();
+    assert!(sessions.len() >= 2, "Should have at least 2 sessions");
+
+    // 6. Kill session A
+    assert!(h
+        .cli()
+        .args(["-s", &sess_a, "kill"])
+        .status()
+        .unwrap()
+        .success());
+
+    // 7. Session B still works - snapshot shows its marker
+    let output = h
+        .cli_json()
+        .args(["-s", &sess_b, "snapshot"])
+        .output()
+        .unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(
+        json["screen"].as_str().unwrap().contains("MARKER_BBB"),
+        "Session B should still have its marker"
+    );
+}
+
+// =============================================================================
+// Demo Form Interaction Tests
+// =============================================================================
+
+#[test]
+fn test_demo_form_interaction() {
+    let h = RealTestHarness::new();
+    h.spawn_demo();
+
+    // 1. Verify initial state - checkbox unchecked [ ]
+    let output = h.cli_json().args(["snapshot"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let screen = json["screen"].as_str().unwrap();
+    assert!(
+        screen.contains("[ ] Enable notifications"),
+        "Checkbox should be unchecked initially"
+    );
+
+    // 2. Type name into input field (focus starts on Name field)
+    assert!(h
+        .cli()
+        .args(["type", "E2EUser"])
+        .status()
+        .unwrap()
+        .success());
+    assert!(h
+        .cli()
+        .args(["wait", "-t", "3000", "E2EUser"])
+        .status()
+        .unwrap()
+        .success());
+
+    // 3. Tab to checkbox
+    assert!(h.cli().args(["press", "Tab"]).status().unwrap().success());
+    assert!(h
+        .cli()
+        .args(["wait", "--condition", "stable", "-t", "2000"])
+        .status()
+        .unwrap()
+        .success());
+
+    // 4. Toggle checkbox with Space
+    assert!(h.cli().args(["press", "Space"]).status().unwrap().success());
+    assert!(h
+        .cli()
+        .args(["wait", "--condition", "stable", "-t", "2000"])
+        .status()
+        .unwrap()
+        .success());
+
+    // 5. Verify checkbox is now checked [x]
+    let output = h.cli_json().args(["snapshot"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let screen = json["screen"].as_str().unwrap();
+    assert!(
+        screen.contains("[x] Enable notifications"),
+        "Checkbox should be checked after Space"
+    );
+    assert!(screen.contains("E2EUser"), "Name should still be visible");
+}
+
+// =============================================================================
+// Wait Condition Tests
+// =============================================================================
+
+#[test]
+fn test_wait_for_delayed_output() {
+    let h = RealTestHarness::new();
+    h.spawn_bash();
+
+    // Clear the screen first so we have a clean slate
+    assert!(h.cli().args(["type", "clear"]).status().unwrap().success());
+    assert!(h.cli().args(["press", "Enter"]).status().unwrap().success());
+    assert!(h
+        .cli()
+        .args(["wait", "--condition", "stable", "-t", "2000"])
+        .status()
+        .unwrap()
+        .success());
+
+    // Type the command that will sleep and then echo. After typing, the screen shows:
+    // "bash$ sleep 1; echo FINAL"
+    // After Enter + sleep + echo completion, it shows:
+    // "bash$ sleep 1; echo FINAL"
+    // "FINAL"                       <-- the echo output
+    // "bash$"                       <-- new prompt
+
+    // Strategy: count occurrences of a unique marker
+    // - After typing: 1 occurrence (in the command line)
+    // - After execution: 2 occurrences (command line + echo output)
+
+    assert!(h
+        .cli()
+        .args(["type", "sleep 1; echo MARKER_UNIQUE_42"])
+        .status()
+        .unwrap()
+        .success());
+
+    // Verify marker appears once in the typed command
+    let output = h.cli_json().args(["snapshot"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let screen_before = json["screen"].as_str().unwrap();
+    let count_before = screen_before.matches("MARKER_UNIQUE_42").count();
+    assert_eq!(count_before, 1, "Marker should appear once in command line");
+
+    // Execute the command
+    assert!(h.cli().args(["press", "Enter"]).status().unwrap().success());
+
+    // Wait for the second occurrence (the echo output)
+    let start = std::time::Instant::now();
+
+    // Poll until we see 2 occurrences
+    loop {
+        let output = h.cli_json().args(["snapshot"]).output().unwrap();
+        let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let screen = json["screen"].as_str().unwrap();
+        let count = screen.matches("MARKER_UNIQUE_42").count();
+
+        if count >= 2 {
+            break;
+        }
+
+        if start.elapsed().as_secs() > 5 {
+            panic!("Timeout waiting for echo output");
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    let elapsed = start.elapsed();
+
+    // Should have waited approximately 1 second (sleep 1)
+    assert!(
+        elapsed.as_millis() > 850,
+        "Should have waited for delay (took {}ms)",
+        elapsed.as_millis()
+    );
+    assert!(
+        elapsed.as_millis() < 3000,
+        "Should not have taken too long (took {}ms)",
+        elapsed.as_millis()
+    );
+}
+
+#[test]
+fn test_wait_timeout_fails() {
+    let h = RealTestHarness::new();
+    h.spawn_bash();
+
+    // Wait for text that will never appear (short timeout)
+    let status = h
+        .cli()
+        .args(["wait", "-t", "500", "TEXT_THAT_NEVER_APPEARS"])
+        .status()
+        .unwrap();
+    assert!(!status.success(), "Wait should fail on timeout");
+}
+
+#[test]
+fn test_wait_stable_succeeds() {
+    let h = RealTestHarness::new();
+    h.spawn_bash();
+
+    // Idle bash should stabilize quickly
+    let status = h
+        .cli()
+        .args(["wait", "--condition", "stable", "-t", "3000"])
+        .status()
+        .unwrap();
+    assert!(
+        status.success(),
+        "Wait stable should succeed for idle shell"
+    );
+}
+
+// =============================================================================
+// Keyboard Navigation Tests
+// =============================================================================
+
+#[test]
+fn test_keyboard_tab_navigation() {
+    let h = RealTestHarness::new();
+    h.spawn_demo();
+
+    // The demo uses ANSI colors to indicate focus, not different text.
+    // Snapshot only captures text, so we verify navigation by checking state changes.
+
+    // 1. Initial state: focus on Name field
+    // Type something to verify we're on the name field
+    assert!(h
+        .cli()
+        .args(["type", "NavTest"])
+        .status()
+        .unwrap()
+        .success());
+    assert!(h
+        .cli()
+        .args(["wait", "-t", "3000", "NavTest"])
+        .status()
+        .unwrap()
+        .success());
+
+    // 2. Tab to checkbox, press Space to toggle
+    assert!(h.cli().args(["press", "Tab"]).status().unwrap().success());
+    assert!(h
+        .cli()
+        .args(["wait", "--condition", "stable", "-t", "2000"])
+        .status()
+        .unwrap()
+        .success());
+
+    // Toggle checkbox with Space (this only works when checkbox is focused)
+    assert!(h.cli().args(["press", "Space"]).status().unwrap().success());
+    assert!(h
+        .cli()
+        .args(["wait", "--condition", "stable", "-t", "2000"])
+        .status()
+        .unwrap()
+        .success());
+
+    // 3. Verify checkbox state changed - proves Tab navigation worked
+    let output = h.cli_json().args(["snapshot"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let screen = json["screen"].as_str().unwrap();
+
+    assert!(
+        screen.contains("[x] Enable notifications"),
+        "Checkbox should be checked after Tab + Space, proving navigation works"
+    );
+    assert!(
+        screen.contains("NavTest"),
+        "Name field should still have typed text"
+    );
+}
+
+// =============================================================================
+// Error Handling Tests
+// =============================================================================
+
+#[test]
+fn test_click_nonexistent_element() {
+    let h = RealTestHarness::new();
+    h.spawn_bash();
+
+    // Click on element ref that doesn't exist
+    let status = h
+        .cli()
+        .args(["click", "@nonexistent_element"])
+        .status()
+        .unwrap();
+    assert!(
+        !status.success(),
+        "Click on nonexistent element should fail"
+    );
+}
+
+#[test]
+fn test_operation_on_dead_session() {
+    let h = RealTestHarness::new();
+
+    // Spawn and immediately kill
+    let output = h.cli_json().args(["spawn", "bash"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let session_id = json["session_id"].as_str().unwrap().to_string();
+
+    // Wait briefly for session to initialize
+    let _ = h
+        .cli()
+        .args(["-s", &session_id, "wait", "-t", "2000", "$"])
+        .status();
+
+    // Kill it
+    assert!(h
+        .cli()
+        .args(["-s", &session_id, "kill"])
+        .status()
+        .unwrap()
+        .success());
+
+    // Operations on dead session should fail
+    let status = h
+        .cli()
+        .args(["-s", &session_id, "snapshot"])
+        .status()
+        .unwrap();
+    assert!(!status.success(), "Snapshot on dead session should fail");
+}

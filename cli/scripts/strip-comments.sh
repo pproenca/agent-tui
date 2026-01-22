@@ -8,16 +8,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Check if ast-grep is installed
-if ! command -v sg &> /dev/null; then
-    echo "Error: ast-grep (sg) not installed"
-    echo "Install with: brew install ast-grep"
-    exit 1
+if ! command -v sg &>/dev/null; then
+  echo "Error: ast-grep (sg) not installed"
+  echo "Install with: brew install ast-grep"
+  exit 1
 fi
 
-# Rule to remove ALL comments (including doc comments)
 RULE_ALL=$(mktemp)
-cat > "$RULE_ALL" << 'EOF'
+cat >"$RULE_ALL" <<'EOF'
 id: remove-all-comments
 language: rust
 rule:
@@ -25,9 +23,8 @@ rule:
 fix: ""
 EOF
 
-# Rule to remove only regular comments (keep doc comments)
 RULE_REGULAR=$(mktemp)
-cat > "$RULE_REGULAR" << 'EOF'
+cat >"$RULE_REGULAR" <<'EOF'
 id: remove-regular-comments
 language: rust
 rule:

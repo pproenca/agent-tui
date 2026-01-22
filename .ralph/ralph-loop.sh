@@ -11,23 +11,36 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
-PROMPT_FILE="${SCRIPT_DIR}/PROMPT.md"
-PLAN_FILE="${HOME}/.claude/plans/goofy-knitting-hammock.md"
-TODO_FILE="${SCRIPT_DIR}/TODO.md"
-LOG_FILE="${SCRIPT_DIR}/ralph.log"
+readonly PROJECT_ROOT
+readonly PROMPT_FILE="${SCRIPT_DIR}/PROMPT.md"
+readonly PLAN_FILE="${HOME}/.claude/plans/goofy-knitting-hammock.md"
+readonly TODO_FILE="${SCRIPT_DIR}/TODO.md"
+readonly LOG_FILE="${SCRIPT_DIR}/ralph.log"
 
 # Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m'
 
-info() { echo -e "${BLUE}[ralph]${NC} $*"; }
-success() { echo -e "${GREEN}[ralph]${NC} $*"; }
-warn() { echo -e "${YELLOW}[ralph]${NC} $*"; }
-error() { echo -e "${RED}[ralph]${NC} $*" >&2; }
+info() {
+  echo -e "${BLUE}[ralph]${NC} $*"
+}
+
+success() {
+  echo -e "${GREEN}[ralph]${NC} $*"
+}
+
+warn() {
+  echo -e "${YELLOW}[ralph]${NC} $*"
+}
+
+error() {
+  echo -e "${RED}[ralph]${NC} $*" >&2
+}
 
 # Parse arguments
 DRY_RUN=false
@@ -80,9 +93,8 @@ is_complete() {
     return 1  # Still have unchecked items
   fi
 
-  # Check if workspace builds
-  cd "${PROJECT_ROOT}"
-  if cargo build --workspace >/dev/null 2>&1; then
+  # Check if workspace builds (use subshell to isolate cd)
+  if (cd "${PROJECT_ROOT}" && cargo build --workspace >/dev/null 2>&1); then
     return 0  # Complete!
   fi
 
@@ -104,9 +116,9 @@ main() {
   while :; do
     ((iteration++))
 
-    info "═══════════════════════════════════════════════════════"
+    info "════════════════════════════════════════════════"
     info "  Iteration ${iteration}"
-    info "═══════════════════════════════════════════════════════"
+    info "════════════════════════════════════════════════"
     echo ""
 
     # Check if already complete

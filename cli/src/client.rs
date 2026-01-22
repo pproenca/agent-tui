@@ -110,15 +110,6 @@ impl DaemonClient {
 
         response.result.ok_or(ClientError::InvalidResponse)
     }
-
-    #[allow(dead_code)]
-    pub fn ping(&mut self) -> Result<bool, ClientError> {
-        let result = self.call("ping", None)?;
-        Ok(result
-            .get("pong")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false))
-    }
 }
 
 pub fn start_daemon_background() -> Result<(), ClientError> {

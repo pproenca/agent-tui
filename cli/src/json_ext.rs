@@ -12,6 +12,9 @@ pub trait ValueExt {
 
     /// Get a bool field or return default.
     fn bool_or(&self, key: &str, default: bool) -> bool;
+
+    /// Get an array field's string elements joined by a separator.
+    fn str_array_join(&self, key: &str, sep: &str) -> String;
 }
 
 impl ValueExt for Value {
@@ -25,5 +28,17 @@ impl ValueExt for Value {
 
     fn bool_or(&self, key: &str, default: bool) -> bool {
         self.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
+    }
+
+    fn str_array_join(&self, key: &str, sep: &str) -> String {
+        self.get(key)
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str())
+                    .collect::<Vec<_>>()
+                    .join(sep)
+            })
+            .unwrap_or_default()
     }
 }

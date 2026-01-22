@@ -58,6 +58,24 @@ impl WaitCondition {
             }
         }
     }
+
+    pub fn matched_text(&self) -> Option<String> {
+        match self {
+            WaitCondition::Text(t) | WaitCondition::TextGone(t) => Some(t.clone()),
+            WaitCondition::Value { expected, .. } => Some(expected.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn element_ref(&self) -> Option<String> {
+        match self {
+            WaitCondition::Element(e)
+            | WaitCondition::Focused(e)
+            | WaitCondition::NotVisible(e) => Some(e.clone()),
+            WaitCondition::Value { element, .. } => Some(element.clone()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Default)]

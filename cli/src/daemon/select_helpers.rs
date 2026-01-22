@@ -1,9 +1,7 @@
+use super::ansi_keys;
 use crate::session::Session;
 use std::thread;
 use std::time::Duration;
-
-const ARROW_UP: &[u8] = b"\x1b[A";
-const ARROW_DOWN: &[u8] = b"\x1b[B";
 
 pub fn navigate_to_option(
     sess: &mut Session,
@@ -19,7 +17,11 @@ pub fn navigate_to_option(
         .unwrap_or(0);
 
     let steps = target_idx as i32 - current_idx as i32;
-    let key = if steps > 0 { ARROW_DOWN } else { ARROW_UP };
+    let key = if steps > 0 {
+        ansi_keys::DOWN
+    } else {
+        ansi_keys::UP
+    };
 
     for _ in 0..steps.unsigned_abs() {
         sess.pty_write(key)?;

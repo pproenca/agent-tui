@@ -73,6 +73,17 @@ pub struct Cli {
     pub debug: bool,
 }
 
+impl Cli {
+    /// Returns the effective output format, considering --json shorthand.
+    pub fn effective_format(&self) -> OutputFormat {
+        if self.json {
+            OutputFormat::Json
+        } else {
+            self.format
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Spawn a new TUI application in a virtual terminal
@@ -746,12 +757,32 @@ pub enum RecordFormat {
     Asciicast,
 }
 
+impl RecordFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RecordFormat::Json => "json",
+            RecordFormat::Asciicast => "asciicast",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum ScrollDirection {
     Up,
     Down,
     Left,
     Right,
+}
+
+impl ScrollDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ScrollDirection::Up => "up",
+            ScrollDirection::Down => "down",
+            ScrollDirection::Left => "left",
+            ScrollDirection::Right => "right",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -781,6 +812,7 @@ impl std::fmt::Display for WaitConditionArg {
 
 /// Parameters for the wait command
 #[derive(Debug, Clone, Default, Parser)]
+#[command(group = clap::ArgGroup::new("wait_condition").multiple(false).args(&["element", "visible", "focused", "not_visible", "text_gone", "stable", "value"]))]
 pub struct WaitParams {
     /// Text to wait for (legacy mode, use --condition for more options)
     pub text: Option<String>,
@@ -790,7 +822,7 @@ pub struct WaitParams {
     pub timeout: u64,
 
     /// Wait condition type
-    #[arg(long, value_enum)]
+    #[arg(long, value_enum, conflicts_with = "wait_condition")]
     pub condition: Option<WaitConditionArg>,
 
     /// Target for the condition (element ref or text pattern)
@@ -798,32 +830,60 @@ pub struct WaitParams {
     pub target: Option<String>,
 
     /// Wait for element to appear
-    #[arg(long, conflicts_with_all = ["condition", "text", "visible"])]
+    #[arg(long, group = "wait_condition")]
     pub element: Option<String>,
 
     /// Wait for element to appear (alias for --element, agent-browser parity)
-    #[arg(long, conflicts_with_all = ["condition", "text", "element"])]
+    #[arg(long, group = "wait_condition")]
     pub visible: Option<String>,
 
     /// Wait for element to be focused
-    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible"])]
+    #[arg(long, group = "wait_condition")]
     pub focused: Option<String>,
 
     /// Wait for element to disappear
-    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused"])]
+    #[arg(long, group = "wait_condition")]
     pub not_visible: Option<String>,
 
     /// Wait for text to disappear
-    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible"])]
+    #[arg(long, group = "wait_condition")]
     pub text_gone: Option<String>,
 
     /// Wait for screen to stabilize
-    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible", "text_gone", "value"])]
+    #[arg(long, group = "wait_condition")]
     pub stable: bool,
 
     /// Wait for input to have specific value (format: @ref=value)
-    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible", "text_gone", "stable"])]
+    #[arg(long, group = "wait_condition")]
     pub value: Option<String>,
+}
+
+impl WaitParams {
+    /// Resolve wait condition from WaitParams to (condition_type, target) tuple
+    pub fn resolve_condition(&self) -> (Option<String>, Option<String>) {
+        if self.stable {
+            return (Some("stable".to_string()), None);
+        }
+
+        let checks: &[(&str, Option<&String>)] = &[
+            ("element", self.element.as_ref()),
+            ("element", self.visible.as_ref()),
+            ("focused", self.focused.as_ref()),
+            ("not_visible", self.not_visible.as_ref()),
+            ("text_gone", self.text_gone.as_ref()),
+            ("value", self.value.as_ref()),
+        ];
+
+        for (cond, target) in checks {
+            if let Some(t) = target {
+                return (Some((*cond).to_string()), Some((*t).clone()));
+            }
+        }
+
+        self.condition
+            .map(|c| (Some(c.to_string()), self.target.clone()))
+            .unwrap_or((None, None))
+    }
 }
 
 /// Parameters for the find command
@@ -863,8 +923,6 @@ pub enum OutputFormat {
     #[default]
     Text,
     Json,
-    /// Accessibility-tree format (agent-browser style): "- button "Submit" [ref=@btn1]"
-    Tree,
 }
 
 #[cfg(test)]
@@ -1341,13 +1399,6 @@ mod tests {
     fn test_json_shorthand_flag() {
         let cli = Cli::parse_from(["agent-tui", "--json", "health"]);
         assert!(cli.json);
-    }
-
-    /// Test tree output format
-    #[test]
-    fn test_tree_output_format() {
-        let cli = Cli::parse_from(["agent-tui", "-f", "tree", "snapshot"]);
-        assert_eq!(cli.format, OutputFormat::Tree);
     }
 
     /// Test spawn with cwd argument

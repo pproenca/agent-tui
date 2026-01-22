@@ -59,17 +59,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let format = if cli.json {
-        commands::OutputFormat::Json
-    } else {
-        cli.format
-    };
-
+    let format = cli.effective_format();
     let mut ctx = HandlerContext::new(&mut client, cli.session, format);
 
     match cli.command {
-        Commands::Daemon => unreachable!(),
-        Commands::Completions { .. } => unreachable!(),
+        Commands::Daemon | Commands::Completions { .. } => unreachable!(),
 
         Commands::Spawn {
             command,

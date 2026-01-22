@@ -16,6 +16,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use super::ansi_keys;
+
 pub fn socket_path() -> PathBuf {
     if let Ok(custom_path) = std::env::var("AGENT_TUI_SOCKET") {
         return PathBuf::from(custom_path);
@@ -24,6 +26,107 @@ pub fn socket_path() -> PathBuf {
     std::env::var("XDG_RUNTIME_DIR")
         .map(|dir| PathBuf::from(dir).join("agent-tui.sock"))
         .unwrap_or_else(|_| PathBuf::from("/tmp/agent-tui.sock"))
+}
+
+fn matches_text(haystack: Option<&String>, needle: &str, exact: bool) -> bool {
+    match haystack {
+        Some(h) if exact => h == needle,
+        Some(h) => h.to_lowercase().contains(&needle.to_lowercase()),
+        None => false,
+    }
+}
+
+fn update_with_warning(sess: &mut crate::session::Session) -> Option<String> {
+    let warning = match sess.update() {
+        Ok(()) => None,
+        Err(e) => {
+            eprintln!("Warning: Session update failed: {}", e);
+            Some(format!("Element data may be stale: {}", e))
+        }
+    };
+    sess.detect_elements();
+    warning
+}
+
+fn build_asciicast(
+    session_id: &str,
+    cols: u16,
+    rows: u16,
+    frames: &[crate::session::RecordingFrame],
+) -> Value {
+    let mut output = Vec::new();
+
+    let duration = frames
+        .last()
+        .map(|f| f.timestamp_ms as f64 / 1000.0)
+        .unwrap_or(0.0);
+
+    let header = json!({
+        "version": 2,
+        "width": cols,
+        "height": rows,
+        "timestamp": chrono::Utc::now().timestamp(),
+        "duration": duration,
+        "title": format!("agent-tui recording - {}", session_id),
+        "env": {
+            "TERM": "xterm-256color",
+            "SHELL": std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+        }
+    });
+    output.push(serde_json::to_string(&header).unwrap());
+
+    let mut prev_screen = String::new();
+    for frame in frames {
+        let time_secs = frame.timestamp_ms as f64 / 1000.0;
+        if frame.screen != prev_screen {
+            let screen_data = if prev_screen.is_empty() {
+                frame.screen.clone()
+            } else {
+                format!("\x1b[2J\x1b[H{}", frame.screen)
+            };
+            let event = json!([time_secs, "o", screen_data]);
+            output.push(serde_json::to_string(&event).unwrap());
+            prev_screen = frame.screen.clone();
+        }
+    }
+
+    json!({
+        "format": "asciicast",
+        "version": 2,
+        "data": output.join("\n")
+    })
+}
+
+fn build_wait_suggestion(condition: &WaitCondition) -> String {
+    match condition {
+        WaitCondition::Text(t) => format!(
+            "Text '{}' not found. Check if the app finished loading or try 'snapshot -i' to see current screen.",
+            t
+        ),
+        WaitCondition::Element(e) => format!(
+            "Element {} not found. Try 'snapshot -i' to see available elements.",
+            e
+        ),
+        WaitCondition::Focused(e) => format!(
+            "Element {} exists but is not focused. Try 'click {}' to focus it.",
+            e, e
+        ),
+        WaitCondition::NotVisible(e) => format!(
+            "Element {} is still visible. The app may still be processing.",
+            e
+        ),
+        WaitCondition::Stable => {
+            "Screen is still changing. The app may have animations or be loading.".to_string()
+        }
+        WaitCondition::TextGone(t) => format!(
+            "Text '{}' is still visible. The operation may not have completed.",
+            t
+        ),
+        WaitCondition::Value { element, expected } => format!(
+            "Element {} does not have value '{}'. Check if input was accepted.",
+            element, expected
+        ),
+    }
 }
 
 struct ElementFilter<'a> {
@@ -43,53 +146,19 @@ impl ElementFilter<'_> {
             }
         }
         if let Some(n) = self.name {
-            let matches = if self.exact {
-                el.label.as_ref().map(|l| l == n).unwrap_or(false)
-            } else {
-                let n_lower = n.to_lowercase();
-                el.label
-                    .as_ref()
-                    .map(|l| l.to_lowercase().contains(&n_lower))
-                    .unwrap_or(false)
-            };
-            if !matches {
+            if !matches_text(el.label.as_ref(), n, self.exact) {
                 return false;
             }
         }
         if let Some(t) = self.text {
-            let in_label = if self.exact {
-                el.label.as_ref().map(|l| l == t).unwrap_or(false)
-            } else {
-                let t_lower = t.to_lowercase();
-                el.label
-                    .as_ref()
-                    .map(|l| l.to_lowercase().contains(&t_lower))
-                    .unwrap_or(false)
-            };
-            let in_value = if self.exact {
-                el.value.as_ref().map(|v| v == t).unwrap_or(false)
-            } else {
-                let t_lower = t.to_lowercase();
-                el.value
-                    .as_ref()
-                    .map(|v| v.to_lowercase().contains(&t_lower))
-                    .unwrap_or(false)
-            };
+            let in_label = matches_text(el.label.as_ref(), t, self.exact);
+            let in_value = matches_text(el.value.as_ref(), t, self.exact);
             if !in_label && !in_value {
                 return false;
             }
         }
         if let Some(p) = self.placeholder {
-            let matches = if self.exact {
-                el.hint.as_ref().map(|h| h == p).unwrap_or(false)
-            } else {
-                let p_lower = p.to_lowercase();
-                el.hint
-                    .as_ref()
-                    .map(|h| h.to_lowercase().contains(&p_lower))
-                    .unwrap_or(false)
-            };
-            if !matches {
+            if !matches_text(el.hint.as_ref(), p, self.exact) {
                 return false;
             }
         }
@@ -97,6 +166,20 @@ impl ElementFilter<'_> {
             return false;
         }
         true
+    }
+
+    /// Filter elements and map to JSON values.
+    fn apply(&self, elements: &[Element]) -> Vec<Value> {
+        elements
+            .iter()
+            .filter(|el| self.matches(el))
+            .map(element_to_json)
+            .collect()
+    }
+
+    /// Count matching elements.
+    fn count(&self, elements: &[Element]) -> usize {
+        elements.iter().filter(|el| self.matches(el)).count()
     }
 }
 
@@ -111,10 +194,10 @@ impl Default for DaemonServer {
     }
 }
 
-fn combine_warnings(warning1: Option<String>, warning2: Option<String>) -> Option<String> {
-    match (warning1, warning2) {
-        (Some(w1), Some(w2)) => Some(format!("{}. {}", w1, w2)),
-        (Some(w), None) | (None, Some(w)) => Some(w),
+fn combine_warnings(a: Option<String>, b: Option<String>) -> Option<String> {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(format!("{}. {}", x, y)),
+        (w @ Some(_), None) | (None, w @ Some(_)) => w,
         (None, None) => None,
     }
 }
@@ -176,14 +259,7 @@ impl DaemonServer {
         F: FnOnce(&mut crate::session::Session, &str, Option<String>) -> Response,
     {
         self.with_session_and_ref(request, |sess, element_ref| {
-            let update_warning = match sess.update() {
-                Ok(()) => None,
-                Err(e) => {
-                    eprintln!("Warning: Session update failed: {}", e);
-                    Some(format!("Element data may be stale: {}", e))
-                }
-            };
-            sess.detect_elements();
+            let update_warning = update_with_warning(sess);
             f(sess, element_ref, update_warning)
         })
     }
@@ -194,14 +270,7 @@ impl DaemonServer {
     {
         let session_id = request.param_str("session");
         self.with_session(request, session_id, |sess| {
-            let update_warning = match sess.update() {
-                Ok(()) => None,
-                Err(e) => {
-                    eprintln!("Warning: Session update failed: {}", e);
-                    Some(format!("Element data may be stale: {}", e))
-                }
-            };
-            sess.detect_elements();
+            let update_warning = update_with_warning(sess);
             f(sess, update_warning)
         })
     }
@@ -457,38 +526,8 @@ impl DaemonServer {
             }
 
             let (elements, stats) = if include_elements {
-
                 let vom_components = sess.analyze_screen();
-                let elements_total = vom_components.len();
-
-
-
-                let interactive: Vec<_> = vom_components
-                    .iter()
-                    .filter(|c| c.role.is_interactive())
-                    .collect();
-                let elements_interactive = interactive.len();
-
-
-                let filtered_elements: Vec<_> = interactive
-                    .iter()
-                    .enumerate()
-                    .map(|(i, comp)| vom_component_to_json(comp, i))
-                    .collect();
-
-                let elements_shown = filtered_elements.len();
-
-                (
-                    Some(filtered_elements),
-                    json!({
-                        "lines": screen.lines().count(),
-                        "chars": screen.len(),
-                        "elements_total": elements_total,
-                        "elements_interactive": elements_interactive,
-                        "elements_shown": elements_shown,
-                        "detection": "vom"
-                    }),
-                )
+                filter_interactive_components(&vom_components, &screen)
             } else {
                 (
                     None,
@@ -606,7 +645,6 @@ impl DaemonServer {
                 "value": value
             });
 
-
             if let Some(warn_msg) = combine_warnings(update_warning, type_warning) {
                 response["warning"] = json!(warn_msg);
             }
@@ -682,22 +720,8 @@ impl DaemonServer {
             if let Some(mut sess) = acquire_session_lock(&session, Duration::from_millis(100)) {
                 if check_condition(&mut sess, &condition, &mut stable_tracker) {
                     found = true;
-                    match &condition {
-                        WaitCondition::Text(t) => {
-                            matched_text = Some(t.clone());
-                        }
-                        WaitCondition::Element(e) => {
-                            element_ref = Some(e.clone());
-                        }
-                        WaitCondition::Focused(e) => {
-                            element_ref = Some(e.clone());
-                        }
-                        WaitCondition::Value { element, expected } => {
-                            element_ref = Some(element.clone());
-                            matched_text = Some(expected.clone());
-                        }
-                        _ => {}
-                    }
+                    matched_text = condition.matched_text();
+                    element_ref = condition.element_ref();
                     break;
                 }
             }
@@ -728,50 +752,7 @@ impl DaemonServer {
                 screen_preview
             };
             response["screen_context"] = json!(screen_context);
-
-            let suggestion = match &condition {
-                WaitCondition::Text(t) => {
-                    format!(
-                        "Text '{}' not found. Check if the app finished loading or try 'snapshot -i' to see current screen.",
-                        t
-                    )
-                }
-                WaitCondition::Element(e) => {
-                    format!(
-                        "Element {} not found. Try 'snapshot -i' to see available elements.",
-                        e
-                    )
-                }
-                WaitCondition::Focused(e) => {
-                    format!(
-                        "Element {} exists but is not focused. Try 'click {}' to focus it.",
-                        e, e
-                    )
-                }
-                WaitCondition::NotVisible(e) => {
-                    format!(
-                        "Element {} is still visible. The app may still be processing.",
-                        e
-                    )
-                }
-                WaitCondition::Stable => {
-                    "Screen is still changing. The app may have animations or be loading."
-                        .to_string()
-                }
-                WaitCondition::TextGone(t) => {
-                    format!(
-                        "Text '{}' is still visible. The operation may not have completed.",
-                        t
-                    )
-                }
-                WaitCondition::Value { element, expected } => {
-                    format!(
-                        "Element {} does not have value '{}'. Check if input was accepted.",
-                        element, expected
-                    )
-                }
-            };
-            response["suggestion"] = json!(suggestion);
+            response["suggestion"] = json!(build_wait_suggestion(&condition));
         }
 
         Response::success(request.id, response)
@@ -864,14 +845,7 @@ impl DaemonServer {
         Response::success(
             request.id,
             json!({
-                "sessions": sessions.iter().map(|s| json!({
-                    "id": s.id,
-                    "command": s.command,
-                    "pid": s.pid,
-                    "running": s.running,
-                    "created_at": s.created_at,
-                    "size": { "cols": s.size.0, "rows": s.size.1 }
-                })).collect::<Vec<_>>(),
+                "sessions": sessions.iter().map(|s| s.to_json()).collect::<Vec<_>>(),
                 "active_session": active_id
             }),
         )
@@ -913,22 +887,11 @@ impl DaemonServer {
 
         let req_id = request.id;
         self.with_detected_session(&request, |sess, update_warning| {
-            let elements = sess.cached_elements();
-
-            let matches: Vec<_> = elements
-                .iter()
-                .filter(|el| filter.matches(el))
-                .map(element_to_json)
-                .collect();
-
-            let final_matches = if let Some(n) = nth {
-                if n < matches.len() {
-                    vec![matches[n].clone()]
-                } else {
-                    vec![]
-                }
-            } else {
-                matches
+            let matches = filter.apply(sess.cached_elements());
+            let final_matches = match nth {
+                Some(n) if n < matches.len() => vec![matches[n].clone()],
+                Some(_) => vec![],
+                None => matches,
             };
 
             let mut response = json!({
@@ -1016,8 +979,7 @@ impl DaemonServer {
         let req_id = request.id;
 
         self.with_detected_session(&request, |sess, update_warning| {
-            let elements = sess.cached_elements();
-            let count = elements.iter().filter(|el| filter.matches(el)).count();
+            let count = filter.count(sess.cached_elements());
             let mut response = json!({ "count": count });
             if let Some(warning) = update_warning {
                 response["warning"] = json!(warning);
@@ -1035,10 +997,10 @@ impl DaemonServer {
         let session_id = request.param_str("session");
 
         let key_seq: &[u8] = match direction {
-            "up" => b"\x1b[A",
-            "down" => b"\x1b[B",
-            "left" => b"\x1b[D",
-            "right" => b"\x1b[C",
+            "up" => ansi_keys::UP,
+            "down" => ansi_keys::DOWN,
+            "left" => ansi_keys::LEFT,
+            "right" => ansi_keys::RIGHT,
             _ => {
                 return Response::error(
                     request.id,
@@ -1101,7 +1063,7 @@ impl DaemonServer {
                         );
                     }
 
-                    if let Err(e) = sess.pty_write(b"\x1b[B") {
+                    if let Err(e) = sess.pty_write(ansi_keys::DOWN) {
                         return Response::error(
                             request.id,
                             -32000,
@@ -1393,56 +1355,10 @@ impl DaemonServer {
 
         self.with_session(&request, session_id, |sess| {
             let frames = sess.stop_recording();
+            let (cols, rows) = sess.size();
 
             let data = if format == "asciicast" {
-                let (cols, rows) = sess.size();
-                let mut output = Vec::new();
-
-                let duration = if !frames.is_empty() {
-                    frames
-                        .last()
-                        .map(|f| f.timestamp_ms as f64 / 1000.0)
-                        .unwrap_or(0.0)
-                } else {
-                    0.0
-                };
-
-                let header = json!({
-                    "version": 2,
-                    "width": cols,
-                    "height": rows,
-                    "timestamp": chrono::Utc::now().timestamp(),
-                    "duration": duration,
-                    "title": format!("agent-tui recording - {}", sess.id),
-                    "env": {
-                        "TERM": "xterm-256color",
-                        "SHELL": std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
-                    }
-                });
-                output.push(serde_json::to_string(&header).unwrap());
-
-                let mut prev_screen = String::new();
-                for frame in &frames {
-                    let time_secs = frame.timestamp_ms as f64 / 1000.0;
-
-                    if frame.screen != prev_screen {
-                        let screen_data = if prev_screen.is_empty() {
-                            frame.screen.clone()
-                        } else {
-                            format!("\x1b[2J\x1b[H{}", frame.screen)
-                        };
-
-                        let event = json!([time_secs, "o", screen_data]);
-                        output.push(serde_json::to_string(&event).unwrap());
-                        prev_screen = frame.screen.clone();
-                    }
-                }
-
-                json!({
-                    "format": "asciicast",
-                    "version": 2,
-                    "data": output.join("\n")
-                })
+                build_asciicast(sess.id.as_str(), cols, rows, &frames)
             } else {
                 json!({
                     "format": "json",
@@ -1823,6 +1739,42 @@ fn vom_component_to_json(comp: &crate::vom::Component, index: usize) -> Value {
         "vom_id": comp.id.to_string(),
         "visual_hash": comp.visual_hash
     })
+}
+
+/// Filter VOM components to interactive elements and return JSON values with stats
+fn filter_interactive_components(
+    vom_components: &[crate::vom::Component],
+    screen: &str,
+) -> (Option<Vec<Value>>, Value) {
+    let elements_total = vom_components.len();
+
+    // Filter to interactive elements using Role::is_interactive()
+    let interactive: Vec<_> = vom_components
+        .iter()
+        .filter(|c| c.role.is_interactive())
+        .collect();
+    let elements_interactive = interactive.len();
+
+    // Enumerate from filtered list so refs match detect_elements()
+    let filtered_elements: Vec<_> = interactive
+        .iter()
+        .enumerate()
+        .map(|(i, comp)| vom_component_to_json(comp, i))
+        .collect();
+
+    let elements_shown = filtered_elements.len();
+
+    (
+        Some(filtered_elements),
+        json!({
+            "lines": screen.lines().count(),
+            "chars": screen.len(),
+            "elements_total": elements_total,
+            "elements_interactive": elements_interactive,
+            "elements_shown": elements_shown,
+            "detection": "vom"
+        }),
+    )
 }
 
 #[cfg(test)]

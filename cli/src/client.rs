@@ -146,10 +146,6 @@ pub fn ensure_daemon() -> Result<DaemonClient, ClientError> {
 mod tests {
     use super::*;
 
-    // =========================================================================
-    // Request serialization tests
-    // =========================================================================
-
     #[test]
     fn test_request_serializes_to_jsonrpc_2_0() {
         let request = Request {
@@ -162,7 +158,7 @@ mod tests {
         assert!(json.contains("\"jsonrpc\":\"2.0\""));
         assert!(json.contains("\"id\":1"));
         assert!(json.contains("\"method\":\"health\""));
-        assert!(!json.contains("\"params\"")); // skip_serializing_if = None
+        assert!(!json.contains("\"params\""));
     }
 
     #[test]
@@ -186,10 +182,6 @@ mod tests {
         let id2 = REQUEST_ID.load(std::sync::atomic::Ordering::SeqCst);
         assert_eq!(id2, id1 + 1);
     }
-
-    // =========================================================================
-    // Response deserialization tests
-    // =========================================================================
 
     #[test]
     fn test_response_deserializes_success_result() {
@@ -219,10 +211,6 @@ mod tests {
         let response: Response = serde_json::from_str(json).unwrap();
         assert!(response.error.is_none());
     }
-
-    // =========================================================================
-    // ClientError display tests
-    // =========================================================================
 
     #[test]
     fn test_client_error_daemon_not_running_display() {
@@ -255,7 +243,6 @@ mod tests {
 
     #[test]
     fn test_client_error_serialization_failed_display() {
-        // Create a JSON error by attempting to parse invalid JSON
         let json_err = serde_json::from_str::<Value>("invalid").unwrap_err();
         let err = ClientError::SerializationFailed(json_err);
         assert!(err.to_string().contains("Failed to serialize request"));

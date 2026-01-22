@@ -3,7 +3,6 @@ mod client;
 mod color;
 mod commands;
 mod daemon;
-mod demo;
 mod handlers;
 mod json_ext;
 mod pty;
@@ -37,10 +36,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return start_daemon().map_err(|e| e.into());
     }
 
-    if matches!(cli.command, Commands::DemoRun) {
-        return demo::run_demo();
-    }
-
     if let Commands::Completions { shell } = &cli.command {
         let mut cmd = Cli::command();
         generate(*shell, &mut cmd, "agent-tui", &mut std::io::stdout());
@@ -68,10 +63,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut ctx = HandlerContext::new(&mut client, cli.session, format);
 
     match cli.command {
-        // Handled above before client initialization
-        Commands::Daemon | Commands::DemoRun | Commands::Completions { .. } => unreachable!(),
+        Commands::Daemon | Commands::Completions { .. } => unreachable!(),
 
-        Commands::Demo => handlers::handle_demo(&mut ctx)?,
         Commands::Spawn {
             command,
             args,

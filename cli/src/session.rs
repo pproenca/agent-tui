@@ -1,17 +1,241 @@
-use crate::detection::{Element, ElementDetector};
 use crate::pty::{key_to_escape_sequence, PtyError, PtyHandle};
 use crate::sync_utils::{mutex_lock_or_recover, rwlock_read_or_recover, rwlock_write_or_recover};
 use crate::terminal::{CursorPosition, VirtualTerminal};
+use crate::vom::{Component, Role};
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Instant;
 use thiserror::Error;
 use uuid::Uuid;
+
+// =============================================================================
+// Element Types (API compatibility layer over VOM)
+// =============================================================================
+
+fn legacy_ref_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^@([a-z]+)(\d+)$").unwrap())
+}
+
+/// Element types detected by VOM. All variants are public API for external consumers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[allow(dead_code)] // All variants are public API for external consumers
+pub enum ElementType {
+    Button,
+    Input,
+    Checkbox,
+    Radio,
+    Select,
+    MenuItem,
+    ListItem,
+    Spinner,
+    Progress,
+}
+
+impl ElementType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ElementType::Button => "button",
+            ElementType::Input => "input",
+            ElementType::Checkbox => "checkbox",
+            ElementType::Radio => "radio",
+            ElementType::Select => "select",
+            ElementType::MenuItem => "menuitem",
+            ElementType::ListItem => "listitem",
+            ElementType::Spinner => "spinner",
+            ElementType::Progress => "progress",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Position {
+    pub row: u16,
+    pub col: u16,
+    pub width: Option<u16>,
+    pub height: Option<u16>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Element {
+    pub element_ref: String,
+    pub element_type: ElementType,
+    pub label: Option<String>,
+    pub value: Option<String>,
+    pub position: Position,
+    pub focused: bool,
+    pub selected: bool,
+    pub checked: Option<bool>,
+    pub disabled: Option<bool>,
+    pub hint: Option<String>,
+}
+
+impl Element {
+    #[allow(dead_code)] // Public API for external consumers
+    pub fn new(
+        element_ref: String,
+        element_type: ElementType,
+        row: u16,
+        col: u16,
+        width: u16,
+    ) -> Self {
+        Self {
+            element_ref,
+            element_type,
+            label: None,
+            value: None,
+            position: Position {
+                row,
+                col,
+                width: Some(width),
+                height: Some(1),
+            },
+            focused: false,
+            selected: false,
+            checked: None,
+            disabled: None,
+            hint: None,
+        }
+    }
+
+    #[allow(dead_code)] // Public API for external consumers
+    pub fn is_interactive(&self) -> bool {
+        matches!(
+            self.element_type,
+            ElementType::Button
+                | ElementType::Input
+                | ElementType::Checkbox
+                | ElementType::Radio
+                | ElementType::Select
+                | ElementType::MenuItem
+        )
+    }
+
+    #[allow(dead_code)] // Public API for external consumers
+    pub fn has_content(&self) -> bool {
+        self.label
+            .as_ref()
+            .map(|l| !l.trim().is_empty())
+            .unwrap_or(false)
+            || self
+                .value
+                .as_ref()
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false)
+    }
+}
+
+/// Convert a VOM Role to an ElementType for API compatibility
+fn role_to_element_type(role: Role) -> ElementType {
+    match role {
+        Role::Button => ElementType::Button,
+        Role::Tab => ElementType::Button, // Tabs are clickable like buttons
+        Role::Input => ElementType::Input,
+        Role::Checkbox => ElementType::Checkbox,
+        Role::MenuItem => ElementType::MenuItem,
+        Role::StaticText => ElementType::ListItem, // Map to listitem for static text
+        Role::Panel => ElementType::ListItem,      // Map to listitem for panels
+    }
+}
+
+/// Convert a VOM Component to an Element for API compatibility
+fn component_to_element(
+    comp: &Component,
+    index: usize,
+    cursor_row: u16,
+    cursor_col: u16,
+) -> Element {
+    let focused = comp.bounds.contains(cursor_col, cursor_row);
+
+    // Infer checked state for checkboxes from text patterns
+    let checked = if comp.role == Role::Checkbox {
+        let text = comp.text_content.to_lowercase();
+        if text.contains("[x]") || text.contains("(x)") || text.contains("☑") || text.contains("✓")
+        {
+            Some(true)
+        } else if text.contains("[ ]") || text.contains("( )") || text.contains("☐") {
+            Some(false)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    Element {
+        element_ref: format!("@e{}", index + 1),
+        element_type: role_to_element_type(comp.role),
+        label: Some(comp.text_content.trim().to_string()),
+        value: None, // VOM doesn't track value separately
+        position: Position {
+            row: comp.bounds.y,
+            col: comp.bounds.x,
+            width: Some(comp.bounds.width),
+            height: Some(comp.bounds.height),
+        },
+        focused,
+        selected: false,
+        checked,
+        disabled: None,
+        hint: None,
+    }
+}
+
+/// Find element by ref string, supporting both sequential (@e1) and legacy (@btn1) formats
+pub fn find_element_by_ref<'a>(elements: &'a [Element], ref_str: &str) -> Option<&'a Element> {
+    let normalized = if ref_str.starts_with('@') {
+        ref_str.to_string()
+    } else {
+        format!("@{}", ref_str)
+    };
+
+    // Direct match on element_ref
+    if let Some(el) = elements.iter().find(|e| e.element_ref == normalized) {
+        return Some(el);
+    }
+
+    // Legacy ref pattern support (@btn1, @inp1, etc.)
+    if let Some(caps) = legacy_ref_regex().captures(&normalized) {
+        let prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let index: usize = caps
+            .get(2)
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(0);
+
+        if index > 0 && prefix != "e" {
+            let target_type = match prefix {
+                "btn" => Some("button"),
+                "inp" => Some("input"),
+                "cb" => Some("checkbox"),
+                "rb" => Some("radio"),
+                "sel" => Some("select"),
+                "mi" => Some("menuitem"),
+                "li" => Some("listitem"),
+                "lnk" => Some("link"),
+                _ => None,
+            };
+
+            if let Some(type_str) = target_type {
+                let matching: Vec<_> = elements
+                    .iter()
+                    .filter(|e| e.element_type.as_str() == type_str)
+                    .collect();
+
+                if index <= matching.len() {
+                    return Some(matching[index - 1]);
+                }
+            }
+        }
+    }
+
+    None
+}
 
 fn get_last_n<T: Clone>(queue: &VecDeque<T>, count: usize) -> Vec<T> {
     let start = queue.len().saturating_sub(count);
@@ -189,7 +413,6 @@ pub struct Session {
     pub created_at: DateTime<Utc>,
     pty: PtyHandle,
     terminal: VirtualTerminal,
-    detector: ElementDetector,
     cached_elements: Vec<Element>,
     recording: RecordingState,
     trace: TraceState,
@@ -205,7 +428,6 @@ impl Session {
             created_at: Utc::now(),
             pty,
             terminal: VirtualTerminal::new(cols, rows),
-            detector: ElementDetector::new(),
             cached_elements: Vec::new(),
             recording: RecordingState::new(),
             trace: TraceState::new(),
@@ -231,11 +453,22 @@ impl Session {
 
         loop {
             match self.pty.try_read(&mut buf, 10) {
-                Ok(0) => break,
+                Ok(0) => break, // No data available (timeout)
                 Ok(n) => {
                     self.terminal.process(&buf[..n]);
                 }
-                Err(_) => break,
+                Err(e) => {
+                    // Check if this is a transient error we can ignore
+                    let err_str = e.to_string();
+                    if err_str.contains("Resource temporarily unavailable")
+                        || err_str.contains("EAGAIN")
+                        || err_str.contains("EWOULDBLOCK")
+                    {
+                        break; // No data available, not a real error
+                    }
+                    // Real error - propagate it
+                    return Err(SessionError::Pty(e));
+                }
             }
         }
 
@@ -250,10 +483,25 @@ impl Session {
         self.terminal.cursor()
     }
 
+    /// Detect elements using VOM (Visual Object Model)
     pub fn detect_elements(&mut self) -> &[Element] {
-        let screen_text = self.terminal.screen_text();
-        let screen_buffer = self.terminal.screen_buffer();
-        self.cached_elements = self.detector.detect(&screen_text, Some(&screen_buffer));
+        let buffer = self.terminal.screen_buffer();
+        let cursor = self.terminal.cursor();
+        let components = crate::vom::analyze(&buffer, cursor.row, cursor.col);
+
+        // Filter to interactive elements and convert to Element API
+        self.cached_elements = components
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c.role,
+                    Role::Button | Role::Tab | Role::Input | Role::Checkbox | Role::MenuItem
+                )
+            })
+            .enumerate()
+            .map(|(i, c)| component_to_element(c, i, cursor.row, cursor.col))
+            .collect();
+
         &self.cached_elements
     }
 
@@ -262,8 +510,7 @@ impl Session {
     }
 
     pub fn find_element(&self, element_ref: &str) -> Option<&Element> {
-        self.detector
-            .find_by_ref(&self.cached_elements, element_ref)
+        find_element_by_ref(&self.cached_elements, element_ref)
     }
 
     pub fn keystroke(&self, key: &str) -> Result<(), SessionError> {
@@ -416,6 +663,190 @@ impl Session {
 
     pub fn clear_console(&mut self) {
         self.terminal.clear();
+    }
+
+    // ========== VOM Integration ==========
+
+    /// Analyze the current screen using the Visual Object Model.
+    /// Returns semantic components (buttons, inputs, tabs, etc.)
+    pub fn analyze_screen(&self) -> Vec<crate::vom::Component> {
+        let buffer = self.terminal.screen_buffer();
+        let cursor = self.terminal.cursor();
+        crate::vom::analyze(&buffer, cursor.row, cursor.col)
+    }
+
+    /// Find a VOM component by text content (partial match)
+    #[allow(dead_code)]
+    pub fn find_vom_component(&self, text: &str) -> Option<crate::vom::Component> {
+        let components = self.analyze_screen();
+        crate::vom::find_by_text(&components, text).cloned()
+    }
+
+    /// Find all VOM components with a specific role
+    #[allow(dead_code)]
+    pub fn find_vom_by_role(&self, role: crate::vom::Role) -> Vec<crate::vom::Component> {
+        let components = self.analyze_screen();
+        crate::vom::find_by_role(&components, role)
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Check if the terminal supports mouse reporting
+    #[allow(dead_code)]
+    pub fn mouse_reporting_enabled(&self) -> bool {
+        self.terminal.mouse_reporting_enabled()
+    }
+
+    /// Inject a mouse click at the center of a component.
+    /// Uses SGR 1006 format mouse sequences.
+    ///
+    /// # Errors
+    /// - Returns `SessionError::InvalidKey` if mouse reporting is not enabled
+    /// - Returns `SessionError::ElementNotFound` if the component center is outside terminal bounds
+    #[allow(dead_code)]
+    pub fn click_vom_component(
+        &mut self,
+        component: &crate::vom::Component,
+    ) -> Result<(), SessionError> {
+        use crate::vom::interaction::{click_component, MouseButton};
+
+        // Check if target application supports mouse input
+        if !self.mouse_reporting_enabled() {
+            return Err(SessionError::InvalidKey(
+                "Target application does not support mouse input. Use keyboard navigation instead."
+                    .to_string(),
+            ));
+        }
+
+        let (cols, rows) = self.size();
+        let (cx, cy) = component.bounds.center();
+
+        if cx >= cols || cy >= rows {
+            return Err(SessionError::ElementNotFound(format!(
+                "Component '{}' center ({}, {}) is outside terminal bounds ({}x{})",
+                component.text_content.chars().take(20).collect::<String>(),
+                cx,
+                cy,
+                cols,
+                rows
+            )));
+        }
+
+        let seq = click_component(component, MouseButton::Left);
+        self.pty.write(&seq)?;
+        Ok(())
+    }
+
+    /// Inject a mouse click at specific coordinates.
+    ///
+    /// # Errors
+    /// - Returns `SessionError::InvalidKey` if mouse reporting is not enabled
+    /// - Returns `SessionError::ElementNotFound` if coordinates are outside terminal bounds
+    #[allow(dead_code)]
+    pub fn inject_mouse_click(&mut self, x: u16, y: u16) -> Result<(), SessionError> {
+        use crate::vom::interaction::{click_at, MouseButton};
+
+        // Check if target application supports mouse input
+        if !self.mouse_reporting_enabled() {
+            return Err(SessionError::InvalidKey(
+                "Target application does not support mouse input. Use keyboard navigation instead."
+                    .to_string(),
+            ));
+        }
+
+        let (cols, rows) = self.size();
+
+        if x >= cols || y >= rows {
+            return Err(SessionError::ElementNotFound(format!(
+                "Coordinates ({}, {}) are outside terminal bounds ({}x{})",
+                x, y, cols, rows
+            )));
+        }
+
+        let seq = click_at(x, y, MouseButton::Left);
+        self.pty.write(&seq)?;
+        Ok(())
+    }
+
+    /// Compute the current layout signature for change detection.
+    #[allow(dead_code)]
+    pub fn layout_signature(&self) -> u64 {
+        let components = self.analyze_screen();
+        crate::vom::feedback::compute_layout_signature(&components)
+    }
+
+    /// Wait for the layout to change from a previous signature.
+    ///
+    /// # Returns
+    /// - `Ok(true)` if layout changed before timeout
+    /// - `Ok(false)` if timeout was reached without layout change
+    ///
+    /// # Errors
+    /// Returns `SessionError` if the PTY fails during updates (e.g., process died).
+    #[allow(dead_code)]
+    pub fn wait_for_layout_change(
+        &mut self,
+        old_sig: u64,
+        timeout: std::time::Duration,
+    ) -> Result<bool, SessionError> {
+        let deadline = std::time::Instant::now() + timeout;
+
+        while std::time::Instant::now() < deadline {
+            // Process any pending output - propagate errors
+            self.update()?;
+
+            let new_sig = self.layout_signature();
+            if new_sig != old_sig {
+                return Ok(true);
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        Ok(false)
+    }
+
+    /// Click a VOM component and wait for the layout to change.
+    ///
+    /// This method refreshes the screen and verifies the component still exists
+    /// before clicking, preventing stale reference issues.
+    ///
+    /// # Returns
+    /// - `Ok(true)` if the click had a visible effect (layout changed)
+    /// - `Ok(false)` if timeout was reached without layout change
+    ///
+    /// # Errors
+    /// - Returns `SessionError::ElementNotFound` if component no longer exists on screen
+    /// - Returns `SessionError` if click fails or PTY errors occur during wait
+    #[allow(dead_code)]
+    pub fn robust_vom_click(
+        &mut self,
+        component: &crate::vom::Component,
+        timeout: std::time::Duration,
+    ) -> Result<bool, SessionError> {
+        // Refresh screen and verify component still exists
+        self.update()?;
+        let current_components = self.analyze_screen();
+        let still_exists = current_components
+            .iter()
+            .any(|c| c.bounds == component.bounds && c.role == component.role);
+
+        if !still_exists {
+            return Err(SessionError::ElementNotFound(format!(
+                "Component '{}' is no longer visible on screen",
+                component.text_content.chars().take(20).collect::<String>()
+            )));
+        }
+
+        // Capture layout before click
+        let before_sig = self.layout_signature();
+
+        // Perform the click
+        self.click_vom_component(component)?;
+
+        // Wait for layout to change
+        self.wait_for_layout_change(before_sig, timeout)
     }
 }
 
@@ -656,7 +1087,17 @@ impl SessionPersistence {
         match fs::File::open(&self.path) {
             Ok(file) => {
                 let reader = BufReader::new(file);
-                serde_json::from_reader(reader).unwrap_or_default()
+                match serde_json::from_reader(reader) {
+                    Ok(sessions) => sessions,
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: Sessions file '{}' is corrupted ({}). Starting with empty session list.",
+                            self.path.display(),
+                            e
+                        );
+                        Vec::new()
+                    }
+                }
             }
             Err(e) => {
                 eprintln!(
@@ -776,5 +1217,186 @@ mod persistence_tests {
         assert!(is_process_running(current_pid));
 
         assert!(!is_process_running(999999999));
+    }
+}
+
+#[cfg(test)]
+mod element_tests {
+    use super::*;
+    use crate::vom::{Component, Rect, Role};
+    use uuid::Uuid;
+
+    fn make_component(role: Role, text: &str, x: u16, y: u16, width: u16) -> Component {
+        Component {
+            id: Uuid::new_v4(),
+            role,
+            bounds: Rect::new(x, y, width, 1),
+            text_content: text.to_string(),
+            visual_hash: 0,
+        }
+    }
+
+    fn make_element(ref_str: &str, element_type: ElementType) -> Element {
+        Element {
+            element_ref: ref_str.to_string(),
+            element_type,
+            label: Some("test".to_string()),
+            value: None,
+            position: Position {
+                row: 0,
+                col: 0,
+                width: Some(10),
+                height: Some(1),
+            },
+            focused: false,
+            selected: false,
+            checked: None,
+            disabled: None,
+            hint: None,
+        }
+    }
+
+    #[test]
+    fn test_find_element_by_ref_sequential() {
+        let elements = vec![
+            make_element("@e1", ElementType::Button),
+            make_element("@e2", ElementType::Input),
+            make_element("@e3", ElementType::Checkbox),
+        ];
+
+        assert_eq!(
+            find_element_by_ref(&elements, "@e1").map(|e| &e.element_ref),
+            Some(&"@e1".to_string())
+        );
+        assert_eq!(
+            find_element_by_ref(&elements, "@e2").map(|e| &e.element_ref),
+            Some(&"@e2".to_string())
+        );
+        assert_eq!(
+            find_element_by_ref(&elements, "e3").map(|e| &e.element_ref),
+            Some(&"@e3".to_string())
+        );
+        assert!(find_element_by_ref(&elements, "@e4").is_none());
+    }
+
+    #[test]
+    fn test_find_element_by_ref_legacy_prefix() {
+        let elements = vec![
+            make_element("@e1", ElementType::Button),
+            make_element("@e2", ElementType::Button),
+            make_element("@e3", ElementType::Input),
+            make_element("@e4", ElementType::Checkbox),
+        ];
+
+        // @btn1 should find the first button (@e1)
+        assert_eq!(
+            find_element_by_ref(&elements, "@btn1").map(|e| &e.element_ref),
+            Some(&"@e1".to_string())
+        );
+        // @btn2 should find the second button (@e2)
+        assert_eq!(
+            find_element_by_ref(&elements, "@btn2").map(|e| &e.element_ref),
+            Some(&"@e2".to_string())
+        );
+        // @inp1 should find the first input (@e3)
+        assert_eq!(
+            find_element_by_ref(&elements, "@inp1").map(|e| &e.element_ref),
+            Some(&"@e3".to_string())
+        );
+        // @cb1 should find the first checkbox (@e4)
+        assert_eq!(
+            find_element_by_ref(&elements, "@cb1").map(|e| &e.element_ref),
+            Some(&"@e4".to_string())
+        );
+        // @btn3 doesn't exist (only 2 buttons)
+        assert!(find_element_by_ref(&elements, "@btn3").is_none());
+    }
+
+    #[test]
+    fn test_find_element_by_ref_invalid() {
+        let elements = vec![make_element("@e1", ElementType::Button)];
+
+        assert!(find_element_by_ref(&elements, "@e0").is_none());
+        assert!(find_element_by_ref(&elements, "@invalid").is_none());
+        assert!(find_element_by_ref(&elements, "").is_none());
+    }
+
+    #[test]
+    fn test_component_to_element_basic() {
+        let comp = make_component(Role::Button, "Click me", 5, 10, 8);
+        let element = component_to_element(&comp, 0, 0, 0);
+
+        assert_eq!(element.element_ref, "@e1");
+        assert_eq!(element.element_type, ElementType::Button);
+        assert_eq!(element.label, Some("Click me".to_string()));
+        assert_eq!(element.position.row, 10);
+        assert_eq!(element.position.col, 5);
+        assert_eq!(element.position.width, Some(8));
+        assert!(!element.focused);
+    }
+
+    #[test]
+    fn test_component_to_element_checkbox_checked() {
+        let comp = make_component(Role::Checkbox, "[x] Enabled", 0, 0, 11);
+        let element = component_to_element(&comp, 0, 0, 0);
+
+        assert_eq!(element.element_type, ElementType::Checkbox);
+        assert_eq!(element.checked, Some(true));
+    }
+
+    #[test]
+    fn test_component_to_element_checkbox_unchecked() {
+        let comp = make_component(Role::Checkbox, "[ ] Disabled", 0, 0, 12);
+        let element = component_to_element(&comp, 0, 0, 0);
+
+        assert_eq!(element.element_type, ElementType::Checkbox);
+        assert_eq!(element.checked, Some(false));
+    }
+
+    #[test]
+    fn test_component_to_element_checkbox_alternate_patterns() {
+        // Test (x) pattern
+        let comp1 = make_component(Role::Checkbox, "(x) Option", 0, 0, 10);
+        assert_eq!(component_to_element(&comp1, 0, 0, 0).checked, Some(true));
+
+        // Test ☑ pattern
+        let comp2 = make_component(Role::Checkbox, "☑ Selected", 0, 0, 10);
+        assert_eq!(component_to_element(&comp2, 0, 0, 0).checked, Some(true));
+
+        // Test ☐ pattern
+        let comp3 = make_component(Role::Checkbox, "☐ Unselected", 0, 0, 12);
+        assert_eq!(component_to_element(&comp3, 0, 0, 0).checked, Some(false));
+    }
+
+    #[test]
+    fn test_component_to_element_focused() {
+        let comp = make_component(Role::Input, "text field", 5, 10, 10);
+        // Cursor at (7, 10) which is inside bounds (x=5, y=10, width=10, height=1)
+        let element = component_to_element(&comp, 0, 10, 7);
+
+        assert!(element.focused);
+    }
+
+    #[test]
+    fn test_component_to_element_not_focused() {
+        let comp = make_component(Role::Input, "text field", 5, 10, 10);
+        // Cursor at (0, 0) which is outside bounds
+        let element = component_to_element(&comp, 0, 0, 0);
+
+        assert!(!element.focused);
+    }
+
+    #[test]
+    fn test_role_to_element_type_mapping() {
+        assert_eq!(role_to_element_type(Role::Button), ElementType::Button);
+        assert_eq!(role_to_element_type(Role::Tab), ElementType::Button);
+        assert_eq!(role_to_element_type(Role::Input), ElementType::Input);
+        assert_eq!(role_to_element_type(Role::Checkbox), ElementType::Checkbox);
+        assert_eq!(role_to_element_type(Role::MenuItem), ElementType::MenuItem);
+        assert_eq!(
+            role_to_element_type(Role::StaticText),
+            ElementType::ListItem
+        );
+        assert_eq!(role_to_element_type(Role::Panel), ElementType::ListItem);
     }
 }

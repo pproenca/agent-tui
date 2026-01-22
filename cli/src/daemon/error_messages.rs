@@ -31,7 +31,7 @@ pub fn ai_friendly_error(error: &str, context: Option<&str>) -> String {
 
     if error.contains("not toggleable") || error.contains("not a select") {
         return format!(
-            "Element {} cannot perform this action. Run 'snapshot -i' to see element types.",
+            "Element {} is not the right type for this action. Run 'snapshot -i' to see element types and try 'click' for menuitems.",
             ctx
         );
     }

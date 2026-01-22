@@ -4,13 +4,13 @@ mod color;
 mod commands;
 mod daemon;
 mod demo;
-mod detection;
 mod handlers;
 mod json_ext;
 mod pty;
 mod session;
 mod sync_utils;
 mod terminal;
+mod vom;
 mod wait;
 
 use clap::{CommandFactory, Parser};

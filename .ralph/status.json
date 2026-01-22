@@ -1,0 +1,10 @@
+{
+  "task": "workspace-migration",
+  "status": "running",
+  "iteration": 0,
+  "maxIterations": 50,
+  "startedAt": "2025-01-22T21:24:00Z",
+  "lastRunAt": "2025-01-22T21:47:00Z",
+  "completedTasks": 0,
+  "totalTasks": 49
+}

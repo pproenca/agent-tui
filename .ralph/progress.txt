@@ -1,0 +1,13 @@
+# Workspace Migration Progress Log
+# Each iteration appends learnings here
+
+---
+[2025-01-22 21:24] Initialized workspace structure
+- Created root Cargo.toml with workspace manifest
+- Created crates/ directory with all 6 crates
+- Migrated source files to respective crates
+- Workspace builds successfully
+
+[2025-01-22 21:47] RALPH setup fixed
+- Added missing SPEC.md, status.json, progress.txt
+- Fixed ralph-loop.sh to handle table-format TODOs

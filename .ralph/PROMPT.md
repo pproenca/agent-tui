@@ -2,10 +2,6 @@
 
 You are completing a Cargo workspace restructure for agent-tui following rust-coder patterns.
 
-## Plan Reference
-
-Read the full plan at: `~/.claude/plans/goofy-knitting-hammock.md`
-
 ## Current State
 
 Check what's been done:
@@ -15,17 +11,16 @@ Check what's been done:
 
 ## Your Task
 
-1. **Read the plan** to understand the target structure
-2. **Check current progress** using the commands above
-3. **Pick the next incomplete task** from TODO.md (first unchecked `[ ]` item)
-4. **Complete that task**:
+1. **Check current progress** using the commands above
+2. **Pick the next incomplete task** from TODO.md (first unchecked `[ ]` item)
+3. **Complete that task**:
    - Create crate Cargo.toml if needed
    - Migrate/create the source file
-   - Update imports to rust-coder style (std → external → workspace → crate)
+   - Update imports to rust-coder style (std -> external -> workspace -> crate)
    - Update lib.rs exports
-5. **Verify** with `cargo build -p <crate-name>`
-6. **Update TODO.md** - mark the task as `[x]` complete
-7. **Report** what you did and what's next
+4. **Verify** with `cargo build -p <crate-name>`
+5. **Update TODO.md** - mark the task as `[x]` complete
+6. **Report** what you did and what's next
 
 ## Import Mapping
 
@@ -55,4 +50,6 @@ Create crates in this order (dependencies flow upward):
 
 ## Stop Condition
 
-When all tasks in TODO.md are marked `[x]` and `cargo build --workspace` succeeds, report "MIGRATION COMPLETE" and stop.
+When all tasks in TODO.md are marked `[x]` and `cargo build --workspace` succeeds, report:
+
+<promise>RALPH_COMPLETE</promise>

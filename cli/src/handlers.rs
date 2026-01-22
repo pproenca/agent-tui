@@ -82,6 +82,13 @@ impl<'a> HandlerContext<'a> {
         json!({ "ref": element_ref, "session": self.session })
     }
 
+    /// Build params by merging extra fields with session
+    fn params_with(&self, extra: Value) -> Value {
+        let mut p = extra;
+        p["session"] = json!(self.session);
+        p
+    }
+
     /// Call RPC method with ref params and output success/failure
     fn call_ref_action(
         &mut self,
@@ -214,6 +221,27 @@ impl<'a> ElementView<'a> {
             .unwrap_or(0);
         (row, col)
     }
+    fn focused_indicator(&self) -> String {
+        if self.focused() {
+            Colors::success(" *focused*")
+        } else {
+            String::new()
+        }
+    }
+    fn selected_indicator(&self) -> String {
+        if self.selected() {
+            Colors::info(" *selected*")
+        } else {
+            String::new()
+        }
+    }
+    fn label_suffix(&self) -> String {
+        if self.label().is_empty() {
+            String::new()
+        } else {
+            format!(":{}", self.label())
+        }
+    }
 }
 
 pub fn handle_demo(ctx: &mut HandlerContext) -> HandlerResult {
@@ -319,17 +347,6 @@ pub fn handle_snapshot(
                     for el in elements {
                         let ev = ElementView(el);
                         let (row, col) = ev.position();
-
-                        let focused_str = if ev.focused() {
-                            Colors::success(" *focused*")
-                        } else {
-                            String::new()
-                        };
-                        let selected_str = if ev.selected() {
-                            Colors::info(" *selected*")
-                        } else {
-                            String::new()
-                        };
                         let value = ev
                             .value()
                             .map(|v| format!(" \"{}\"", v))
@@ -339,15 +356,11 @@ pub fn handle_snapshot(
                             "{} [{}{}]{} {}{}{}",
                             Colors::element_ref(ev.ref_str()),
                             ev.el_type(),
-                            if ev.label().is_empty() {
-                                "".to_string()
-                            } else {
-                                format!(":{}", ev.label())
-                            },
+                            ev.label_suffix(),
                             value,
                             Colors::dim(&format!("({},{})", row, col)),
-                            focused_str,
-                            selected_str
+                            ev.focused_indicator(),
+                            ev.selected_indicator()
                         );
                     }
                     println!();
@@ -392,56 +405,35 @@ pub fn handle_dbl_click(ctx: &mut HandlerContext, element_ref: String) -> Handle
 }
 
 pub fn handle_fill(ctx: &mut HandlerContext, element_ref: String, value: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "value": value,
-        "session": ctx.session
-    });
-
+    let params = ctx.params_with(json!({ "ref": element_ref, "value": value }));
     let result = ctx.client.call("fill", Some(params))?;
     ctx.output_success_result(&result, "Filled successfully", "Fill failed")?;
     Ok(())
 }
 
 pub fn handle_press(ctx: &mut HandlerContext, key: String) -> HandlerResult {
-    let params = json!({
-        "key": key,
-        "session": ctx.session
-    });
-
+    let params = ctx.params_with(json!({ "key": key }));
     let result = ctx.client.call("keystroke", Some(params))?;
     ctx.output_success_result(&result, "Key pressed", "Press failed")?;
     Ok(())
 }
 
 pub fn handle_type(ctx: &mut HandlerContext, text: String) -> HandlerResult {
-    let params = json!({
-        "text": text,
-        "session": ctx.session
-    });
-
+    let params = ctx.params_with(json!({ "text": text }));
     let result = ctx.client.call("type", Some(params))?;
     ctx.output_success_result(&result, "Text typed", "Type failed")?;
     Ok(())
 }
 
 pub fn handle_keydown(ctx: &mut HandlerContext, key: String) -> HandlerResult {
-    let params = json!({
-        "key": key,
-        "session": ctx.session
-    });
-
+    let params = ctx.params_with(json!({ "key": key }));
     let result = ctx.client.call("keydown", Some(params))?;
     ctx.output_success_result(&result, &format!("Key held: {}", key), "Keydown failed")?;
     Ok(())
 }
 
 pub fn handle_keyup(ctx: &mut HandlerContext, key: String) -> HandlerResult {
-    let params = json!({
-        "key": key,
-        "session": ctx.session
-    });
-
+    let params = ctx.params_with(json!({ "key": key }));
     let result = ctx.client.call("keyup", Some(params))?;
     ctx.output_success_result(&result, &format!("Key released: {}", key), "Keyup failed")?;
     Ok(())
@@ -722,17 +714,12 @@ pub fn handle_find(ctx: &mut HandlerContext, params: crate::commands::FindParams
                 if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
                     for el in elements {
                         let ev = ElementView(el);
-                        let focused_str = if ev.focused() {
-                            Colors::success(" *focused*")
-                        } else {
-                            String::new()
-                        };
                         println!(
                             "  {} [{}:{}]{}",
                             Colors::element_ref(ev.ref_str()),
                             ev.el_type(),
                             ev.label(),
-                            focused_str
+                            ev.focused_indicator()
                         );
                     }
                 }
@@ -747,12 +734,7 @@ pub fn handle_select(
     element_ref: String,
     option: String,
 ) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "option": option,
-        "session": ctx.session
-    });
-
+    let params = ctx.params_with(json!({ "ref": element_ref, "option": option }));
     let result = ctx.client.call("select", Some(params))?;
     ctx.output_success_result(&result, &format!("Selected: {}", option), "Select failed")?;
     Ok(())
@@ -763,11 +745,7 @@ pub fn handle_multiselect(
     element_ref: String,
     options: Vec<String>,
 ) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "options": options,
-        "session": ctx.session
-    });
+    let params = ctx.params_with(json!({ "ref": element_ref, "options": options }));
 
     let result = ctx.client.call("multiselect", Some(params))?;
 
@@ -805,19 +783,8 @@ pub fn handle_scroll(
     direction: ScrollDirection,
     amount: u16,
 ) -> HandlerResult {
-    let dir_str = match direction {
-        ScrollDirection::Up => "up",
-        ScrollDirection::Down => "down",
-        ScrollDirection::Left => "left",
-        ScrollDirection::Right => "right",
-    };
-
-    let params = json!({
-        "direction": dir_str,
-        "amount": amount,
-        "session": ctx.session
-    });
-
+    let dir_str = direction.as_str();
+    let params = ctx.params_with(json!({ "direction": dir_str, "amount": amount }));
     let result = ctx.client.call("scroll", Some(params))?;
     ctx.output_success_result(
         &result,
@@ -828,11 +795,7 @@ pub fn handle_scroll(
 }
 
 pub fn handle_scroll_into_view(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session
-    });
-
+    let params = ctx.params_with(json!({ "ref": element_ref }));
     let result = ctx.client.call("scroll_into_view", Some(params))?;
 
     match ctx.format {
@@ -975,12 +938,7 @@ pub fn handle_toggle(
     element_ref: String,
     state: Option<bool>,
 ) -> HandlerResult {
-    let params = json!({
-        "ref": element_ref,
-        "session": ctx.session,
-        "state": state
-    });
-
+    let params = ctx.params_with(json!({ "ref": element_ref, "state": state }));
     let result = ctx.client.call("toggle", Some(params))?;
 
     match ctx.format {
@@ -1086,16 +1044,8 @@ pub fn handle_record_stop(
     output: Option<String>,
     record_format: RecordFormat,
 ) -> HandlerResult {
-    let format_str = match record_format {
-        RecordFormat::Json => "json",
-        RecordFormat::Asciicast => "asciicast",
-    };
-
-    let params = json!({
-        "session": ctx.session,
-        "format": format_str
-    });
-
+    let format_str = record_format.as_str();
+    let params = ctx.params_with(json!({ "format": format_str }));
     let result = ctx.client.call("record_stop", Some(params))?;
 
     match ctx.format {

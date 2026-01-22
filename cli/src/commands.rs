@@ -775,12 +775,32 @@ pub enum RecordFormat {
     Asciicast,
 }
 
+impl RecordFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RecordFormat::Json => "json",
+            RecordFormat::Asciicast => "asciicast",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum ScrollDirection {
     Up,
     Down,
     Left,
     Right,
+}
+
+impl ScrollDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ScrollDirection::Up => "up",
+            ScrollDirection::Down => "down",
+            ScrollDirection::Left => "left",
+            ScrollDirection::Right => "right",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]

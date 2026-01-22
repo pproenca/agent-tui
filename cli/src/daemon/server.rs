@@ -22,6 +22,15 @@ pub fn socket_path() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("/tmp/agent-tui.sock"))
 }
 
+/// Match text against haystack with exact or case-insensitive substring matching.
+fn matches_text(haystack: Option<&String>, needle: &str, exact: bool) -> bool {
+    match haystack {
+        Some(h) if exact => h == needle,
+        Some(h) => h.to_lowercase().contains(&needle.to_lowercase()),
+        None => false,
+    }
+}
+
 /// Reusable filter for element queries (find, count).
 struct ElementFilter<'a> {
     role: Option<&'a str>,
@@ -40,53 +49,19 @@ impl ElementFilter<'_> {
             }
         }
         if let Some(n) = self.name {
-            let matches = if self.exact {
-                el.label.as_ref().map(|l| l == n).unwrap_or(false)
-            } else {
-                let n_lower = n.to_lowercase();
-                el.label
-                    .as_ref()
-                    .map(|l| l.to_lowercase().contains(&n_lower))
-                    .unwrap_or(false)
-            };
-            if !matches {
+            if !matches_text(el.label.as_ref(), n, self.exact) {
                 return false;
             }
         }
         if let Some(t) = self.text {
-            let in_label = if self.exact {
-                el.label.as_ref().map(|l| l == t).unwrap_or(false)
-            } else {
-                let t_lower = t.to_lowercase();
-                el.label
-                    .as_ref()
-                    .map(|l| l.to_lowercase().contains(&t_lower))
-                    .unwrap_or(false)
-            };
-            let in_value = if self.exact {
-                el.value.as_ref().map(|v| v == t).unwrap_or(false)
-            } else {
-                let t_lower = t.to_lowercase();
-                el.value
-                    .as_ref()
-                    .map(|v| v.to_lowercase().contains(&t_lower))
-                    .unwrap_or(false)
-            };
+            let in_label = matches_text(el.label.as_ref(), t, self.exact);
+            let in_value = matches_text(el.value.as_ref(), t, self.exact);
             if !in_label && !in_value {
                 return false;
             }
         }
         if let Some(p) = self.placeholder {
-            let matches = if self.exact {
-                el.hint.as_ref().map(|h| h == p).unwrap_or(false)
-            } else {
-                let p_lower = p.to_lowercase();
-                el.hint
-                    .as_ref()
-                    .map(|h| h.to_lowercase().contains(&p_lower))
-                    .unwrap_or(false)
-            };
-            if !matches {
+            if !matches_text(el.hint.as_ref(), p, self.exact) {
                 return false;
             }
         }

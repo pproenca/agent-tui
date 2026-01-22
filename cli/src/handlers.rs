@@ -39,7 +39,7 @@ impl<'a> HandlerContext<'a> {
             OutputFormat::Json => {
                 println!("{}", serde_json::to_string_pretty(result)?);
             }
-            OutputFormat::Text | OutputFormat::Tree => {
+            OutputFormat::Text => {
                 if success {
                     println!("{}", success_msg);
                     if let Some(warning) = result.get("warning").and_then(|w| w.as_str()) {
@@ -90,7 +90,7 @@ impl<'a> HandlerContext<'a> {
             OutputFormat::Json => {
                 println!("{}", serde_json::to_string_pretty(result)?);
             }
-            OutputFormat::Text | OutputFormat::Tree => {
+            OutputFormat::Text => {
                 if !found {
                     eprintln!("Element not found: {}", element_ref);
                     std::process::exit(1);
@@ -123,7 +123,7 @@ impl<'a> HandlerContext<'a> {
             OutputFormat::Json => {
                 println!("{}", serde_json::to_string_pretty(result)?);
             }
-            OutputFormat::Text | OutputFormat::Tree => {
+            OutputFormat::Text => {
                 if found {
                     let value = result.str_or(field, "");
                     println!("{}", value);
@@ -150,7 +150,7 @@ impl<'a> HandlerContext<'a> {
             OutputFormat::Json => {
                 println!("{}", serde_json::to_string_pretty(result)?);
             }
-            OutputFormat::Text | OutputFormat::Tree => {
+            OutputFormat::Text => {
                 text_fn();
             }
         }
@@ -176,9 +176,6 @@ impl<'a> ElementView<'a> {
     }
     fn selected(&self) -> bool {
         self.0.bool_or("selected", false)
-    }
-    fn checked(&self) -> Option<bool> {
-        self.0.get("checked").and_then(|v| v.as_bool())
     }
     fn value(&self) -> Option<&str> {
         self.0.get("value").and_then(|v| v.as_str())
@@ -292,55 +289,6 @@ pub fn handle_snapshot(
     match ctx.format {
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Tree => {
-            if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
-                for el in elements {
-                    let ev = ElementView(el);
-                    let mut attrs = vec![format!("ref={}", ev.ref_str())];
-                    if ev.focused() {
-                        attrs.push("focused".to_string());
-                    }
-                    if let Some(true) = ev.checked() {
-                        attrs.push("checked".to_string());
-                    }
-                    if let Some(v) = ev.value() {
-                        if !v.is_empty() && ev.el_type() == "input" {
-                            attrs.push(format!("value=\"{}\"", v));
-                        }
-                    }
-
-                    let display_text = if !ev.label().is_empty() {
-                        ev.label().to_string()
-                    } else if let Some(v) = ev.value() {
-                        v.to_string()
-                    } else {
-                        String::new()
-                    };
-
-                    println!(
-                        "- {} \"{}\" [{}]",
-                        ev.el_type(),
-                        display_text,
-                        attrs.join("] [")
-                    );
-                }
-            }
-            println!();
-            if let Some(screen) = result.get("screen").and_then(|v| v.as_str()) {
-                println!("{}", screen);
-            }
-            if include_cursor {
-                if let Some(cursor) = result.get("cursor") {
-                    let row = cursor.u64_or("row", 0);
-                    let col = cursor.u64_or("col", 0);
-                    let visible = cursor.bool_or("visible", false);
-                    let vis_str = if visible { "visible" } else { "hidden" };
-                    println!("\nCursor: row={}, col={} ({})", row, col, vis_str);
-                } else {
-                    eprintln!("Warning: Cursor position requested but not available from session");
-                }
-            }
         }
         OutputFormat::Text => {
             if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
@@ -477,26 +425,33 @@ pub fn handle_keyup(ctx: &mut HandlerContext, key: String) -> HandlerResult {
     Ok(())
 }
 
-pub fn handle_wait(ctx: &mut HandlerContext, params: crate::commands::WaitParams) -> HandlerResult {
-    let (cond, tgt) = if params.stable {
+/// Resolve wait condition from WaitParams to (condition_type, target) tuple
+fn resolve_wait_condition(
+    params: &crate::commands::WaitParams,
+) -> (Option<String>, Option<String>) {
+    if params.stable {
         (Some("stable".to_string()), None)
-    } else if let Some(el) = params.element {
-        (Some("element".to_string()), Some(el))
-    } else if let Some(vis) = params.visible {
-        (Some("element".to_string()), Some(vis))
-    } else if let Some(f) = params.focused {
-        (Some("focused".to_string()), Some(f))
-    } else if let Some(nv) = params.not_visible {
-        (Some("not_visible".to_string()), Some(nv))
-    } else if let Some(tg) = params.text_gone {
-        (Some("text_gone".to_string()), Some(tg))
-    } else if let Some(v) = params.value {
-        (Some("value".to_string()), Some(v))
+    } else if let Some(ref el) = params.element {
+        (Some("element".to_string()), Some(el.clone()))
+    } else if let Some(ref vis) = params.visible {
+        (Some("element".to_string()), Some(vis.clone()))
+    } else if let Some(ref f) = params.focused {
+        (Some("focused".to_string()), Some(f.clone()))
+    } else if let Some(ref nv) = params.not_visible {
+        (Some("not_visible".to_string()), Some(nv.clone()))
+    } else if let Some(ref tg) = params.text_gone {
+        (Some("text_gone".to_string()), Some(tg.clone()))
+    } else if let Some(ref v) = params.value {
+        (Some("value".to_string()), Some(v.clone()))
     } else if let Some(c) = params.condition {
-        (Some(c.to_string()), params.target)
+        (Some(c.to_string()), params.target.clone())
     } else {
         (None, None)
-    };
+    }
+}
+
+pub fn handle_wait(ctx: &mut HandlerContext, params: crate::commands::WaitParams) -> HandlerResult {
+    let (cond, tgt) = resolve_wait_condition(&params);
 
     let rpc_params = json!({
         "text": params.text,
@@ -514,7 +469,7 @@ pub fn handle_wait(ctx: &mut HandlerContext, params: crate::commands::WaitParams
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
-        OutputFormat::Text | OutputFormat::Tree => {
+        OutputFormat::Text => {
             if found {
                 println!("Found after {}ms", elapsed_ms);
             } else {
@@ -692,7 +647,7 @@ pub fn handle_version(ctx: &mut HandlerContext) -> HandlerResult {
                 })
             );
         }
-        OutputFormat::Text | OutputFormat::Tree => {
+        OutputFormat::Text => {
             println!("{}", Colors::bold("agent-tui"));
             println!("  CLI version: {}", cli_version);
             println!("  Daemon version: {}", daemon_version);
@@ -728,7 +683,7 @@ pub fn handle_cleanup(ctx: &mut HandlerContext, all: bool) -> HandlerResult {
         OutputFormat::Json => {
             println!("{}", serde_json::json!({ "sessions_cleaned": cleaned }));
         }
-        OutputFormat::Text | OutputFormat::Tree => {
+        OutputFormat::Text => {
             if cleaned > 0 {
                 println!(
                     "{} Cleaned up {} session(s)",
@@ -760,19 +715,6 @@ pub fn handle_find(ctx: &mut HandlerContext, params: crate::commands::FindParams
     match ctx.format {
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Tree => {
-            if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
-                for el in elements {
-                    let ev = ElementView(el);
-                    println!(
-                        "- {} \"{}\" [ref={}]",
-                        ev.el_type(),
-                        ev.label(),
-                        ev.ref_str()
-                    );
-                }
-            }
         }
         OutputFormat::Text => {
             let count = result.u64_or("count", 0);
@@ -836,7 +778,7 @@ pub fn handle_multiselect(
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
-        OutputFormat::Text | OutputFormat::Tree => {
+        OutputFormat::Text => {
             if result.bool_or("success", false) {
                 let selected = result
                     .get("selected_options")
@@ -900,7 +842,7 @@ pub fn handle_scroll_into_view(ctx: &mut HandlerContext, element_ref: String) ->
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
-        OutputFormat::Text | OutputFormat::Tree => {
+        OutputFormat::Text => {
             if result.bool_or("success", false) {
                 println!(
                     "Scrolled to {} ({} scrolls)",
@@ -962,7 +904,7 @@ pub fn handle_get_focused(ctx: &mut HandlerContext) -> HandlerResult {
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
-        OutputFormat::Text | OutputFormat::Tree => {
+        OutputFormat::Text => {
             if result.bool_or("found", false) {
                 println!(
                     "- {} \"{}\" [ref={}] [focused]",
@@ -1052,7 +994,7 @@ pub fn handle_toggle(
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
-        OutputFormat::Text | OutputFormat::Tree => {
+        OutputFormat::Text => {
             if result.bool_or("success", false) {
                 let state = if result.bool_or("checked", true) {
                     "checked"
@@ -1119,7 +1061,7 @@ pub fn handle_attach(
             OutputFormat::Json => {
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
-            OutputFormat::Text | OutputFormat::Tree => {
+            OutputFormat::Text => {
                 if result.bool_or("success", false) {
                     println!("Attached to session {}", Colors::session_id(&session_id));
                 } else {
@@ -1167,7 +1109,7 @@ pub fn handle_record_stop(
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
-        OutputFormat::Text | OutputFormat::Tree => {
+        OutputFormat::Text => {
             println!(
                 "{} Recording stopped ({} frames captured)",
                 Colors::success("■"),
@@ -1339,7 +1281,7 @@ pub fn handle_env(ctx: &HandlerContext) -> HandlerResult {
                 }))?
             );
         }
-        OutputFormat::Text | OutputFormat::Tree => {
+        OutputFormat::Text => {
             println!("{}", Colors::bold("Environment Configuration:"));
             let transport = vars
                 .iter()
@@ -1422,7 +1364,7 @@ pub fn handle_assert(ctx: &mut HandlerContext, condition: String) -> HandlerResu
                 })
             );
         }
-        OutputFormat::Text | OutputFormat::Tree => {
+        OutputFormat::Text => {
             if passed {
                 println!("{} Assertion passed: {}", Colors::success("✓"), condition);
             } else {
@@ -1524,27 +1466,6 @@ mod tests {
     }
 
     #[test]
-    fn test_element_view_checked_true() {
-        let el = make_element(json!({"checked": true}));
-        let view = ElementView(&el);
-        assert_eq!(view.checked(), Some(true));
-    }
-
-    #[test]
-    fn test_element_view_checked_false() {
-        let el = make_element(json!({"checked": false}));
-        let view = ElementView(&el);
-        assert_eq!(view.checked(), Some(false));
-    }
-
-    #[test]
-    fn test_element_view_checked_missing() {
-        let el = make_element(json!({}));
-        let view = ElementView(&el);
-        assert_eq!(view.checked(), None);
-    }
-
-    #[test]
     fn test_element_view_value_present() {
         let el = make_element(json!({"value": "test input"}));
         let view = ElementView(&el);
@@ -1598,7 +1519,6 @@ mod tests {
         assert_eq!(view.value(), Some("test@example.com"));
         assert!(view.focused());
         assert!(!view.selected());
-        assert_eq!(view.checked(), None);
         assert_eq!(view.position(), (3, 15));
     }
 
@@ -1650,32 +1570,8 @@ mod tests {
     }
 
     // =========================================================================
-    // Wait condition resolution tests (from handle_wait logic)
+    // Wait condition resolution tests
     // =========================================================================
-
-    fn resolve_wait_condition(
-        params: &crate::commands::WaitParams,
-    ) -> (Option<String>, Option<String>) {
-        if params.stable {
-            (Some("stable".to_string()), None)
-        } else if let Some(el) = params.element.clone() {
-            (Some("element".to_string()), Some(el))
-        } else if let Some(vis) = params.visible.clone() {
-            (Some("element".to_string()), Some(vis))
-        } else if let Some(f) = params.focused.clone() {
-            (Some("focused".to_string()), Some(f))
-        } else if let Some(nv) = params.not_visible.clone() {
-            (Some("not_visible".to_string()), Some(nv))
-        } else if let Some(tg) = params.text_gone.clone() {
-            (Some("text_gone".to_string()), Some(tg))
-        } else if let Some(v) = params.value.clone() {
-            (Some("value".to_string()), Some(v))
-        } else if let Some(c) = params.condition {
-            (Some(c.to_string()), params.target.clone())
-        } else {
-            (None, None)
-        }
-    }
 
     #[test]
     fn test_wait_condition_stable() {
@@ -1683,7 +1579,7 @@ mod tests {
             stable: true,
             ..Default::default()
         };
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let (cond, tgt) = super::resolve_wait_condition(&params);
         assert_eq!(cond, Some("stable".to_string()));
         assert_eq!(tgt, None);
     }
@@ -1694,7 +1590,7 @@ mod tests {
             element: Some("@btn1".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let (cond, tgt) = super::resolve_wait_condition(&params);
         assert_eq!(cond, Some("element".to_string()));
         assert_eq!(tgt, Some("@btn1".to_string()));
     }
@@ -1705,7 +1601,7 @@ mod tests {
             visible: Some("@inp1".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let (cond, tgt) = super::resolve_wait_condition(&params);
         assert_eq!(cond, Some("element".to_string()));
         assert_eq!(tgt, Some("@inp1".to_string()));
     }
@@ -1716,7 +1612,7 @@ mod tests {
             focused: Some("@inp1".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let (cond, tgt) = super::resolve_wait_condition(&params);
         assert_eq!(cond, Some("focused".to_string()));
         assert_eq!(tgt, Some("@inp1".to_string()));
     }
@@ -1727,7 +1623,7 @@ mod tests {
             not_visible: Some("@spinner".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let (cond, tgt) = super::resolve_wait_condition(&params);
         assert_eq!(cond, Some("not_visible".to_string()));
         assert_eq!(tgt, Some("@spinner".to_string()));
     }
@@ -1738,7 +1634,7 @@ mod tests {
             text_gone: Some("Loading...".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let (cond, tgt) = super::resolve_wait_condition(&params);
         assert_eq!(cond, Some("text_gone".to_string()));
         assert_eq!(tgt, Some("Loading...".to_string()));
     }
@@ -1749,7 +1645,7 @@ mod tests {
             value: Some("@inp1=hello".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let (cond, tgt) = super::resolve_wait_condition(&params);
         assert_eq!(cond, Some("value".to_string()));
         assert_eq!(tgt, Some("@inp1=hello".to_string()));
     }
@@ -1757,7 +1653,7 @@ mod tests {
     #[test]
     fn test_wait_condition_none() {
         let params = crate::commands::WaitParams::default();
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let (cond, tgt) = super::resolve_wait_condition(&params);
         assert_eq!(cond, None);
         assert_eq!(tgt, None);
     }

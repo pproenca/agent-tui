@@ -457,38 +457,8 @@ impl DaemonServer {
             }
 
             let (elements, stats) = if include_elements {
-                // Always use VOM (Visual Object Model) for element detection
                 let vom_components = sess.analyze_screen();
-                let elements_total = vom_components.len();
-
-                // Filter to interactive elements using Role::is_interactive()
-                // This ensures refs (@e1, @e2, etc.) are consistent with detect_elements() in session.rs
-                let interactive: Vec<_> = vom_components
-                    .iter()
-                    .filter(|c| c.role.is_interactive())
-                    .collect();
-                let elements_interactive = interactive.len();
-
-                // Enumerate from the filtered list so refs match detect_elements()
-                let filtered_elements: Vec<_> = interactive
-                    .iter()
-                    .enumerate()
-                    .map(|(i, comp)| vom_component_to_json(comp, i))
-                    .collect();
-
-                let elements_shown = filtered_elements.len();
-
-                (
-                    Some(filtered_elements),
-                    json!({
-                        "lines": screen.lines().count(),
-                        "chars": screen.len(),
-                        "elements_total": elements_total,
-                        "elements_interactive": elements_interactive,
-                        "elements_shown": elements_shown,
-                        "detection": "vom"
-                    }),
-                )
+                filter_interactive_components(&vom_components, &screen)
             } else {
                 (
                     None,
@@ -1832,6 +1802,42 @@ fn vom_component_to_json(comp: &crate::vom::Component, index: usize) -> Value {
         "vom_id": comp.id.to_string(),
         "visual_hash": comp.visual_hash
     })
+}
+
+/// Filter VOM components to interactive elements and return JSON values with stats
+fn filter_interactive_components(
+    vom_components: &[crate::vom::Component],
+    screen: &str,
+) -> (Option<Vec<Value>>, Value) {
+    let elements_total = vom_components.len();
+
+    // Filter to interactive elements using Role::is_interactive()
+    let interactive: Vec<_> = vom_components
+        .iter()
+        .filter(|c| c.role.is_interactive())
+        .collect();
+    let elements_interactive = interactive.len();
+
+    // Enumerate from filtered list so refs match detect_elements()
+    let filtered_elements: Vec<_> = interactive
+        .iter()
+        .enumerate()
+        .map(|(i, comp)| vom_component_to_json(comp, i))
+        .collect();
+
+    let elements_shown = filtered_elements.len();
+
+    (
+        Some(filtered_elements),
+        json!({
+            "lines": screen.lines().count(),
+            "chars": screen.len(),
+            "elements_total": elements_total,
+            "elements_interactive": elements_interactive,
+            "elements_shown": elements_shown,
+            "detection": "vom"
+        }),
+    )
 }
 
 #[cfg(test)]

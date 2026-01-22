@@ -144,6 +144,19 @@ fn role_to_element_type(role: Role) -> ElementType {
     }
 }
 
+/// Infer checked state from checkbox text patterns
+fn infer_checked_state(text: &str) -> Option<bool> {
+    let lower = text.to_lowercase();
+    if lower.contains("[x]") || lower.contains("(x)") || lower.contains("☑") || lower.contains("✓")
+    {
+        Some(true)
+    } else if lower.contains("[ ]") || lower.contains("( )") || lower.contains("☐") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 /// Convert a VOM Component to an Element for API compatibility
 fn component_to_element(
     comp: &Component,
@@ -153,17 +166,8 @@ fn component_to_element(
 ) -> Element {
     let focused = comp.bounds.contains(cursor_col, cursor_row);
 
-    // Infer checked state for checkboxes from text patterns
     let checked = if comp.role == Role::Checkbox {
-        let text = comp.text_content.to_lowercase();
-        if text.contains("[x]") || text.contains("(x)") || text.contains("☑") || text.contains("✓")
-        {
-            Some(true)
-        } else if text.contains("[ ]") || text.contains("( )") || text.contains("☐") {
-            Some(false)
-        } else {
-            None
-        }
+        infer_checked_state(&comp.text_content)
     } else {
         None
     };

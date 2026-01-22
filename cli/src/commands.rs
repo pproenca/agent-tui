@@ -810,6 +810,7 @@ impl std::fmt::Display for WaitConditionArg {
 
 /// Parameters for the wait command
 #[derive(Debug, Clone, Default, Parser)]
+#[command(group = clap::ArgGroup::new("wait_condition").multiple(false).args(&["element", "visible", "focused", "not_visible", "text_gone", "stable", "value"]))]
 pub struct WaitParams {
     /// Text to wait for (legacy mode, use --condition for more options)
     pub text: Option<String>,
@@ -819,7 +820,7 @@ pub struct WaitParams {
     pub timeout: u64,
 
     /// Wait condition type
-    #[arg(long, value_enum)]
+    #[arg(long, value_enum, conflicts_with = "wait_condition")]
     pub condition: Option<WaitConditionArg>,
 
     /// Target for the condition (element ref or text pattern)
@@ -827,31 +828,31 @@ pub struct WaitParams {
     pub target: Option<String>,
 
     /// Wait for element to appear
-    #[arg(long, conflicts_with_all = ["condition", "text", "visible"])]
+    #[arg(long, group = "wait_condition")]
     pub element: Option<String>,
 
     /// Wait for element to appear (alias for --element, agent-browser parity)
-    #[arg(long, conflicts_with_all = ["condition", "text", "element"])]
+    #[arg(long, group = "wait_condition")]
     pub visible: Option<String>,
 
     /// Wait for element to be focused
-    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible"])]
+    #[arg(long, group = "wait_condition")]
     pub focused: Option<String>,
 
     /// Wait for element to disappear
-    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused"])]
+    #[arg(long, group = "wait_condition")]
     pub not_visible: Option<String>,
 
     /// Wait for text to disappear
-    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible"])]
+    #[arg(long, group = "wait_condition")]
     pub text_gone: Option<String>,
 
     /// Wait for screen to stabilize
-    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible", "text_gone", "value"])]
+    #[arg(long, group = "wait_condition")]
     pub stable: bool,
 
     /// Wait for input to have specific value (format: @ref=value)
-    #[arg(long, conflicts_with_all = ["condition", "text", "element", "visible", "focused", "not_visible", "text_gone", "stable"])]
+    #[arg(long, group = "wait_condition")]
     pub value: Option<String>,
 }
 
@@ -892,8 +893,6 @@ pub enum OutputFormat {
     #[default]
     Text,
     Json,
-    /// Accessibility-tree format (agent-browser style): "- button "Submit" [ref=@btn1]"
-    Tree,
 }
 
 #[cfg(test)]
@@ -1374,13 +1373,6 @@ mod tests {
     fn test_json_shorthand_flag() {
         let cli = Cli::parse_from(["agent-tui", "--json", "health"]);
         assert!(cli.json);
-    }
-
-    /// Test tree output format
-    #[test]
-    fn test_tree_output_format() {
-        let cli = Cli::parse_from(["agent-tui", "-f", "tree", "snapshot"]);
-        assert_eq!(cli.format, OutputFormat::Tree);
     }
 
     /// Test spawn with cwd argument

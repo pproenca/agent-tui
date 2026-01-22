@@ -856,6 +856,34 @@ pub struct WaitParams {
     pub value: Option<String>,
 }
 
+impl WaitParams {
+    /// Resolve wait condition from WaitParams to (condition_type, target) tuple
+    pub fn resolve_condition(&self) -> (Option<String>, Option<String>) {
+        if self.stable {
+            return (Some("stable".to_string()), None);
+        }
+
+        let checks: &[(&str, Option<&String>)] = &[
+            ("element", self.element.as_ref()),
+            ("element", self.visible.as_ref()),
+            ("focused", self.focused.as_ref()),
+            ("not_visible", self.not_visible.as_ref()),
+            ("text_gone", self.text_gone.as_ref()),
+            ("value", self.value.as_ref()),
+        ];
+
+        for (cond, target) in checks {
+            if let Some(t) = target {
+                return (Some((*cond).to_string()), Some((*t).clone()));
+            }
+        }
+
+        self.condition
+            .map(|c| (Some(c.to_string()), self.target.clone()))
+            .unwrap_or((None, None))
+    }
+}
+
 /// Parameters for the find command
 #[derive(Debug, Clone, Default, Parser)]
 pub struct FindParams {

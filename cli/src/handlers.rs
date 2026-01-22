@@ -8,6 +8,28 @@ use std::collections::HashMap;
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
+/// Macro to generate get_* handlers that follow the same pattern
+macro_rules! get_handler {
+    ($name:ident, $method:literal, $field:literal) => {
+        pub fn $name(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+            let params = ctx.ref_params(&element_ref);
+            let result = ctx.client.call($method, Some(params))?;
+            ctx.output_get_result(&result, &element_ref, $field)
+        }
+    };
+}
+
+/// Macro to generate is_* state check handlers that follow the same pattern
+macro_rules! state_check_handler {
+    ($name:ident, $method:literal, $field:literal, $pos:literal, $neg:literal) => {
+        pub fn $name(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+            let params = ctx.ref_params(&element_ref);
+            let result = ctx.client.call($method, Some(params))?;
+            ctx.output_state_check(&result, &element_ref, $field, $pos, $neg)
+        }
+    };
+}
+
 pub struct HandlerContext<'a> {
     pub client: &'a mut DaemonClient,
     pub session: Option<String>,
@@ -425,33 +447,8 @@ pub fn handle_keyup(ctx: &mut HandlerContext, key: String) -> HandlerResult {
     Ok(())
 }
 
-/// Resolve wait condition from WaitParams to (condition_type, target) tuple
-fn resolve_wait_condition(
-    params: &crate::commands::WaitParams,
-) -> (Option<String>, Option<String>) {
-    if params.stable {
-        (Some("stable".to_string()), None)
-    } else if let Some(ref el) = params.element {
-        (Some("element".to_string()), Some(el.clone()))
-    } else if let Some(ref vis) = params.visible {
-        (Some("element".to_string()), Some(vis.clone()))
-    } else if let Some(ref f) = params.focused {
-        (Some("focused".to_string()), Some(f.clone()))
-    } else if let Some(ref nv) = params.not_visible {
-        (Some("not_visible".to_string()), Some(nv.clone()))
-    } else if let Some(ref tg) = params.text_gone {
-        (Some("text_gone".to_string()), Some(tg.clone()))
-    } else if let Some(ref v) = params.value {
-        (Some("value".to_string()), Some(v.clone()))
-    } else if let Some(c) = params.condition {
-        (Some(c.to_string()), params.target.clone())
-    } else {
-        (None, None)
-    }
-}
-
 pub fn handle_wait(ctx: &mut HandlerContext, params: crate::commands::WaitParams) -> HandlerResult {
-    let (cond, tgt) = resolve_wait_condition(&params);
+    let (cond, tgt) = params.resolve_condition();
 
     let rpc_params = json!({
         "text": params.text,
@@ -885,17 +882,8 @@ pub fn handle_select_all(ctx: &mut HandlerContext, element_ref: String) -> Handl
     )
 }
 
-pub fn handle_get_text(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = ctx.ref_params(&element_ref);
-    let result = ctx.client.call("get_text", Some(params))?;
-    ctx.output_get_result(&result, &element_ref, "text")
-}
-
-pub fn handle_get_value(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = ctx.ref_params(&element_ref);
-    let result = ctx.client.call("get_value", Some(params))?;
-    ctx.output_get_result(&result, &element_ref, "value")
-}
+get_handler!(handle_get_text, "get_text", "text");
+get_handler!(handle_get_value, "get_value", "value");
 
 pub fn handle_get_focused(ctx: &mut HandlerContext) -> HandlerResult {
     let result = ctx.client.call("get_focused", Some(ctx.session_params()))?;
@@ -933,29 +921,34 @@ pub fn handle_get_title(ctx: &mut HandlerContext) -> HandlerResult {
     })
 }
 
-pub fn handle_is_visible(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = ctx.ref_params(&element_ref);
-    let result = ctx.client.call("is_visible", Some(params))?;
-    ctx.output_state_check(&result, &element_ref, "visible", "visible", "not visible")
-}
-
-pub fn handle_is_focused(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = ctx.ref_params(&element_ref);
-    let result = ctx.client.call("is_focused", Some(params))?;
-    ctx.output_state_check(&result, &element_ref, "focused", "focused", "not focused")
-}
-
-pub fn handle_is_enabled(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = ctx.ref_params(&element_ref);
-    let result = ctx.client.call("is_enabled", Some(params))?;
-    ctx.output_state_check(&result, &element_ref, "enabled", "enabled", "disabled")
-}
-
-pub fn handle_is_checked(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
-    let params = ctx.ref_params(&element_ref);
-    let result = ctx.client.call("is_checked", Some(params))?;
-    ctx.output_state_check(&result, &element_ref, "checked", "checked", "not checked")
-}
+state_check_handler!(
+    handle_is_visible,
+    "is_visible",
+    "visible",
+    "visible",
+    "not visible"
+);
+state_check_handler!(
+    handle_is_focused,
+    "is_focused",
+    "focused",
+    "focused",
+    "not focused"
+);
+state_check_handler!(
+    handle_is_enabled,
+    "is_enabled",
+    "enabled",
+    "enabled",
+    "disabled"
+);
+state_check_handler!(
+    handle_is_checked,
+    "is_checked",
+    "checked",
+    "checked",
+    "not checked"
+);
 
 pub fn handle_count(
     ctx: &mut HandlerContext,
@@ -1579,7 +1572,7 @@ mod tests {
             stable: true,
             ..Default::default()
         };
-        let (cond, tgt) = super::resolve_wait_condition(&params);
+        let (cond, tgt) = params.resolve_condition();
         assert_eq!(cond, Some("stable".to_string()));
         assert_eq!(tgt, None);
     }
@@ -1590,7 +1583,7 @@ mod tests {
             element: Some("@btn1".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = super::resolve_wait_condition(&params);
+        let (cond, tgt) = params.resolve_condition();
         assert_eq!(cond, Some("element".to_string()));
         assert_eq!(tgt, Some("@btn1".to_string()));
     }
@@ -1601,7 +1594,7 @@ mod tests {
             visible: Some("@inp1".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = super::resolve_wait_condition(&params);
+        let (cond, tgt) = params.resolve_condition();
         assert_eq!(cond, Some("element".to_string()));
         assert_eq!(tgt, Some("@inp1".to_string()));
     }
@@ -1612,7 +1605,7 @@ mod tests {
             focused: Some("@inp1".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = super::resolve_wait_condition(&params);
+        let (cond, tgt) = params.resolve_condition();
         assert_eq!(cond, Some("focused".to_string()));
         assert_eq!(tgt, Some("@inp1".to_string()));
     }
@@ -1623,7 +1616,7 @@ mod tests {
             not_visible: Some("@spinner".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = super::resolve_wait_condition(&params);
+        let (cond, tgt) = params.resolve_condition();
         assert_eq!(cond, Some("not_visible".to_string()));
         assert_eq!(tgt, Some("@spinner".to_string()));
     }
@@ -1634,7 +1627,7 @@ mod tests {
             text_gone: Some("Loading...".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = super::resolve_wait_condition(&params);
+        let (cond, tgt) = params.resolve_condition();
         assert_eq!(cond, Some("text_gone".to_string()));
         assert_eq!(tgt, Some("Loading...".to_string()));
     }
@@ -1645,7 +1638,7 @@ mod tests {
             value: Some("@inp1=hello".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = super::resolve_wait_condition(&params);
+        let (cond, tgt) = params.resolve_condition();
         assert_eq!(cond, Some("value".to_string()));
         assert_eq!(tgt, Some("@inp1=hello".to_string()));
     }
@@ -1653,7 +1646,7 @@ mod tests {
     #[test]
     fn test_wait_condition_none() {
         let params = crate::commands::WaitParams::default();
-        let (cond, tgt) = super::resolve_wait_condition(&params);
+        let (cond, tgt) = params.resolve_condition();
         assert_eq!(cond, None);
         assert_eq!(tgt, None);
     }

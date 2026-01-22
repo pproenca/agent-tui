@@ -144,13 +144,13 @@ impl MockDaemon {
                     "size": { "cols": super::TEST_COLS, "rows": super::TEST_ROWS }
                 })),
             );
+            // Deprecated method returns error
             h.insert(
                 "screen".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "session_id": super::TEST_SESSION_ID,
-                    "screen": "Test screen content\n",
-                    "size": { "cols": super::TEST_COLS, "rows": super::TEST_ROWS }
-                })),
+                MockResponse::Error {
+                    code: -32601,
+                    message: "Method 'screen' is deprecated. Use 'snapshot' with strip_ansi=true instead.".to_string(),
+                },
             );
             h.insert(
                 "click".to_string(),

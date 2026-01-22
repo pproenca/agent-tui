@@ -46,9 +46,8 @@ agent-tui keystroke Enter               # Confirm
 |---------|-------------|---------|
 | `snapshot` | Capture screen text | `agent-tui snapshot` |
 | `snapshot -i` | Capture screen + detect elements | `agent-tui snapshot -i` |
-| `snapshot -i -c` | Compact view (less noise) | `agent-tui snapshot -i -c` |
-| `snapshot -i --interactive-only` | Only actionable elements | `agent-tui snapshot -i --interactive-only` |
-| `screen` | Raw screen text only | `agent-tui screen` |
+| `snapshot --strip-ansi` | Plain text without colors | `agent-tui snapshot --strip-ansi` |
+| `snapshot --include-cursor` | Include cursor position | `agent-tui snapshot --include-cursor` |
 
 ### Interactions (use @refs from snapshot)
 

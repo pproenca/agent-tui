@@ -121,24 +121,24 @@ text patterns. This provides reliable detection across different TUI frameworks.
 EXAMPLES:
     agent-tui snapshot              # Just the screen
     agent-tui snapshot -i           # Screen + detected elements
-    agent-tui snapshot -i -c        # Compact element list
+    agent-tui snapshot --strip-ansi # Plain text without colors
     agent-tui snapshot -f json      # JSON output for parsing"#)]
     Snapshot {
         /// Include detected interactive elements
         #[arg(short = 'i', long)]
         elements: bool,
 
-        /// Only show interactive elements (buttons, inputs, etc.)
-        #[arg(long)]
-        interactive_only: bool,
-
-        /// Show compact output (remove non-essential elements)
-        #[arg(short = 'c', long)]
-        compact: bool,
-
         /// Scope to a specific region (e.g., "modal", "menu")
         #[arg(long)]
         region: Option<String>,
+
+        /// Strip ANSI escape codes (colors, formatting)
+        #[arg(long)]
+        strip_ansi: bool,
+
+        /// Include cursor position in output
+        #[arg(long)]
+        include_cursor: bool,
     },
 
     /// Click/activate an element by ref
@@ -429,25 +429,6 @@ EXAMPLES:
         /// Text content to find (searches label and value)
         #[arg(long)]
         text: Option<String>,
-    },
-
-    /// Take a text screenshot of the terminal
-    #[command(long_about = r#"Take a text screenshot of the terminal.
-
-Returns the terminal screen as text without element detection.
-
-EXAMPLES:
-    agent-tui screenshot                  # Raw screen with ANSI codes
-    agent-tui screenshot --strip-ansi     # Plain text without colors
-    agent-tui screenshot --include-cursor # Include cursor position"#)]
-    Screenshot {
-        /// Strip ANSI escape codes (colors, formatting)
-        #[arg(long)]
-        strip_ansi: bool,
-
-        /// Include cursor position in output
-        #[arg(long)]
-        include_cursor: bool,
     },
 
     /// Toggle a checkbox or radio button
@@ -1006,20 +987,20 @@ mod tests {
     /// Test snapshot command flags
     #[test]
     fn test_snapshot_flags() {
-        let cli = Cli::parse_from(["agent-tui", "snapshot", "-i", "-c"]);
+        let cli = Cli::parse_from(["agent-tui", "snapshot", "-i"]);
         let Commands::Snapshot {
             elements,
-            compact,
-            interactive_only,
             region,
+            strip_ansi,
+            include_cursor,
         } = cli.command
         else {
             panic!("Expected Snapshot command, got {:?}", cli.command);
         };
         assert!(elements, "-i should enable elements");
-        assert!(compact, "-c should enable compact");
-        assert!(!interactive_only);
         assert!(region.is_none());
+        assert!(!strip_ansi);
+        assert!(!include_cursor);
     }
 
     /// Test snapshot with all flags
@@ -1029,24 +1010,24 @@ mod tests {
             "agent-tui",
             "snapshot",
             "-i",
-            "--interactive-only",
-            "-c",
             "--region",
             "modal",
+            "--strip-ansi",
+            "--include-cursor",
         ]);
         let Commands::Snapshot {
             elements,
-            compact,
-            interactive_only,
             region,
+            strip_ansi,
+            include_cursor,
         } = cli.command
         else {
             panic!("Expected Snapshot command, got {:?}", cli.command);
         };
         assert!(elements);
-        assert!(compact);
-        assert!(interactive_only);
         assert_eq!(region, Some("modal".to_string()));
+        assert!(strip_ansi);
+        assert!(include_cursor);
     }
 
     /// Test click command requires element ref

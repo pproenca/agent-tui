@@ -1,17 +1,241 @@
-use crate::detection::{Element, ElementDetector};
 use crate::pty::{key_to_escape_sequence, PtyError, PtyHandle};
 use crate::sync_utils::{mutex_lock_or_recover, rwlock_read_or_recover, rwlock_write_or_recover};
 use crate::terminal::{CursorPosition, VirtualTerminal};
+use crate::vom::{Component, Role};
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Instant;
 use thiserror::Error;
 use uuid::Uuid;
+
+// =============================================================================
+// Element Types (API compatibility layer over VOM)
+// =============================================================================
+
+fn legacy_ref_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^@([a-z]+)(\d+)$").unwrap())
+}
+
+/// Element types detected by VOM. All variants are public API for external consumers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[allow(dead_code)] // All variants are public API for external consumers
+pub enum ElementType {
+    Button,
+    Input,
+    Checkbox,
+    Radio,
+    Select,
+    MenuItem,
+    ListItem,
+    Spinner,
+    Progress,
+}
+
+impl ElementType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ElementType::Button => "button",
+            ElementType::Input => "input",
+            ElementType::Checkbox => "checkbox",
+            ElementType::Radio => "radio",
+            ElementType::Select => "select",
+            ElementType::MenuItem => "menuitem",
+            ElementType::ListItem => "listitem",
+            ElementType::Spinner => "spinner",
+            ElementType::Progress => "progress",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Position {
+    pub row: u16,
+    pub col: u16,
+    pub width: Option<u16>,
+    pub height: Option<u16>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Element {
+    pub element_ref: String,
+    pub element_type: ElementType,
+    pub label: Option<String>,
+    pub value: Option<String>,
+    pub position: Position,
+    pub focused: bool,
+    pub selected: bool,
+    pub checked: Option<bool>,
+    pub disabled: Option<bool>,
+    pub hint: Option<String>,
+}
+
+impl Element {
+    #[allow(dead_code)] // Public API for external consumers
+    pub fn new(
+        element_ref: String,
+        element_type: ElementType,
+        row: u16,
+        col: u16,
+        width: u16,
+    ) -> Self {
+        Self {
+            element_ref,
+            element_type,
+            label: None,
+            value: None,
+            position: Position {
+                row,
+                col,
+                width: Some(width),
+                height: Some(1),
+            },
+            focused: false,
+            selected: false,
+            checked: None,
+            disabled: None,
+            hint: None,
+        }
+    }
+
+    #[allow(dead_code)] // Public API for external consumers
+    pub fn is_interactive(&self) -> bool {
+        matches!(
+            self.element_type,
+            ElementType::Button
+                | ElementType::Input
+                | ElementType::Checkbox
+                | ElementType::Radio
+                | ElementType::Select
+                | ElementType::MenuItem
+        )
+    }
+
+    #[allow(dead_code)] // Public API for external consumers
+    pub fn has_content(&self) -> bool {
+        self.label
+            .as_ref()
+            .map(|l| !l.trim().is_empty())
+            .unwrap_or(false)
+            || self
+                .value
+                .as_ref()
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false)
+    }
+}
+
+/// Convert a VOM Role to an ElementType for API compatibility
+fn role_to_element_type(role: Role) -> ElementType {
+    match role {
+        Role::Button => ElementType::Button,
+        Role::Tab => ElementType::Button, // Tabs are clickable like buttons
+        Role::Input => ElementType::Input,
+        Role::Checkbox => ElementType::Checkbox,
+        Role::MenuItem => ElementType::MenuItem,
+        Role::StaticText => ElementType::ListItem, // Map to listitem for static text
+        Role::Panel => ElementType::ListItem,      // Map to listitem for panels
+    }
+}
+
+/// Convert a VOM Component to an Element for API compatibility
+fn component_to_element(
+    comp: &Component,
+    index: usize,
+    cursor_row: u16,
+    cursor_col: u16,
+) -> Element {
+    let focused = comp.bounds.contains(cursor_col, cursor_row);
+
+    // Infer checked state for checkboxes from text patterns
+    let checked = if comp.role == Role::Checkbox {
+        let text = comp.text_content.to_lowercase();
+        if text.contains("[x]") || text.contains("(x)") || text.contains("☑") || text.contains("✓")
+        {
+            Some(true)
+        } else if text.contains("[ ]") || text.contains("( )") || text.contains("☐") {
+            Some(false)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    Element {
+        element_ref: format!("@e{}", index + 1),
+        element_type: role_to_element_type(comp.role),
+        label: Some(comp.text_content.trim().to_string()),
+        value: None, // VOM doesn't track value separately
+        position: Position {
+            row: comp.bounds.y,
+            col: comp.bounds.x,
+            width: Some(comp.bounds.width),
+            height: Some(comp.bounds.height),
+        },
+        focused,
+        selected: false,
+        checked,
+        disabled: None,
+        hint: None,
+    }
+}
+
+/// Find element by ref string, supporting both sequential (@e1) and legacy (@btn1) formats
+pub fn find_element_by_ref<'a>(elements: &'a [Element], ref_str: &str) -> Option<&'a Element> {
+    let normalized = if ref_str.starts_with('@') {
+        ref_str.to_string()
+    } else {
+        format!("@{}", ref_str)
+    };
+
+    // Direct match on element_ref
+    if let Some(el) = elements.iter().find(|e| e.element_ref == normalized) {
+        return Some(el);
+    }
+
+    // Legacy ref pattern support (@btn1, @inp1, etc.)
+    if let Some(caps) = legacy_ref_regex().captures(&normalized) {
+        let prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let index: usize = caps
+            .get(2)
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(0);
+
+        if index > 0 && prefix != "e" {
+            let target_type = match prefix {
+                "btn" => Some("button"),
+                "inp" => Some("input"),
+                "cb" => Some("checkbox"),
+                "rb" => Some("radio"),
+                "sel" => Some("select"),
+                "mi" => Some("menuitem"),
+                "li" => Some("listitem"),
+                "lnk" => Some("link"),
+                _ => None,
+            };
+
+            if let Some(type_str) = target_type {
+                let matching: Vec<_> = elements
+                    .iter()
+                    .filter(|e| e.element_type.as_str() == type_str)
+                    .collect();
+
+                if index <= matching.len() {
+                    return Some(matching[index - 1]);
+                }
+            }
+        }
+    }
+
+    None
+}
 
 fn get_last_n<T: Clone>(queue: &VecDeque<T>, count: usize) -> Vec<T> {
     let start = queue.len().saturating_sub(count);
@@ -189,7 +413,6 @@ pub struct Session {
     pub created_at: DateTime<Utc>,
     pty: PtyHandle,
     terminal: VirtualTerminal,
-    detector: ElementDetector,
     cached_elements: Vec<Element>,
     recording: RecordingState,
     trace: TraceState,
@@ -205,7 +428,6 @@ impl Session {
             created_at: Utc::now(),
             pty,
             terminal: VirtualTerminal::new(cols, rows),
-            detector: ElementDetector::new(),
             cached_elements: Vec::new(),
             recording: RecordingState::new(),
             trace: TraceState::new(),
@@ -250,10 +472,25 @@ impl Session {
         self.terminal.cursor()
     }
 
+    /// Detect elements using VOM (Visual Object Model)
     pub fn detect_elements(&mut self) -> &[Element] {
-        let screen_text = self.terminal.screen_text();
-        let screen_buffer = self.terminal.screen_buffer();
-        self.cached_elements = self.detector.detect(&screen_text, Some(&screen_buffer));
+        let buffer = self.terminal.screen_buffer();
+        let cursor = self.terminal.cursor();
+        let components = crate::vom::analyze(&buffer, cursor.row, cursor.col);
+
+        // Filter to interactive elements and convert to Element API
+        self.cached_elements = components
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c.role,
+                    Role::Button | Role::Tab | Role::Input | Role::Checkbox | Role::MenuItem
+                )
+            })
+            .enumerate()
+            .map(|(i, c)| component_to_element(c, i, cursor.row, cursor.col))
+            .collect();
+
         &self.cached_elements
     }
 
@@ -262,8 +499,7 @@ impl Session {
     }
 
     pub fn find_element(&self, element_ref: &str) -> Option<&Element> {
-        self.detector
-            .find_by_ref(&self.cached_elements, element_ref)
+        find_element_by_ref(&self.cached_elements, element_ref)
     }
 
     pub fn keystroke(&self, key: &str) -> Result<(), SessionError> {

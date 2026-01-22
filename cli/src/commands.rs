@@ -114,11 +114,14 @@ EXAMPLES:
 Returns the current terminal screen content and optionally detects
 interactive UI elements like buttons, inputs, and menus.
 
+Element detection uses the Visual Object Model (VOM) which identifies
+UI components based on visual styling (colors, backgrounds) rather than
+text patterns. This provides reliable detection across different TUI frameworks.
+
 EXAMPLES:
     agent-tui snapshot              # Just the screen
     agent-tui snapshot -i           # Screen + detected elements
     agent-tui snapshot -i -c        # Compact element list
-    agent-tui snapshot --vom        # Use VOM (Visual Object Model) detection
     agent-tui snapshot -f json      # JSON output for parsing"#)]
     Snapshot {
         /// Include detected interactive elements
@@ -136,10 +139,6 @@ EXAMPLES:
         /// Scope to a specific region (e.g., "modal", "menu")
         #[arg(long)]
         region: Option<String>,
-
-        /// Use Visual Object Model (VOM) for element detection (experimental)
-        #[arg(long)]
-        vom: bool,
     },
 
     /// Click/activate an element by ref
@@ -1013,7 +1012,6 @@ mod tests {
             compact,
             interactive_only,
             region,
-            vom,
         } = cli.command
         else {
             panic!("Expected Snapshot command, got {:?}", cli.command);
@@ -1022,7 +1020,6 @@ mod tests {
         assert!(compact, "-c should enable compact");
         assert!(!interactive_only);
         assert!(region.is_none());
-        assert!(!vom);
     }
 
     /// Test snapshot with all flags
@@ -1036,14 +1033,12 @@ mod tests {
             "-c",
             "--region",
             "modal",
-            "--vom",
         ]);
         let Commands::Snapshot {
             elements,
             compact,
             interactive_only,
             region,
-            vom,
         } = cli.command
         else {
             panic!("Expected Snapshot command, got {:?}", cli.command);
@@ -1052,7 +1047,6 @@ mod tests {
         assert!(compact);
         assert!(interactive_only);
         assert_eq!(region, Some("modal".to_string()));
-        assert!(vom);
     }
 
     /// Test click command requires element ref

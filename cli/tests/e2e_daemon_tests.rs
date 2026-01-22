@@ -409,10 +409,10 @@ fn test_snapshot_compact_mode() {
 }
 
 #[test]
-fn test_snapshot_with_vom_flag() {
+fn test_snapshot_with_elements_uses_vom() {
     let harness = TestHarness::new();
 
-    // Set a VOM-style response with detection type
+    // VOM is now the default detection method for elements
     harness.set_success_response(
         "snapshot",
         json!({
@@ -448,26 +448,26 @@ fn test_snapshot_with_vom_flag() {
     );
 
     harness
-        .run(&["snapshot", "--vom"])
+        .run(&["snapshot", "-i"])
         .success()
         .stdout(predicate::str::contains("@e1"))
         .stdout(predicate::str::contains("button"));
 
-    // Verify the VOM flag was passed to the daemon
+    // Verify include_elements was passed to the daemon
     let request = harness.last_request_for("snapshot").unwrap();
     let params = request.params.unwrap();
-    assert_eq!(params["vom"], true);
+    assert_eq!(params["include_elements"], true);
 }
 
 #[test]
-fn test_snapshot_vom_with_compact() {
+fn test_snapshot_with_compact_elements() {
     let harness = TestHarness::new();
 
-    harness.run(&["snapshot", "--vom", "-c"]).success();
+    harness.run(&["snapshot", "-i", "-c"]).success();
 
     let request = harness.last_request_for("snapshot").unwrap();
     let params = request.params.unwrap();
-    assert_eq!(params["vom"], true);
+    assert_eq!(params["include_elements"], true);
     assert_eq!(params["compact"], true);
 }
 

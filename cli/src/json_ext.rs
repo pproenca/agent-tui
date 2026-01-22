@@ -2,12 +2,8 @@ use serde_json::Value;
 
 pub trait ValueExt {
     fn str_or<'a>(&'a self, key: &str, default: &'a str) -> &'a str;
-
     fn u64_or(&self, key: &str, default: u64) -> u64;
-
     fn bool_or(&self, key: &str, default: bool) -> bool;
-
-    /// Get an array field's string elements joined by a separator.
     fn str_array_join(&self, key: &str, sep: &str) -> String;
 }
 

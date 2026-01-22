@@ -91,7 +91,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             interactive_only,
             compact,
             region,
-        } => handlers::handle_snapshot(&mut ctx, elements, interactive_only, compact, region)?,
+            vom,
+        } => handlers::handle_snapshot(&mut ctx, elements, interactive_only, compact, region, vom)?,
         Commands::Click { element_ref } => handlers::handle_click(&mut ctx, element_ref)?,
         Commands::DblClick { element_ref } => handlers::handle_dbl_click(&mut ctx, element_ref)?,
         Commands::Fill { element_ref, value } => {

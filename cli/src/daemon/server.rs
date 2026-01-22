@@ -413,6 +413,7 @@ impl DaemonServer {
         let include_elements = params.bool_or("include_elements", false);
         let interactive_only = params.bool_or("interactive_only", false);
         let compact = params.bool_or("compact", false);
+        let use_vom = params.bool_or("vom", false);
         let req_id = request.id;
 
         self.with_session(&request, session_id, |sess| {
@@ -422,7 +423,44 @@ impl DaemonServer {
             let cursor = sess.cursor();
             let (cols, rows) = sess.size();
 
-            let (elements, stats) = if include_elements {
+            let (elements, stats) = if use_vom {
+                // Use Visual Object Model for element detection
+                let vom_components = sess.analyze_screen();
+                let elements_total = vom_components.len();
+                let elements_interactive = vom_components
+                    .iter()
+                    .filter(|c| c.role != crate::vom::Role::StaticText)
+                    .count();
+
+                let filtered_elements: Vec<_> = vom_components
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, comp)| {
+                        if interactive_only && comp.role == crate::vom::Role::StaticText {
+                            return false;
+                        }
+                        if compact && comp.role == crate::vom::Role::StaticText {
+                            return false;
+                        }
+                        true
+                    })
+                    .map(|(i, comp)| vom_component_to_json(comp, i))
+                    .collect();
+
+                let elements_shown = filtered_elements.len();
+
+                (
+                    Some(filtered_elements),
+                    json!({
+                        "lines": screen.lines().count(),
+                        "chars": screen.len(),
+                        "elements_total": elements_total,
+                        "elements_interactive": elements_interactive,
+                        "elements_shown": elements_shown,
+                        "detection": "vom"
+                    }),
+                )
+            } else if include_elements {
                 let all_elements = sess.detect_elements();
                 let elements_total = all_elements.len();
                 let elements_interactive =
@@ -451,7 +489,8 @@ impl DaemonServer {
                         "chars": screen.len(),
                         "elements_total": elements_total,
                         "elements_interactive": elements_interactive,
-                        "elements_shown": elements_shown
+                        "elements_shown": elements_shown,
+                        "detection": "regex"
                     }),
                 )
             } else {
@@ -1744,6 +1783,29 @@ fn element_to_json(el: &Element) -> Value {
         "checked": el.checked,
         "disabled": el.disabled,
         "hint": el.hint
+    })
+}
+
+/// Convert a VOM component to JSON format compatible with element output
+fn vom_component_to_json(comp: &crate::vom::Component, index: usize) -> Value {
+    json!({
+        "ref": format!("@e{}", index + 1),
+        "type": comp.role.to_string(),
+        "label": comp.text_content.trim(),
+        "value": null,
+        "position": {
+            "row": comp.bounds.y,
+            "col": comp.bounds.x,
+            "width": comp.bounds.width,
+            "height": comp.bounds.height
+        },
+        "focused": false,
+        "selected": false,
+        "checked": null,
+        "disabled": false,
+        "hint": null,
+        "vom_id": comp.id.to_string(),
+        "visual_hash": comp.visual_hash
     })
 }
 

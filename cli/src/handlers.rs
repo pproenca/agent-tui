@@ -275,13 +275,15 @@ pub fn handle_snapshot(
     interactive_only: bool,
     compact: bool,
     region: Option<String>,
+    vom: bool,
 ) -> HandlerResult {
     let params = json!({
         "session": ctx.session,
         "include_elements": elements,
         "interactive_only": interactive_only,
         "compact": compact,
-        "region": region
+        "region": region,
+        "vom": vom
     });
 
     let result = ctx.client.call("snapshot", Some(params))?;

@@ -408,6 +408,69 @@ fn test_snapshot_compact_mode() {
     assert_eq!(params["compact"], true);
 }
 
+#[test]
+fn test_snapshot_with_elements_uses_vom() {
+    let harness = TestHarness::new();
+
+    // VOM is now the default detection method for elements
+    harness.set_success_response(
+        "snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "screen": "Test screen\n",
+            "elements": [
+                {
+                    "ref": "@e1",
+                    "type": "button",
+                    "label": "[OK]",
+                    "value": null,
+                    "position": { "row": 5, "col": 10, "width": 4, "height": 1 },
+                    "focused": false,
+                    "selected": false,
+                    "checked": null,
+                    "disabled": false,
+                    "hint": null,
+                    "vom_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "visual_hash": 12345678
+                }
+            ],
+            "cursor": { "row": 0, "col": 0, "visible": true },
+            "size": { "cols": TEST_COLS, "rows": TEST_ROWS },
+            "stats": {
+                "lines": 24,
+                "chars": 1920,
+                "elements_total": 1,
+                "elements_interactive": 1,
+                "elements_shown": 1,
+                "detection": "vom"
+            }
+        }),
+    );
+
+    harness
+        .run(&["snapshot", "-i"])
+        .success()
+        .stdout(predicate::str::contains("@e1"))
+        .stdout(predicate::str::contains("button"));
+
+    // Verify include_elements was passed to the daemon
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["include_elements"], true);
+}
+
+#[test]
+fn test_snapshot_with_compact_elements() {
+    let harness = TestHarness::new();
+
+    harness.run(&["snapshot", "-i", "-c"]).success();
+
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["include_elements"], true);
+    assert_eq!(params["compact"], true);
+}
+
 // =============================================================================
 // Wait Command Tests
 // =============================================================================

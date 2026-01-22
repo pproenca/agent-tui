@@ -114,6 +114,10 @@ EXAMPLES:
 Returns the current terminal screen content and optionally detects
 interactive UI elements like buttons, inputs, and menus.
 
+Element detection uses the Visual Object Model (VOM) which identifies
+UI components based on visual styling (colors, backgrounds) rather than
+text patterns. This provides reliable detection across different TUI frameworks.
+
 EXAMPLES:
     agent-tui snapshot              # Just the screen
     agent-tui snapshot -i           # Screen + detected elements

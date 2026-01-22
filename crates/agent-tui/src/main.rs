@@ -8,6 +8,7 @@ use agent_tui::handlers::HandlerContext;
 use agent_tui::handlers::{self};
 use agent_tui_common::color_init;
 use agent_tui_common::Colors;
+use agent_tui_daemon::start_daemon;
 use agent_tui_ipc::ensure_daemon;
 
 fn main() {
@@ -23,7 +24,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     color_init(cli.no_color);
 
     if matches!(cli.command, Commands::Daemon) {
-        return start_daemon();
+        return start_daemon().map_err(|e| e.into());
     }
 
     if let Commands::Completions { shell } = &cli.command {
@@ -61,9 +62,4 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-}
-
-fn start_daemon() -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("Daemon command not yet migrated to workspace structure");
-    std::process::exit(1);
 }

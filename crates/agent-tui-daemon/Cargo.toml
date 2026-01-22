@@ -11,6 +11,7 @@ agent-tui-common.workspace = true
 agent-tui-terminal.workspace = true
 agent-tui-core.workspace = true
 agent-tui-ipc.workspace = true
+base64.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -20,3 +21,6 @@ regex.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

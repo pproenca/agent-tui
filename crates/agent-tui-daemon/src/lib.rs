@@ -3,6 +3,7 @@
 pub mod ansi_keys;
 mod lock_helpers;
 mod select_helpers;
+mod server;
 mod session;
 mod wait;
 
@@ -22,6 +23,7 @@ pub use session::SessionInfo;
 pub use session::SessionManager;
 pub use session::SessionPersistence;
 pub use session::TraceEntry;
+pub use server::start_daemon;
 pub use wait::check_condition;
 pub use wait::StableTracker;
 pub use wait::WaitCondition;

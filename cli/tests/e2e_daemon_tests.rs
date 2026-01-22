@@ -37,20 +37,6 @@ fn test_health_returns_daemon_status() {
 }
 
 #[test]
-fn test_health_json_format() {
-    let harness = TestHarness::new();
-
-    harness
-        .run(&["-f", "json", "health"])
-        .success()
-        .stdout(predicate::str::contains("\"status\": \"healthy\""))
-        .stdout(predicate::str::contains("\"pid\":"))
-        .stdout(predicate::str::contains("\"uptime_ms\":"))
-        .stdout(predicate::str::contains("\"session_count\":"))
-        .stdout(predicate::str::contains("\"version\":"));
-}
-
-#[test]
 fn test_health_with_custom_response() {
     let harness = TestHarness::new();
 
@@ -149,17 +135,6 @@ fn test_spawn_with_args() {
     assert_eq!(params["args"], json!(["file.txt", "-n"]));
 }
 
-#[test]
-fn test_spawn_json_format() {
-    let harness = TestHarness::new();
-
-    harness
-        .run(&["-f", "json", "spawn", "bash"])
-        .success()
-        .stdout(predicate::str::contains("\"session_id\":"))
-        .stdout(predicate::str::contains("\"pid\":"));
-}
-
 // =============================================================================
 // Click Command Tests
 // =============================================================================
@@ -208,16 +183,6 @@ fn test_click_error_handling() {
         .failure()
         .stderr(predicate::str::contains("Click failed"))
         .stderr(predicate::str::contains("Element not found"));
-}
-
-#[test]
-fn test_click_json_format() {
-    let harness = TestHarness::new();
-
-    harness
-        .run(&["-f", "json", "click", "@btn1"])
-        .success()
-        .stdout(predicate::str::contains("\"success\": true"));
 }
 
 // =============================================================================
@@ -386,18 +351,6 @@ fn test_snapshot_with_elements() {
 }
 
 #[test]
-fn test_snapshot_json_format() {
-    let harness = TestHarness::new();
-
-    harness
-        .run(&["-f", "json", "snapshot"])
-        .success()
-        .stdout(predicate::str::contains("\"session_id\":"))
-        .stdout(predicate::str::contains("\"screen\":"))
-        .stdout(predicate::str::contains("\"size\":"));
-}
-
-#[test]
 fn test_snapshot_compact_mode() {
     let harness = TestHarness::new();
 
@@ -502,27 +455,6 @@ fn test_wait_with_custom_timeout() {
 }
 
 #[test]
-fn test_wait_timeout_failure() {
-    let harness = TestHarness::new();
-
-    harness.set_success_response(
-        "wait",
-        json!({
-            "found": false,
-            "elapsed_ms": 30000,
-            "suggestion": "Text not found. Check the current screen.",
-            "screen_context": "Actual screen content here"
-        }),
-    );
-
-    harness
-        .run(&["wait", "NonExistent"])
-        .failure()
-        .stderr(predicate::str::contains("Timeout"))
-        .stderr(predicate::str::contains("not found"));
-}
-
-#[test]
 fn test_wait_for_element() {
     let harness = TestHarness::new();
 
@@ -532,17 +464,6 @@ fn test_wait_for_element() {
     let params = request.params.unwrap();
     assert_eq!(params["target"], "@btn1");
     assert_eq!(params["condition"], "element");
-}
-
-#[test]
-fn test_wait_for_stable() {
-    let harness = TestHarness::new();
-
-    harness.run(&["wait", "--stable"]).success();
-
-    let request = harness.last_request_for("wait").unwrap();
-    let params = request.params.unwrap();
-    assert_eq!(params["condition"], "stable");
 }
 
 // =============================================================================

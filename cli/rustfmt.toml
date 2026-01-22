@@ -1,7 +1,7 @@
-# Rustfmt configuration for agent-tui
-# See: https://rust-lang.github.io/rustfmt/
-
-edition = "2021"
-newline_style = "Unix"
-max_width = 100
-use_small_heuristics = "Default"
+edition = "2024"
+format_code_in_doc_comments = true
+group_imports = "StdExternalCrate"
+imports_granularity = "Item"
+merge_derives = false
+style_edition = "2024"
+use_field_init_shorthand = true

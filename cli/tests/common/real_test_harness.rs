@@ -5,6 +5,7 @@
 
 use serde_json::Value;
 use std::cell::RefCell;
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -23,11 +24,11 @@ impl RealTestHarness {
         let daemon_socket =
             PathBuf::from(format!("/tmp/agent-tui-test-{}.sock", uuid::Uuid::new_v4()));
 
-        let daemon_process = Command::new(env!("CARGO_BIN_EXE_agent-tui"))
+        let mut daemon_process = Command::new(env!("CARGO_BIN_EXE_agent-tui"))
             .arg("daemon")
             .env("AGENT_TUI_SOCKET", &daemon_socket)
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn test daemon");
 
@@ -38,11 +39,21 @@ impl RealTestHarness {
             std::thread::sleep(Duration::from_millis(10));
         }
 
-        assert!(
-            daemon_socket.exists(),
-            "Daemon socket not created at {}",
-            daemon_socket.display()
-        );
+        if !daemon_socket.exists() {
+            let stderr_output = daemon_process
+                .stderr
+                .as_mut()
+                .and_then(|stderr| {
+                    let mut buf = String::new();
+                    stderr.read_to_string(&mut buf).ok().map(|_| buf)
+                })
+                .unwrap_or_else(|| "<no output>".to_string());
+            panic!(
+                "Daemon socket not created at {}. Daemon stderr: {}",
+                daemon_socket.display(),
+                stderr_output
+            );
+        }
 
         Self {
             sessions: RefCell::new(Vec::new()),
@@ -109,14 +120,16 @@ impl RealTestHarness {
             Ok(status) if status.success() => {}
             Ok(status) => {
                 eprintln!(
-                    "Warning: Session {} kill failed with exit code {:?}",
+                    "Warning: Session {} kill failed with exit code {:?}. \
+                     The session may have already terminated or does not exist.",
                     session_id,
                     status.code()
                 );
             }
             Err(e) => {
                 eprintln!(
-                    "Warning: Failed to execute kill for session {}: {}",
+                    "Warning: Failed to execute kill for session {}: {}. \
+                     The daemon may have already terminated.",
                     session_id, e
                 );
             }
@@ -138,44 +151,64 @@ impl Default for RealTestHarness {
     }
 }
 
+fn remove_file_if_exists(path: &std::path::Path, description: &str) {
+    if path.exists() {
+        if let Err(e) = std::fs::remove_file(path) {
+            eprintln!("Warning: Failed to remove {}: {}", description, e);
+        }
+    }
+}
+
 impl Drop for RealTestHarness {
     fn drop(&mut self) {
         self.cleanup();
 
         if let Some(mut daemon) = self.daemon_process.borrow_mut().take() {
-            if let Err(e) = daemon.kill() {
-                eprintln!("Warning: Failed to kill daemon process: {}", e);
-            }
-            match daemon.wait() {
-                Ok(status) if !status.success() => {
-                    eprintln!("Warning: Daemon exited with status: {:?}", status.code());
+            // Check if already exited before attempting kill
+            match daemon.try_wait() {
+                Ok(Some(_)) => {
+                    // Already exited, no need to kill
+                }
+                Ok(None) => {
+                    // Still running, kill it
+                    if let Err(e) = daemon.kill() {
+                        eprintln!(
+                            "Warning: Failed to kill daemon process: {}. \
+                             Process may have exited between try_wait and kill.",
+                            e
+                        );
+                    }
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to wait for daemon: {}", e);
+                    eprintln!(
+                        "Warning: Failed to check daemon status: {}. Attempting kill anyway.",
+                        e
+                    );
+                    let _ = daemon.kill();
+                }
+            }
+
+            // Always wait to reap the process and prevent zombies
+            match daemon.wait() {
+                Ok(status) if !status.success() => {
+                    eprintln!(
+                        "Warning: Daemon exited with status: {:?}. \
+                         This may indicate an error during shutdown.",
+                        status.code()
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Failed to wait for daemon: {}. \
+                         Process may become a zombie.",
+                        e
+                    );
                 }
                 _ => {}
             }
         }
 
-        if self.daemon_socket.exists() {
-            if let Err(e) = std::fs::remove_file(&self.daemon_socket) {
-                eprintln!(
-                    "Warning: Failed to remove socket {}: {}",
-                    self.daemon_socket.display(),
-                    e
-                );
-            }
-        }
-
-        let lock_path = self.daemon_socket.with_extension("lock");
-        if lock_path.exists() {
-            if let Err(e) = std::fs::remove_file(&lock_path) {
-                eprintln!(
-                    "Warning: Failed to remove lock file {}: {}",
-                    lock_path.display(),
-                    e
-                );
-            }
-        }
+        remove_file_if_exists(&self.daemon_socket, "socket");
+        remove_file_if_exists(&self.daemon_socket.with_extension("lock"), "lock file");
     }
 }

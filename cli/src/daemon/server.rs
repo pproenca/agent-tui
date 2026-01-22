@@ -1827,10 +1827,38 @@ fn vom_component_to_json(comp: &crate::vom::Component, index: usize) -> Value {
 
 #[cfg(test)]
 mod tests {
+    use super::combine_warnings;
     use std::fs::OpenOptions;
     use std::io::Write;
     use std::os::unix::io::AsRawFd;
     use tempfile::tempdir;
+
+    #[test]
+    fn test_combine_warnings_both_some() {
+        let result = combine_warnings(
+            Some("First warning".to_string()),
+            Some("Second warning".to_string()),
+        );
+        assert_eq!(result, Some("First warning. Second warning".to_string()));
+    }
+
+    #[test]
+    fn test_combine_warnings_first_only() {
+        let result = combine_warnings(Some("Only warning".to_string()), None);
+        assert_eq!(result, Some("Only warning".to_string()));
+    }
+
+    #[test]
+    fn test_combine_warnings_second_only() {
+        let result = combine_warnings(None, Some("Only warning".to_string()));
+        assert_eq!(result, Some("Only warning".to_string()));
+    }
+
+    #[test]
+    fn test_combine_warnings_none() {
+        let result = combine_warnings(None, None);
+        assert_eq!(result, None);
+    }
 
     #[test]
     fn test_daemon_singleton_lock() {

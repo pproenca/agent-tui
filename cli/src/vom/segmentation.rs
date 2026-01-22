@@ -2,10 +2,6 @@ use crate::terminal::ScreenBuffer;
 use crate::vom::Cluster;
 
 pub fn segment_buffer(buffer: &ScreenBuffer) -> Vec<Cluster> {
-    segment_buffer_impl(buffer, true)
-}
-
-fn segment_buffer_impl(buffer: &ScreenBuffer, filter_whitespace: bool) -> Vec<Cluster> {
     let mut clusters = Vec::new();
 
     for (y, row) in buffer.cells.iter().enumerate() {
@@ -42,11 +38,7 @@ fn segment_buffer_impl(buffer: &ScreenBuffer, filter_whitespace: bool) -> Vec<Cl
         }
     }
 
-    if filter_whitespace {
-        clusters.into_iter().filter(|c| !c.is_whitespace).collect()
-    } else {
-        clusters
-    }
+    clusters.into_iter().filter(|c| !c.is_whitespace).collect()
 }
 
 #[cfg(test)]

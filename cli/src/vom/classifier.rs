@@ -65,18 +65,17 @@ fn is_button_text(text: &str) -> bool {
         return false;
     }
 
-    match (text.chars().next(), text.chars().last()) {
-        (Some('['), Some(']')) => {
-            let inner = &text[1..text.len() - 1].trim();
-            !matches!(*inner, "x" | "X" | " " | "" | "✓" | "✔")
-        }
-        (Some('('), Some(')')) => {
-            let inner = &text[1..text.len() - 1].trim();
-            !matches!(*inner, "" | " " | "o" | "O" | "●" | "◉")
-        }
-        (Some('<'), Some('>')) => true,
-        _ => false,
+    let inner = || text[1..text.len() - 1].trim();
+
+    if text.starts_with('[') && text.ends_with(']') {
+        return !matches!(inner(), "x" | "X" | " " | "" | "✓" | "✔");
     }
+
+    if text.starts_with('(') && text.ends_with(')') {
+        return !matches!(inner(), "" | " " | "o" | "O" | "●" | "◉");
+    }
+
+    text.starts_with('<') && text.ends_with('>')
 }
 
 fn is_input_field(text: &str) -> bool {

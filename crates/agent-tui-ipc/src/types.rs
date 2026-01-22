@@ -106,6 +106,20 @@ impl RpcResponse {
         }
     }
 
+    pub fn error_with_context(id: u64, code: i32, message: &str, session_id: Option<&str>) -> Self {
+        let data = session_id.map(|sid| json!({ "session_id": sid }));
+        Self {
+            jsonrpc: "2.0".to_string(),
+            id,
+            result: None,
+            error: Some(RpcServerError {
+                code,
+                message: message.to_string(),
+                data,
+            }),
+        }
+    }
+
     pub fn action_success(id: u64) -> Self {
         Self::success(id, json!({ "success": true }))
     }

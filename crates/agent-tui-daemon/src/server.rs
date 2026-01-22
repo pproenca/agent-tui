@@ -22,9 +22,55 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::ansi_keys;
+use crate::metrics::DaemonMetrics;
 use crate::session::{Session, SessionManager};
 use crate::{LOCK_TIMEOUT, acquire_session_lock, navigate_to_option, strip_ansi_codes};
 use crate::{RecordingFrame, StableTracker, WaitCondition, check_condition};
+
+struct SizeLimitedReader<R> {
+    inner: R,
+    max_size: usize,
+    read_count: usize,
+}
+
+impl<R> SizeLimitedReader<R> {
+    fn new(inner: R, max_size: usize) -> Self {
+        Self {
+            inner,
+            max_size,
+            read_count: 0,
+        }
+    }
+}
+
+impl<R: BufRead> Iterator for SizeLimitedReader<R> {
+    type Item = std::io::Result<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut line = String::new();
+        match self.inner.read_line(&mut line) {
+            Ok(0) => None,
+            Ok(n) => {
+                self.read_count += n;
+                if self.read_count > self.max_size {
+                    Some(Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Request size limit exceeded",
+                    )))
+                } else {
+                    if line.ends_with('\n') {
+                        line.pop();
+                        if line.ends_with('\r') {
+                            line.pop();
+                        }
+                    }
+                    Some(Ok(line))
+                }
+            }
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
 
 fn matches_text(haystack: Option<&String>, needle: &str, exact: bool) -> bool {
     match haystack {
@@ -191,6 +237,8 @@ impl ElementFilter<'_> {
 }
 
 const MAX_CONNECTIONS: usize = 64;
+const MAX_REQUEST_SIZE: usize = 1_048_576; // 1MB
+const IDLE_TIMEOUT_SECS: u64 = 300; // 5 minutes
 
 pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
@@ -198,6 +246,7 @@ pub struct DaemonServer {
     #[allow(dead_code)] // Stored to keep Arc alive; accessed via clone in start_daemon
     shutdown: Arc<AtomicBool>,
     active_connections: Arc<AtomicUsize>,
+    metrics: Arc<DaemonMetrics>,
 }
 
 impl Default for DaemonServer {
@@ -286,6 +335,7 @@ impl DaemonServer {
             start_time: Instant::now(),
             shutdown: Arc::new(AtomicBool::new(false)),
             active_connections: Arc::new(AtomicUsize::new(0)),
+            metrics: Arc::new(DaemonMetrics::new()),
         }
     }
 
@@ -295,6 +345,7 @@ impl DaemonServer {
             start_time: Instant::now(),
             shutdown,
             active_connections: Arc::new(AtomicUsize::new(0)),
+            metrics: Arc::new(DaemonMetrics::new()),
         }
     }
 
@@ -314,6 +365,7 @@ impl DaemonServer {
         match self.session_manager.resolve(session_id) {
             Ok(session) => {
                 let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
+                    self.metrics.record_lock_timeout();
                     return lock_timeout_response(request.id, session_id);
                 };
                 f(&mut sess)
@@ -339,6 +391,7 @@ impl DaemonServer {
         match self.session_manager.resolve(session_id) {
             Ok(session) => {
                 let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
+                    self.metrics.record_lock_timeout();
                     return lock_timeout_response(request.id, session_id);
                 };
                 f(&mut sess, element_ref)
@@ -474,10 +527,15 @@ impl DaemonServer {
                         "pid": std::process::id(),
                         "uptime_ms": uptime_ms,
                         "session_count": self.session_manager.session_count(),
-                        "version": env!("CARGO_PKG_VERSION")
+                        "version": env!("CARGO_PKG_VERSION"),
+                        "active_connections": self.active_connections.load(Ordering::Relaxed),
+                        "total_requests": self.metrics.requests(),
+                        "error_count": self.metrics.errors()
                     }),
                 )
             }
+
+            "metrics" => self.handle_metrics(request),
 
             "spawn" => self.handle_spawn(request),
             "snapshot" => self.handle_snapshot(request),
@@ -533,6 +591,21 @@ impl DaemonServer {
                 &format!("Method not found: {}", request.method),
             ),
         }
+    }
+
+    fn handle_metrics(&self, request: RpcRequest) -> RpcResponse {
+        RpcResponse::success(
+            request.id,
+            json!({
+                "requests_total": self.metrics.requests(),
+                "errors_total": self.metrics.errors(),
+                "lock_timeouts": self.metrics.lock_timeouts(),
+                "poison_recoveries": self.metrics.poison_recoveries(),
+                "uptime_ms": self.start_time.elapsed().as_millis() as u64,
+                "active_connections": self.active_connections.load(Ordering::Relaxed),
+                "session_count": self.session_manager.session_count()
+            }),
+        )
     }
 
     fn handle_spawn(&self, request: RpcRequest) -> RpcResponse {
@@ -1714,6 +1787,11 @@ impl DaemonServer {
     }
 
     fn handle_client(&self, stream: UnixStream) {
+        if let Err(e) = stream.set_read_timeout(Some(Duration::from_secs(IDLE_TIMEOUT_SECS))) {
+            eprintln!("Failed to set read timeout: {}", e);
+            return;
+        }
+
         let reader_stream = match stream.try_clone() {
             Ok(s) => s,
             Err(e) => {
@@ -1721,14 +1799,26 @@ impl DaemonServer {
                 return;
             }
         };
-        let reader = BufReader::new(reader_stream);
+        let reader = SizeLimitedReader::new(BufReader::new(reader_stream), MAX_REQUEST_SIZE);
         let mut writer = stream;
 
-        for line in reader.lines() {
-            let line = match line {
+        for line_result in reader {
+            let line = match line_result {
                 Ok(l) => l,
                 Err(e) => {
-                    if e.kind() != std::io::ErrorKind::UnexpectedEof {
+                    if e.kind() == std::io::ErrorKind::InvalidData {
+                        let error_response = json!({
+                            "jsonrpc": "2.0",
+                            "id": null,
+                            "error": {
+                                "code": -32700,
+                                "message": "Parse error: request size limit exceeded (1MB max)"
+                            }
+                        });
+                        let _ = writeln!(writer, "{}", error_response);
+                    } else if e.kind() != std::io::ErrorKind::UnexpectedEof
+                        && e.kind() != std::io::ErrorKind::WouldBlock
+                    {
                         eprintln!("Client connection error: {}", e);
                     }
                     break;
@@ -1742,6 +1832,7 @@ impl DaemonServer {
             let request: RpcRequest = match serde_json::from_str(&line) {
                 Ok(r) => r,
                 Err(e) => {
+                    self.metrics.record_error();
                     let error_response = json!({
                         "jsonrpc": "2.0",
                         "id": null,
@@ -1755,6 +1846,7 @@ impl DaemonServer {
                 }
             };
 
+            self.metrics.record_request();
             let response = self.handle_request(request);
             let response_json = match serde_json::to_string(&response) {
                 Ok(json) => json,
@@ -1951,10 +2043,13 @@ fn filter_interactive_components(
 
 #[cfg(test)]
 mod tests {
+    use super::DaemonServer;
+    use super::SizeLimitedReader;
     use super::combine_warnings;
     use std::fs::OpenOptions;
-    use std::io::Write;
+    use std::io::{BufReader, Write};
     use std::os::unix::io::AsRawFd;
+    use std::sync::atomic::Ordering;
     use tempfile::tempdir;
 
     #[test]
@@ -2053,5 +2148,48 @@ mod tests {
             result2, 0,
             "Lock should be available after first holder dropped"
         );
+    }
+
+    #[test]
+    fn test_size_limited_reader_within_limit() {
+        use std::io::Cursor;
+        let data = "hello\nworld\n";
+        let reader = BufReader::new(Cursor::new(data));
+        let limited = SizeLimitedReader::new(reader, 100);
+        let lines: Vec<_> = limited.collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].as_ref().unwrap(), "hello");
+        assert_eq!(lines[1].as_ref().unwrap(), "world");
+    }
+
+    #[test]
+    fn test_size_limited_reader_exceeds_limit() {
+        use std::io::Cursor;
+        let data = "this is a very long line that exceeds the limit\n";
+        let reader = BufReader::new(Cursor::new(data));
+        let limited = SizeLimitedReader::new(reader, 10);
+        let lines: Vec<_> = limited.collect();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].is_err());
+        let err = lines[0].as_ref().unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn test_size_limited_reader_empty_input() {
+        use std::io::Cursor;
+        let data = "";
+        let reader = BufReader::new(Cursor::new(data));
+        let limited = SizeLimitedReader::new(reader, 100);
+        let lines: Vec<_> = limited.collect();
+        assert_eq!(lines.len(), 0);
+    }
+
+    #[test]
+    fn test_daemon_server_new() {
+        let server = DaemonServer::new();
+        assert_eq!(server.active_connections.load(Ordering::Relaxed), 0);
+        assert_eq!(server.metrics.requests(), 0);
+        assert_eq!(server.metrics.errors(), 0);
     }
 }

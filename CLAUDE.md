@@ -152,6 +152,10 @@ Shell scripts for full system testing:
 |----------|-------------|---------|
 | `AGENT_TUI_SOCKET` | Custom socket path | (uses XDG_RUNTIME_DIR) |
 | `XDG_RUNTIME_DIR` | Socket directory | /tmp |
+| `AGENT_TUI_MAX_CONNECTIONS` | Max concurrent connections | 64 |
+| `AGENT_TUI_LOCK_TIMEOUT` | Session lock timeout (seconds) | 5 |
+| `AGENT_TUI_IDLE_TIMEOUT` | Idle connection timeout (seconds) | 300 |
+| `AGENT_TUI_MAX_REQUEST` | Max request size (bytes) | 1048576 (1MB) |
 
 ## Getting Started
 

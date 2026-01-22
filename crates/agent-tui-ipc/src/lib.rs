@@ -7,6 +7,7 @@ mod socket;
 mod types;
 
 pub use client::DaemonClient;
+pub use client::DaemonClientConfig;
 pub use client::ensure_daemon;
 pub use client::start_daemon_background;
 pub use error::ClientError;

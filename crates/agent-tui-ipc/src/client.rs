@@ -1,5 +1,6 @@
 use std::io::BufRead;
 use std::io::BufReader;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::AtomicU64;
@@ -14,6 +15,42 @@ use crate::error::ClientError;
 use crate::socket::socket_path;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug, Clone)]
+pub struct DaemonClientConfig {
+    pub read_timeout: Duration,
+    pub write_timeout: Duration,
+    pub max_retries: u32,
+    pub initial_retry_delay: Duration,
+}
+
+impl Default for DaemonClientConfig {
+    fn default() -> Self {
+        Self {
+            read_timeout: Duration::from_secs(60),
+            write_timeout: Duration::from_secs(10),
+            max_retries: 3,
+            initial_retry_delay: Duration::from_millis(100),
+        }
+    }
+}
+
+impl DaemonClientConfig {
+    pub fn with_read_timeout(mut self, timeout: Duration) -> Self {
+        self.read_timeout = timeout;
+        self
+    }
+
+    pub fn with_write_timeout(mut self, timeout: Duration) -> Self {
+        self.write_timeout = timeout;
+        self
+    }
+
+    pub fn with_max_retries(mut self, retries: u32) -> Self {
+        self.max_retries = retries;
+        self
+    }
+}
 
 #[derive(Debug, Serialize)]
 struct Request {
@@ -42,6 +79,16 @@ struct RpcError {
 
 pub struct DaemonClient;
 
+fn is_retriable_error(error: &ClientError) -> bool {
+    match error {
+        ClientError::ConnectionFailed(io_err) => matches!(
+            io_err.kind(),
+            ErrorKind::ConnectionRefused | ErrorKind::WouldBlock | ErrorKind::TimedOut
+        ),
+        _ => false,
+    }
+}
+
 impl DaemonClient {
     pub fn connect() -> Result<Self, ClientError> {
         let path = socket_path();
@@ -65,11 +112,20 @@ impl DaemonClient {
     }
 
     pub fn call(&mut self, method: &str, params: Option<Value>) -> Result<Value, ClientError> {
+        self.call_with_config(method, params, &DaemonClientConfig::default())
+    }
+
+    pub fn call_with_config(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+        config: &DaemonClientConfig,
+    ) -> Result<Value, ClientError> {
         let path = socket_path();
         let mut stream = UnixStream::connect(&path)?;
 
-        stream.set_read_timeout(Some(Duration::from_secs(60)))?;
-        stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+        stream.set_read_timeout(Some(config.read_timeout))?;
+        stream.set_write_timeout(Some(config.write_timeout))?;
 
         let request = Request {
             jsonrpc: "2.0".to_string(),
@@ -97,6 +153,34 @@ impl DaemonClient {
         }
 
         response.result.ok_or(ClientError::InvalidResponse)
+    }
+
+    pub fn call_with_retry(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+        max_retries: u32,
+    ) -> Result<Value, ClientError> {
+        let config = DaemonClientConfig::default().with_max_retries(max_retries);
+        let mut delay = config.initial_retry_delay;
+        let mut last_error = None;
+
+        for attempt in 0..=config.max_retries {
+            let params_clone = params.clone();
+            match self.call_with_config(method, params_clone, &config) {
+                Ok(result) => return Ok(result),
+                Err(e) => {
+                    if !is_retriable_error(&e) || attempt == config.max_retries {
+                        return Err(e);
+                    }
+                    last_error = Some(e);
+                    std::thread::sleep(delay);
+                    delay *= 2; // exponential backoff: 100ms, 200ms, 400ms
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or(ClientError::DaemonNotRunning))
     }
 }
 
@@ -233,5 +317,61 @@ mod tests {
             message: "Method not found".to_string(),
         };
         assert_eq!(err.to_string(), "RPC error (-32601): Method not found");
+    }
+
+    #[test]
+    fn test_config_default_values() {
+        let config = DaemonClientConfig::default();
+        assert_eq!(config.read_timeout, Duration::from_secs(60));
+        assert_eq!(config.write_timeout, Duration::from_secs(10));
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.initial_retry_delay, Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_config_builder_pattern() {
+        let config = DaemonClientConfig::default()
+            .with_read_timeout(Duration::from_secs(30))
+            .with_write_timeout(Duration::from_secs(5))
+            .with_max_retries(5);
+        assert_eq!(config.read_timeout, Duration::from_secs(30));
+        assert_eq!(config.write_timeout, Duration::from_secs(5));
+        assert_eq!(config.max_retries, 5);
+    }
+
+    #[test]
+    fn test_is_retriable_error_connection_refused() {
+        let io_err = std::io::Error::new(ErrorKind::ConnectionRefused, "connection refused");
+        let err = ClientError::ConnectionFailed(io_err);
+        assert!(is_retriable_error(&err));
+    }
+
+    #[test]
+    fn test_is_retriable_error_would_block() {
+        let io_err = std::io::Error::new(ErrorKind::WouldBlock, "would block");
+        let err = ClientError::ConnectionFailed(io_err);
+        assert!(is_retriable_error(&err));
+    }
+
+    #[test]
+    fn test_is_retriable_error_timed_out() {
+        let io_err = std::io::Error::new(ErrorKind::TimedOut, "timed out");
+        let err = ClientError::ConnectionFailed(io_err);
+        assert!(is_retriable_error(&err));
+    }
+
+    #[test]
+    fn test_is_retriable_error_rpc_error_not_retriable() {
+        let err = ClientError::RpcError {
+            code: -32600,
+            message: "Invalid request".to_string(),
+        };
+        assert!(!is_retriable_error(&err));
+    }
+
+    #[test]
+    fn test_is_retriable_error_daemon_not_running() {
+        let err = ClientError::DaemonNotRunning;
+        assert!(!is_retriable_error(&err));
     }
 }

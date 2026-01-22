@@ -64,18 +64,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let format = if cli.json {
-        commands::OutputFormat::Json
-    } else {
-        cli.format
-    };
-
+    let format = cli.effective_format();
     let mut ctx = HandlerContext::new(&mut client, cli.session, format);
 
     match cli.command {
-        Commands::Daemon => unreachable!(),
-        Commands::DemoRun => unreachable!(),
-        Commands::Completions { .. } => unreachable!(),
+        // Handled above before client initialization
+        Commands::Daemon | Commands::DemoRun | Commands::Completions { .. } => unreachable!(),
 
         Commands::Demo => handlers::handle_demo(&mut ctx)?,
         Commands::Spawn {

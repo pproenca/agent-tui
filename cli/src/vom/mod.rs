@@ -83,7 +83,7 @@ impl Cluster {
     /// Extend the cluster with another character (same row, same style)
     pub fn extend(&mut self, char: char) {
         self.text.push(char);
-        self.rect.width += 1;
+        self.rect.width = self.rect.width.saturating_add(1);
     }
 
     /// Seal the cluster - finalize is_whitespace

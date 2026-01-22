@@ -415,10 +415,17 @@ impl DaemonServer {
         let req_id = request.id;
 
         self.with_session(&request, session_id, |sess| {
-            // Update session state - log errors but continue with potentially stale data
-            if let Err(e) = sess.update() {
-                eprintln!("Warning: Session update failed during snapshot: {}", e);
-            }
+            // Update session state - track warning if it fails
+            let update_warning = match sess.update() {
+                Ok(()) => None,
+                Err(e) => {
+                    eprintln!("Warning: Session update failed during snapshot: {}", e);
+                    Some(format!(
+                        "Screen data may be stale. Session update failed: {}. Try 'agent-tui sessions' to check session status.",
+                        e
+                    ))
+                }
+            };
 
             let screen = sess.screen_text();
             let cursor = sess.cursor();
@@ -474,24 +481,27 @@ impl DaemonServer {
                 )
             };
 
-            Response::success(
-                req_id,
-                json!({
-                    "session_id": sess.id,
-                    "screen": screen,
-                    "elements": elements,
-                    "cursor": {
-                        "row": cursor.row,
-                        "col": cursor.col,
-                        "visible": cursor.visible
-                    },
-                    "size": {
-                        "cols": cols,
-                        "rows": rows
-                    },
-                    "stats": stats
-                }),
-            )
+            let mut response = json!({
+                "session_id": sess.id,
+                "screen": screen,
+                "elements": elements,
+                "cursor": {
+                    "row": cursor.row,
+                    "col": cursor.col,
+                    "visible": cursor.visible
+                },
+                "size": {
+                    "cols": cols,
+                    "rows": rows
+                },
+                "stats": stats
+            });
+
+            if let Some(warning) = update_warning {
+                response["warning"] = serde_json::Value::String(warning);
+            }
+
+            Response::success(req_id, response)
         })
     }
 

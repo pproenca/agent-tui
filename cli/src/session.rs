@@ -453,11 +453,22 @@ impl Session {
 
         loop {
             match self.pty.try_read(&mut buf, 10) {
-                Ok(0) => break,
+                Ok(0) => break, // No data available (timeout)
                 Ok(n) => {
                     self.terminal.process(&buf[..n]);
                 }
-                Err(_) => break,
+                Err(e) => {
+                    // Check if this is a transient error we can ignore
+                    let err_str = e.to_string();
+                    if err_str.contains("Resource temporarily unavailable")
+                        || err_str.contains("EAGAIN")
+                        || err_str.contains("EWOULDBLOCK")
+                    {
+                        break; // No data available, not a real error
+                    }
+                    // Real error - propagate it
+                    return Err(SessionError::Pty(e));
+                }
             }
         }
 
@@ -1076,7 +1087,17 @@ impl SessionPersistence {
         match fs::File::open(&self.path) {
             Ok(file) => {
                 let reader = BufReader::new(file);
-                serde_json::from_reader(reader).unwrap_or_default()
+                match serde_json::from_reader(reader) {
+                    Ok(sessions) => sessions,
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: Sessions file '{}' is corrupted ({}). Starting with empty session list.",
+                            self.path.display(),
+                            e
+                        );
+                        Vec::new()
+                    }
+                }
             }
             Err(e) => {
                 eprintln!(
@@ -1196,5 +1217,186 @@ mod persistence_tests {
         assert!(is_process_running(current_pid));
 
         assert!(!is_process_running(999999999));
+    }
+}
+
+#[cfg(test)]
+mod element_tests {
+    use super::*;
+    use crate::vom::{Component, Rect, Role};
+    use uuid::Uuid;
+
+    fn make_component(role: Role, text: &str, x: u16, y: u16, width: u16) -> Component {
+        Component {
+            id: Uuid::new_v4(),
+            role,
+            bounds: Rect::new(x, y, width, 1),
+            text_content: text.to_string(),
+            visual_hash: 0,
+        }
+    }
+
+    fn make_element(ref_str: &str, element_type: ElementType) -> Element {
+        Element {
+            element_ref: ref_str.to_string(),
+            element_type,
+            label: Some("test".to_string()),
+            value: None,
+            position: Position {
+                row: 0,
+                col: 0,
+                width: Some(10),
+                height: Some(1),
+            },
+            focused: false,
+            selected: false,
+            checked: None,
+            disabled: None,
+            hint: None,
+        }
+    }
+
+    #[test]
+    fn test_find_element_by_ref_sequential() {
+        let elements = vec![
+            make_element("@e1", ElementType::Button),
+            make_element("@e2", ElementType::Input),
+            make_element("@e3", ElementType::Checkbox),
+        ];
+
+        assert_eq!(
+            find_element_by_ref(&elements, "@e1").map(|e| &e.element_ref),
+            Some(&"@e1".to_string())
+        );
+        assert_eq!(
+            find_element_by_ref(&elements, "@e2").map(|e| &e.element_ref),
+            Some(&"@e2".to_string())
+        );
+        assert_eq!(
+            find_element_by_ref(&elements, "e3").map(|e| &e.element_ref),
+            Some(&"@e3".to_string())
+        );
+        assert!(find_element_by_ref(&elements, "@e4").is_none());
+    }
+
+    #[test]
+    fn test_find_element_by_ref_legacy_prefix() {
+        let elements = vec![
+            make_element("@e1", ElementType::Button),
+            make_element("@e2", ElementType::Button),
+            make_element("@e3", ElementType::Input),
+            make_element("@e4", ElementType::Checkbox),
+        ];
+
+        // @btn1 should find the first button (@e1)
+        assert_eq!(
+            find_element_by_ref(&elements, "@btn1").map(|e| &e.element_ref),
+            Some(&"@e1".to_string())
+        );
+        // @btn2 should find the second button (@e2)
+        assert_eq!(
+            find_element_by_ref(&elements, "@btn2").map(|e| &e.element_ref),
+            Some(&"@e2".to_string())
+        );
+        // @inp1 should find the first input (@e3)
+        assert_eq!(
+            find_element_by_ref(&elements, "@inp1").map(|e| &e.element_ref),
+            Some(&"@e3".to_string())
+        );
+        // @cb1 should find the first checkbox (@e4)
+        assert_eq!(
+            find_element_by_ref(&elements, "@cb1").map(|e| &e.element_ref),
+            Some(&"@e4".to_string())
+        );
+        // @btn3 doesn't exist (only 2 buttons)
+        assert!(find_element_by_ref(&elements, "@btn3").is_none());
+    }
+
+    #[test]
+    fn test_find_element_by_ref_invalid() {
+        let elements = vec![make_element("@e1", ElementType::Button)];
+
+        assert!(find_element_by_ref(&elements, "@e0").is_none());
+        assert!(find_element_by_ref(&elements, "@invalid").is_none());
+        assert!(find_element_by_ref(&elements, "").is_none());
+    }
+
+    #[test]
+    fn test_component_to_element_basic() {
+        let comp = make_component(Role::Button, "Click me", 5, 10, 8);
+        let element = component_to_element(&comp, 0, 0, 0);
+
+        assert_eq!(element.element_ref, "@e1");
+        assert_eq!(element.element_type, ElementType::Button);
+        assert_eq!(element.label, Some("Click me".to_string()));
+        assert_eq!(element.position.row, 10);
+        assert_eq!(element.position.col, 5);
+        assert_eq!(element.position.width, Some(8));
+        assert!(!element.focused);
+    }
+
+    #[test]
+    fn test_component_to_element_checkbox_checked() {
+        let comp = make_component(Role::Checkbox, "[x] Enabled", 0, 0, 11);
+        let element = component_to_element(&comp, 0, 0, 0);
+
+        assert_eq!(element.element_type, ElementType::Checkbox);
+        assert_eq!(element.checked, Some(true));
+    }
+
+    #[test]
+    fn test_component_to_element_checkbox_unchecked() {
+        let comp = make_component(Role::Checkbox, "[ ] Disabled", 0, 0, 12);
+        let element = component_to_element(&comp, 0, 0, 0);
+
+        assert_eq!(element.element_type, ElementType::Checkbox);
+        assert_eq!(element.checked, Some(false));
+    }
+
+    #[test]
+    fn test_component_to_element_checkbox_alternate_patterns() {
+        // Test (x) pattern
+        let comp1 = make_component(Role::Checkbox, "(x) Option", 0, 0, 10);
+        assert_eq!(component_to_element(&comp1, 0, 0, 0).checked, Some(true));
+
+        // Test ☑ pattern
+        let comp2 = make_component(Role::Checkbox, "☑ Selected", 0, 0, 10);
+        assert_eq!(component_to_element(&comp2, 0, 0, 0).checked, Some(true));
+
+        // Test ☐ pattern
+        let comp3 = make_component(Role::Checkbox, "☐ Unselected", 0, 0, 12);
+        assert_eq!(component_to_element(&comp3, 0, 0, 0).checked, Some(false));
+    }
+
+    #[test]
+    fn test_component_to_element_focused() {
+        let comp = make_component(Role::Input, "text field", 5, 10, 10);
+        // Cursor at (7, 10) which is inside bounds (x=5, y=10, width=10, height=1)
+        let element = component_to_element(&comp, 0, 10, 7);
+
+        assert!(element.focused);
+    }
+
+    #[test]
+    fn test_component_to_element_not_focused() {
+        let comp = make_component(Role::Input, "text field", 5, 10, 10);
+        // Cursor at (0, 0) which is outside bounds
+        let element = component_to_element(&comp, 0, 0, 0);
+
+        assert!(!element.focused);
+    }
+
+    #[test]
+    fn test_role_to_element_type_mapping() {
+        assert_eq!(role_to_element_type(Role::Button), ElementType::Button);
+        assert_eq!(role_to_element_type(Role::Tab), ElementType::Button);
+        assert_eq!(role_to_element_type(Role::Input), ElementType::Input);
+        assert_eq!(role_to_element_type(Role::Checkbox), ElementType::Checkbox);
+        assert_eq!(role_to_element_type(Role::MenuItem), ElementType::MenuItem);
+        assert_eq!(
+            role_to_element_type(Role::StaticText),
+            ElementType::ListItem
+        );
+        assert_eq!(role_to_element_type(Role::Panel), ElementType::ListItem);
     }
 }

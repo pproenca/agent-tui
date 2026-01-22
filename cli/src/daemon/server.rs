@@ -2,9 +2,8 @@ use super::error_messages::{ai_friendly_error, lock_timeout_response};
 use super::lock_helpers::{acquire_session_lock, LOCK_TIMEOUT};
 use super::rpc_types::{Request, Response};
 use super::select_helpers::{navigate_to_option, strip_ansi_codes};
-use crate::detection::{detect_framework, Element, Framework};
 use crate::json_ext::ValueExt;
-use crate::session::SessionManager;
+use crate::session::{Element, SessionManager};
 use crate::sync_utils::mutex_lock_or_recover;
 use crate::wait::{check_condition, StableTracker, WaitCondition};
 use serde_json::{json, Value};
@@ -416,30 +415,44 @@ impl DaemonServer {
         let req_id = request.id;
 
         self.with_session(&request, session_id, |sess| {
-            let _ = sess.update();
+            // Update session state - track warning if it fails
+            let update_warning = match sess.update() {
+                Ok(()) => None,
+                Err(e) => {
+                    eprintln!("Warning: Session update failed during snapshot: {}", e);
+                    Some(format!(
+                        "Screen data may be stale. Session update failed: {}. Try 'agent-tui sessions' to check session status.",
+                        e
+                    ))
+                }
+            };
 
             let screen = sess.screen_text();
             let cursor = sess.cursor();
             let (cols, rows) = sess.size();
 
             let (elements, stats) = if include_elements {
-                let all_elements = sess.detect_elements();
-                let elements_total = all_elements.len();
-                let elements_interactive =
-                    all_elements.iter().filter(|e| e.is_interactive()).count();
-
-                let filtered_elements: Vec<_> = all_elements
+                // Always use VOM (Visual Object Model) for element detection
+                let vom_components = sess.analyze_screen();
+                let elements_total = vom_components.len();
+                let elements_interactive = vom_components
                     .iter()
-                    .filter(|el| {
-                        if interactive_only && !el.is_interactive() {
+                    .filter(|c| c.role != crate::vom::Role::StaticText)
+                    .count();
+
+                let filtered_elements: Vec<_> = vom_components
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, comp)| {
+                        if interactive_only && comp.role == crate::vom::Role::StaticText {
                             return false;
                         }
-                        if compact && !el.is_interactive() && !el.has_content() {
+                        if compact && comp.role == crate::vom::Role::StaticText {
                             return false;
                         }
                         true
                     })
-                    .map(element_to_json)
+                    .map(|(i, comp)| vom_component_to_json(comp, i))
                     .collect();
 
                 let elements_shown = filtered_elements.len();
@@ -451,7 +464,8 @@ impl DaemonServer {
                         "chars": screen.len(),
                         "elements_total": elements_total,
                         "elements_interactive": elements_interactive,
-                        "elements_shown": elements_shown
+                        "elements_shown": elements_shown,
+                        "detection": "vom"
                     }),
                 )
             } else {
@@ -467,24 +481,27 @@ impl DaemonServer {
                 )
             };
 
-            Response::success(
-                req_id,
-                json!({
-                    "session_id": sess.id,
-                    "screen": screen,
-                    "elements": elements,
-                    "cursor": {
-                        "row": cursor.row,
-                        "col": cursor.col,
-                        "visible": cursor.visible
-                    },
-                    "size": {
-                        "cols": cols,
-                        "rows": rows
-                    },
-                    "stats": stats
-                }),
-            )
+            let mut response = json!({
+                "session_id": sess.id,
+                "screen": screen,
+                "elements": elements,
+                "cursor": {
+                    "row": cursor.row,
+                    "col": cursor.col,
+                    "visible": cursor.visible
+                },
+                "size": {
+                    "cols": cols,
+                    "rows": rows
+                },
+                "stats": stats
+            });
+
+            if let Some(warning) = update_warning {
+                response["warning"] = serde_json::Value::String(warning);
+            }
+
+            Response::success(req_id, response)
         })
     }
 
@@ -1130,14 +1147,8 @@ impl DaemonServer {
             if sess.find_element(element_ref).is_none() {
                 return Response::element_not_found(req_id, element_ref);
             }
-            let screen_text = sess.screen_text();
-            let framework = detect_framework(&screen_text);
-            let result = match framework {
-                Framework::Textual => sess
-                    .pty_write(b"\x01")
-                    .and_then(|_| sess.pty_write(b"\x7f")),
-                _ => sess.pty_write(b"\x15"),
-            };
+            // Send Ctrl+U to clear input (works in most terminals)
+            let result = sess.pty_write(b"\x15");
             if let Err(e) = result {
                 return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
             }
@@ -1217,16 +1228,10 @@ impl DaemonServer {
             }
 
             let screen_text = sess.screen_text();
-            let framework = detect_framework(&screen_text);
 
-            let result = match framework {
-                Framework::Unknown => sess
-                    .pty_write(b"\r")
-                    .and_then(|_| sess.pty_write(option.as_bytes()))
-                    .and_then(|_| sess.pty_write(b"\r")),
-                _ => navigate_to_option(sess, &option, &screen_text)
-                    .and_then(|_| sess.pty_write(b"\r")),
-            };
+            // Use keyboard navigation to find and select the option
+            let result =
+                navigate_to_option(sess, &option, &screen_text).and_then(|_| sess.pty_write(b"\r"));
 
             if let Err(e) = result {
                 return Response::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
@@ -1744,6 +1749,29 @@ fn element_to_json(el: &Element) -> Value {
         "checked": el.checked,
         "disabled": el.disabled,
         "hint": el.hint
+    })
+}
+
+/// Convert a VOM component to JSON format compatible with element output
+fn vom_component_to_json(comp: &crate::vom::Component, index: usize) -> Value {
+    json!({
+        "ref": format!("@e{}", index + 1),
+        "type": comp.role.to_string(),
+        "label": comp.text_content.trim(),
+        "value": null,
+        "position": {
+            "row": comp.bounds.y,
+            "col": comp.bounds.x,
+            "width": comp.bounds.width,
+            "height": comp.bounds.height
+        },
+        "focused": false,
+        "selected": false,
+        "checked": null,
+        "disabled": false,
+        "hint": null,
+        "vom_id": comp.id.to_string(),
+        "visual_hash": comp.visual_hash
     })
 }
 

@@ -443,18 +443,28 @@ impl DaemonServer {
 
             let (elements, stats) = if include_elements {
                 // Always use VOM (Visual Object Model) for element detection
+                use crate::vom::Role;
                 let vom_components = sess.analyze_screen();
                 let elements_total = vom_components.len();
-                let elements_interactive = vom_components
-                    .iter()
-                    .filter(|c| c.role != crate::vom::Role::StaticText)
-                    .count();
 
-                let filtered_elements: Vec<_> = vom_components
+                // Filter to interactive elements first - must match detect_elements() in session.rs
+                // This ensures refs (@e1, @e2, etc.) are consistent between snapshot and click
+                let interactive: Vec<_> = vom_components
+                    .iter()
+                    .filter(|c| {
+                        matches!(c.role, Role::Button | Role::Tab | Role::Input | Role::Checkbox | Role::MenuItem)
+                    })
+                    .collect();
+                let elements_interactive = interactive.len();
+
+                // Enumerate from the filtered list so refs match detect_elements()
+                let filtered_elements: Vec<_> = interactive
                     .iter()
                     .enumerate()
                     .filter(|(_, comp)| {
-                        if compact && comp.role == crate::vom::Role::StaticText {
+                        // In compact mode, StaticText would already be filtered above
+                        // but keep this for consistency if we add other non-compact filters later
+                        if compact && comp.role == Role::StaticText {
                             return false;
                         }
                         true

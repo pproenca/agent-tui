@@ -5,11 +5,11 @@ use std::os::fd::RawFd;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use portable_pty::native_pty_system;
 use portable_pty::Child;
 use portable_pty::CommandBuilder;
 use portable_pty::MasterPty;
 use portable_pty::PtySize;
+use portable_pty::native_pty_system;
 use thiserror::Error;
 
 use agent_tui_common::mutex_lock_or_recover;

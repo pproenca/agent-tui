@@ -2,8 +2,8 @@ use std::io;
 use std::io::Write;
 use std::time::Duration;
 
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use crossterm::event;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;

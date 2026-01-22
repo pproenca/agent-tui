@@ -1,8 +1,8 @@
 use serde_json::json;
 
 use agent_tui_common::Colors;
-use agent_tui_ipc::socket_path;
 use agent_tui_ipc::DaemonClient;
+use agent_tui_ipc::socket_path;
 
 use crate::commands::OutputFormat;
 
@@ -93,7 +93,10 @@ pub fn handle_sessions(ctx: &mut HandlerContext) -> Result<(), Box<dyn std::erro
         } else {
             for session in &sessions {
                 let id = session.get("id").and_then(|v| v.as_str()).unwrap_or("?");
-                let command = session.get("command").and_then(|v| v.as_str()).unwrap_or("?");
+                let command = session
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
                 let running = session
                     .get("running")
                     .and_then(|v| v.as_bool())

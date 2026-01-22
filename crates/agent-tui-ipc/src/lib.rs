@@ -6,9 +6,9 @@ mod error_messages;
 mod socket;
 mod types;
 
+pub use client::DaemonClient;
 pub use client::ensure_daemon;
 pub use client::start_daemon_background;
-pub use client::DaemonClient;
 pub use error::ClientError;
 pub use error_messages::ai_friendly_error;
 pub use error_messages::lock_timeout_response;

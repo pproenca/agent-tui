@@ -26,7 +26,11 @@ pub struct Cli {
     #[arg(long, global = true, value_enum, help = "Output format")]
     pub format: Option<OutputFormat>,
 
-    #[arg(long, global = true, help = "Output in JSON format (shorthand for --format json)")]
+    #[arg(
+        long,
+        global = true,
+        help = "Output in JSON format (shorthand for --format json)"
+    )]
     pub json: bool,
 
     #[arg(long, global = true, help = "Disable colored output")]

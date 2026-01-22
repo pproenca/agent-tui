@@ -77,7 +77,8 @@ pub fn role_to_element_type(role: Role) -> ElementType {
 pub fn detect_checkbox_state(text: &str) -> Option<bool> {
     let text = text.to_lowercase();
 
-    if text.contains("[x]") || text.contains("(x)") || text.contains("☑") || text.contains("✓") {
+    if text.contains("[x]") || text.contains("(x)") || text.contains("☑") || text.contains("✓")
+    {
         Some(true)
     } else if text.contains("[ ]") || text.contains("( )") || text.contains("☐") {
         Some(false)

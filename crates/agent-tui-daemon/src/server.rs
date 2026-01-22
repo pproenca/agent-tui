@@ -1,8 +1,10 @@
-use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_common::ValueExt;
+use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_core::{Component, Element};
-use agent_tui_ipc::{ai_friendly_error, lock_timeout_response, socket_path, RpcRequest, RpcResponse};
-use serde_json::{json, Value};
+use agent_tui_ipc::{
+    RpcRequest, RpcResponse, ai_friendly_error, lock_timeout_response, socket_path,
+};
+use serde_json::{Value, json};
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::io::AsRawFd;
@@ -13,8 +15,8 @@ use std::time::{Duration, Instant};
 
 use crate::ansi_keys;
 use crate::session::{Session, SessionManager};
-use crate::{acquire_session_lock, navigate_to_option, strip_ansi_codes, LOCK_TIMEOUT};
-use crate::{check_condition, RecordingFrame, StableTracker, WaitCondition};
+use crate::{LOCK_TIMEOUT, acquire_session_lock, navigate_to_option, strip_ansi_codes};
+use crate::{RecordingFrame, StableTracker, WaitCondition, check_condition};
 
 fn matches_text(haystack: Option<&String>, needle: &str, exact: bool) -> bool {
     match haystack {
@@ -36,12 +38,7 @@ fn update_with_warning(sess: &mut Session) -> Option<String> {
     warning
 }
 
-fn build_asciicast(
-    session_id: &str,
-    cols: u16,
-    rows: u16,
-    frames: &[RecordingFrame],
-) -> Value {
+fn build_asciicast(session_id: &str, cols: u16, rows: u16, frames: &[RecordingFrame]) -> Value {
     let mut output = Vec::new();
 
     let duration = frames
@@ -297,7 +294,12 @@ impl DaemonServer {
         }
     }
 
-    fn element_property<F, T>(&self, request: &RpcRequest, field_name: &str, extract: F) -> RpcResponse
+    fn element_property<F, T>(
+        &self,
+        request: &RpcRequest,
+        field_name: &str,
+        extract: F,
+    ) -> RpcResponse
     where
         F: FnOnce(&Element) -> T,
         T: serde::Serialize,
@@ -331,7 +333,11 @@ impl DaemonServer {
                 return RpcResponse::element_not_found(req_id, element_ref);
             }
             if let Err(e) = sess.pty_write(pty_bytes) {
-                return RpcResponse::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+                return RpcResponse::error(
+                    req_id,
+                    -32000,
+                    &ai_friendly_error(&e.to_string(), None),
+                );
             }
             let mut response = json!({ "success": true, "ref": element_ref });
             if let Some(warning) = update_warning {
@@ -691,7 +697,7 @@ impl DaemonServer {
                     request.id,
                     -32000,
                     &ai_friendly_error(&e.to_string(), session_id),
-                )
+                );
             }
         };
 
@@ -787,7 +793,7 @@ impl DaemonServer {
                     request.id,
                     -32000,
                     &ai_friendly_error(&e.to_string(), session_id),
-                )
+                );
             }
         };
 
@@ -992,7 +998,7 @@ impl DaemonServer {
                     request.id,
                     -32602,
                     "Invalid direction. Use: up, down, left, right.",
-                )
+                );
             }
         };
 
@@ -1069,7 +1075,9 @@ impl DaemonServer {
                     }),
                 )
             }
-            Err(e) => RpcResponse::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None)),
+            Err(e) => {
+                RpcResponse::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None))
+            }
         }
     }
 
@@ -1125,7 +1133,11 @@ impl DaemonServer {
             }
 
             if let Err(e) = sess.pty_write(b"\x15") {
-                return RpcResponse::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+                return RpcResponse::error(
+                    req_id,
+                    -32000,
+                    &ai_friendly_error(&e.to_string(), None),
+                );
             }
             let mut response = json!({ "success": true, "ref": element_ref });
             if let Some(warning) = update_warning {
@@ -1214,7 +1226,11 @@ impl DaemonServer {
                 navigate_to_option(sess, &option, &screen_text).and_then(|_| sess.pty_write(b"\r"));
 
             if let Err(e) = result {
-                return RpcResponse::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+                return RpcResponse::error(
+                    req_id,
+                    -32000,
+                    &ai_friendly_error(&e.to_string(), None),
+                );
             }
 
             let mut response = json!({ "success": true, "ref": element_ref, "option": option });
@@ -1278,7 +1294,11 @@ impl DaemonServer {
             }
 
             if let Err(e) = sess.pty_write(b"\r") {
-                return RpcResponse::error(req_id, -32000, &ai_friendly_error(&e.to_string(), None));
+                return RpcResponse::error(
+                    req_id,
+                    -32000,
+                    &ai_friendly_error(&e.to_string(), None),
+                );
             }
 
             let mut response =
@@ -1498,7 +1518,7 @@ impl DaemonServer {
     }
 
     fn handle_pty_read(&self, request: RpcRequest) -> RpcResponse {
-        use base64::{engine::general_purpose::STANDARD, Engine};
+        use base64::{Engine, engine::general_purpose::STANDARD};
 
         let session_id = match request.require_str("session") {
             Ok(id) => id,
@@ -1538,7 +1558,7 @@ impl DaemonServer {
     }
 
     fn handle_pty_write(&self, request: RpcRequest) -> RpcResponse {
-        use base64::{engine::general_purpose::STANDARD, Engine};
+        use base64::{Engine, engine::general_purpose::STANDARD};
 
         let session_id = match request.require_str("session") {
             Ok(id) => id,

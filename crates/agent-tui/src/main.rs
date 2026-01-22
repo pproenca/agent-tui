@@ -6,8 +6,8 @@ use agent_tui::commands::Cli;
 use agent_tui::commands::Commands;
 use agent_tui::handlers::HandlerContext;
 use agent_tui::handlers::{self};
-use agent_tui_common::color_init;
 use agent_tui_common::Colors;
+use agent_tui_common::color_init;
 use agent_tui_daemon::start_daemon;
 use agent_tui_ipc::ensure_daemon;
 

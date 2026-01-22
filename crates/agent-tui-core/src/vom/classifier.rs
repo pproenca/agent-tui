@@ -1,9 +1,9 @@
 use agent_tui_terminal::Color;
 
-use crate::vom::hash_cluster;
 use crate::vom::Cluster;
 use crate::vom::Component;
 use crate::vom::Role;
+use crate::vom::hash_cluster;
 
 pub fn classify(clusters: Vec<Cluster>, cursor_row: u16, cursor_col: u16) -> Vec<Component> {
     clusters

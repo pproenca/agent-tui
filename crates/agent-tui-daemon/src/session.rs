@@ -19,14 +19,14 @@ use uuid::Uuid;
 use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_common::rwlock_read_or_recover;
 use agent_tui_common::rwlock_write_or_recover;
+use agent_tui_core::Element;
 use agent_tui_core::component_to_element;
 use agent_tui_core::find_element_by_ref;
-use agent_tui_core::Element;
-use agent_tui_terminal::key_to_escape_sequence;
 use agent_tui_terminal::CursorPosition;
 use agent_tui_terminal::PtyError;
 use agent_tui_terminal::PtyHandle;
 use agent_tui_terminal::VirtualTerminal;
+use agent_tui_terminal::key_to_escape_sequence;
 
 fn get_last_n<T: Clone>(queue: &VecDeque<T>, count: usize) -> Vec<T> {
     let start = queue.len().saturating_sub(count);

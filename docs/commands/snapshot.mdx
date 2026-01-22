@@ -18,8 +18,9 @@ Captures the current screen content of the active TUI session. With `-i`, also d
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-i, --interactive` | Detect interactive elements | false |
-| `-c, --compact` | Compact output (less whitespace) | false |
-| `--interactive-only` | Show only elements, no screen | false |
+| `--strip-ansi` | Remove ANSI escape codes (plain text) | false |
+| `--include-cursor` | Include cursor position in output | false |
+| `--region <name>` | Scope to a specific region | none |
 | `-f, --format <fmt>` | Output format: `text` or `json` | text |
 
 ## Examples
@@ -37,14 +38,14 @@ agent-tui snapshot -i
 ### Output Formats
 
 ```bash
-# Compact for less noise
-agent-tui snapshot -i -c
+# Plain text without ANSI colors
+agent-tui snapshot --strip-ansi
 
 # JSON for parsing
 agent-tui snapshot -i -f json | jq '.elements'
 
-# Only elements, no screen
-agent-tui snapshot -i --interactive-only
+# Include cursor position
+agent-tui snapshot --include-cursor
 ```
 
 ## Output

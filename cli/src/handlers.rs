@@ -336,6 +336,8 @@ pub fn handle_snapshot(
                     let visible = cursor.bool_or("visible", false);
                     let vis_str = if visible { "visible" } else { "hidden" };
                     println!("\nCursor: row={}, col={} ({})", row, col, vis_str);
+                } else {
+                    eprintln!("Warning: Cursor position requested but not available from session");
                 }
             }
         }
@@ -391,6 +393,8 @@ pub fn handle_snapshot(
                     let visible = cursor.bool_or("visible", false);
                     let vis_str = if visible { "visible" } else { "hidden" };
                     println!("\nCursor: row={}, col={} ({})", row, col, vis_str);
+                } else {
+                    eprintln!("Warning: Cursor position requested but not available from session");
                 }
             }
         }
@@ -1375,7 +1379,12 @@ pub fn handle_assert(ctx: &mut HandlerContext, condition: String) -> HandlerResu
 
     let passed = match cond_type {
         "text" => {
-            let result = ctx.client.call("snapshot", Some(ctx.session_params()))?;
+            // Strip ANSI codes for consistent text matching
+            let params = json!({
+                "session": ctx.session,
+                "strip_ansi": true
+            });
+            let result = ctx.client.call("snapshot", Some(params))?;
             result.str_or("screen", "").contains(cond_value)
         }
         "element" => {

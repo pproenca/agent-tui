@@ -290,6 +290,12 @@ impl DaemonServer {
 
             "spawn" => self.handle_spawn(request),
             "snapshot" => self.handle_snapshot(request),
+            // Deprecated: Use "snapshot" with strip_ansi=true instead
+            "screen" => Response::error(
+                request.id,
+                -32601,
+                "Method 'screen' is deprecated. Use 'snapshot' with strip_ansi=true instead.",
+            ),
             "click" => self.handle_click(request),
             "dbl_click" => self.handle_dbl_click(request),
             "fill" => self.handle_fill(request),

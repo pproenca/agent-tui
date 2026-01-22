@@ -683,6 +683,88 @@ fn test_snapshot_include_cursor() {
     assert_eq!(params["include_cursor"], true);
 }
 
+#[test]
+fn test_snapshot_strip_ansi_and_include_cursor_together() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "screen": "Plain text screen\n",
+            "cursor": { "row": 3, "col": 7, "visible": true },
+            "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
+        }),
+    );
+
+    harness
+        .run(&["snapshot", "--strip-ansi", "--include-cursor"])
+        .success()
+        .stdout(predicate::str::contains("Cursor: row=3, col=7"));
+
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["strip_ansi"], true);
+    assert_eq!(params["include_cursor"], true);
+}
+
+#[test]
+fn test_snapshot_elements_with_strip_ansi() {
+    let harness = TestHarness::new();
+
+    harness.run(&["snapshot", "-i", "--strip-ansi"]).success();
+
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["include_elements"], true);
+    assert_eq!(params["strip_ansi"], true);
+}
+
+#[test]
+fn test_snapshot_include_cursor_hidden() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "screen": "Test screen\n",
+            "cursor": { "row": 0, "col": 0, "visible": false },
+            "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
+        }),
+    );
+
+    harness
+        .run(&["snapshot", "--include-cursor"])
+        .success()
+        .stdout(predicate::str::contains("(hidden)"));
+}
+
+#[test]
+fn test_snapshot_all_flags_e2e() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&[
+            "snapshot",
+            "-i",
+            "-c",
+            "--region",
+            "modal",
+            "--strip-ansi",
+            "--include-cursor",
+        ])
+        .success();
+
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(params["include_elements"], true);
+    assert_eq!(params["compact"], true);
+    assert_eq!(params["region"], "modal");
+    assert_eq!(params["strip_ansi"], true);
+    assert_eq!(params["include_cursor"], true);
+}
+
 // =============================================================================
 // Focus/Clear/Toggle Command Tests
 // =============================================================================
@@ -1573,8 +1655,13 @@ fn test_assert_text_condition() {
         .success()
         .stdout(predicate::str::contains("Assertion passed"));
 
-    // Verify snapshot was called to get the content
-    harness.assert_method_called("snapshot");
+    // Verify snapshot was called with strip_ansi for consistent text matching
+    let request = harness.last_request_for("snapshot").unwrap();
+    let params = request.params.unwrap();
+    assert_eq!(
+        params["strip_ansi"], true,
+        "assert text should strip ANSI codes"
+    );
 }
 
 // =============================================================================

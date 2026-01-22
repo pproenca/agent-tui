@@ -24,7 +24,7 @@
     "agent-tui": "bin/agent-tui"
   },
   "scripts": {
-    "build:native": "cargo build --release --manifest-path cli/Cargo.toml && node scripts/copy-native.js",
+    "build:native": "cargo build --release -p agent-tui && node scripts/copy-native.js",
     "version:sync": "node scripts/sync-version.js",
     "preversion": "just ready",
     "postinstall": "node scripts/postinstall.js",

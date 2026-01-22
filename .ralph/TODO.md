@@ -67,30 +67,33 @@
 | [x] | Create `Cargo.toml` | Deps: all workspace crates |
 | [x] | Verify: `cargo build -p agent-tui-daemon` | |
 
-## Phase 6: agent-tui (Binary) - IN PROGRESS
+## Phase 6: agent-tui (Binary) ✅
 
 | Status | File | Notes |
 |--------|------|-------|
-| [x] | `main.rs` | Entry point (basic) |
+| [x] | `main.rs` | Entry point with full command dispatch |
 | [x] | `attach.rs` | Interactive attach mode |
 | [x] | Create `lib.rs` | Re-exports for library consumers |
 | [x] | Create `Cargo.toml` | Deps: all workspace crates, clap |
-| [ ] | `commands.rs` | Full Clap CLI definitions (75 vs 1750 lines) |
-| [ ] | `handlers.rs` | Full command handlers (157 vs 1538 lines) |
-| [ ] | Verify: `cargo build -p agent-tui` | |
+| [x] | `commands.rs` | Full Clap CLI definitions (1752 lines) |
+| [x] | `handlers.rs` | Full command handlers (1547 lines) |
+| [x] | Verify: `cargo build -p agent-tui` | ✓ Build successful |
 
-## Phase 7: Cleanup & Finalization
+## Phase 7: Cleanup & Finalization ✅
 
 | Status | Task |
 |--------|------|
-| [ ] | Move `cli/tests/` → `tests/` |
-| [ ] | Update test imports |
-| [ ] | Remove old `cli/` directory |
-| [ ] | Update `justfile` paths |
-| [ ] | Update `package.json` paths |
-| [ ] | Update `CLAUDE.md` with new structure |
-| [ ] | Run `just ready` - full verification |
-| [ ] | Run E2E tests |
+| [x] | Move `cli/tests/` → `crates/agent-tui/tests/` |
+| [x] | Update test imports (added tokio, uuid dev-deps) |
+| [x] | Remove old `cli/` directory |
+| [x] | Update `justfile` paths (already using workspace commands) |
+| [x] | Update `package.json` paths |
+| [x] | Update GitHub workflows (ci.yml, release.yml, release-manual.yml) |
+| [x] | Update scripts (sync-version.js, release.sh) |
+| [x] | Update README.md project structure |
+| [x] | Update `CLAUDE.md` with new structure |
+| [x] | Run `cargo fmt && cargo clippy && cargo test` - full verification |
+| [x] | Run E2E tests (39 daemon tests + 15 workflow tests pass) |
 
 ## Verification Commands
 

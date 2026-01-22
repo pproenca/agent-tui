@@ -1,5 +1,0 @@
-disallowed-methods = [
-    { path = "std::env::set_current_dir", reason = "Use absolute paths to avoid directory-related bugs" }
-]
-cognitive-complexity-threshold = 30
-too-many-lines-threshold = 200

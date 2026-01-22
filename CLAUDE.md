@@ -82,7 +82,15 @@ Supported roles: `Button`, `Tab`, `Input`, `StaticText`, `Panel`, `Checkbox`, `M
 | File | Purpose |
 |------|---------|
 | `server.rs` | JSON-RPC server, request routing |
-| `rpc_types.rs` | Request/response type definitions |
+| `session.rs` | Session management, state |
+| `wait.rs` | Wait conditions, stable tracking |
+
+### IPC (`crates/agent-tui-ipc/src/`)
+
+| File | Purpose |
+|------|---------|
+| `client.rs` | DaemonClient for CLI |
+| `types.rs` | Request/response type definitions |
 | `error_messages.rs` | User-facing error formatting |
 
 ### IPC Protocol

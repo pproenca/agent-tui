@@ -52,20 +52,22 @@ fn test_type_changes_screen() {
     h.spawn_bash();
 
     // 1. Type command with unique marker
-    assert!(h
-        .cli()
-        .args(["type", "echo E2E_MARKER_ABC123"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        h.cli()
+            .args(["type", "echo E2E_MARKER_ABC123"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // 2. Wait for text to appear
-    assert!(h
-        .cli()
-        .args(["wait", "-t", "5000", "E2E_MARKER_ABC123"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        h.cli()
+            .args(["wait", "-t", "5000", "E2E_MARKER_ABC123"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // 3. Snapshot contains typed text
     let output = h.cli_json().args(["snapshot"]).output().unwrap();
@@ -93,32 +95,36 @@ fn test_multi_session_switching() {
     assert_ne!(sess_a, sess_b, "Sessions should have different IDs");
 
     // 3. Type unique markers in each session
-    assert!(h
-        .cli()
-        .args(["-s", &sess_a, "type", "MARKER_AAA"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(h
-        .cli()
-        .args(["-s", &sess_b, "type", "MARKER_BBB"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        h.cli()
+            .args(["-s", &sess_a, "type", "MARKER_AAA"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        h.cli()
+            .args(["-s", &sess_b, "type", "MARKER_BBB"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // 4. Wait for markers in each
-    assert!(h
-        .cli()
-        .args(["-s", &sess_a, "wait", "-t", "5000", "MARKER_AAA"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(h
-        .cli()
-        .args(["-s", &sess_b, "wait", "-t", "5000", "MARKER_BBB"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        h.cli()
+            .args(["-s", &sess_a, "wait", "-t", "5000", "MARKER_AAA"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        h.cli()
+            .args(["-s", &sess_b, "wait", "-t", "5000", "MARKER_BBB"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // 5. Sessions list shows both
     let output = h.cli_json().args(["sessions"]).output().unwrap();
@@ -127,12 +133,13 @@ fn test_multi_session_switching() {
     assert!(sessions.len() >= 2, "Should have at least 2 sessions");
 
     // 6. Kill session A
-    assert!(h
-        .cli()
-        .args(["-s", &sess_a, "kill"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        h.cli()
+            .args(["-s", &sess_a, "kill"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // 7. Session B still works - snapshot shows its marker
     let output = h
@@ -159,12 +166,13 @@ fn test_wait_for_delayed_output() {
     // Clear the screen first so we have a clean slate
     assert!(h.cli().args(["type", "clear"]).status().unwrap().success());
     assert!(h.cli().args(["press", "Enter"]).status().unwrap().success());
-    assert!(h
-        .cli()
-        .args(["wait", "--condition", "stable", "-t", "2000"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        h.cli()
+            .args(["wait", "--condition", "stable", "-t", "2000"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Type the command that will sleep and then echo. After typing, the screen shows:
     // "bash$ sleep 1; echo FINAL"
@@ -177,12 +185,13 @@ fn test_wait_for_delayed_output() {
     // - After typing: 1 occurrence (in the command line)
     // - After execution: 2 occurrences (command line + echo output)
 
-    assert!(h
-        .cli()
-        .args(["type", "sleep 1; echo MARKER_UNIQUE_42"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        h.cli()
+            .args(["type", "sleep 1; echo MARKER_UNIQUE_42"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Verify marker appears once in the typed command
     let output = h.cli_json().args(["snapshot"]).output().unwrap();
@@ -298,12 +307,13 @@ fn test_operation_on_dead_session() {
         .status();
 
     // Kill it
-    assert!(h
-        .cli()
-        .args(["-s", &session_id, "kill"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        h.cli()
+            .args(["-s", &session_id, "kill"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Operations on dead session should fail
     let status = h

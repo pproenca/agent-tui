@@ -51,17 +51,17 @@ main() {
   echo "Updating package.json..."
   sed_inplace "s/\"version\": \"[^\"]*\"/\"version\": \"${version}\"/" "${root_dir}/package.json"
 
-  echo "Updating cli/Cargo.toml..."
-  sed_inplace "s/^version = \"[^\"]*\"/version = \"${version}\"/" "${root_dir}/cli/Cargo.toml"
+  echo "Updating Cargo.toml (workspace)..."
+  sed_inplace "s/^version = \"[^\"]*\"/version = \"${version}\"/" "${root_dir}/Cargo.toml"
 
   echo
   echo "Version updates:"
   grep '"version"' "${root_dir}/package.json" | head -1
-  grep '^version' "${root_dir}/cli/Cargo.toml" | head -1
+  grep '^version' "${root_dir}/Cargo.toml" | head -1
 
   echo
   echo "Staging changes..."
-  git add "${root_dir}/package.json" "${root_dir}/cli/Cargo.toml"
+  git add "${root_dir}/package.json" "${root_dir}/Cargo.toml"
 
   echo "Committing..."
   git commit -m "chore: bump version to ${version}"

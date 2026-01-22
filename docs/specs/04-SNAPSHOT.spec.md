@@ -44,7 +44,6 @@ pub struct SnapshotParams {
     pub session: Option<String>,
     pub include_elements: Option<bool>,   // Include detected elements
     pub format: Option<SnapshotFormat>,   // text | json | tree
-    pub compact: Option<bool>,            // Compact output (hide static text)
     pub region: Option<String>,           // Scope to region
     pub strip_ansi: Option<bool>,         // Remove ANSI escape codes
     pub include_cursor: Option<bool>,     // Include cursor position
@@ -86,7 +85,6 @@ agent-browser snapshot --interactive --compact
 # TUI
 agent-tui snapshot              # Screen only (most common)
 agent-tui snapshot -i           # Screen + detected elements
-agent-tui snapshot -i -c        # Compact element list
 agent-tui snapshot --strip-ansi # Plain text without colors
 agent-tui snapshot -i -f json   # JSON with elements
 agent-tui snapshot --include-cursor  # Include cursor position
@@ -121,8 +119,7 @@ agent-tui snapshot --include-cursor  # Include cursor position
   "jsonrpc": "2.0",
   "method": "snapshot",
   "params": {
-    "include_elements": true,
-    "compact": true
+    "include_elements": true
   },
   "id": 2
 }

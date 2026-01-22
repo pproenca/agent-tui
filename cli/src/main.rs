@@ -87,18 +87,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         } => handlers::handle_spawn(&mut ctx, command, args, cwd, cols, rows)?,
         Commands::Snapshot {
             elements,
-            compact,
             region,
             strip_ansi,
             include_cursor,
-        } => handlers::handle_snapshot(
-            &mut ctx,
-            elements,
-            compact,
-            region,
-            strip_ansi,
-            include_cursor,
-        )?,
+        } => handlers::handle_snapshot(&mut ctx, elements, region, strip_ansi, include_cursor)?,
         Commands::Click { element_ref } => handlers::handle_click(&mut ctx, element_ref)?,
         Commands::DblClick { element_ref } => handlers::handle_dbl_click(&mut ctx, element_ref)?,
         Commands::Fill { element_ref, value } => {

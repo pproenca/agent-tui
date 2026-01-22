@@ -169,7 +169,9 @@ impl DaemonServer {
         F: FnOnce(&mut crate::session::Session, &str) -> Response,
     {
         self.with_session_and_ref(request, |sess, element_ref| {
-            let _ = sess.update();
+            if let Err(e) = sess.update() {
+                eprintln!("Warning: Session update failed: {}", e);
+            }
             sess.detect_elements();
             f(sess, element_ref)
         })
@@ -182,7 +184,9 @@ impl DaemonServer {
     {
         let session_id = request.param_str("session");
         self.with_session(request, session_id, |sess| {
-            let _ = sess.update();
+            if let Err(e) = sess.update() {
+                eprintln!("Warning: Session update failed: {}", e);
+            }
             sess.detect_elements();
             f(sess)
         })
@@ -415,7 +419,6 @@ impl DaemonServer {
         let params = request.params.as_ref().cloned().unwrap_or(json!({}));
         let session_id = request.param_str("session");
         let include_elements = params.bool_or("include_elements", false);
-        let compact = params.bool_or("compact", false);
         let should_strip_ansi = params.bool_or("strip_ansi", false);
         let include_cursor = params.bool_or("include_cursor", false);
         let req_id = request.id;
@@ -443,17 +446,14 @@ impl DaemonServer {
 
             let (elements, stats) = if include_elements {
                 // Always use VOM (Visual Object Model) for element detection
-                use crate::vom::Role;
                 let vom_components = sess.analyze_screen();
                 let elements_total = vom_components.len();
 
-                // Filter to interactive elements first - must match detect_elements() in session.rs
-                // This ensures refs (@e1, @e2, etc.) are consistent between snapshot and click
+                // Filter to interactive elements using Role::is_interactive()
+                // This ensures refs (@e1, @e2, etc.) are consistent with detect_elements() in session.rs
                 let interactive: Vec<_> = vom_components
                     .iter()
-                    .filter(|c| {
-                        matches!(c.role, Role::Button | Role::Tab | Role::Input | Role::Checkbox | Role::MenuItem)
-                    })
+                    .filter(|c| c.role.is_interactive())
                     .collect();
                 let elements_interactive = interactive.len();
 
@@ -461,14 +461,6 @@ impl DaemonServer {
                 let filtered_elements: Vec<_> = interactive
                     .iter()
                     .enumerate()
-                    .filter(|(_, comp)| {
-                        // In compact mode, StaticText would already be filtered above
-                        // but keep this for consistency if we add other non-compact filters later
-                        if compact && comp.role == Role::StaticText {
-                            return false;
-                        }
-                        true
-                    })
                     .map(|(i, comp)| vom_component_to_json(comp, i))
                     .collect();
 
@@ -1043,7 +1035,12 @@ impl DaemonServer {
                     let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
                         return lock_timeout_response(request.id, session_id);
                     };
-                    let _ = sess.update();
+                    if let Err(e) = sess.update() {
+                        eprintln!(
+                            "Warning: Session update failed during scroll_into_view: {}",
+                            e
+                        );
+                    }
                     sess.detect_elements();
 
                     if sess.find_element(element_ref).is_some() {
@@ -1493,7 +1490,9 @@ impl DaemonServer {
         let clear = request.param_bool("clear").unwrap_or(false);
 
         self.with_session(&request, session_id, |sess| {
-            let _ = sess.update();
+            if let Err(e) = sess.update() {
+                eprintln!("Warning: Session update failed during console: {}", e);
+            }
             let screen = sess.screen_text();
 
             let all_lines: Vec<&str> = screen.lines().collect();

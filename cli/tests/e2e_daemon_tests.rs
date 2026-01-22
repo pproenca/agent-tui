@@ -398,17 +398,6 @@ fn test_snapshot_json_format() {
 }
 
 #[test]
-fn test_snapshot_compact_mode() {
-    let harness = TestHarness::new();
-
-    harness.run(&["snapshot", "-i", "-c"]).success();
-
-    let request = harness.last_request_for("snapshot").unwrap();
-    let params = request.params.unwrap();
-    assert_eq!(params["compact"], true);
-}
-
-#[test]
 fn test_snapshot_with_elements_uses_vom() {
     let harness = TestHarness::new();
 
@@ -457,18 +446,6 @@ fn test_snapshot_with_elements_uses_vom() {
     let request = harness.last_request_for("snapshot").unwrap();
     let params = request.params.unwrap();
     assert_eq!(params["include_elements"], true);
-}
-
-#[test]
-fn test_snapshot_with_compact_elements() {
-    let harness = TestHarness::new();
-
-    harness.run(&["snapshot", "-i", "-c"]).success();
-
-    let request = harness.last_request_for("snapshot").unwrap();
-    let params = request.params.unwrap();
-    assert_eq!(params["include_elements"], true);
-    assert_eq!(params["compact"], true);
 }
 
 // =============================================================================
@@ -748,7 +725,6 @@ fn test_snapshot_all_flags_e2e() {
         .run(&[
             "snapshot",
             "-i",
-            "-c",
             "--region",
             "modal",
             "--strip-ansi",
@@ -759,7 +735,6 @@ fn test_snapshot_all_flags_e2e() {
     let request = harness.last_request_for("snapshot").unwrap();
     let params = request.params.unwrap();
     assert_eq!(params["include_elements"], true);
-    assert_eq!(params["compact"], true);
     assert_eq!(params["region"], "modal");
     assert_eq!(params["strip_ansi"], true);
     assert_eq!(params["include_cursor"], true);

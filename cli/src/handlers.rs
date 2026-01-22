@@ -272,7 +272,6 @@ pub fn handle_spawn(
 pub fn handle_snapshot(
     ctx: &mut HandlerContext,
     elements: bool,
-    compact: bool,
     region: Option<String>,
     strip_ansi: bool,
     include_cursor: bool,
@@ -280,7 +279,6 @@ pub fn handle_snapshot(
     let params = json!({
         "session": ctx.session,
         "include_elements": elements,
-        "compact": compact,
         "region": region,
         "strip_ansi": strip_ansi,
         "include_cursor": include_cursor

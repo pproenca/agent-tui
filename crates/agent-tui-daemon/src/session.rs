@@ -457,7 +457,9 @@ impl Default for SessionManager {
 impl SessionManager {
     pub fn new() -> Self {
         let persistence = SessionPersistence::new();
-        let _ = persistence.cleanup_stale_sessions();
+        if let Err(e) = persistence.cleanup_stale_sessions() {
+            eprintln!("Warning: Failed to cleanup stale sessions: {}", e);
+        }
 
         Self {
             sessions: RwLock::new(HashMap::new()),

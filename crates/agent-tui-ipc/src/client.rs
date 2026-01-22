@@ -101,22 +101,48 @@ impl DaemonClient {
 }
 
 pub fn start_daemon_background() -> Result<(), ClientError> {
+    use std::fs::OpenOptions;
     use std::process::Command;
     use std::process::Stdio;
 
     let exe = std::env::current_exe()?;
+    let log_path = socket_path().with_extension("log");
+
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .ok();
+
+    let stderr = match log_file {
+        Some(f) => Stdio::from(f),
+        None => Stdio::null(),
+    };
 
     Command::new(exe)
         .arg("daemon")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(stderr)
         .spawn()?;
 
-    for _ in 0..50 {
+    for i in 0..50 {
         std::thread::sleep(std::time::Duration::from_millis(100));
         if DaemonClient::is_daemon_running() {
             return Ok(());
+        }
+        if i == 49 {
+            if let Ok(log_content) = std::fs::read_to_string(&log_path) {
+                let last_lines: String = log_content
+                    .lines()
+                    .rev()
+                    .take(5)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !last_lines.is_empty() {
+                    eprintln!("Daemon failed to start. Recent log output:\n{}", last_lines);
+                }
+            }
         }
     }
 

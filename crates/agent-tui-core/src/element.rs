@@ -10,17 +10,26 @@ fn legacy_ref_regex() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"^@([a-z]+)(\d+)$").unwrap())
 }
 
+/// Types of interactive UI elements detected by the Visual Object Model (VOM).
+///
+/// Some variants are not yet detectable by VOM but are reserved for:
+/// - Legacy ref support (e.g., `@rb1` for Radio, `@sel1` for Select)
+/// - Future VOM detection capabilities
+/// - External element type mapping
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[allow(dead_code)]
 pub enum ElementType {
     Button,
     Input,
     Checkbox,
+    /// Reserved for future VOM radio button detection. Currently mapped via legacy refs.
     Radio,
+    /// Reserved for future VOM select/dropdown detection. Currently mapped via legacy refs.
     Select,
     MenuItem,
     ListItem,
+    /// Reserved for future VOM spinner/loading indicator detection.
     Spinner,
+    /// Reserved for future VOM progress bar detection.
     Progress,
 }
 

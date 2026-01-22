@@ -58,7 +58,18 @@ fn build_asciicast(session_id: &str, cols: u16, rows: u16, frames: &[RecordingFr
             "SHELL": std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
         }
     });
-    output.push(serde_json::to_string(&header).unwrap());
+
+    match serde_json::to_string(&header) {
+        Ok(s) => output.push(s),
+        Err(e) => {
+            eprintln!("Error: Failed to serialize asciicast header: {}", e);
+            return json!({
+                "format": "asciicast",
+                "version": 2,
+                "error": format!("Failed to serialize recording header: {}", e)
+            });
+        }
+    }
 
     let mut prev_screen = String::new();
     for frame in frames {
@@ -70,7 +81,12 @@ fn build_asciicast(session_id: &str, cols: u16, rows: u16, frames: &[RecordingFr
                 format!("\x1b[2J\x1b[H{}", frame.screen)
             };
             let event = json!([time_secs, "o", screen_data]);
-            output.push(serde_json::to_string(&event).unwrap());
+            match serde_json::to_string(&event) {
+                Ok(s) => output.push(s),
+                Err(e) => {
+                    eprintln!("Error: Failed to serialize asciicast frame: {}", e);
+                }
+            }
             prev_screen = frame.screen.clone();
         }
     }
@@ -1613,7 +1629,12 @@ impl DaemonServer {
         for line in reader.lines() {
             let line = match line {
                 Ok(l) => l,
-                Err(_) => break,
+                Err(e) => {
+                    if e.kind() != std::io::ErrorKind::UnexpectedEof {
+                        eprintln!("Client connection error: {}", e);
+                    }
+                    break;
+                }
             };
 
             if line.trim().is_empty() {
@@ -1646,7 +1667,10 @@ impl DaemonServer {
                 }
             };
 
-            if writeln!(writer, "{}", response_json).is_err() {
+            if let Err(e) = writeln!(writer, "{}", response_json) {
+                if e.kind() != std::io::ErrorKind::BrokenPipe {
+                    eprintln!("Client write error: {}", e);
+                }
                 break;
             }
         }

@@ -14,72 +14,69 @@ const CLI_DIR = path.join(__dirname, '..', 'cli');
 const BIN_DIR = path.join(__dirname, '..', 'bin');
 
 function getPlatformArch() {
-    const platform = process.platform;
-    const arch = process.arch;
+  const platform = process.platform;
+  const arch = process.arch;
 
-    const platformMap = {
-        darwin: 'darwin',
-        linux: 'linux',
-    };
+  const platformMap = {
+    darwin: 'darwin',
+    linux: 'linux',
+  };
 
-    const archMap = {
-        x64: 'x64',
-        arm64: 'arm64',
-    };
+  const archMap = {
+    x64: 'x64',
+    arm64: 'arm64',
+  };
 
-    const mappedPlatform = platformMap[platform];
-    const mappedArch = archMap[arch];
+  const mappedPlatform = platformMap[platform];
+  const mappedArch = archMap[arch];
 
-    if (!mappedPlatform || !mappedArch) {
-        throw new Error(`Unsupported platform: ${platform}-${arch}`);
-    }
+  if (!mappedPlatform || !mappedArch) {
+    throw new Error(`Unsupported platform: ${platform}-${arch}`);
+  }
 
-    return `${mappedPlatform}-${mappedArch}`;
+  return `${mappedPlatform}-${mappedArch}`;
 }
 
 function getSourceBinaryPath() {
-    const binaryName = process.platform === 'win32' ? 'agent-tui.exe' : 'agent-tui';
-    return path.join(CLI_DIR, 'target', 'release', binaryName);
+  const binaryName = process.platform === 'win32' ? 'agent-tui.exe' : 'agent-tui';
+  return path.join(CLI_DIR, 'target', 'release', binaryName);
 }
 
 function getDestBinaryPath(platformArch) {
-    const binaryName =
-        process.platform === 'win32' ? `agent-tui-${platformArch}.exe` : `agent-tui-${platformArch}`;
-    return path.join(BIN_DIR, binaryName);
+  const binaryName =
+    process.platform === 'win32' ? `agent-tui-${platformArch}.exe` : `agent-tui-${platformArch}`;
+  return path.join(BIN_DIR, binaryName);
 }
 
 function main() {
-    const platformArch = getPlatformArch();
-    const sourcePath = getSourceBinaryPath();
-    const destPath = getDestBinaryPath(platformArch);
+  const platformArch = getPlatformArch();
+  const sourcePath = getSourceBinaryPath();
+  const destPath = getDestBinaryPath(platformArch);
 
-    console.log(`Platform: ${platformArch}`);
-    console.log(`Source: ${sourcePath}`);
-    console.log(`Destination: ${destPath}`);
+  console.log(`Platform: ${platformArch}`);
+  console.log(`Source: ${sourcePath}`);
+  console.log(`Destination: ${destPath}`);
 
-    if (!fs.existsSync(sourcePath)) {
-        console.error(`Binary not found at ${sourcePath}`);
-        console.error('Run `npm run build` first to compile the binary');
-        process.exit(1);
-    }
+  if (!fs.existsSync(sourcePath)) {
+    console.error(`Binary not found at ${sourcePath}`);
+    console.error('Run `npm run build` first to compile the binary');
+    process.exit(1);
+  }
 
-    // Ensure bin directory exists
-    if (!fs.existsSync(BIN_DIR)) {
-        fs.mkdirSync(BIN_DIR, { recursive: true });
-    }
+  if (!fs.existsSync(BIN_DIR)) {
+    fs.mkdirSync(BIN_DIR, { recursive: true });
+  }
 
-    // Copy the binary
-    fs.copyFileSync(sourcePath, destPath);
+  fs.copyFileSync(sourcePath, destPath);
 
-    // Make executable on Unix
-    if (process.platform !== 'win32') {
-        fs.chmodSync(destPath, 0o755);
-    }
+  if (process.platform !== 'win32') {
+    fs.chmodSync(destPath, 0o755);
+  }
 
-    const stats = fs.statSync(destPath);
-    const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+  const stats = fs.statSync(destPath);
+  const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
 
-    console.log(`Copied ${sizeMB} MB to ${destPath}`);
+  console.log(`Copied ${sizeMB} MB to ${destPath}`);
 }
 
 main();

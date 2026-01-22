@@ -23,16 +23,6 @@ Or with Homebrew:
 brew install pproenca/tap/agent-tui
 ```
 
-### Try the Built-in Demo
-
-```bash
-agent-tui demo                    # Start built-in demo TUI
-agent-tui snapshot -i             # See detected elements
-agent-tui fill @e1 "Hello World"  # Fill the input
-agent-tui click @e3               # Click Submit
-agent-tui kill                    # End session
-```
-
 ### Automate Real Apps
 
 ```bash
@@ -137,7 +127,6 @@ Requires Rust 1.70+.
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `demo` | Start built-in demo TUI | `agent-tui demo` |
 | `spawn <cmd>` | Start TUI app | `agent-tui spawn htop` |
 | `snapshot` | Get screen state | `agent-tui snapshot -i` |
 | `click <ref>` | Activate element | `agent-tui click @e1` |

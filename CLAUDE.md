@@ -66,8 +66,6 @@ The VOM is the core element detection system. Pipeline:
 
 1. **Segmentation** (`segmentation.rs`): Raster scan → `Vec<Cluster>` (style-homogeneous runs)
 2. **Classification** (`classifier.rs`): Geometric & attribute heuristics → `Vec<Component>` with roles
-3. **Interaction** (`interaction.rs`): Mouse injection via ANSI CSI sequences
-4. **Feedback** (`feedback.rs`): Layout signatures for change detection
 
 Supported roles: `Button`, `Tab`, `Input`, `StaticText`, `Panel`, `Checkbox`, `MenuItem`
 
@@ -100,7 +98,7 @@ Run with `cargo test`. Tests are co-located in source files.
 | `common/test_harness.rs` | Sync wrapper for async mock |
 | `common/real_test_harness.rs` | Real daemon test harness |
 
-**Note:** E2E workflow tests require `--test-threads=1` due to shared daemon state.
+Each E2E workflow test spawns an isolated daemon instance on a unique socket, allowing parallel execution.
 
 ### E2E Tests (`e2e/`)
 
@@ -137,6 +135,7 @@ Shell scripts for full system testing:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `AGENT_TUI_SOCKET` | Custom socket path | (uses XDG_RUNTIME_DIR) |
 | `AGENT_TUI_TRANSPORT` | `unix` or `tcp` | unix |
 | `AGENT_TUI_TCP_PORT` | TCP port | 19847 |
 | `XDG_RUNTIME_DIR` | Socket directory | /tmp |

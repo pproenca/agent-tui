@@ -295,31 +295,6 @@ EXAMPLES:
     /// List all active sessions
     Sessions,
 
-    /// Start built-in demo TUI for testing element detection
-    #[command(long_about = r#"Start the built-in demo TUI.
-
-This command spawns a simple TUI form for testing agent-tui without needing
-external applications like htop or create-next-app. Perfect for first-time
-setup verification and learning the element ref system.
-
-The demo TUI displays:
-- An input field for entering your name
-- A checkbox for enabling notifications
-- Submit and Cancel buttons
-
-EXAMPLE WORKFLOW:
-    agent-tui demo                    # Start demo TUI
-    agent-tui snapshot -i             # See detected elements:
-                                      #   @e1 [input:Name]
-                                      #   @e2 [checkbox]
-                                      #   @e3 [button:Submit]
-                                      #   @e4 [button:Cancel]
-    agent-tui fill @e1 "Hello"        # Fill the input
-    agent-tui toggle @e2              # Toggle checkbox
-    agent-tui click @e3               # Click Submit
-    agent-tui kill                    # End session"#)]
-    Demo,
-
     /// Check daemon health and connection status
     Health {
         /// Show verbose output with additional details
@@ -602,10 +577,6 @@ EXAMPLES:
     /// Start the daemon (usually called automatically)
     #[command(hide = true)]
     Daemon,
-
-    /// Run the demo TUI directly (internal command, used by 'demo')
-    #[command(hide = true, name = "demo-run")]
-    DemoRun,
 
     /// Show version information for CLI and daemon
     #[command(long_about = r#"Show detailed version information.
@@ -1423,10 +1394,6 @@ mod tests {
         assert!(Cli::try_parse_from(["agent-tui", "-f", "xml", "health"]).is_err());
     }
 
-    // =========================================================================
-    // Additional CLI Parsing Tests
-    // =========================================================================
-
     /// Test --json shorthand flag
     #[test]
     fn test_json_shorthand_flag() {
@@ -1610,13 +1577,6 @@ mod tests {
         };
         assert_eq!(session_id, "my-session");
         assert!(interactive);
-    }
-
-    /// Test demo command
-    #[test]
-    fn test_demo_command() {
-        let cli = Cli::parse_from(["agent-tui", "demo"]);
-        assert!(matches!(cli.command, Commands::Demo));
     }
 
     /// Test record-start command

@@ -111,19 +111,16 @@ impl<'a> HandlerContext<'a> {
         Ok(success)
     }
 
-    /// Build params with ref and session
     fn ref_params(&self, element_ref: &str) -> serde_json::Value {
         json!({ "ref": element_ref, "session": self.session })
     }
 
-    /// Build params by merging extra fields with session
     fn params_with(&self, extra: Value) -> Value {
         let mut p = extra;
         p["session"] = json!(self.session);
         p
     }
 
-    /// Call RPC method with ref params and output success/failure
     fn call_ref_action(
         &mut self,
         method: &str,
@@ -137,7 +134,6 @@ impl<'a> HandlerContext<'a> {
         Ok(())
     }
 
-    /// Output for boolean state checks
     fn output_state_check(
         &self,
         result: &serde_json::Value,
@@ -173,7 +169,6 @@ impl<'a> HandlerContext<'a> {
         Ok(())
     }
 
-    /// Output for value retrieval (get_text, get_value)
     fn output_get_result(
         &self,
         result: &serde_json::Value,
@@ -199,12 +194,10 @@ impl<'a> HandlerContext<'a> {
         Ok(())
     }
 
-    /// Build params with just session
     fn session_params(&self) -> Value {
         json!({ "session": self.session })
     }
 
-    /// Output JSON or run text formatting closure
     fn output_json_or<F>(&self, result: &Value, text_fn: F) -> HandlerResult
     where
         F: FnOnce(),
@@ -232,7 +225,6 @@ impl<'a> HandlerContext<'a> {
     }
 }
 
-/// View wrapper for element JSON for consistent field extraction.
 struct ElementView<'a>(&'a Value);
 
 impl<'a> ElementView<'a> {
@@ -287,50 +279,6 @@ impl<'a> ElementView<'a> {
             format!(":{}", self.label())
         }
     }
-}
-
-pub fn handle_demo(ctx: &mut HandlerContext) -> HandlerResult {
-    let exe_path = std::env::current_exe()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "agent-tui".to_string());
-
-    let params = json!({
-        "command": exe_path,
-        "args": ["demo-run"],
-        "session": ctx.session,
-        "cols": 80,
-        "rows": 24
-    });
-
-    let result = ctx.client.call("spawn", Some(params))?;
-
-    ctx.output_json_or(&result, || {
-        let session_id = result.str_or("session_id", "unknown");
-        println!(
-            "{} {}",
-            Colors::success("Demo started:"),
-            Colors::session_id(session_id)
-        );
-        println!();
-        println!("Try these commands:");
-        println!(
-            "  {} - See detected elements",
-            Colors::dim("agent-tui snapshot -i")
-        );
-        println!(
-            "  {} - Fill the name input",
-            Colors::dim("agent-tui fill @e1 \"Hello\"")
-        );
-        println!(
-            "  {} - Toggle the checkbox",
-            Colors::dim("agent-tui toggle @e2")
-        );
-        println!(
-            "  {} - Click Submit button",
-            Colors::dim("agent-tui click @e3")
-        );
-        println!("  {} - End session", Colors::dim("agent-tui kill"));
-    })
 }
 
 pub fn handle_spawn(
@@ -1265,7 +1213,6 @@ pub fn handle_assert(ctx: &mut HandlerContext, condition: String) -> HandlerResu
 
     let passed = match cond_type {
         "text" => {
-            // Strip ANSI codes for consistent text matching
             let params = json!({
                 "session": ctx.session,
                 "strip_ansi": true
@@ -1322,10 +1269,6 @@ pub fn handle_assert(ctx: &mut HandlerContext, condition: String) -> HandlerResu
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // =========================================================================
-    // ElementView tests
-    // =========================================================================
 
     fn make_element(json: serde_json::Value) -> serde_json::Value {
         json
@@ -1465,10 +1408,6 @@ mod tests {
         assert_eq!(view.position(), (3, 15));
     }
 
-    // =========================================================================
-    // Assert condition parsing tests
-    // =========================================================================
-
     #[test]
     fn test_assert_condition_parsing_text() {
         let condition = "text:Submit";
@@ -1511,10 +1450,6 @@ mod tests {
         let parts: Vec<&str> = condition.splitn(2, ':').collect();
         assert_eq!(parts.len(), 1);
     }
-
-    // =========================================================================
-    // Wait condition resolution tests
-    // =========================================================================
 
     #[test]
     fn test_wait_condition_stable() {

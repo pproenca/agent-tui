@@ -71,14 +71,15 @@ count_tasks() {
   local total=0
   if [[ -f "${TODO_FILE}" ]]; then
     # Table format: | [x] | or | [ ] |
-    completed=$(grep -cE '^\| \[x\]' "${TODO_FILE}" 2>/dev/null || echo 0)
+    # Note: grep -c outputs "0" even on no matches (exit code 1), so use || : not || echo 0
+    completed=$(grep -cE '^\| \[x\]' "${TODO_FILE}" 2>/dev/null || :)
     local table_total
-    table_total=$(grep -cE '^\| \[.\]' "${TODO_FILE}" 2>/dev/null || echo 0)
+    table_total=$(grep -cE '^\| \[.\]' "${TODO_FILE}" 2>/dev/null || :)
     # List format: - [x] or - [ ]
     local list_completed
-    list_completed=$(grep -cE '^- \[x\]' "${TODO_FILE}" 2>/dev/null || echo 0)
+    list_completed=$(grep -cE '^- \[x\]' "${TODO_FILE}" 2>/dev/null || :)
     local list_total
-    list_total=$(grep -cE '^- \[.\]' "${TODO_FILE}" 2>/dev/null || echo 0)
+    list_total=$(grep -cE '^- \[.\]' "${TODO_FILE}" 2>/dev/null || :)
     completed=$((completed + list_completed))
     total=$((table_total + list_total))
   fi
@@ -190,7 +191,7 @@ EOF
   log_progress "RALPH loop started (max ${MAX_ITERATIONS} iterations)"
 
   while [[ ${iteration} -lt ${MAX_ITERATIONS} ]]; do
-    ((iteration++))
+    ((++iteration))
 
     info "========================================"
     info "  Iteration ${iteration}/${MAX_ITERATIONS}"

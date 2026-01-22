@@ -1,83 +1,82 @@
 # Migration TODO Checklist
 
-## Phase 0: Workspace Setup
-- [ ] Create root `Cargo.toml` with workspace manifest
-- [ ] Create `crates/` directory structure
-- [ ] Move `cli/rustfmt.toml` to root
-- [ ] Move `cli/clippy.toml` to root
+## Phase 0: Workspace Setup ✅
+- [x] Create root `Cargo.toml` with workspace manifest
+- [x] Create `crates/` directory structure
+- [x] Move `cli/rustfmt.toml` to root
+- [x] Move `cli/clippy.toml` to root
 
-## Phase 1: agent-tui-common (Leaf Crate)
-
-| Status | File | Notes |
-|--------|------|-------|
-| [ ] | `color.rs` | OnceLock NO_COLOR, Colors struct |
-| [ ] | `json_ext.rs` | ValueExt trait |
-| [ ] | `sync_utils.rs` → `sync.rs` | Lock helper functions |
-| [ ] | Create `lib.rs` | Export all public API |
-| [ ] | Create `Cargo.toml` | Minimal deps: serde_json |
-| [ ] | Verify: `cargo build -p agent-tui-common` | |
-
-## Phase 2: agent-tui-terminal
+## Phase 1: agent-tui-common (Leaf Crate) ✅
 
 | Status | File | Notes |
 |--------|------|-------|
-| [ ] | `pty.rs` | PtyHandle, PtyError |
-| [ ] | `terminal.rs` | VirtualTerminal, ScreenBuffer, Cell, CellStyle |
-| [ ] | Extract `keys.rs` | key_to_escape_sequence if in pty.rs |
-| [ ] | Create `lib.rs` | Export terminal types |
-| [ ] | Create `Cargo.toml` | Deps: vt100, portable-pty, agent-tui-common |
-| [ ] | Verify: `cargo build -p agent-tui-terminal` | |
+| [x] | `color.rs` | OnceLock NO_COLOR, Colors struct |
+| [x] | `json_ext.rs` | ValueExt trait |
+| [x] | `sync_utils.rs` → `sync.rs` | Lock helper functions |
+| [x] | Create `lib.rs` | Export all public API |
+| [x] | Create `Cargo.toml` | Minimal deps: serde_json |
+| [x] | Verify: `cargo build -p agent-tui-common` | |
 
-## Phase 3: agent-tui-core (VOM)
-
-| Status | File | Notes |
-|--------|------|-------|
-| [ ] | `vom/mod.rs` | VOM types, analyze() |
-| [ ] | `vom/segmentation.rs` | Cluster detection |
-| [ ] | `vom/classifier.rs` | Role classification |
-| [ ] | Extract `element.rs` | Element, ElementType, Position FROM session.rs |
-| [ ] | Create `lib.rs` | Export VOM + Element API |
-| [ ] | Create `Cargo.toml` | Deps: agent-tui-terminal, agent-tui-common |
-| [ ] | Verify: `cargo build -p agent-tui-core` | |
-
-## Phase 4: agent-tui-ipc
+## Phase 2: agent-tui-terminal ✅
 
 | Status | File | Notes |
 |--------|------|-------|
-| [ ] | `daemon/rpc_types.rs` → `types.rs` | Request, Response, RpcError |
-| [ ] | `client.rs` | DaemonClient |
-| [ ] | Extract `socket.rs` | socket_path() from server.rs |
-| [ ] | Create `error.rs` | ClientError enum |
-| [ ] | Create `lib.rs` | Export IPC types |
-| [ ] | Create `Cargo.toml` | Deps: serde, serde_json, tokio, agent-tui-common |
-| [ ] | Verify: `cargo build -p agent-tui-ipc` | |
+| [x] | `pty.rs` | PtyHandle, PtyError |
+| [x] | `terminal.rs` | VirtualTerminal, ScreenBuffer, Cell, CellStyle |
+| [x] | Extract `keys.rs` | key_to_escape_sequence if in pty.rs |
+| [x] | Create `lib.rs` | Export terminal types |
+| [x] | Create `Cargo.toml` | Deps: vt100, portable-pty, agent-tui-common |
+| [x] | Verify: `cargo build -p agent-tui-terminal` | |
 
-## Phase 5: agent-tui-daemon
-
-| Status | File | Notes |
-|--------|------|-------|
-| [ ] | `session.rs` (main) | Session, SessionManager, SessionError |
-| [ ] | `wait.rs` | WaitCondition, StableTracker |
-| [ ] | `daemon/server.rs` | DaemonServer, start_daemon |
-| [ ] | `daemon/error_messages.rs` → `handlers/` | ai_friendly_error |
-| [ ] | `daemon/lock_helpers.rs` → `handlers/` | acquire_session_lock |
-| [ ] | `daemon/select_helpers.rs` → `handlers/` | navigate_to_option |
-| [ ] | `daemon/ansi_keys.rs` → `handlers/` | ANSI sequences |
-| [ ] | Create `handlers/mod.rs` | Re-export handlers |
-| [ ] | Create `lib.rs` | Export daemon API |
-| [ ] | Create `Cargo.toml` | Deps: all workspace crates |
-| [ ] | Verify: `cargo build -p agent-tui-daemon` | |
-
-## Phase 6: agent-tui (Binary)
+## Phase 3: agent-tui-core (VOM) ✅
 
 | Status | File | Notes |
 |--------|------|-------|
-| [ ] | `main.rs` | Entry point |
-| [ ] | `commands.rs` | Clap CLI definitions |
-| [ ] | `handlers.rs` | Command handlers |
-| [ ] | `attach.rs` | Interactive attach mode |
-| [ ] | Create `lib.rs` (optional) | Re-exports for library consumers |
-| [ ] | Create `Cargo.toml` | Deps: all workspace crates, clap |
+| [x] | `vom/mod.rs` | VOM types, analyze() |
+| [x] | `vom/segmentation.rs` | Cluster detection |
+| [x] | `vom/classifier.rs` | Role classification |
+| [x] | Extract `element.rs` | Element, ElementType, Position FROM session.rs |
+| [x] | Create `lib.rs` | Export VOM + Element API |
+| [x] | Create `Cargo.toml` | Deps: agent-tui-terminal, agent-tui-common |
+| [x] | Verify: `cargo build -p agent-tui-core` | |
+
+## Phase 4: agent-tui-ipc ✅
+
+| Status | File | Notes |
+|--------|------|-------|
+| [x] | `daemon/rpc_types.rs` → `types.rs` | Request, Response, RpcError |
+| [x] | `client.rs` | DaemonClient |
+| [x] | Extract `socket.rs` | socket_path() from server.rs |
+| [x] | Create `error.rs` | ClientError enum |
+| [x] | Create `lib.rs` | Export IPC types |
+| [x] | Create `Cargo.toml` | Deps: serde, serde_json, tokio, agent-tui-common |
+| [x] | Verify: `cargo build -p agent-tui-ipc` | |
+
+## Phase 5: agent-tui-daemon ✅
+
+| Status | File | Notes |
+|--------|------|-------|
+| [x] | `session.rs` (main) | Session, SessionManager, SessionError |
+| [x] | `wait.rs` | WaitCondition, StableTracker |
+| [x] | `daemon/server.rs` | DaemonServer, start_daemon |
+| [x] | `daemon/error_messages.rs` | ai_friendly_error |
+| [x] | `daemon/lock_helpers.rs` | acquire_session_lock |
+| [x] | `daemon/select_helpers.rs` | navigate_to_option |
+| [x] | `daemon/ansi_keys.rs` | ANSI sequences |
+| [x] | Create `lib.rs` | Export daemon API |
+| [x] | Create `Cargo.toml` | Deps: all workspace crates |
+| [x] | Verify: `cargo build -p agent-tui-daemon` | |
+
+## Phase 6: agent-tui (Binary) - IN PROGRESS
+
+| Status | File | Notes |
+|--------|------|-------|
+| [x] | `main.rs` | Entry point (basic) |
+| [x] | `attach.rs` | Interactive attach mode |
+| [x] | Create `lib.rs` | Re-exports for library consumers |
+| [x] | Create `Cargo.toml` | Deps: all workspace crates, clap |
+| [ ] | `commands.rs` | Full Clap CLI definitions (75 vs 1750 lines) |
+| [ ] | `handlers.rs` | Full command handlers (157 vs 1538 lines) |
 | [ ] | Verify: `cargo build -p agent-tui` | |
 
 ## Phase 7: Cleanup & Finalization

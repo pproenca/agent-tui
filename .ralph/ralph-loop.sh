@@ -215,8 +215,10 @@ EOF
       exit 0
     fi
 
+    stream_text='select(.type == "assistant").message.content[]? | select(.type == "text").text // empty | gsub("\n"; "\r\n") | . + "\r\n\n"'
+
     info "Running claude..."
-    if cat "${PROMPT_FILE}" | claude --dangerously-skip-permissions 2>&1 | tee -a "${LOG_FILE}"; then
+    if cat "${PROMPT_FILE}" | claude --verbose --print --output-format stream-json --dangerously-skip-permissions | tee "${LOG_FILE}" | jq --unbuffered -rj "$stream_text"; then
       success "Iteration ${iteration} complete"
       log_progress "Iteration ${iteration} completed"
     else

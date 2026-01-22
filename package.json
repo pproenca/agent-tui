@@ -30,7 +30,7 @@
     "build:linux-x64": "docker compose -f docker/docker-compose.yml run --rm linux-x64",
     "build:linux-arm64": "docker compose -f docker/docker-compose.yml run --rm linux-arm64",
     "build:all-platforms": "docker compose -f docker/docker-compose.yml up",
-    "test": "cargo test --manifest-path cli/Cargo.toml",
+    "test": "cargo test --manifest-path cli/Cargo.toml -- --test-threads=1",
     "lint": "cargo clippy --manifest-path cli/Cargo.toml --all-targets --all-features -- -D warnings",
     "format": "cargo fmt --manifest-path cli/Cargo.toml",
     "format:check": "cargo fmt --manifest-path cli/Cargo.toml -- --check",

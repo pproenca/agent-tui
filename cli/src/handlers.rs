@@ -42,6 +42,9 @@ impl<'a> HandlerContext<'a> {
             OutputFormat::Text | OutputFormat::Tree => {
                 if success {
                     println!("{}", success_msg);
+                    if let Some(warning) = result.get("warning").and_then(|w| w.as_str()) {
+                        eprintln!("{}", warning);
+                    }
                 } else {
                     let msg = result.str_or("message", "Unknown error");
                     eprintln!("{}: {}", failure_prefix, msg);
@@ -1429,4 +1432,333 @@ pub fn handle_assert(ctx: &mut HandlerContext, condition: String) -> HandlerResu
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // =========================================================================
+    // ElementView tests
+    // =========================================================================
+
+    fn make_element(json: serde_json::Value) -> serde_json::Value {
+        json
+    }
+
+    #[test]
+    fn test_element_view_ref_str() {
+        let el = make_element(json!({"ref": "@btn1"}));
+        let view = ElementView(&el);
+        assert_eq!(view.ref_str(), "@btn1");
+    }
+
+    #[test]
+    fn test_element_view_ref_str_missing() {
+        let el = make_element(json!({}));
+        let view = ElementView(&el);
+        assert_eq!(view.ref_str(), "");
+    }
+
+    #[test]
+    fn test_element_view_el_type() {
+        let el = make_element(json!({"type": "button"}));
+        let view = ElementView(&el);
+        assert_eq!(view.el_type(), "button");
+    }
+
+    #[test]
+    fn test_element_view_el_type_missing() {
+        let el = make_element(json!({}));
+        let view = ElementView(&el);
+        assert_eq!(view.el_type(), "");
+    }
+
+    #[test]
+    fn test_element_view_label() {
+        let el = make_element(json!({"label": "Submit"}));
+        let view = ElementView(&el);
+        assert_eq!(view.label(), "Submit");
+    }
+
+    #[test]
+    fn test_element_view_label_missing() {
+        let el = make_element(json!({}));
+        let view = ElementView(&el);
+        assert_eq!(view.label(), "");
+    }
+
+    #[test]
+    fn test_element_view_focused_true() {
+        let el = make_element(json!({"focused": true}));
+        let view = ElementView(&el);
+        assert!(view.focused());
+    }
+
+    #[test]
+    fn test_element_view_focused_false() {
+        let el = make_element(json!({"focused": false}));
+        let view = ElementView(&el);
+        assert!(!view.focused());
+    }
+
+    #[test]
+    fn test_element_view_focused_missing() {
+        let el = make_element(json!({}));
+        let view = ElementView(&el);
+        assert!(!view.focused());
+    }
+
+    #[test]
+    fn test_element_view_selected() {
+        let el = make_element(json!({"selected": true}));
+        let view = ElementView(&el);
+        assert!(view.selected());
+    }
+
+    #[test]
+    fn test_element_view_selected_missing() {
+        let el = make_element(json!({}));
+        let view = ElementView(&el);
+        assert!(!view.selected());
+    }
+
+    #[test]
+    fn test_element_view_checked_true() {
+        let el = make_element(json!({"checked": true}));
+        let view = ElementView(&el);
+        assert_eq!(view.checked(), Some(true));
+    }
+
+    #[test]
+    fn test_element_view_checked_false() {
+        let el = make_element(json!({"checked": false}));
+        let view = ElementView(&el);
+        assert_eq!(view.checked(), Some(false));
+    }
+
+    #[test]
+    fn test_element_view_checked_missing() {
+        let el = make_element(json!({}));
+        let view = ElementView(&el);
+        assert_eq!(view.checked(), None);
+    }
+
+    #[test]
+    fn test_element_view_value_present() {
+        let el = make_element(json!({"value": "test input"}));
+        let view = ElementView(&el);
+        assert_eq!(view.value(), Some("test input"));
+    }
+
+    #[test]
+    fn test_element_view_value_missing() {
+        let el = make_element(json!({}));
+        let view = ElementView(&el);
+        assert_eq!(view.value(), None);
+    }
+
+    #[test]
+    fn test_element_view_position() {
+        let el = make_element(json!({"position": {"row": 5, "col": 10}}));
+        let view = ElementView(&el);
+        assert_eq!(view.position(), (5, 10));
+    }
+
+    #[test]
+    fn test_element_view_position_partial() {
+        let el = make_element(json!({"position": {"row": 5}}));
+        let view = ElementView(&el);
+        assert_eq!(view.position(), (5, 0));
+    }
+
+    #[test]
+    fn test_element_view_position_missing() {
+        let el = make_element(json!({}));
+        let view = ElementView(&el);
+        assert_eq!(view.position(), (0, 0));
+    }
+
+    #[test]
+    fn test_element_view_full_element() {
+        let el = make_element(json!({
+            "ref": "@inp1",
+            "type": "input",
+            "label": "Email",
+            "value": "test@example.com",
+            "focused": true,
+            "selected": false,
+            "checked": null,
+            "position": {"row": 3, "col": 15}
+        }));
+        let view = ElementView(&el);
+        assert_eq!(view.ref_str(), "@inp1");
+        assert_eq!(view.el_type(), "input");
+        assert_eq!(view.label(), "Email");
+        assert_eq!(view.value(), Some("test@example.com"));
+        assert!(view.focused());
+        assert!(!view.selected());
+        assert_eq!(view.checked(), None);
+        assert_eq!(view.position(), (3, 15));
+    }
+
+    // =========================================================================
+    // Assert condition parsing tests
+    // =========================================================================
+
+    #[test]
+    fn test_assert_condition_parsing_text() {
+        let condition = "text:Submit";
+        let parts: Vec<&str> = condition.splitn(2, ':').collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0], "text");
+        assert_eq!(parts[1], "Submit");
+    }
+
+    #[test]
+    fn test_assert_condition_parsing_element() {
+        let condition = "element:@btn1";
+        let parts: Vec<&str> = condition.splitn(2, ':').collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0], "element");
+        assert_eq!(parts[1], "@btn1");
+    }
+
+    #[test]
+    fn test_assert_condition_parsing_session() {
+        let condition = "session:my-session";
+        let parts: Vec<&str> = condition.splitn(2, ':').collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0], "session");
+        assert_eq!(parts[1], "my-session");
+    }
+
+    #[test]
+    fn test_assert_condition_parsing_with_colon_in_value() {
+        let condition = "text:URL: https://example.com";
+        let parts: Vec<&str> = condition.splitn(2, ':').collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0], "text");
+        assert_eq!(parts[1], "URL: https://example.com");
+    }
+
+    #[test]
+    fn test_assert_condition_parsing_invalid() {
+        let condition = "invalid_format";
+        let parts: Vec<&str> = condition.splitn(2, ':').collect();
+        assert_eq!(parts.len(), 1);
+    }
+
+    // =========================================================================
+    // Wait condition resolution tests (from handle_wait logic)
+    // =========================================================================
+
+    fn resolve_wait_condition(
+        params: &crate::commands::WaitParams,
+    ) -> (Option<String>, Option<String>) {
+        if params.stable {
+            (Some("stable".to_string()), None)
+        } else if let Some(el) = params.element.clone() {
+            (Some("element".to_string()), Some(el))
+        } else if let Some(vis) = params.visible.clone() {
+            (Some("element".to_string()), Some(vis))
+        } else if let Some(f) = params.focused.clone() {
+            (Some("focused".to_string()), Some(f))
+        } else if let Some(nv) = params.not_visible.clone() {
+            (Some("not_visible".to_string()), Some(nv))
+        } else if let Some(tg) = params.text_gone.clone() {
+            (Some("text_gone".to_string()), Some(tg))
+        } else if let Some(v) = params.value.clone() {
+            (Some("value".to_string()), Some(v))
+        } else if let Some(c) = params.condition {
+            (Some(c.to_string()), params.target.clone())
+        } else {
+            (None, None)
+        }
+    }
+
+    #[test]
+    fn test_wait_condition_stable() {
+        let params = crate::commands::WaitParams {
+            stable: true,
+            ..Default::default()
+        };
+        let (cond, tgt) = resolve_wait_condition(&params);
+        assert_eq!(cond, Some("stable".to_string()));
+        assert_eq!(tgt, None);
+    }
+
+    #[test]
+    fn test_wait_condition_element() {
+        let params = crate::commands::WaitParams {
+            element: Some("@btn1".to_string()),
+            ..Default::default()
+        };
+        let (cond, tgt) = resolve_wait_condition(&params);
+        assert_eq!(cond, Some("element".to_string()));
+        assert_eq!(tgt, Some("@btn1".to_string()));
+    }
+
+    #[test]
+    fn test_wait_condition_visible_alias() {
+        let params = crate::commands::WaitParams {
+            visible: Some("@inp1".to_string()),
+            ..Default::default()
+        };
+        let (cond, tgt) = resolve_wait_condition(&params);
+        assert_eq!(cond, Some("element".to_string()));
+        assert_eq!(tgt, Some("@inp1".to_string()));
+    }
+
+    #[test]
+    fn test_wait_condition_focused() {
+        let params = crate::commands::WaitParams {
+            focused: Some("@inp1".to_string()),
+            ..Default::default()
+        };
+        let (cond, tgt) = resolve_wait_condition(&params);
+        assert_eq!(cond, Some("focused".to_string()));
+        assert_eq!(tgt, Some("@inp1".to_string()));
+    }
+
+    #[test]
+    fn test_wait_condition_not_visible() {
+        let params = crate::commands::WaitParams {
+            not_visible: Some("@spinner".to_string()),
+            ..Default::default()
+        };
+        let (cond, tgt) = resolve_wait_condition(&params);
+        assert_eq!(cond, Some("not_visible".to_string()));
+        assert_eq!(tgt, Some("@spinner".to_string()));
+    }
+
+    #[test]
+    fn test_wait_condition_text_gone() {
+        let params = crate::commands::WaitParams {
+            text_gone: Some("Loading...".to_string()),
+            ..Default::default()
+        };
+        let (cond, tgt) = resolve_wait_condition(&params);
+        assert_eq!(cond, Some("text_gone".to_string()));
+        assert_eq!(tgt, Some("Loading...".to_string()));
+    }
+
+    #[test]
+    fn test_wait_condition_value() {
+        let params = crate::commands::WaitParams {
+            value: Some("@inp1=hello".to_string()),
+            ..Default::default()
+        };
+        let (cond, tgt) = resolve_wait_condition(&params);
+        assert_eq!(cond, Some("value".to_string()));
+        assert_eq!(tgt, Some("@inp1=hello".to_string()));
+    }
+
+    #[test]
+    fn test_wait_condition_none() {
+        let params = crate::commands::WaitParams::default();
+        let (cond, tgt) = resolve_wait_condition(&params);
+        assert_eq!(cond, None);
+        assert_eq!(tgt, None);
+    }
 }

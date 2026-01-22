@@ -1364,4 +1364,453 @@ mod tests {
 
         assert!(Cli::try_parse_from(["agent-tui", "-f", "xml", "health"]).is_err());
     }
+
+    // =========================================================================
+    // Additional CLI Parsing Tests
+    // =========================================================================
+
+    /// Test --json shorthand flag
+    #[test]
+    fn test_json_shorthand_flag() {
+        let cli = Cli::parse_from(["agent-tui", "--json", "health"]);
+        assert!(cli.json);
+    }
+
+    /// Test tree output format
+    #[test]
+    fn test_tree_output_format() {
+        let cli = Cli::parse_from(["agent-tui", "-f", "tree", "snapshot"]);
+        assert_eq!(cli.format, OutputFormat::Tree);
+    }
+
+    /// Test spawn with cwd argument
+    #[test]
+    fn test_spawn_with_cwd() {
+        let cli = Cli::parse_from(["agent-tui", "spawn", "-d", "/tmp", "bash"]);
+        let Commands::Spawn { command, cwd, .. } = cli.command else {
+            panic!("Expected Spawn command, got {:?}", cli.command);
+        };
+        assert_eq!(command, "bash");
+        assert_eq!(cwd, Some("/tmp".to_string()));
+    }
+
+    /// Test get text subcommand
+    #[test]
+    fn test_get_text_subcommand() {
+        let cli = Cli::parse_from(["agent-tui", "get", "text", "@btn1"]);
+        let Commands::Get(GetCommand::Text { element_ref }) = cli.command else {
+            panic!("Expected Get Text command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@btn1");
+    }
+
+    /// Test get value subcommand
+    #[test]
+    fn test_get_value_subcommand() {
+        let cli = Cli::parse_from(["agent-tui", "get", "value", "@inp1"]);
+        let Commands::Get(GetCommand::Value { element_ref }) = cli.command else {
+            panic!("Expected Get Value command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@inp1");
+    }
+
+    /// Test get focused subcommand
+    #[test]
+    fn test_get_focused_subcommand() {
+        let cli = Cli::parse_from(["agent-tui", "get", "focused"]);
+        assert!(matches!(cli.command, Commands::Get(GetCommand::Focused)));
+    }
+
+    /// Test get title subcommand
+    #[test]
+    fn test_get_title_subcommand() {
+        let cli = Cli::parse_from(["agent-tui", "get", "title"]);
+        assert!(matches!(cli.command, Commands::Get(GetCommand::Title)));
+    }
+
+    /// Test is visible subcommand
+    #[test]
+    fn test_is_visible_subcommand() {
+        let cli = Cli::parse_from(["agent-tui", "is", "visible", "@btn1"]);
+        let Commands::Is(IsCommand::Visible { element_ref }) = cli.command else {
+            panic!("Expected Is Visible command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@btn1");
+    }
+
+    /// Test is focused subcommand
+    #[test]
+    fn test_is_focused_subcommand() {
+        let cli = Cli::parse_from(["agent-tui", "is", "focused", "@inp1"]);
+        let Commands::Is(IsCommand::Focused { element_ref }) = cli.command else {
+            panic!("Expected Is Focused command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@inp1");
+    }
+
+    /// Test is enabled subcommand
+    #[test]
+    fn test_is_enabled_subcommand() {
+        let cli = Cli::parse_from(["agent-tui", "is", "enabled", "@btn1"]);
+        let Commands::Is(IsCommand::Enabled { element_ref }) = cli.command else {
+            panic!("Expected Is Enabled command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@btn1");
+    }
+
+    /// Test is checked subcommand
+    #[test]
+    fn test_is_checked_subcommand() {
+        let cli = Cli::parse_from(["agent-tui", "is", "checked", "@cb1"]);
+        let Commands::Is(IsCommand::Checked { element_ref }) = cli.command else {
+            panic!("Expected Is Checked command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@cb1");
+    }
+
+    /// Test toggle with state flag
+    #[test]
+    fn test_toggle_with_state_true() {
+        let cli = Cli::parse_from(["agent-tui", "toggle", "@cb1", "--state", "true"]);
+        let Commands::Toggle { element_ref, state } = cli.command else {
+            panic!("Expected Toggle command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@cb1");
+        assert_eq!(state, Some(true));
+    }
+
+    /// Test toggle with state false
+    #[test]
+    fn test_toggle_with_state_false() {
+        let cli = Cli::parse_from(["agent-tui", "toggle", "@cb1", "--state", "false"]);
+        let Commands::Toggle { element_ref, state } = cli.command else {
+            panic!("Expected Toggle command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@cb1");
+        assert_eq!(state, Some(false));
+    }
+
+    /// Test check command
+    #[test]
+    fn test_check_command() {
+        let cli = Cli::parse_from(["agent-tui", "check", "@cb1"]);
+        let Commands::Check { element_ref } = cli.command else {
+            panic!("Expected Check command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@cb1");
+    }
+
+    /// Test uncheck command
+    #[test]
+    fn test_uncheck_command() {
+        let cli = Cli::parse_from(["agent-tui", "uncheck", "@cb1"]);
+        let Commands::Uncheck { element_ref } = cli.command else {
+            panic!("Expected Uncheck command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@cb1");
+    }
+
+    /// Test errors command with count
+    #[test]
+    fn test_errors_command_with_count() {
+        let cli = Cli::parse_from(["agent-tui", "errors", "-n", "25"]);
+        let Commands::Errors { count, clear } = cli.command else {
+            panic!("Expected Errors command, got {:?}", cli.command);
+        };
+        assert_eq!(count, 25);
+        assert!(!clear);
+    }
+
+    /// Test errors command with clear
+    #[test]
+    fn test_errors_command_with_clear() {
+        let cli = Cli::parse_from(["agent-tui", "errors", "--clear"]);
+        let Commands::Errors { clear, .. } = cli.command else {
+            panic!("Expected Errors command, got {:?}", cli.command);
+        };
+        assert!(clear);
+    }
+
+    /// Test attach command
+    #[test]
+    fn test_attach_command() {
+        let cli = Cli::parse_from(["agent-tui", "attach", "my-session"]);
+        let Commands::Attach {
+            session_id,
+            interactive,
+        } = cli.command
+        else {
+            panic!("Expected Attach command, got {:?}", cli.command);
+        };
+        assert_eq!(session_id, "my-session");
+        assert!(!interactive);
+    }
+
+    /// Test attach command with interactive flag
+    #[test]
+    fn test_attach_command_interactive() {
+        let cli = Cli::parse_from(["agent-tui", "attach", "-i", "my-session"]);
+        let Commands::Attach {
+            session_id,
+            interactive,
+        } = cli.command
+        else {
+            panic!("Expected Attach command, got {:?}", cli.command);
+        };
+        assert_eq!(session_id, "my-session");
+        assert!(interactive);
+    }
+
+    /// Test demo command
+    #[test]
+    fn test_demo_command() {
+        let cli = Cli::parse_from(["agent-tui", "demo"]);
+        assert!(matches!(cli.command, Commands::Demo));
+    }
+
+    /// Test record-start command
+    #[test]
+    fn test_record_start_command() {
+        let cli = Cli::parse_from(["agent-tui", "record-start"]);
+        assert!(matches!(cli.command, Commands::RecordStart));
+    }
+
+    /// Test record-stop command
+    #[test]
+    fn test_record_stop_command() {
+        let cli = Cli::parse_from(["agent-tui", "record-stop"]);
+        let Commands::RecordStop {
+            output,
+            record_format,
+        } = cli.command
+        else {
+            panic!("Expected RecordStop command, got {:?}", cli.command);
+        };
+        assert!(output.is_none());
+        assert!(matches!(record_format, RecordFormat::Json));
+    }
+
+    /// Test record-stop with output file
+    #[test]
+    fn test_record_stop_with_output() {
+        let cli = Cli::parse_from(["agent-tui", "record-stop", "-o", "recording.json"]);
+        let Commands::RecordStop { output, .. } = cli.command else {
+            panic!("Expected RecordStop command, got {:?}", cli.command);
+        };
+        assert_eq!(output, Some("recording.json".to_string()));
+    }
+
+    /// Test record-stop with asciicast format
+    #[test]
+    fn test_record_stop_asciicast_format() {
+        let cli = Cli::parse_from(["agent-tui", "record-stop", "--record-format", "asciicast"]);
+        let Commands::RecordStop { record_format, .. } = cli.command else {
+            panic!("Expected RecordStop command, got {:?}", cli.command);
+        };
+        assert!(matches!(record_format, RecordFormat::Asciicast));
+    }
+
+    /// Test record-status command
+    #[test]
+    fn test_record_status_command() {
+        let cli = Cli::parse_from(["agent-tui", "record-status"]);
+        assert!(matches!(cli.command, Commands::RecordStatus));
+    }
+
+    /// Test dblclick command
+    #[test]
+    fn test_dblclick_command() {
+        let cli = Cli::parse_from(["agent-tui", "dblclick", "@item1"]);
+        let Commands::DblClick { element_ref } = cli.command else {
+            panic!("Expected DblClick command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@item1");
+    }
+
+    /// Test restart command
+    #[test]
+    fn test_restart_command() {
+        let cli = Cli::parse_from(["agent-tui", "restart"]);
+        assert!(matches!(cli.command, Commands::Restart));
+    }
+
+    /// Test selectall command
+    #[test]
+    fn test_selectall_command() {
+        let cli = Cli::parse_from(["agent-tui", "selectall", "@inp1"]);
+        let Commands::SelectAll { element_ref } = cli.command else {
+            panic!("Expected SelectAll command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@inp1");
+    }
+
+    /// Test scrollintoview command
+    #[test]
+    fn test_scrollintoview_command() {
+        let cli = Cli::parse_from(["agent-tui", "scrollintoview", "@item5"]);
+        let Commands::ScrollIntoView { element_ref } = cli.command else {
+            panic!("Expected ScrollIntoView command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@item5");
+    }
+
+    /// Test multiselect command
+    #[test]
+    fn test_multiselect_command() {
+        let cli = Cli::parse_from(["agent-tui", "multiselect", "@sel1", "opt1", "opt2", "opt3"]);
+        let Commands::MultiSelect {
+            element_ref,
+            options,
+        } = cli.command
+        else {
+            panic!("Expected MultiSelect command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@sel1");
+        assert_eq!(options, vec!["opt1", "opt2", "opt3"]);
+    }
+
+    /// Test cleanup command
+    #[test]
+    fn test_cleanup_command() {
+        let cli = Cli::parse_from(["agent-tui", "cleanup"]);
+        let Commands::Cleanup { all } = cli.command else {
+            panic!("Expected Cleanup command, got {:?}", cli.command);
+        };
+        assert!(!all);
+    }
+
+    /// Test cleanup command with --all
+    #[test]
+    fn test_cleanup_command_all() {
+        let cli = Cli::parse_from(["agent-tui", "cleanup", "--all"]);
+        let Commands::Cleanup { all } = cli.command else {
+            panic!("Expected Cleanup command, got {:?}", cli.command);
+        };
+        assert!(all);
+    }
+
+    /// Test type command
+    #[test]
+    fn test_type_command() {
+        let cli = Cli::parse_from(["agent-tui", "type", "Hello, World!"]);
+        let Commands::Type { text } = cli.command else {
+            panic!("Expected Type command, got {:?}", cli.command);
+        };
+        assert_eq!(text, "Hello, World!");
+    }
+
+    /// Test keydown command
+    #[test]
+    fn test_keydown_command() {
+        let cli = Cli::parse_from(["agent-tui", "keydown", "Shift"]);
+        let Commands::KeyDown { key } = cli.command else {
+            panic!("Expected KeyDown command, got {:?}", cli.command);
+        };
+        assert_eq!(key, "Shift");
+    }
+
+    /// Test keyup command
+    #[test]
+    fn test_keyup_command() {
+        let cli = Cli::parse_from(["agent-tui", "keyup", "Shift"]);
+        let Commands::KeyUp { key } = cli.command else {
+            panic!("Expected KeyUp command, got {:?}", cli.command);
+        };
+        assert_eq!(key, "Shift");
+    }
+
+    /// Test select command
+    #[test]
+    fn test_select_command() {
+        let cli = Cli::parse_from(["agent-tui", "select", "@sel1", "option1"]);
+        let Commands::Select {
+            element_ref,
+            option,
+        } = cli.command
+        else {
+            panic!("Expected Select command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@sel1");
+        assert_eq!(option, "option1");
+    }
+
+    /// Test scroll with element target
+    #[test]
+    fn test_scroll_with_element() {
+        let cli = Cli::parse_from(["agent-tui", "scroll", "down", "-e", "@list1"]);
+        let Commands::Scroll { element, .. } = cli.command else {
+            panic!("Expected Scroll command, got {:?}", cli.command);
+        };
+        assert_eq!(element, Some("@list1".to_string()));
+    }
+
+    /// Test count command with role and name
+    #[test]
+    fn test_count_command_role_and_name() {
+        let cli = Cli::parse_from(["agent-tui", "count", "--role", "button", "--name", "Submit"]);
+        let Commands::Count { role, name, text } = cli.command else {
+            panic!("Expected Count command, got {:?}", cli.command);
+        };
+        assert_eq!(role, Some("button".to_string()));
+        assert_eq!(name, Some("Submit".to_string()));
+        assert!(text.is_none());
+    }
+
+    /// Test version command
+    #[test]
+    fn test_version_command() {
+        let cli = Cli::parse_from(["agent-tui", "version"]);
+        assert!(matches!(cli.command, Commands::Version));
+    }
+
+    /// Test env command
+    #[test]
+    fn test_env_command() {
+        let cli = Cli::parse_from(["agent-tui", "env"]);
+        assert!(matches!(cli.command, Commands::Env));
+    }
+
+    /// Test sessions command
+    #[test]
+    fn test_sessions_command() {
+        let cli = Cli::parse_from(["agent-tui", "sessions"]);
+        assert!(matches!(cli.command, Commands::Sessions));
+    }
+
+    /// Test kill command
+    #[test]
+    fn test_kill_command() {
+        let cli = Cli::parse_from(["agent-tui", "kill"]);
+        assert!(matches!(cli.command, Commands::Kill));
+    }
+
+    /// Test health command verbose flag
+    #[test]
+    fn test_health_verbose() {
+        let cli = Cli::parse_from(["agent-tui", "health", "-v"]);
+        let Commands::Health { verbose } = cli.command else {
+            panic!("Expected Health command, got {:?}", cli.command);
+        };
+        assert!(verbose);
+    }
+
+    /// Test completions command
+    #[test]
+    fn test_completions_command() {
+        let cli = Cli::parse_from(["agent-tui", "completions", "bash"]);
+        let Commands::Completions { shell } = cli.command else {
+            panic!("Expected Completions command, got {:?}", cli.command);
+        };
+        assert!(matches!(shell, Shell::Bash));
+    }
+
+    /// Test completions with fish shell
+    #[test]
+    fn test_completions_fish() {
+        let cli = Cli::parse_from(["agent-tui", "completions", "fish"]);
+        let Commands::Completions { shell } = cli.command else {
+            panic!("Expected Completions command, got {:?}", cli.command);
+        };
+        assert!(matches!(shell, Shell::Fish));
+    }
 }

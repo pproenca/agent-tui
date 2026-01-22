@@ -271,4 +271,90 @@ mod tests {
         let role = infer_role(&cluster, 5, 15);
         assert_eq!(role, Role::StaticText);
     }
+
+    // ============================================================
+    // Property-based tests
+    // ============================================================
+
+    mod prop_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn arb_cluster() -> impl Strategy<Value = Cluster> {
+            (
+                "[a-zA-Z0-9 ]{1,20}",
+                any::<bool>(),
+                any::<bool>(),
+                0u16..100,
+                0u16..50,
+            )
+                .prop_map(|(text, bold, inverse, x, y)| Cluster {
+                    rect: Rect::new(x, y, text.len() as u16, 1),
+                    text,
+                    style: CellStyle {
+                        bold,
+                        underline: false,
+                        inverse,
+                        fg_color: None,
+                        bg_color: None,
+                    },
+                    is_whitespace: false,
+                })
+        }
+
+        proptest! {
+            #[test]
+            fn classification_is_deterministic(
+                clusters in prop::collection::vec(arb_cluster(), 1..10),
+                cursor_row in 0u16..50,
+                cursor_col in 0u16..100
+            ) {
+                let clusters_clone: Vec<Cluster> = clusters.iter().map(|c| Cluster {
+                    rect: c.rect,
+                    text: c.text.clone(),
+                    style: c.style.clone(),
+                    is_whitespace: c.is_whitespace,
+                }).collect();
+
+                let result1 = classify(clusters, cursor_row, cursor_col);
+                let result2 = classify(clusters_clone, cursor_row, cursor_col);
+
+                prop_assert_eq!(result1.len(), result2.len());
+                for (a, b) in result1.iter().zip(result2.iter()) {
+                    prop_assert_eq!(a.role, b.role);
+                    prop_assert_eq!(a.bounds, b.bounds);
+                    prop_assert_eq!(&a.text_content, &b.text_content);
+                    prop_assert_eq!(a.visual_hash, b.visual_hash);
+                }
+            }
+
+            #[test]
+            fn classify_preserves_count(
+                clusters in prop::collection::vec(arb_cluster(), 0..20),
+                cursor_row in 0u16..50,
+                cursor_col in 0u16..100
+            ) {
+                let count = clusters.len();
+                let components = classify(clusters, cursor_row, cursor_col);
+                prop_assert_eq!(components.len(), count);
+            }
+
+            #[test]
+            fn component_ids_unique(
+                clusters in prop::collection::vec(arb_cluster(), 2..10),
+                cursor_row in 0u16..50,
+                cursor_col in 0u16..100
+            ) {
+                let components = classify(clusters, cursor_row, cursor_col);
+                let ids: Vec<_> = components.iter().map(|c| c.id).collect();
+
+                for (i, id) in ids.iter().enumerate() {
+                    prop_assert!(
+                        !ids[i + 1..].contains(id),
+                        "Duplicate component ID found"
+                    );
+                }
+            }
+        }
+    }
 }

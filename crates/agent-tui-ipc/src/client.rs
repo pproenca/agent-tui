@@ -108,11 +108,17 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
     let exe = std::env::current_exe()?;
     let log_path = socket_path().with_extension("log");
 
-    let log_file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .ok();
+    let log_file = match OpenOptions::new().create(true).append(true).open(&log_path) {
+        Ok(f) => Some(f),
+        Err(e) => {
+            eprintln!(
+                "Warning: Could not open daemon log file {}: {}",
+                log_path.display(),
+                e
+            );
+            None
+        }
+    };
 
     let stderr = match log_file {
         Some(f) => Stdio::from(f),

@@ -187,4 +187,109 @@ mod tests {
         assert_eq!(clusters[0].text, "X");
         assert_eq!(clusters[0].rect.width, 1);
     }
+
+    // ============================================================
+    // Property-based tests
+    // ============================================================
+
+    mod prop_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn arb_color() -> impl Strategy<Value = Option<Color>> {
+            prop_oneof![Just(None), (0u8..16).prop_map(|i| Some(Color::Indexed(i))),]
+        }
+
+        fn arb_cell() -> impl Strategy<Value = Cell> {
+            (any::<char>(), any::<bool>(), arb_color()).prop_map(|(char, bold, bg)| Cell {
+                char: if char.is_control() { ' ' } else { char },
+                style: CellStyle {
+                    bold,
+                    underline: false,
+                    inverse: false,
+                    fg_color: None,
+                    bg_color: bg,
+                },
+            })
+        }
+
+        fn arb_buffer(max_rows: usize, max_cols: usize) -> impl Strategy<Value = ScreenBuffer> {
+            prop::collection::vec(
+                prop::collection::vec(arb_cell(), 1..=max_cols),
+                1..=max_rows,
+            )
+            .prop_map(|rows| {
+                let max_width = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+                let normalized: Vec<Vec<Cell>> = rows
+                    .into_iter()
+                    .map(|mut row| {
+                        row.resize(
+                            max_width,
+                            Cell {
+                                char: ' ',
+                                style: CellStyle::default(),
+                            },
+                        );
+                        row
+                    })
+                    .collect();
+                ScreenBuffer { cells: normalized }
+            })
+        }
+
+        proptest! {
+            #[test]
+            fn clusters_never_overlap(buffer in arb_buffer(10, 40)) {
+                let clusters = segment_buffer(&buffer);
+
+                for (i, a) in clusters.iter().enumerate() {
+                    for b in clusters.iter().skip(i + 1) {
+                        if a.rect.y == b.rect.y {
+                            let a_end = a.rect.x + a.rect.width;
+                            let b_end = b.rect.x + b.rect.width;
+                            let no_overlap = a_end <= b.rect.x || b_end <= a.rect.x;
+                            prop_assert!(
+                                no_overlap,
+                                "Clusters overlap on row {}: [{}, {}) vs [{}, {})",
+                                a.rect.y, a.rect.x, a_end, b.rect.x, b_end
+                            );
+                        }
+                    }
+                }
+            }
+
+            #[test]
+            fn cluster_bounds_within_buffer(buffer in arb_buffer(10, 40)) {
+                let clusters = segment_buffer(&buffer);
+                let rows = buffer.cells.len() as u16;
+                let cols = buffer.cells.first().map(|r| r.len()).unwrap_or(0) as u16;
+
+                for cluster in &clusters {
+                    prop_assert!(
+                        cluster.rect.y < rows,
+                        "Cluster y {} >= rows {}",
+                        cluster.rect.y, rows
+                    );
+                    prop_assert!(
+                        cluster.rect.x + cluster.rect.width <= cols,
+                        "Cluster extends past buffer: x={} width={} cols={}",
+                        cluster.rect.x, cluster.rect.width, cols
+                    );
+                }
+            }
+
+            #[test]
+            fn segmentation_is_deterministic(buffer in arb_buffer(5, 20)) {
+                let clusters1 = segment_buffer(&buffer);
+                let clusters2 = segment_buffer(&buffer);
+
+                prop_assert_eq!(clusters1.len(), clusters2.len());
+                for (a, b) in clusters1.iter().zip(clusters2.iter()) {
+                    prop_assert_eq!(a.rect, b.rect);
+                    prop_assert_eq!(&a.text, &b.text);
+                    prop_assert_eq!(&a.style, &b.style);
+                }
+            }
+        }
+    }
 }

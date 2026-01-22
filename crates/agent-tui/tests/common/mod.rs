@@ -43,3 +43,36 @@ pub const TEST_PID: u32 = 12345;
 /// Standard terminal size for tests
 pub const TEST_COLS: u16 = 120;
 pub const TEST_ROWS: u16 = 40;
+
+// ============================================================
+// Timeout utilities
+// ============================================================
+
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
+/// Execute a function with a timeout, returning None if it doesn't complete in time.
+///
+/// Spawns the function on a background thread and waits for completion
+/// up to the specified duration. Useful for preventing test hangs.
+///
+/// # Example
+/// ```ignore
+/// let result = with_timeout(Duration::from_secs(5), || {
+///     some_potentially_slow_operation()
+/// });
+/// assert!(result.is_some(), "Operation timed out");
+/// ```
+pub fn with_timeout<F, T>(duration: Duration, f: F) -> Option<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let result = f();
+        let _ = tx.send(result);
+    });
+    rx.recv_timeout(duration).ok()
+}

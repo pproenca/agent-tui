@@ -1,10 +1,14 @@
 use agent_tui_common::ValueExt;
 use agent_tui_common::mutex_lock_or_recover;
-use agent_tui_core::{Component, Element};
-use agent_tui_ipc::{
-    RpcRequest, RpcResponse, ai_friendly_error, lock_timeout_response, socket_path,
-};
-use serde_json::{Value, json};
+use agent_tui_core::Component;
+use agent_tui_core::Element;
+use agent_tui_ipc::RpcRequest;
+use agent_tui_ipc::RpcResponse;
+use agent_tui_ipc::ai_friendly_error;
+use agent_tui_ipc::lock_timeout_response;
+use agent_tui_ipc::socket_path;
+use serde_json::Value;
+use serde_json::json;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::io::AsRawFd;
@@ -1716,9 +1720,14 @@ pub fn start_daemon() -> std::io::Result<()> {
         match stream {
             Ok(stream) => {
                 let server = Arc::clone(&server);
-                thread::spawn(move || {
-                    server.handle_client(stream);
-                });
+                if let Err(e) = thread::Builder::new()
+                    .name("client-handler".to_string())
+                    .spawn(move || {
+                        server.handle_client(stream);
+                    })
+                {
+                    eprintln!("Failed to spawn client handler thread: {}", e);
+                }
             }
             Err(e) => {
                 eprintln!("Error accepting connection: {}", e);

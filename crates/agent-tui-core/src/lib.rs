@@ -3,6 +3,9 @@
 mod element;
 pub mod vom;
 
+#[cfg(test)]
+pub mod test_fixtures;
+
 pub use element::Element;
 pub use element::ElementType;
 pub use element::Position;

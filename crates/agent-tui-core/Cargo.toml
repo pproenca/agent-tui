@@ -12,3 +12,6 @@ agent-tui-terminal.workspace = true
 uuid.workspace = true
 regex.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

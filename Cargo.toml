@@ -44,6 +44,7 @@ libc = "0.2"
 assert_cmd = "2.0"
 predicates = "3.0"
 tempfile = "3.0"
+proptest = "1.5"
 
 [profile.release]
 opt-level = 3

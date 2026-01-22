@@ -1,0 +1,14 @@
+[package]
+name = "agent-tui-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "VOM analysis engine for agent-tui"
+
+[dependencies]
+agent-tui-common.workspace = true
+agent-tui-terminal.workspace = true
+uuid.workspace = true
+regex.workspace = true
+serde.workspace = true

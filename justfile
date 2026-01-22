@@ -13,56 +13,68 @@ ready: format-check lint test
 
 # Format code
 format:
-    cd cli && cargo fmt --all
+    cargo fmt --all
 
 # Check formatting without modifying
 format-check:
-    cd cli && cargo fmt --all -- --check
+    cargo fmt --all -- --check
 
 # Run clippy lints
 lint:
-    cd cli && cargo lint
+    cargo clippy --workspace -- -D warnings
 
 # Run tests
 test:
-    cd cli && cargo test
+    cargo test --workspace
 
 # Run tests with output
 test-verbose:
-    cd cli && cargo test -- --nocapture
+    cargo test --workspace -- --nocapture
 
 # Build debug
 build:
-    cd cli && cargo build
+    cargo build --workspace
 
 # Build release
 build-release:
-    cd cli && cargo build --release
+    cargo build --workspace --release
 
 # Clean build artifacts
 clean:
-    cd cli && cargo clean
+    cargo clean
 
 # Run the daemon in foreground
 daemon:
-    cd cli && cargo run -- daemon
+    cargo run -p agent-tui -- daemon
 
 # Run health check
 health:
-    cd cli && cargo run -- health
+    cargo run -p agent-tui -- health
 
 # Watch and rebuild on changes (requires cargo-watch)
 watch:
-    cd cli && cargo watch -x build
+    cargo watch -x "build --workspace"
 
 # Check for unused dependencies (requires cargo-udeps and nightly)
 udeps:
-    cd cli && cargo +nightly udeps --all-targets
+    cargo +nightly udeps --workspace --all-targets
 
 # Update dependencies
 update:
-    cd cli && cargo update
+    cargo update
 
 # Generate documentation
 doc:
-    cd cli && cargo doc --no-deps --open
+    cargo doc --workspace --no-deps --open
+
+# Build a specific crate
+build-crate crate:
+    cargo build -p {{crate}}
+
+# Test a specific crate
+test-crate crate:
+    cargo test -p {{crate}}
+
+# Lint a specific crate
+lint-crate crate:
+    cargo clippy -p {{crate}} -- -D warnings

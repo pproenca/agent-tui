@@ -1,0 +1,16 @@
+[package]
+name = "agent-tui-terminal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PTY and terminal emulation for agent-tui"
+
+[dependencies]
+agent-tui-common.workspace = true
+portable-pty.workspace = true
+vt100.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true

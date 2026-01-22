@@ -1,0 +1,52 @@
+[workspace]
+members = [
+    "crates/agent-tui",
+    "crates/agent-tui-core",
+    "crates/agent-tui-terminal",
+    "crates/agent-tui-daemon",
+    "crates/agent-tui-ipc",
+    "crates/agent-tui-common",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.3.6"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/pproenca/agent-tui"
+
+[workspace.dependencies]
+# Internal
+agent-tui-core = { path = "crates/agent-tui-core" }
+agent-tui-terminal = { path = "crates/agent-tui-terminal" }
+agent-tui-daemon = { path = "crates/agent-tui-daemon" }
+agent-tui-ipc = { path = "crates/agent-tui-ipc" }
+agent-tui-common = { path = "crates/agent-tui-common" }
+
+# External (pinned)
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.36", features = ["full"] }
+uuid = { version = "1.7", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+clap_complete = "4.5"
+crossterm = "0.28"
+base64 = "0.22"
+portable-pty = "0.8"
+vt100 = "0.15"
+regex = "1.10"
+rand = "0.8"
+libc = "0.2"
+
+[workspace.dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.0"
+tempfile = "3.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

@@ -157,6 +157,61 @@ Shell scripts for full system testing:
 | `AGENT_TUI_IDLE_TIMEOUT` | Idle connection timeout (seconds) | 300 |
 | `AGENT_TUI_MAX_REQUEST` | Max request size (bytes) | 1048576 (1MB) |
 
+## Feature Development Pipeline
+
+For complex features, use the structured pipeline:
+
+```
+/brainstorm → /spec → /plan-tdd → Execute
+```
+
+### Pipeline Commands
+
+| Command | Input | Output | Purpose |
+|---------|-------|--------|---------|
+| `/brainstorm <name>` | Ideas | `brainstorm.md` | Capture raw ideas, explore problem space |
+| `/spec <name>` | `brainstorm.md` | `spec.md` | Formalize decisions, define interfaces |
+| `/plan-tdd <name>` | `spec.md` | TaskList + `plan-summary.md` | Create executable TDD tasks |
+
+### Artifact Location
+
+All artifacts live in `.claude/specs/<feature-name>/`:
+```
+.claude/specs/plugin-system/
+├── brainstorm.md     ← Raw ideas, open questions
+├── spec.md           ← Formal spec with decisions
+└── plan-summary.md   ← Task plan overview
+```
+
+### When to Use Each Stage
+
+**Full Pipeline** (`/brainstorm` → `/spec` → `/plan-tdd`):
+- New features with unclear requirements
+- Architectural changes
+- Features needing stakeholder input
+
+**Skip to Spec** (`/spec` → `/plan-tdd`):
+- Requirements already clear
+- Enhancing existing feature
+
+**Direct to Tasks** (`/plan-tdd` only):
+- Well-defined small features
+- Bug fixes with known solution
+- Refactoring with clear target
+
+### TDD Task Pattern
+Every feature follows Red-Green-Refactor with enforced dependencies:
+1. `[RED]` Write failing test → blocks implementation
+2. `[GREEN]` Implement to pass → blocked by test
+3. `[REFACTOR]` Clean up → blocked by implementation
+
+### Carpaccio Slicing
+Tasks are atomic and demonstrable:
+- Each completable in a single focused action
+- One clear outcome per task
+- Always includes verification command
+- If you say "and", split it
+
 ## Getting Started
 
 New to agent-tui? Check RALPH loop status:

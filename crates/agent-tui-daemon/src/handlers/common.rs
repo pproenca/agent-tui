@@ -1,2 +1,2 @@
 // Re-export common adapter functions for use in handlers
-pub use crate::adapters::{domain_error_response, lock_timeout_response, session_error_response};
+pub use crate::adapters::session_error_response;

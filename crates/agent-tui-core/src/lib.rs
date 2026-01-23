@@ -30,3 +30,14 @@ pub use vom::analyze;
 pub use vom::classify;
 pub use vom::hash_cluster;
 pub use vom::segment_buffer;
+
+/// Cursor position in the terminal.
+///
+/// This is a pure value object representing where the cursor is located
+/// in the terminal grid.
+#[derive(Debug, Clone)]
+pub struct CursorPosition {
+    pub row: u16,
+    pub col: u16,
+    pub visible: bool,
+}

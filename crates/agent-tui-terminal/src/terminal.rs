@@ -34,12 +34,7 @@ impl ScreenGrid for ScreenBuffer {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CursorPosition {
-    pub row: u16,
-    pub col: u16,
-    pub visible: bool,
-}
+pub use agent_tui_core::CursorPosition;
 
 pub struct VirtualTerminal {
     parser: Arc<Mutex<Parser>>,

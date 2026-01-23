@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use agent_tui_core::CursorPosition;
 use agent_tui_core::Element;
-use agent_tui_terminal::CursorPosition;
 
 use crate::session::ErrorEntry;
 use crate::session::RecordingFrame;

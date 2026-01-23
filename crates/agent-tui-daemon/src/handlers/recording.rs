@@ -1,31 +1,10 @@
 use agent_tui_ipc::{RpcRequest, RpcResponse};
 use serde_json::{Value, json};
-use std::sync::Arc;
 
 use super::common::session_error_response;
 use crate::domain::{RecordStartInput, RecordStatusInput, RecordStopInput};
-use crate::error::DomainError;
-use crate::lock_helpers::{LOCK_TIMEOUT, acquire_session_lock};
-use crate::session::{RecordingFrame, SessionManager};
+use crate::session::RecordingFrame;
 use crate::usecases::{RecordStartUseCase, RecordStatusUseCase, RecordStopUseCase};
-
-fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
-    RpcResponse::domain_error(
-        id,
-        err.code(),
-        &err.to_string(),
-        err.category().as_str(),
-        Some(err.context()),
-        Some(err.suggestion()),
-    )
-}
-
-fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
-    let err = DomainError::LockTimeout {
-        session_id: session_id.map(String::from),
-    };
-    domain_error_response(id, &err)
-}
 
 fn build_asciicast(session_id: &str, cols: u16, rows: u16, frames: &[RecordingFrame]) -> Value {
     let mut output = Vec::new();
@@ -178,107 +157,5 @@ pub fn handle_record_status_uc<U: RecordStatusUseCase>(
             }),
         ),
         Err(e) => session_error_response(req_id, e),
-    }
-}
-
-pub fn handle_record_start(
-    session_manager: &Arc<SessionManager>,
-    request: RpcRequest,
-) -> RpcResponse {
-    let session_id = request.param_str("session");
-    let req_id = request.id;
-
-    match session_manager.resolve(session_id) {
-        Ok(session) => {
-            let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                return lock_timeout_response(req_id, session_id);
-            };
-            sess.start_recording();
-            RpcResponse::success(
-                req_id,
-                json!({
-                    "success": true,
-                    "session_id": sess.id,
-                    "recording": true
-                }),
-            )
-        }
-        Err(e) => domain_error_response(req_id, &DomainError::from(e)),
-    }
-}
-
-pub fn handle_record_stop(
-    session_manager: &Arc<SessionManager>,
-    request: RpcRequest,
-) -> RpcResponse {
-    let session_id = request.param_str("session");
-    let format = request.param_str("format").unwrap_or("asciicast");
-    let req_id = request.id;
-
-    match session_manager.resolve(session_id) {
-        Ok(session) => {
-            let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                return lock_timeout_response(req_id, session_id);
-            };
-
-            let frames = sess.stop_recording();
-            let (cols, rows) = sess.size();
-            let session_id_str = sess.id.to_string();
-
-            let recording_data = match format {
-                "asciicast" => build_asciicast(&session_id_str, cols, rows, &frames),
-                _ => {
-                    let frame_data: Vec<_> = frames
-                        .iter()
-                        .map(|f| {
-                            json!({
-                                "timestamp_ms": f.timestamp_ms,
-                                "screen": f.screen
-                            })
-                        })
-                        .collect();
-                    json!({ "frames": frame_data, "frame_count": frames.len() })
-                }
-            };
-
-            RpcResponse::success(
-                req_id,
-                json!({
-                    "success": true,
-                    "session_id": session_id_str,
-                    "frame_count": frames.len(),
-                    "recording": recording_data
-                }),
-            )
-        }
-        Err(e) => domain_error_response(req_id, &DomainError::from(e)),
-    }
-}
-
-pub fn handle_record_status(
-    session_manager: &Arc<SessionManager>,
-    request: RpcRequest,
-) -> RpcResponse {
-    let session_id = request.param_str("session");
-    let req_id = request.id;
-
-    match session_manager.resolve(session_id) {
-        Ok(session) => {
-            let Some(sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                return lock_timeout_response(req_id, session_id);
-            };
-
-            let status = sess.recording_status();
-            RpcResponse::success(
-                req_id,
-                json!({
-                    "session_id": sess.id,
-                    "recording": status.is_recording,
-                    "frame_count": status.frame_count,
-                    "duration_ms": status.duration_ms
-                }),
-            )
-        }
-        Err(e) => domain_error_response(req_id, &DomainError::from(e)),
     }
 }

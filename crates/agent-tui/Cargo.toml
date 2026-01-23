@@ -19,7 +19,6 @@ path = "src/lib.rs"
 [dependencies]
 agent-tui-common.workspace = true
 agent-tui-core.workspace = true
-agent-tui-terminal.workspace = true
 agent-tui-daemon.workspace = true
 agent-tui-ipc.workspace = true
 clap.workspace = true

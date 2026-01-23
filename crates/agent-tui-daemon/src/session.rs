@@ -15,19 +15,24 @@ use chrono::DateTime;
 use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
-use uuid::Uuid;
 
 use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_common::rwlock_read_or_recover;
 use agent_tui_common::rwlock_write_or_recover;
 use agent_tui_core::Element;
-use agent_tui_core::component_to_element;
-use agent_tui_core::find_element_by_ref;
 use agent_tui_terminal::CursorPosition;
 use agent_tui_terminal::PtyHandle;
-use agent_tui_terminal::VirtualTerminal;
 use agent_tui_terminal::key_to_escape_sequence;
 
+use crate::pty_session::PtySession;
+use crate::terminal_state::TerminalState;
+
+pub use crate::domain::session_types::ErrorEntry;
+pub use crate::domain::session_types::RecordingFrame;
+pub use crate::domain::session_types::RecordingStatus;
+pub use crate::domain::session_types::SessionId;
+pub use crate::domain::session_types::SessionInfo;
+pub use crate::domain::session_types::TraceEntry;
 pub use crate::error::SessionError;
 
 const MAX_RECORDING_FRAMES: usize = 1000;
@@ -46,54 +51,6 @@ fn push_bounded<T>(queue: &mut VecDeque<T>, item: T, max_size: usize) {
     queue.push_back(item);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionId(String);
-
-impl SessionId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-
-    pub fn generate() -> Self {
-        Self(Uuid::new_v4().to_string()[..8].to_string())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for SessionId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl AsRef<str> for SessionId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for SessionId {
-    fn from(s: String) -> Self {
-        Self(s)
-    }
-}
-
-impl From<&str> for SessionId {
-    fn from(s: &str) -> Self {
-        Self(s.to_string())
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct RecordingFrame {
-    pub timestamp_ms: u64,
-    pub screen: String,
-}
-
 struct RecordingState {
     is_recording: bool,
     start_time: Instant,
@@ -110,13 +67,6 @@ impl RecordingState {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct TraceEntry {
-    pub timestamp_ms: u64,
-    pub action: String,
-    pub details: Option<String>,
-}
-
 struct TraceState {
     is_tracing: bool,
     start_time: Instant,
@@ -131,19 +81,6 @@ impl TraceState {
             entries: VecDeque::new(),
         }
     }
-}
-
-pub struct RecordingStatus {
-    pub is_recording: bool,
-    pub frame_count: usize,
-    pub duration_ms: u64,
-}
-
-#[derive(Clone, Debug)]
-pub struct ErrorEntry {
-    pub timestamp: String,
-    pub message: String,
-    pub source: String,
 }
 
 struct ErrorState {
@@ -201,9 +138,8 @@ pub struct Session {
     pub id: SessionId,
     pub command: String,
     pub created_at: DateTime<Utc>,
-    pty: PtyHandle,
-    terminal: VirtualTerminal,
-    cached_elements: Vec<Element>,
+    pty: PtySession,
+    terminal: TerminalState,
     recording: RecordingState,
     trace: TraceState,
     held_modifiers: ModifierState,
@@ -216,9 +152,8 @@ impl Session {
             id,
             command,
             created_at: Utc::now(),
-            pty,
-            terminal: VirtualTerminal::new(cols, rows),
-            cached_elements: Vec::new(),
+            pty: PtySession::new(pty),
+            terminal: TerminalState::new(cols, rows),
             recording: RecordingState::new(),
             trace: TraceState::new(),
             held_modifiers: ModifierState::default(),
@@ -256,7 +191,7 @@ impl Session {
                         break;
                     }
 
-                    return Err(SessionError::Pty(e));
+                    return Err(e);
                 }
             }
         }
@@ -273,26 +208,16 @@ impl Session {
     }
 
     pub fn detect_elements(&mut self) -> &[Element] {
-        let buffer = self.terminal.screen_buffer();
         let cursor = self.terminal.cursor();
-        let components = agent_tui_core::analyze(&buffer, cursor.row, cursor.col);
-
-        self.cached_elements = components
-            .iter()
-            .filter(|c| c.role.is_interactive())
-            .enumerate()
-            .map(|(i, c)| component_to_element(c, i, cursor.row, cursor.col))
-            .collect();
-
-        &self.cached_elements
+        self.terminal.detect_elements(cursor.row, cursor.col)
     }
 
     pub fn cached_elements(&self) -> &[Element] {
-        &self.cached_elements
+        self.terminal.cached_elements()
     }
 
     pub fn find_element(&self, element_ref: &str) -> Option<&Element> {
-        find_element_by_ref(&self.cached_elements, element_ref)
+        self.terminal.find_element(element_ref)
     }
 
     pub fn keystroke(&self, key: &str) -> Result<(), SessionError> {
@@ -366,9 +291,7 @@ impl Session {
     }
 
     pub fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
-        self.pty
-            .try_read(buf, timeout_ms)
-            .map_err(SessionError::Pty)
+        self.pty.try_read(buf, timeout_ms)
     }
 
     pub fn start_recording(&mut self) {
@@ -485,9 +408,30 @@ impl Session {
     }
 
     pub fn analyze_screen(&self) -> Vec<agent_tui_core::Component> {
-        let buffer = self.terminal.screen_buffer();
         let cursor = self.terminal.cursor();
-        agent_tui_core::analyze(&buffer, cursor.row, cursor.col)
+        self.terminal.analyze_screen(cursor.row, cursor.col)
+    }
+}
+
+impl crate::repository::SessionOps for Session {
+    fn update(&mut self) -> Result<(), SessionError> {
+        Session::update(self)
+    }
+
+    fn screen_text(&self) -> String {
+        Session::screen_text(self)
+    }
+
+    fn detect_elements(&mut self) -> &[Element] {
+        Session::detect_elements(self)
+    }
+
+    fn find_element(&self, element_ref: &str) -> Option<&Element> {
+        Session::find_element(self, element_ref)
+    }
+
+    fn pty_write(&mut self, data: &[u8]) -> Result<(), SessionError> {
+        Session::pty_write(self, data)
     }
 }
 
@@ -694,29 +638,6 @@ impl SessionManager {
 
     pub fn active_session_id(&self) -> Option<SessionId> {
         rwlock_read_or_recover(&self.active_session).clone()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SessionInfo {
-    pub id: SessionId,
-    pub command: String,
-    pub pid: u32,
-    pub running: bool,
-    pub created_at: String,
-    pub size: (u16, u16),
-}
-
-impl SessionInfo {
-    pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "id": self.id,
-            "command": self.command,
-            "pid": self.pid,
-            "running": self.running,
-            "created_at": self.created_at,
-            "size": { "cols": self.size.0, "rows": self.size.1 }
-        })
     }
 }
 

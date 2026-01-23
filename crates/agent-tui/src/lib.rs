@@ -9,6 +9,7 @@ pub mod attach;
 pub mod commands;
 pub mod error;
 pub mod handlers;
+pub mod presenter;
 
 pub use agent_tui_common::Colors;
 pub use agent_tui_core::Element;

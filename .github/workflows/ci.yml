@@ -4,16 +4,18 @@ on:
   push:
     branches: [main, master]
     paths:
-      - 'cli/**'
-      - 'cli/Cargo.lock'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main, master]
     paths:
-      - 'cli/**'
-      - 'cli/Cargo.lock'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ci.yml'
@@ -40,7 +42,6 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
-        working-directory: cli
         run: cargo fmt --all -- --check
 
   lint:
@@ -60,14 +61,13 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('cli/Cargo.lock') }}
+            target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-lint-
 
       - name: Clippy
-        working-directory: cli
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   udeps:
     name: Check Unused Dependencies
@@ -87,14 +87,13 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-udeps-${{ hashFiles('cli/Cargo.lock') }}
+            target
+          key: ${{ runner.os }}-cargo-udeps-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-udeps-
 
       - name: Check unused dependencies
-        working-directory: cli
-        run: cargo +nightly udeps --all-targets
+        run: cargo +nightly udeps --workspace --all-targets
 
   build:
     name: Build & Test (${{ matrix.os }})
@@ -116,28 +115,26 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-build-${{ hashFiles('cli/Cargo.lock') }}
+            target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-build-
 
       - name: Build
-        working-directory: cli
-        run: cargo build --release
+        run: cargo build --workspace --release
 
       - name: Run tests
-        working-directory: cli
         run: |
           # Run lib and bin tests + e2e_daemon_tests (can run in parallel)
-          cargo test --release --lib --bins --test e2e_daemon_tests
+          cargo test --release -p agent-tui --lib --bins --test e2e_daemon_tests
           # Run e2e_workflow_tests single-threaded (they share daemon state)
-          cargo test --release --test e2e_workflow_tests -- --test-threads=1
+          cargo test --release -p agent-tui --test e2e_workflow_tests -- --test-threads=1
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
           name: agent-tui-${{ matrix.os }}
-          path: cli/target/release/agent-tui
+          path: target/release/agent-tui
           if-no-files-found: error
 
   integration:
@@ -223,8 +220,7 @@ jobs:
           node-version: '20'
 
       - name: Cargo publish dry-run
-        working-directory: cli
-        run: cargo publish --dry-run
+        run: cargo publish --dry-run -p agent-tui
 
       - name: npm ci (validate package-lock.json)
         run: npm ci --ignore-scripts

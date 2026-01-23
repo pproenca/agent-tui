@@ -11,15 +11,14 @@ agent-tui enables AI agents to programmatically interact with TUI (Terminal User
 ## Build Commands
 
 ```bash
-cd cli
-cargo build                    # Debug build
-cargo build --release          # Release build
-cargo run -- <args>            # Build and run
-cargo fmt                      # Format code
-cargo lint                     # Lint (alias for clippy with -D warnings)
-cargo test                     # Run all tests
-cargo test test_name           # Run specific test
-cargo test -- --nocapture      # Tests with output
+cargo build --workspace              # Debug build all crates
+cargo build --workspace --release    # Release build
+cargo run -p agent-tui -- <args>     # Run CLI
+cargo fmt                            # Format code
+cargo clippy --workspace -- -D warnings  # Lint all crates
+cargo test --workspace               # Run all tests
+cargo test test_name                 # Run specific test
+cargo test -- --nocapture            # Tests with output
 ```
 
 Or use `just` recipes from the project root:
@@ -32,6 +31,17 @@ just watch        # Rebuild on changes (requires cargo-watch)
 ```
 
 ## Architecture
+
+### Workspace Crates
+
+| Crate | Purpose |
+|-------|---------|
+| `agent-tui` | CLI binary and command handlers |
+| `agent-tui-core` | VOM, session management, core types |
+| `agent-tui-terminal` | Terminal emulation, PTY handling |
+| `agent-tui-daemon` | JSON-RPC server, daemon logic |
+| `agent-tui-ipc` | Client/server IPC protocol |
+| `agent-tui-common` | Shared utilities and types |
 
 ### Data Flow
 ```
@@ -46,21 +56,19 @@ CLI (clap) → JSON-RPC request → Unix socket → Daemon
                                          Target TUI app
 ```
 
-### Key Modules (`cli/src/`)
+### Key Modules
 
 | Module | Purpose |
 |--------|---------|
-| `main.rs` | Entry point, command dispatch |
-| `commands.rs` | Clap CLI definitions |
-| `handlers.rs` | Command execution logic |
-| `session.rs` | Session lifecycle and state management |
-| `client.rs` | IPC client implementation |
-| `pty.rs` | PTY creation and I/O handling |
-| `terminal.rs` | Terminal emulation, screen buffer |
-| `attach.rs` | Interactive terminal attach mode |
-| `wait.rs` | Wait conditions and polling logic |
+| `crates/agent-tui/src/main.rs` | Entry point, command dispatch |
+| `crates/agent-tui/src/commands.rs` | Clap CLI definitions |
+| `crates/agent-tui/src/handlers.rs` | Command execution logic |
+| `crates/agent-tui-core/src/session.rs` | Session lifecycle and state management |
+| `crates/agent-tui-ipc/src/client.rs` | IPC client implementation |
+| `crates/agent-tui-terminal/src/pty.rs` | PTY creation and I/O handling |
+| `crates/agent-tui-terminal/src/terminal.rs` | Terminal emulation, screen buffer |
 
-### VOM (Visual Object Model) - `cli/src/vom/`
+### VOM (Visual Object Model) - `crates/agent-tui-core/src/vom/`
 
 The VOM is the core element detection system. Pipeline:
 
@@ -69,18 +77,25 @@ The VOM is the core element detection system. Pipeline:
 
 Supported roles: `Button`, `Tab`, `Input`, `StaticText`, `Panel`, `Checkbox`, `MenuItem`
 
-### Daemon (`cli/src/daemon/`)
+### Daemon (`crates/agent-tui-daemon/src/`)
 
 | File | Purpose |
 |------|---------|
 | `server.rs` | JSON-RPC server, request routing |
-| `rpc_types.rs` | Request/response type definitions |
+| `session.rs` | Session management, state |
+| `wait.rs` | Wait conditions, stable tracking |
+
+### IPC (`crates/agent-tui-ipc/src/`)
+
+| File | Purpose |
+|------|---------|
+| `client.rs` | DaemonClient for CLI |
+| `types.rs` | Request/response type definitions |
 | `error_messages.rs` | User-facing error formatting |
 
 ### IPC Protocol
 
 - JSON-RPC 2.0 over Unix socket: `$XDG_RUNTIME_DIR/agent-tui.sock` or `/tmp/agent-tui.sock`
-- TCP fallback on port 19847 via `AGENT_TUI_TRANSPORT=tcp`
 - Methods: `spawn`, `snapshot`, `click`, `fill`, `keystroke`, `type`, `wait`, `scroll`, `kill`, `sessions`, `health`
 
 ## Testing
@@ -88,7 +103,7 @@ Supported roles: `Button`, `Tab`, `Input`, `StaticText`, `Panel`, `Checkbox`, `M
 ### Unit Tests
 Run with `cargo test`. Tests are co-located in source files.
 
-### Integration Tests (`cli/tests/`)
+### Integration Tests (`crates/agent-tui/tests/`)
 
 | File | Purpose |
 |------|---------|
@@ -136,16 +151,18 @@ Shell scripts for full system testing:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AGENT_TUI_SOCKET` | Custom socket path | (uses XDG_RUNTIME_DIR) |
-| `AGENT_TUI_TRANSPORT` | `unix` or `tcp` | unix |
-| `AGENT_TUI_TCP_PORT` | TCP port | 19847 |
 | `XDG_RUNTIME_DIR` | Socket directory | /tmp |
+| `AGENT_TUI_MAX_CONNECTIONS` | Max concurrent connections | 64 |
+| `AGENT_TUI_LOCK_TIMEOUT` | Session lock timeout (seconds) | 5 |
+| `AGENT_TUI_IDLE_TIMEOUT` | Idle connection timeout (seconds) | 300 |
+| `AGENT_TUI_MAX_REQUEST` | Max request size (bytes) | 1048576 (1MB) |
 
 ## Getting Started
 
-New to agent-tui? Run the interactive guided tour:
+New to agent-tui? Check RALPH loop status:
 
 ```
-/onboard
+/ralph-status
 ```
 
-This walks through architecture, live demos, element detection, and controlling Claude Code programmatically.
+Use `/ralph-init` to initialize a new RALPH loop for task tracking.

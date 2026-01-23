@@ -3,9 +3,7 @@ use std::sync::Arc;
 use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_core::vom::snapshot::{SnapshotOptions, format_snapshot};
 
-use crate::adapters::{
-    core_cursor_to_domain, core_elements_to_domain, core_snapshot_to_domain,
-};
+use crate::adapters::{core_cursor_to_domain, core_elements_to_domain, core_snapshot_to_domain};
 use crate::domain::{
     AccessibilitySnapshotInput, AccessibilitySnapshotOutput, SnapshotInput, SnapshotOutput,
 };

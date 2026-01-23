@@ -173,7 +173,10 @@ pub fn is_tool_block_border(text: &str) -> bool {
         return false;
     };
     // Safe: last() always exists when first exists (non-empty string)
-    let last_char = text.chars().last().expect("non-empty string has a last char");
+    let last_char = text
+        .chars()
+        .last()
+        .expect("non-empty string has a last char");
 
     ROUNDED_CORNERS.contains(&first_char) || ROUNDED_CORNERS.contains(&last_char)
 }

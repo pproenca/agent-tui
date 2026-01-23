@@ -7,7 +7,6 @@
 //! - Response fixtures for deterministic testing
 
 #![allow(dead_code)]
-#![allow(deprecated)]
 #![allow(unused_imports)]
 
 pub mod mock_daemon;
@@ -24,7 +23,7 @@ use std::path::PathBuf;
 
 /// Get a Command configured to run agent-tui binary
 pub fn agent_tui_cmd() -> Command {
-    Command::cargo_bin("agent-tui").unwrap()
+    Command::new(assert_cmd::cargo::cargo_bin!("agent-tui"))
 }
 
 /// Get the path to the test fixtures directory

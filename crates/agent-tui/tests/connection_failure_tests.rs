@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{MockResponse, TestHarness};
+use common::{agent_tui_cmd, MockResponse, TestHarness};
 use predicates::prelude::*;
 
 // =============================================================================
@@ -15,7 +15,7 @@ use predicates::prelude::*;
 #[test]
 fn test_daemon_socket_not_exists() {
     // Don't use TestHarness - point at a non-existent socket
-    let mut cmd = assert_cmd::Command::cargo_bin("agent-tui").unwrap();
+    let mut cmd = agent_tui_cmd();
     cmd.env("XDG_RUNTIME_DIR", "/nonexistent/path/that/does/not/exist");
     cmd.env("TMPDIR", "/nonexistent/path/that/does/not/exist");
 
@@ -27,7 +27,7 @@ fn test_daemon_socket_not_exists() {
 
 #[test]
 fn test_spawn_fails_when_daemon_not_running() {
-    let mut cmd = assert_cmd::Command::cargo_bin("agent-tui").unwrap();
+    let mut cmd = agent_tui_cmd();
     cmd.env("XDG_RUNTIME_DIR", "/nonexistent/path/that/does/not/exist");
     cmd.env("TMPDIR", "/nonexistent/path/that/does/not/exist");
 

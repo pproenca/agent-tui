@@ -4,7 +4,6 @@
 //! bridging async infrastructure with sync `#[test]` functions.
 
 #![allow(dead_code)]
-#![allow(deprecated)]
 
 use super::mock_daemon::{MockDaemon, MockResponse, RecordedRequest};
 use assert_cmd::Command;
@@ -46,7 +45,7 @@ impl TestHarness {
     /// Get a Command configured to run agent-tui with environment
     /// variables pointing to the mock daemon.
     pub fn cli_command(&self) -> Command {
-        let mut cmd = Command::cargo_bin("agent-tui").expect("Failed to find agent-tui binary");
+        let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agent-tui"));
         for (key, value) in self.daemon.env_vars() {
             cmd.env(key, value);
         }

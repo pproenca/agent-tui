@@ -1101,7 +1101,10 @@ mod tests {
             panic!("Expected Snapshot command, got {:?}", cli.command);
         };
         assert!(accessibility, "--accessibility should be set");
-        assert!(interactive_only, "--interactive-only should filter to interactive elements");
+        assert!(
+            interactive_only,
+            "--interactive-only should filter to interactive elements"
+        );
     }
 
     /// Test click command requires element ref

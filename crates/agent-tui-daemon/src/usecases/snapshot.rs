@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use agent_tui_common::mutex_lock_or_recover;
-use agent_tui_core::vom::snapshot::{format_snapshot, SnapshotOptions};
+use agent_tui_core::vom::snapshot::{SnapshotOptions, format_snapshot};
 
-use crate::domain::{AccessibilitySnapshotInput, AccessibilitySnapshotOutput, SnapshotInput, SnapshotOutput};
+use crate::domain::{
+    AccessibilitySnapshotInput, AccessibilitySnapshotOutput, SnapshotInput, SnapshotOutput,
+};
 use crate::error::SessionError;
 use crate::repository::SessionRepository;
 use crate::session::SessionId;
@@ -54,8 +56,10 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
 }
 
 pub trait AccessibilitySnapshotUseCase: Send + Sync {
-    fn execute(&self, input: AccessibilitySnapshotInput)
-        -> Result<AccessibilitySnapshotOutput, SessionError>;
+    fn execute(
+        &self,
+        input: AccessibilitySnapshotInput,
+    ) -> Result<AccessibilitySnapshotOutput, SessionError>;
 }
 
 pub struct AccessibilitySnapshotUseCaseImpl<R: SessionRepository> {

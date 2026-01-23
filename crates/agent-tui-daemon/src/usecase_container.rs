@@ -114,7 +114,9 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
             },
             elements: ElementUseCases {
                 snapshot: SnapshotUseCaseImpl::new(Arc::clone(&repository)),
-                accessibility_snapshot: AccessibilitySnapshotUseCaseImpl::new(Arc::clone(&repository)),
+                accessibility_snapshot: AccessibilitySnapshotUseCaseImpl::new(Arc::clone(
+                    &repository,
+                )),
                 click: ClickUseCaseImpl::new(Arc::clone(&repository)),
                 dbl_click: DoubleClickUseCaseImpl::new(Arc::clone(&repository)),
                 fill: FillUseCaseImpl::new(Arc::clone(&repository)),

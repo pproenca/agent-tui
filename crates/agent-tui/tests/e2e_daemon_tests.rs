@@ -373,10 +373,7 @@ fn test_accessibility_snapshot_interactive_only() {
         .success()
         .stdout(predicate::str::contains("button \"Submit\""));
 
-    harness.assert_method_called_with(
-        "accessibility_snapshot",
-        json!({ "interactive": true }),
-    );
+    harness.assert_method_called_with("accessibility_snapshot", json!({ "interactive": true }));
 }
 
 // =============================================================================

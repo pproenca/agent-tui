@@ -4,6 +4,10 @@ use crate::vom::Cluster;
 use crate::vom::Component;
 use crate::vom::Role;
 use crate::vom::hash_cluster;
+use crate::vom::patterns::{
+    is_button_text, is_checkbox, is_input_field, is_menu_item, is_panel_border, is_prompt_marker,
+    is_status_indicator, is_tool_block_border,
+};
 
 pub fn classify(clusters: Vec<Cluster>, cursor_row: u16, cursor_col: u16) -> Vec<Component> {
     clusters
@@ -74,122 +78,6 @@ fn infer_role(cluster: &Cluster, cursor_row: u16, cursor_col: u16) -> Role {
     }
 
     Role::StaticText
-}
-
-fn is_button_text(text: &str) -> bool {
-    if text.len() <= 2 {
-        return false;
-    }
-
-    let inner = || text[1..text.len() - 1].trim();
-
-    if text.starts_with('[') && text.ends_with(']') {
-        return !matches!(inner(), "x" | "X" | " " | "" | "✓" | "✔");
-    }
-
-    if text.starts_with('(') && text.ends_with(')') {
-        return !matches!(inner(), "" | " " | "o" | "O" | "●" | "◉");
-    }
-
-    text.starts_with('<') && text.ends_with('>')
-}
-
-fn is_input_field(text: &str) -> bool {
-    if text.contains("___") {
-        return true;
-    }
-
-    if !text.is_empty() && text.chars().all(|ch| ch == '_') {
-        return true;
-    }
-
-    if text.ends_with(": _") || text.ends_with(":_") {
-        return true;
-    }
-
-    false
-}
-
-fn is_checkbox(text: &str) -> bool {
-    matches!(
-        text,
-        "[x]"
-            | "[X]"
-            | "[ ]"
-            | "[✓]"
-            | "[✔]"
-            | "◉"
-            | "◯"
-            | "●"
-            | "○"
-            | "◼"
-            | "◻"
-            | "☐"
-            | "☑"
-            | "☒"
-    )
-}
-
-fn is_menu_item(text: &str) -> bool {
-    text.starts_with('>')
-        || text.starts_with('❯')
-        || text.starts_with('›')
-        || text.starts_with('→')
-        || text.starts_with('▶')
-        || text.starts_with("• ")
-        || text.starts_with("* ")
-        || text.starts_with("- ")
-}
-
-fn is_panel_border(text: &str) -> bool {
-    let box_chars = [
-        '─', '│', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '═', '║', '╔', '╗', '╚', '╝', '╠',
-        '╣', '╦', '╩', '╬',
-    ];
-
-    let total = text.chars().filter(|c| !c.is_whitespace()).count();
-    if total == 0 {
-        return false;
-    }
-
-    let box_count = text.chars().filter(|c| box_chars.contains(c)).count();
-    box_count > total / 2
-}
-
-fn is_status_indicator(text: &str) -> bool {
-    let text = text.trim();
-    if text.is_empty() {
-        return false;
-    }
-
-    let first_char = text.chars().next().unwrap();
-
-    const BRAILLE_SPINNERS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-    const CIRCLE_SPINNERS: [char; 4] = ['◐', '◑', '◒', '◓'];
-    const STATUS_CHARS: [char; 4] = ['✓', '✔', '✗', '✘'];
-
-    BRAILLE_SPINNERS.contains(&first_char)
-        || CIRCLE_SPINNERS.contains(&first_char)
-        || STATUS_CHARS.contains(&first_char)
-}
-
-fn is_tool_block_border(text: &str) -> bool {
-    let text = text.trim();
-    if text.is_empty() {
-        return false;
-    }
-
-    let first_char = text.chars().next().unwrap();
-    let last_char = text.chars().last().unwrap();
-
-    const ROUNDED_CORNERS: [char; 4] = ['╭', '╮', '╰', '╯'];
-
-    ROUNDED_CORNERS.contains(&first_char) || ROUNDED_CORNERS.contains(&last_char)
-}
-
-fn is_prompt_marker(text: &str) -> bool {
-    let trimmed = text.trim();
-    trimmed == ">" || trimmed == "> "
 }
 
 #[cfg(test)]
@@ -382,7 +270,12 @@ mod tests {
     #[test]
     fn test_tool_block_top_border() {
         // Rounded top border with title: ╭─ Write ─╮
-        let cluster = make_cluster("╭─ Write ─────────────────────╮", CellStyle::default(), 0, 0);
+        let cluster = make_cluster(
+            "╭─ Write ─────────────────────╮",
+            CellStyle::default(),
+            0,
+            0,
+        );
         let role = infer_role(&cluster, 99, 99);
         assert_eq!(role, Role::ToolBlock);
     }
@@ -390,7 +283,12 @@ mod tests {
     #[test]
     fn test_tool_block_bottom_border() {
         // Rounded bottom border: ╰──────────────────────────────╯
-        let cluster = make_cluster("╰──────────────────────────────╯", CellStyle::default(), 0, 0);
+        let cluster = make_cluster(
+            "╰──────────────────────────────╯",
+            CellStyle::default(),
+            0,
+            0,
+        );
         let role = infer_role(&cluster, 99, 99);
         assert_eq!(role, Role::ToolBlock);
     }
@@ -398,7 +296,12 @@ mod tests {
     #[test]
     fn test_tool_block_not_regular_panel() {
         // Regular panel border (square corners) should be Panel, not ToolBlock
-        let cluster = make_cluster("┌──────────────────────────────┐", CellStyle::default(), 0, 0);
+        let cluster = make_cluster(
+            "┌──────────────────────────────┐",
+            CellStyle::default(),
+            0,
+            0,
+        );
         let role = infer_role(&cluster, 99, 99);
         assert_eq!(role, Role::Panel);
     }

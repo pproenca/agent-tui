@@ -523,7 +523,10 @@ fn test_accessibility_snapshot_detects_buttons() {
 
     // Get accessibility snapshot and verify button detection
     let output = h.cli_json().args(["snapshot", "-a"]).output().unwrap();
-    assert!(output.status.success(), "Accessibility snapshot should succeed");
+    assert!(
+        output.status.success(),
+        "Accessibility snapshot should succeed"
+    );
 
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     let tree = json["tree"].as_str().unwrap_or("");
@@ -580,8 +583,7 @@ fn test_accessibility_snapshot_refs_can_be_clicked() {
             assert!(
                 has_bounds,
                 "Ref {} should have position info. Got: {:?}",
-                ref_id,
-                ref_data
+                ref_id, ref_data
             );
         }
     }
@@ -616,7 +618,10 @@ fn test_accessibility_snapshot_detects_status_indicators() {
 
     // Get accessibility snapshot
     let output = h.cli_json().args(["snapshot", "-a"]).output().unwrap();
-    assert!(output.status.success(), "Accessibility snapshot should succeed");
+    assert!(
+        output.status.success(),
+        "Accessibility snapshot should succeed"
+    );
 
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     let tree = json["tree"].as_str().unwrap_or("");

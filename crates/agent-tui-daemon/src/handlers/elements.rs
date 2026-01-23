@@ -1,12 +1,12 @@
 use agent_tui_core::Element;
-use agent_tui_ipc::{AccessibilitySnapshotDto, RpcRequest, RpcResponse};
+use agent_tui_ipc::{RpcRequest, RpcResponse};
 use serde_json::{Value, json};
 
 use super::common::session_error_response;
 use crate::adapters::{
     count_output_to_response, element_to_json as adapter_element_to_json, fill_success_response,
     parse_count_input, parse_fill_input, parse_find_input, parse_scroll_input,
-    parse_snapshot_input, scroll_output_to_response,
+    parse_snapshot_input, scroll_output_to_response, snapshot_to_dto,
 };
 use crate::domain::{
     AccessibilitySnapshotInput, ClearInput, ClickInput, DoubleClickInput, ElementStateInput,
@@ -101,7 +101,7 @@ pub fn handle_accessibility_snapshot_uc<U: AccessibilitySnapshotUseCase>(
 
     match usecase.execute(input) {
         Ok(output) => {
-            let dto: AccessibilitySnapshotDto = output.snapshot.into();
+            let dto = snapshot_to_dto(output.snapshot);
             RpcResponse::success(
                 req_id,
                 json!({

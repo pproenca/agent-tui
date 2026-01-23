@@ -72,7 +72,10 @@ pub struct AccessibilitySnapshot {
     pub stats: SnapshotStats,
 }
 
-pub fn format_snapshot(components: &[Component], options: &SnapshotOptions) -> AccessibilitySnapshot {
+pub fn format_snapshot(
+    components: &[Component],
+    options: &SnapshotOptions,
+) -> AccessibilitySnapshot {
     let mut refs = RefMap::new();
     let mut lines = Vec::new();
     let mut ref_counter = 0usize;
@@ -357,5 +360,118 @@ mod tests {
         assert!(snapshot.refs.get("e1").is_some());
         assert!(snapshot.refs.get("e2").is_some());
         assert!(snapshot.refs.get("e3").is_none());
+    }
+
+    mod prop_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn arb_role() -> impl Strategy<Value = Role> {
+            prop_oneof![
+                Just(Role::Button),
+                Just(Role::Tab),
+                Just(Role::Input),
+                Just(Role::StaticText),
+                Just(Role::Panel),
+                Just(Role::Checkbox),
+                Just(Role::MenuItem),
+                Just(Role::Status),
+                Just(Role::ToolBlock),
+                Just(Role::PromptMarker),
+            ]
+        }
+
+        fn arb_component() -> impl Strategy<Value = Component> {
+            (
+                arb_role(),
+                "[a-zA-Z0-9 ]{0,20}",
+                0u16..100,
+                0u16..50,
+                1u16..20,
+            )
+                .prop_map(|(role, text, x, y, width)| Component {
+                    id: Uuid::new_v4(),
+                    role,
+                    bounds: Rect::new(x, y, width, 1),
+                    text_content: text,
+                    visual_hash: 12345,
+                })
+        }
+
+        proptest! {
+            #[test]
+            fn snapshot_is_deterministic(
+                components in prop::collection::vec(arb_component(), 1..20)
+            ) {
+                let options = SnapshotOptions::default();
+
+                let snapshot1 = format_snapshot(&components, &options);
+                let snapshot2 = format_snapshot(&components, &options);
+
+                prop_assert_eq!(&snapshot1.tree, &snapshot2.tree);
+                prop_assert_eq!(snapshot1.stats.total, snapshot2.stats.total);
+                prop_assert_eq!(snapshot1.stats.interactive, snapshot2.stats.interactive);
+                prop_assert_eq!(snapshot1.stats.lines, snapshot2.stats.lines);
+                prop_assert_eq!(snapshot1.refs.refs.len(), snapshot2.refs.refs.len());
+            }
+
+            #[test]
+            fn snapshot_ref_count_matches_components(
+                components in prop::collection::vec(arb_component(), 0..20)
+            ) {
+                let options = SnapshotOptions::default();
+                let snapshot = format_snapshot(&components, &options);
+
+                prop_assert_eq!(snapshot.refs.refs.len(), components.len());
+                prop_assert_eq!(snapshot.stats.total, components.len());
+            }
+
+            #[test]
+            fn interactive_filter_reduces_or_maintains_count(
+                components in prop::collection::vec(arb_component(), 0..20)
+            ) {
+                let all_snapshot = format_snapshot(&components, &SnapshotOptions::default());
+                let interactive_snapshot = format_snapshot(
+                    &components,
+                    &SnapshotOptions { interactive: true }
+                );
+
+                prop_assert!(interactive_snapshot.stats.total <= all_snapshot.stats.total);
+                prop_assert!(interactive_snapshot.refs.refs.len() <= all_snapshot.refs.refs.len());
+            }
+
+            #[test]
+            fn refs_are_sequential_starting_at_e1(
+                components in prop::collection::vec(arb_component(), 1..10)
+            ) {
+                let snapshot = format_snapshot(&components, &SnapshotOptions::default());
+
+                for i in 1..=components.len() {
+                    let ref_key = format!("e{}", i);
+                    prop_assert!(
+                        snapshot.refs.get(&ref_key).is_some(),
+                        "Missing ref: {}", ref_key
+                    );
+                }
+
+                let extra_ref = format!("e{}", components.len() + 1);
+                prop_assert!(snapshot.refs.get(&extra_ref).is_none());
+            }
+
+            #[test]
+            fn tree_contains_all_refs(
+                components in prop::collection::vec(arb_component(), 1..10)
+            ) {
+                let snapshot = format_snapshot(&components, &SnapshotOptions::default());
+
+                for i in 1..=components.len() {
+                    let ref_marker = format!("[ref=e{}]", i);
+                    prop_assert!(
+                        snapshot.tree.contains(&ref_marker),
+                        "Tree missing ref marker: {}", ref_marker
+                    );
+                }
+            }
+        }
     }
 }

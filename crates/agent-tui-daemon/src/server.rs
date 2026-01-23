@@ -22,8 +22,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::ansi_keys;
+use crate::config::DaemonConfig;
 use crate::metrics::DaemonMetrics;
-use crate::session::{Session, SessionManager};
+use crate::session::{Session, SessionError, SessionManager};
 use crate::{LOCK_TIMEOUT, acquire_session_lock, navigate_to_option, strip_ansi_codes};
 use crate::{RecordingFrame, StableTracker, WaitCondition, check_condition};
 
@@ -330,8 +331,12 @@ fn combine_warnings(a: Option<String>, b: Option<String>) -> Option<String> {
 
 impl DaemonServer {
     pub fn new() -> Self {
+        Self::with_config(DaemonConfig::default())
+    }
+
+    pub fn with_config(config: DaemonConfig) -> Self {
         Self {
-            session_manager: Arc::new(SessionManager::new()),
+            session_manager: Arc::new(SessionManager::with_max_sessions(config.max_sessions)),
             start_time: Instant::now(),
             shutdown: Arc::new(AtomicBool::new(false)),
             active_connections: Arc::new(AtomicUsize::new(0)),
@@ -339,9 +344,9 @@ impl DaemonServer {
         }
     }
 
-    pub fn with_shutdown(shutdown: Arc<AtomicBool>) -> Self {
+    pub fn with_shutdown_and_config(shutdown: Arc<AtomicBool>, config: DaemonConfig) -> Self {
         Self {
-            session_manager: Arc::new(SessionManager::new()),
+            session_manager: Arc::new(SessionManager::with_max_sessions(config.max_sessions)),
             start_time: Instant::now(),
             shutdown,
             active_connections: Arc::new(AtomicUsize::new(0)),
@@ -649,6 +654,14 @@ impl DaemonServer {
                     "session_id": session_id,
                     "pid": pid
                 }),
+            ),
+            Err(SessionError::LimitReached(max)) => RpcResponse::error(
+                request.id,
+                -32000,
+                &format!(
+                    "Session limit reached ({} max). Kill unused sessions with 'kill <session_id>' or increase limit with AGENT_TUI_MAX_SESSIONS env var.",
+                    max
+                ),
             ),
             Err(e) => {
                 let err_str = e.to_string();
@@ -1903,7 +1916,11 @@ pub fn start_daemon() -> std::io::Result<()> {
     eprintln!("PID: {}", std::process::id());
 
     let shutdown = Arc::new(AtomicBool::new(false));
-    let server = Arc::new(DaemonServer::with_shutdown(Arc::clone(&shutdown)));
+    let config = DaemonConfig::from_env();
+    let server = Arc::new(DaemonServer::with_shutdown_and_config(
+        Arc::clone(&shutdown),
+        config,
+    ));
 
     let mut signals = Signals::new([SIGINT, SIGTERM])?;
     let shutdown_signal = Arc::clone(&shutdown);

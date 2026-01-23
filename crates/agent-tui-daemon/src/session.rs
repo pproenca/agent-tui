@@ -3,11 +3,13 @@ use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
 use std::io::BufReader;
 use std::io::BufWriter;
+use std::io::ErrorKind;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
+use std::time::Duration;
 use std::time::Instant;
 
 use chrono::DateTime;
@@ -169,6 +171,8 @@ pub enum SessionError {
     ElementNotFound(String),
     #[error("Invalid key: {0}")]
     InvalidKey(String),
+    #[error("Session limit reached: maximum {0} sessions allowed")]
+    LimitReached(usize),
 }
 
 #[derive(Clone, Copy)]
@@ -504,11 +508,17 @@ impl Session {
     }
 }
 
+/// Lock ordering: sessions → active_session → Session mutex
+///
+/// When acquiring multiple locks, always follow this order to prevent deadlocks.
 pub struct SessionManager {
     sessions: RwLock<HashMap<SessionId, Arc<Mutex<Session>>>>,
     active_session: RwLock<Option<SessionId>>,
     persistence: SessionPersistence,
+    max_sessions: usize,
 }
+
+pub const DEFAULT_MAX_SESSIONS: usize = 16;
 
 impl Default for SessionManager {
     fn default() -> Self {
@@ -518,6 +528,10 @@ impl Default for SessionManager {
 
 impl SessionManager {
     pub fn new() -> Self {
+        Self::with_max_sessions(DEFAULT_MAX_SESSIONS)
+    }
+
+    pub fn with_max_sessions(max_sessions: usize) -> Self {
         let persistence = SessionPersistence::new();
         if let Err(e) = persistence.cleanup_stale_sessions() {
             eprintln!("Warning: Failed to cleanup stale sessions: {}", e);
@@ -527,6 +541,7 @@ impl SessionManager {
             sessions: RwLock::new(HashMap::new()),
             active_session: RwLock::new(None),
             persistence,
+            max_sessions,
         }
     }
 
@@ -541,6 +556,13 @@ impl SessionManager {
         cols: u16,
         rows: u16,
     ) -> Result<(SessionId, u32), SessionError> {
+        {
+            let sessions = rwlock_read_or_recover(&self.sessions);
+            if sessions.len() >= self.max_sessions {
+                return Err(SessionError::LimitReached(self.max_sessions));
+            }
+        }
+
         let id = session_id
             .map(SessionId::new)
             .unwrap_or_else(SessionId::generate);
@@ -607,14 +629,19 @@ impl SessionManager {
     }
 
     pub fn set_active(&self, session_id: &str) -> Result<(), SessionError> {
-        let _ = self.get(session_id)?;
-
+        let id = SessionId::new(session_id);
+        let sessions = rwlock_read_or_recover(&self.sessions);
+        if !sessions.contains_key(&id) {
+            return Err(SessionError::NotFound(session_id.to_string()));
+        }
         let mut active = rwlock_write_or_recover(&self.active_session);
-        *active = Some(SessionId::new(session_id));
+        *active = Some(id);
         Ok(())
     }
 
     pub fn list(&self) -> Vec<SessionInfo> {
+        use crate::lock_helpers::acquire_session_lock;
+
         let session_refs: Vec<(SessionId, Arc<Mutex<Session>>)> = {
             let sessions = rwlock_read_or_recover(&self.sessions);
             sessions
@@ -625,24 +652,26 @@ impl SessionManager {
 
         session_refs
             .into_iter()
-            .map(|(id, session)| match session.try_lock() {
-                Ok(mut sess) => SessionInfo {
-                    id: id.clone(),
-                    command: sess.command.clone(),
-                    pid: sess.pid().unwrap_or(0),
-                    running: sess.is_running(),
-                    created_at: sess.created_at.to_rfc3339(),
-                    size: sess.size(),
+            .map(
+                |(id, session)| match acquire_session_lock(&session, Duration::from_millis(100)) {
+                    Some(mut sess) => SessionInfo {
+                        id: id.clone(),
+                        command: sess.command.clone(),
+                        pid: sess.pid().unwrap_or(0),
+                        running: sess.is_running(),
+                        created_at: sess.created_at.to_rfc3339(),
+                        size: sess.size(),
+                    },
+                    None => SessionInfo {
+                        id: id.clone(),
+                        command: "(locked)".to_string(),
+                        pid: 0,
+                        running: true,
+                        created_at: "".to_string(),
+                        size: (80, 24),
+                    },
                 },
-                Err(_) => SessionInfo {
-                    id: id.clone(),
-                    command: "(busy)".to_string(),
-                    pid: 0,
-                    running: true,
-                    created_at: "".to_string(),
-                    size: (80, 24),
-                },
-            })
+            )
             .collect()
     }
 
@@ -751,6 +780,8 @@ impl SessionPersistence {
     }
 
     fn acquire_lock(&self) -> std::io::Result<File> {
+        const PERSISTENCE_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+
         self.ensure_dir()?;
         let lock_file = OpenOptions::new()
             .write(true)
@@ -759,12 +790,32 @@ impl SessionPersistence {
             .open(&self.lock_path)?;
 
         let fd = lock_file.as_raw_fd();
-        let result = unsafe { libc::flock(fd, libc::LOCK_EX) };
-        if result != 0 {
-            return Err(std::io::Error::last_os_error());
-        }
+        let start = Instant::now();
+        let mut backoff = Duration::from_millis(1);
 
-        Ok(lock_file)
+        loop {
+            let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
+            if result == 0 {
+                return Ok(lock_file);
+            }
+
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() != Some(libc::EWOULDBLOCK)
+                && err.raw_os_error() != Some(libc::EAGAIN)
+            {
+                return Err(err);
+            }
+
+            if start.elapsed() > PERSISTENCE_LOCK_TIMEOUT {
+                return Err(std::io::Error::new(
+                    ErrorKind::TimedOut,
+                    "Persistence lock acquisition timed out after 5 seconds",
+                ));
+            }
+
+            std::thread::sleep(backoff);
+            backoff = (backoff * 2).min(Duration::from_millis(100));
+        }
     }
 
     fn load_unlocked(&self) -> Vec<PersistedSession> {

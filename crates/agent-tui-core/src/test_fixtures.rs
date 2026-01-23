@@ -9,10 +9,38 @@
 
 use uuid::Uuid;
 
-use agent_tui_terminal::{Cell, CellStyle, Color, ScreenBuffer};
-
+use crate::screen::ScreenGrid;
+use crate::style::{CellStyle, Color};
 use crate::vom::{Cluster, Component, Rect, Role};
 use crate::{Element, ElementType, Position};
+
+#[derive(Debug, Clone)]
+pub struct Cell {
+    pub char: char,
+    pub style: CellStyle,
+}
+
+#[derive(Debug)]
+pub struct MockScreenBuffer {
+    pub cells: Vec<Vec<Cell>>,
+}
+
+impl ScreenGrid for MockScreenBuffer {
+    fn rows(&self) -> usize {
+        self.cells.len()
+    }
+
+    fn cols(&self) -> usize {
+        self.cells.first().map(|r| r.len()).unwrap_or(0)
+    }
+
+    fn cell(&self, row: usize, col: usize) -> Option<(char, CellStyle)> {
+        self.cells
+            .get(row)
+            .and_then(|r| r.get(col))
+            .map(|c| (c.char, c.style.clone()))
+    }
+}
 
 /// Create a terminal cell with the given character and style attributes
 pub fn make_cell(char: char, bold: bool, bg: Option<Color>) -> Cell {
@@ -29,8 +57,8 @@ pub fn make_cell(char: char, bold: bool, bg: Option<Color>) -> Cell {
 }
 
 /// Create a screen buffer from a 2D vector of cells
-pub fn make_buffer(cells: Vec<Vec<Cell>>) -> ScreenBuffer {
-    ScreenBuffer { cells }
+pub fn make_buffer(cells: Vec<Vec<Cell>>) -> MockScreenBuffer {
+    MockScreenBuffer { cells }
 }
 
 /// Create a VOM cluster with the given text, style, and position

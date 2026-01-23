@@ -25,6 +25,10 @@ pub const WAIT_TIMEOUT: i32 = -32013;
 pub const COMMAND_NOT_FOUND: i32 = -32014;
 pub const PERMISSION_DENIED: i32 = -32015;
 
+// Daemon errors
+pub const DAEMON_ERROR: i32 = -32016;
+pub const PERSISTENCE_ERROR: i32 = -32017;
+
 // Legacy generic error (for backwards compatibility)
 pub const GENERIC_ERROR: i32 = -32000;
 
@@ -95,7 +99,9 @@ pub fn category_for_code(code: i32) -> ErrorCategory {
         SESSION_NOT_FOUND | NO_ACTIVE_SESSION | ELEMENT_NOT_FOUND => ErrorCategory::NotFound,
         WRONG_ELEMENT_TYPE | INVALID_KEY => ErrorCategory::InvalidInput,
         SESSION_LIMIT | LOCK_TIMEOUT => ErrorCategory::Busy,
-        PTY_ERROR | COMMAND_NOT_FOUND | PERMISSION_DENIED => ErrorCategory::External,
+        PTY_ERROR | COMMAND_NOT_FOUND | PERMISSION_DENIED | DAEMON_ERROR | PERSISTENCE_ERROR => {
+            ErrorCategory::External
+        }
         WAIT_TIMEOUT => ErrorCategory::Timeout,
         _ => ErrorCategory::Internal,
     }
@@ -165,6 +171,11 @@ mod tests {
         );
         assert_eq!(
             category_for_code(PERMISSION_DENIED),
+            ErrorCategory::External
+        );
+        assert_eq!(category_for_code(DAEMON_ERROR), ErrorCategory::External);
+        assert_eq!(
+            category_for_code(PERSISTENCE_ERROR),
             ErrorCategory::External
         );
     }

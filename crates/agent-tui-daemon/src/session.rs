@@ -3,7 +3,6 @@ use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
 use std::io::BufReader;
 use std::io::BufWriter;
-use std::io::ErrorKind;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -751,19 +750,29 @@ impl SessionPersistence {
         dir.join("sessions.json")
     }
 
-    fn ensure_dir(&self) -> std::io::Result<()> {
+    fn io_to_persistence(operation: &str, e: std::io::Error) -> SessionError {
+        SessionError::Persistence {
+            operation: operation.to_string(),
+            reason: e.to_string(),
+        }
+    }
+
+    fn ensure_dir(&self) -> Result<(), SessionError> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                std::io::Error::new(
-                    e.kind(),
-                    format!("Failed to create directory '{}': {}", parent.display(), e),
+                Self::io_to_persistence(
+                    "create_dir",
+                    std::io::Error::new(
+                        e.kind(),
+                        format!("Failed to create directory '{}': {}", parent.display(), e),
+                    ),
                 )
             })?;
         }
         Ok(())
     }
 
-    fn acquire_lock(&self) -> std::io::Result<File> {
+    fn acquire_lock(&self) -> Result<File, SessionError> {
         const PERSISTENCE_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 
         self.ensure_dir()?;
@@ -771,7 +780,8 @@ impl SessionPersistence {
             .write(true)
             .create(true)
             .truncate(false)
-            .open(&self.lock_path)?;
+            .open(&self.lock_path)
+            .map_err(|e| Self::io_to_persistence("open_lock", e))?;
 
         let fd = lock_file.as_raw_fd();
         let start = Instant::now();
@@ -787,14 +797,14 @@ impl SessionPersistence {
             if err.raw_os_error() != Some(libc::EWOULDBLOCK)
                 && err.raw_os_error() != Some(libc::EAGAIN)
             {
-                return Err(err);
+                return Err(Self::io_to_persistence("flock", err));
             }
 
             if start.elapsed() > PERSISTENCE_LOCK_TIMEOUT {
-                return Err(std::io::Error::new(
-                    ErrorKind::TimedOut,
-                    "Persistence lock acquisition timed out after 5 seconds",
-                ));
+                return Err(SessionError::Persistence {
+                    operation: "acquire_lock".to_string(),
+                    reason: "lock acquisition timed out after 5 seconds".to_string(),
+                });
             }
 
             std::thread::sleep(backoff);
@@ -833,38 +843,35 @@ impl SessionPersistence {
         }
     }
 
-    fn save_unlocked(&self, sessions: &[PersistedSession]) -> std::io::Result<()> {
+    fn save_unlocked(&self, sessions: &[PersistedSession]) -> Result<(), SessionError> {
         let temp_path = self.path.with_extension("json.tmp");
 
-        let file = File::create(&temp_path).map_err(|e| {
-            std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to create temp file '{}': {}",
-                    temp_path.display(),
-                    e
-                ),
-            )
+        let file = File::create(&temp_path).map_err(|e| SessionError::Persistence {
+            operation: "create_temp".to_string(),
+            reason: format!(
+                "Failed to create temp file '{}': {}",
+                temp_path.display(),
+                e
+            ),
         })?;
         let writer = BufWriter::new(file);
-        serde_json::to_writer_pretty(writer, sessions).map_err(|e| {
-            std::io::Error::other(format!(
+        serde_json::to_writer_pretty(writer, sessions).map_err(|e| SessionError::Persistence {
+            operation: "write_json".to_string(),
+            reason: format!(
                 "Failed to write sessions to '{}': {}",
                 temp_path.display(),
                 e
-            ))
+            ),
         })?;
 
-        fs::rename(&temp_path, &self.path).map_err(|e| {
-            std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to rename '{}' to '{}': {}",
-                    temp_path.display(),
-                    self.path.display(),
-                    e
-                ),
-            )
+        fs::rename(&temp_path, &self.path).map_err(|e| SessionError::Persistence {
+            operation: "rename".to_string(),
+            reason: format!(
+                "Failed to rename '{}' to '{}': {}",
+                temp_path.display(),
+                self.path.display(),
+                e
+            ),
         })?;
 
         Ok(())
@@ -883,12 +890,12 @@ impl SessionPersistence {
         }
     }
 
-    pub fn save(&self, sessions: &[PersistedSession]) -> std::io::Result<()> {
+    pub fn save(&self, sessions: &[PersistedSession]) -> Result<(), SessionError> {
         let _lock = self.acquire_lock()?;
         self.save_unlocked(sessions)
     }
 
-    pub fn add_session(&self, session: PersistedSession) -> std::io::Result<()> {
+    pub fn add_session(&self, session: PersistedSession) -> Result<(), SessionError> {
         let _lock = self.acquire_lock()?;
         let mut sessions = self.load_unlocked();
 
@@ -898,14 +905,14 @@ impl SessionPersistence {
         self.save_unlocked(&sessions)
     }
 
-    pub fn remove_session(&self, session_id: &str) -> std::io::Result<()> {
+    pub fn remove_session(&self, session_id: &str) -> Result<(), SessionError> {
         let _lock = self.acquire_lock()?;
         let mut sessions = self.load_unlocked();
         sessions.retain(|s| s.id.as_str() != session_id);
         self.save_unlocked(&sessions)
     }
 
-    pub fn cleanup_stale_sessions(&self) -> std::io::Result<usize> {
+    pub fn cleanup_stale_sessions(&self) -> Result<usize, SessionError> {
         let _lock = self.acquire_lock()?;
         let sessions = self.load_unlocked();
         let mut cleaned = 0;

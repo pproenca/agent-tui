@@ -11,6 +11,7 @@ use agent_tui::handlers;
 use agent_tui::handlers::HandlerContext;
 use agent_tui_common::Colors;
 use agent_tui_common::color_init;
+use agent_tui_daemon::DaemonError;
 use agent_tui_daemon::start_daemon;
 use agent_tui_ipc::ClientError;
 use agent_tui_ipc::ensure_daemon;
@@ -43,6 +44,20 @@ fn main() {
                 );
             }
             std::process::exit(attach_error.exit_code());
+        } else if let Some(daemon_error) = e.downcast_ref::<DaemonError>() {
+            eprintln!("{} {}", Colors::error("Error:"), daemon_error);
+            eprintln!(
+                "{} {}",
+                Colors::dim("Suggestion:"),
+                daemon_error.suggestion()
+            );
+            if daemon_error.is_retryable() {
+                eprintln!(
+                    "{}",
+                    Colors::dim("(This error may be transient - retry may succeed)")
+                );
+            }
+            std::process::exit(74); // EX_IOERR for External category
         } else {
             eprintln!("{} {}", Colors::error("Error:"), e);
             std::process::exit(1);
@@ -70,7 +85,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     color_init(cli.no_color);
 
     if matches!(cli.command, Commands::Daemon) {
-        return start_daemon().map_err(|e| e.into());
+        return start_daemon().map_err(Into::into);
     }
 
     if let Commands::Completions { shell } = &cli.command {

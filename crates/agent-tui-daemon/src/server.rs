@@ -6,6 +6,7 @@ use agent_tui_ipc::RpcRequest;
 use agent_tui_ipc::RpcResponse;
 use agent_tui_ipc::socket_path;
 
+use crate::error::DaemonError;
 use crate::error::DomainError;
 use serde_json::Value;
 use serde_json::json;
@@ -1953,7 +1954,7 @@ impl DaemonServer {
     }
 }
 
-pub fn start_daemon() -> std::io::Result<()> {
+pub fn start_daemon() -> Result<(), DaemonError> {
     let socket_path = socket_path();
     let lock_path = socket_path.with_extension("lock");
 
@@ -1961,29 +1962,34 @@ pub fn start_daemon() -> std::io::Result<()> {
         .write(true)
         .create(true)
         .truncate(false)
-        .open(&lock_path)?;
+        .open(&lock_path)
+        .map_err(|e| DaemonError::LockFailed(format!("failed to open lock file: {}", e)))?;
 
     let fd = lock_file.as_raw_fd();
 
     let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
     if result != 0 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AddrInUse,
-            "Another daemon instance is running",
-        ));
+        return Err(DaemonError::AlreadyRunning);
     }
 
     use std::io::Write as _;
-    lock_file.set_len(0)?;
+    lock_file
+        .set_len(0)
+        .map_err(|e| DaemonError::LockFailed(format!("failed to truncate lock file: {}", e)))?;
     let mut lock_file = lock_file;
-    writeln!(lock_file, "{}", std::process::id())?;
+    writeln!(lock_file, "{}", std::process::id())
+        .map_err(|e| DaemonError::LockFailed(format!("failed to write PID to lock file: {}", e)))?;
 
     if socket_path.exists() {
-        std::fs::remove_file(&socket_path)?;
+        std::fs::remove_file(&socket_path)
+            .map_err(|e| DaemonError::SocketBind(format!("failed to remove stale socket: {}", e)))?;
     }
 
-    let listener = UnixListener::bind(&socket_path)?;
-    listener.set_nonblocking(true)?;
+    let listener = UnixListener::bind(&socket_path)
+        .map_err(|e| DaemonError::SocketBind(format!("failed to bind socket: {}", e)))?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|e| DaemonError::SocketBind(format!("failed to set non-blocking: {}", e)))?;
 
     eprintln!("agent-tui daemon started on {}", socket_path.display());
     eprintln!("PID: {}", std::process::id());
@@ -1995,7 +2001,8 @@ pub fn start_daemon() -> std::io::Result<()> {
         config,
     ));
 
-    let mut signals = Signals::new([SIGINT, SIGTERM])?;
+    let mut signals = Signals::new([SIGINT, SIGTERM])
+        .map_err(|e| DaemonError::SignalSetup(e.to_string()))?;
     let shutdown_signal = Arc::clone(&shutdown);
     thread::Builder::new()
         .name("signal-handler".to_string())
@@ -2004,9 +2011,11 @@ pub fn start_daemon() -> std::io::Result<()> {
                 eprintln!("\nReceived signal {}, initiating graceful shutdown...", sig);
                 shutdown_signal.store(true, Ordering::SeqCst);
             }
-        })?;
+        })
+        .map_err(|e| DaemonError::SignalSetup(format!("failed to spawn signal handler: {}", e)))?;
 
-    let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server), Arc::clone(&shutdown))?;
+    let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server), Arc::clone(&shutdown))
+        .map_err(|e| DaemonError::ThreadPool(e.to_string()))?;
 
     while !shutdown.load(Ordering::Relaxed) {
         match listener.accept() {

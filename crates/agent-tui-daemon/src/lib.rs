@@ -11,6 +11,7 @@ mod session;
 mod wait;
 
 pub use config::DaemonConfig;
+pub use error::DaemonError;
 pub use error::DomainError;
 pub use error::SessionError;
 pub use lock_helpers::LOCK_TIMEOUT;

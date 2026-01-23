@@ -23,6 +23,8 @@ pub enum SessionError {
     InvalidKey(String),
     #[error("Session limit reached: maximum {0} sessions allowed")]
     LimitReached(usize),
+    #[error("Persistence error during {operation}: {reason}")]
+    Persistence { operation: String, reason: String },
 }
 
 impl SessionError {
@@ -35,6 +37,7 @@ impl SessionError {
             SessionError::InvalidKey(_) => error_codes::INVALID_KEY,
             SessionError::LimitReached(_) => error_codes::SESSION_LIMIT,
             SessionError::Pty(_) => error_codes::PTY_ERROR,
+            SessionError::Persistence { .. } => error_codes::PERSISTENCE_ERROR,
         }
     }
 
@@ -52,6 +55,9 @@ impl SessionError {
             SessionError::InvalidKey(key) => json!({ "key": key }),
             SessionError::LimitReached(max) => json!({ "max_sessions": max }),
             SessionError::Pty(pty_err) => pty_err.context(),
+            SessionError::Persistence { operation, reason } => {
+                json!({ "operation": operation, "reason": reason })
+            }
         }
     }
 
@@ -75,6 +81,9 @@ impl SessionError {
                 "Kill unused sessions with 'kill <session_id>' or increase limit with AGENT_TUI_MAX_SESSIONS env var.".to_string()
             }
             SessionError::Pty(pty_err) => pty_err.suggestion(),
+            SessionError::Persistence { .. } => {
+                "Persistence error is non-fatal. Session continues to operate normally.".to_string()
+            }
         }
     }
 
@@ -82,8 +91,73 @@ impl SessionError {
     pub fn is_retryable(&self) -> bool {
         match self {
             SessionError::Pty(pty_err) => pty_err.is_retryable(),
+            SessionError::Persistence { .. } => true,
             _ => error_codes::is_retryable(self.code()),
         }
+    }
+}
+
+/// Daemon startup and lifecycle errors.
+#[derive(Error, Debug)]
+pub enum DaemonError {
+    #[error("Failed to bind socket: {0}")]
+    SocketBind(String),
+    #[error("Another daemon instance is already running")]
+    AlreadyRunning,
+    #[error("Failed to acquire lock: {0}")]
+    LockFailed(String),
+    #[error("Failed to setup signal handler: {0}")]
+    SignalSetup(String),
+    #[error("Failed to create thread pool: {0}")]
+    ThreadPool(String),
+}
+
+impl DaemonError {
+    /// Returns the JSON-RPC error code for this error.
+    pub fn code(&self) -> i32 {
+        error_codes::DAEMON_ERROR
+    }
+
+    /// Returns the error category for programmatic handling.
+    pub fn category(&self) -> ErrorCategory {
+        ErrorCategory::External
+    }
+
+    /// Returns structured context about the error for debugging.
+    pub fn context(&self) -> Value {
+        match self {
+            DaemonError::SocketBind(reason) => json!({ "operation": "socket_bind", "reason": reason }),
+            DaemonError::AlreadyRunning => json!({ "operation": "startup", "reason": "another instance running" }),
+            DaemonError::LockFailed(reason) => json!({ "operation": "lock", "reason": reason }),
+            DaemonError::SignalSetup(reason) => json!({ "operation": "signal_setup", "reason": reason }),
+            DaemonError::ThreadPool(reason) => json!({ "operation": "thread_pool", "reason": reason }),
+        }
+    }
+
+    /// Returns a helpful suggestion for resolving the error.
+    pub fn suggestion(&self) -> String {
+        match self {
+            DaemonError::SocketBind(_) => {
+                "Check if the socket directory is writable. Try: rm /tmp/agent-tui.sock".to_string()
+            }
+            DaemonError::AlreadyRunning => {
+                "Another daemon is running. Use 'agent-tui sessions' to connect or kill existing daemon.".to_string()
+            }
+            DaemonError::LockFailed(_) => {
+                "Lock file issue. Try removing the lock file: rm /tmp/agent-tui.sock.lock".to_string()
+            }
+            DaemonError::SignalSetup(_) => {
+                "Signal handler setup failed. Check system signal configuration.".to_string()
+            }
+            DaemonError::ThreadPool(_) => {
+                "Thread pool creation failed. Check system thread limits (ulimit -u).".to_string()
+            }
+        }
+    }
+
+    /// Returns whether this error is potentially transient and may succeed on retry.
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, DaemonError::LockFailed(_))
     }
 }
 
@@ -351,8 +425,11 @@ impl From<SessionError> for DomainError {
             SessionError::InvalidKey(key) => DomainError::InvalidKey { key },
             SessionError::LimitReached(max) => DomainError::SessionLimitReached { max },
             SessionError::Pty(pty_err) => DomainError::PtyError {
-                operation: "pty".to_string(),
-                reason: pty_err.to_string(),
+                operation: pty_err.operation().to_string(),
+                reason: pty_err.reason().to_string(),
+            },
+            SessionError::Persistence { operation, reason } => DomainError::Generic {
+                message: format!("Persistence error during {}: {}", operation, reason),
             },
         }
     }
@@ -531,5 +608,105 @@ mod tests {
         assert!(!SessionError::NoActiveSession.is_retryable());
         assert!(!SessionError::ElementNotFound("x".into()).is_retryable());
         assert!(!SessionError::InvalidKey("x".into()).is_retryable());
+    }
+
+    // SessionError::Persistence tests
+    #[test]
+    fn test_session_error_persistence_code() {
+        let err = SessionError::Persistence {
+            operation: "save".into(),
+            reason: "disk full".into(),
+        };
+        assert_eq!(err.code(), error_codes::PERSISTENCE_ERROR);
+    }
+
+    #[test]
+    fn test_session_error_persistence_context() {
+        let err = SessionError::Persistence {
+            operation: "write_json".into(),
+            reason: "permission denied".into(),
+        };
+        let ctx = err.context();
+        assert_eq!(ctx["operation"], "write_json");
+        assert_eq!(ctx["reason"], "permission denied");
+    }
+
+    #[test]
+    fn test_session_error_persistence_is_retryable() {
+        let err = SessionError::Persistence {
+            operation: "save".into(),
+            reason: "disk full".into(),
+        };
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn test_session_error_persistence_display() {
+        let err = SessionError::Persistence {
+            operation: "write".into(),
+            reason: "disk full".into(),
+        };
+        assert_eq!(err.to_string(), "Persistence error during write: disk full");
+    }
+
+    // DaemonError tests
+    #[test]
+    fn test_daemon_error_socket_bind() {
+        let err = DaemonError::SocketBind("address in use".into());
+        assert_eq!(err.code(), error_codes::DAEMON_ERROR);
+        assert_eq!(err.category(), ErrorCategory::External);
+        assert!(err.suggestion().contains("socket"));
+    }
+
+    #[test]
+    fn test_daemon_error_already_running() {
+        let err = DaemonError::AlreadyRunning;
+        assert_eq!(err.code(), error_codes::DAEMON_ERROR);
+        assert!(err.suggestion().contains("Another daemon"));
+    }
+
+    #[test]
+    fn test_daemon_error_lock_failed() {
+        let err = DaemonError::LockFailed("permission denied".into());
+        assert_eq!(err.code(), error_codes::DAEMON_ERROR);
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn test_daemon_error_not_retryable() {
+        assert!(!DaemonError::SocketBind("x".into()).is_retryable());
+        assert!(!DaemonError::AlreadyRunning.is_retryable());
+        assert!(!DaemonError::SignalSetup("x".into()).is_retryable());
+        assert!(!DaemonError::ThreadPool("x".into()).is_retryable());
+    }
+
+    #[test]
+    fn test_daemon_error_context() {
+        let err = DaemonError::SocketBind("address in use".into());
+        let ctx = err.context();
+        assert_eq!(ctx["operation"], "socket_bind");
+        assert_eq!(ctx["reason"], "address in use");
+    }
+
+    #[test]
+    fn test_daemon_error_display() {
+        let err = DaemonError::AlreadyRunning;
+        assert_eq!(err.to_string(), "Another daemon instance is already running");
+    }
+
+    // PtyError conversion test
+    #[test]
+    fn test_pty_error_conversion_preserves_context() {
+        let pty_err = PtyError::Write("broken pipe".into());
+        let session_err = SessionError::Pty(pty_err);
+        let domain_err: DomainError = session_err.into();
+
+        match domain_err {
+            DomainError::PtyError { operation, reason } => {
+                assert_eq!(operation, "write");
+                assert_eq!(reason, "broken pipe");
+            }
+            _ => panic!("Expected PtyError variant"),
+        }
     }
 }

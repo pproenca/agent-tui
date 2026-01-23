@@ -289,6 +289,137 @@ fn test_snapshot_with_vom_metadata() {
         .stdout(predicate::str::contains("button"));
 }
 
+#[test]
+fn test_accessibility_snapshot_returns_tree_format() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "accessibility_snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "tree": "- button \"Submit\" [ref=e1]\n- textbox \"Search\" [ref=e2]\n- static_text \"Welcome\"",
+            "refs": {
+                "e1": { "row": 5, "col": 10, "width": 8, "height": 1 },
+                "e2": { "row": 7, "col": 10, "width": 20, "height": 1 }
+            },
+            "stats": {
+                "total_elements": 3,
+                "interactive_elements": 2,
+                "filtered_elements": 0
+            }
+        }),
+    );
+
+    harness
+        .run(&["snapshot", "-a"])
+        .success()
+        .stdout(predicate::str::contains("button \"Submit\" [ref=e1]"))
+        .stdout(predicate::str::contains("textbox \"Search\" [ref=e2]"))
+        .stdout(predicate::str::contains("static_text \"Welcome\""));
+
+    harness.assert_method_called("accessibility_snapshot");
+}
+
+#[test]
+fn test_accessibility_snapshot_json_format() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "accessibility_snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "tree": "- button \"OK\" [ref=e1]",
+            "refs": {
+                "e1": { "row": 0, "col": 0, "width": 4, "height": 1 }
+            },
+            "stats": {
+                "total_elements": 1,
+                "interactive_elements": 1,
+                "filtered_elements": 0
+            }
+        }),
+    );
+
+    harness
+        .run(&["-f", "json", "snapshot", "-a"])
+        .success()
+        .stdout(predicate::str::contains("\"tree\":"))
+        .stdout(predicate::str::contains("\"refs\":"))
+        .stdout(predicate::str::contains("\"stats\":"));
+}
+
+#[test]
+fn test_accessibility_snapshot_interactive_only() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "accessibility_snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "tree": "- button \"Submit\" [ref=e1]",
+            "refs": {
+                "e1": { "row": 5, "col": 10, "width": 8, "height": 1 }
+            },
+            "stats": {
+                "total_elements": 1,
+                "interactive_elements": 1,
+                "filtered_elements": 2
+            }
+        }),
+    );
+
+    harness
+        .run(&["snapshot", "-a", "--interactive-only"])
+        .success()
+        .stdout(predicate::str::contains("button \"Submit\""));
+
+    harness.assert_method_called_with("accessibility_snapshot", json!({ "interactive": true }));
+}
+
+// =============================================================================
+// Click by Ref Tests - Accessibility Tree Integration
+// =============================================================================
+
+#[test]
+fn test_click_with_accessibility_ref() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "click",
+        json!({
+            "success": true,
+            "message": null
+        }),
+    );
+
+    harness
+        .run(&["click", "e1"])
+        .success()
+        .stdout(predicate::str::contains("Clicked successfully"));
+
+    harness.assert_method_called_with("click", json!({ "ref": "e1" }));
+}
+
+#[test]
+fn test_click_with_at_prefix_ref() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "click",
+        json!({
+            "success": true,
+            "message": null
+        }),
+    );
+
+    harness
+        .run(&["click", "@e2"])
+        .success()
+        .stdout(predicate::str::contains("Clicked successfully"));
+
+    harness.assert_method_called_with("click", json!({ "ref": "@e2" }));
+}
+
 // =============================================================================
 // Error Handling Tests
 // =============================================================================

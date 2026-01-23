@@ -1,4 +1,3 @@
-use agent_tui_core::Element;
 use agent_tui_ipc::{RpcRequest, RpcResponse};
 use serde_json::{Value, json};
 
@@ -6,22 +5,23 @@ use super::common::session_error_response;
 use crate::adapters::{
     count_output_to_response, element_to_json as adapter_element_to_json, fill_success_response,
     parse_count_input, parse_fill_input, parse_find_input, parse_scroll_input,
-    parse_snapshot_input, scroll_output_to_response,
+    parse_snapshot_input, scroll_output_to_response, snapshot_to_dto,
 };
 use crate::domain::{
-    ClearInput, ClickInput, DoubleClickInput, ElementStateInput, FocusInput, MultiselectInput,
-    ScrollIntoViewInput, SelectAllInput, SelectInput, ToggleInput,
+    AccessibilitySnapshotInput, ClearInput, ClickInput, DomainElement, DoubleClickInput,
+    ElementStateInput, FocusInput, MultiselectInput, ScrollIntoViewInput, SelectAllInput,
+    SelectInput, ToggleInput,
 };
 use crate::select_helpers::strip_ansi_codes;
 use crate::usecases::{
-    ClearUseCase, ClickUseCase, CountUseCase, DoubleClickUseCase, FillUseCase, FindUseCase,
-    FocusUseCase, GetFocusedUseCase, GetTextUseCase, GetTitleUseCase, GetValueUseCase,
-    IsCheckedUseCase, IsEnabledUseCase, IsFocusedUseCase, IsVisibleUseCase, MultiselectUseCase,
-    ScrollIntoViewUseCase, ScrollUseCase, SelectAllUseCase, SelectUseCase, SnapshotUseCase,
-    ToggleUseCase,
+    AccessibilitySnapshotUseCase, ClearUseCase, ClickUseCase, CountUseCase, DoubleClickUseCase,
+    FillUseCase, FindUseCase, FocusUseCase, GetFocusedUseCase, GetTextUseCase, GetTitleUseCase,
+    GetValueUseCase, IsCheckedUseCase, IsEnabledUseCase, IsFocusedUseCase, IsVisibleUseCase,
+    MultiselectUseCase, ScrollIntoViewUseCase, ScrollUseCase, SelectAllUseCase, SelectUseCase,
+    SnapshotUseCase, ToggleUseCase,
 };
 
-fn element_to_json(el: &Element) -> Value {
+fn element_to_json(el: &DomainElement) -> Value {
     json!({
         "ref": el.element_ref,
         "type": el.element_type.as_str(),
@@ -78,6 +78,39 @@ pub fn handle_snapshot_uc<U: SnapshotUseCase>(usecase: &U, request: RpcRequest) 
             }
 
             RpcResponse::success(req_id, response)
+        }
+        Err(e) => session_error_response(req_id, e),
+    }
+}
+
+/// Handle accessibility snapshot requests using the use case pattern.
+///
+/// Returns the accessibility tree format with refs for element interaction.
+pub fn handle_accessibility_snapshot_uc<U: AccessibilitySnapshotUseCase>(
+    usecase: &U,
+    request: RpcRequest,
+) -> RpcResponse {
+    let session_id = request.param_str("session").map(String::from);
+    let interactive_only = request.param_bool("interactive", false);
+    let req_id = request.id;
+
+    let input = AccessibilitySnapshotInput {
+        session_id,
+        interactive_only,
+    };
+
+    match usecase.execute(input) {
+        Ok(output) => {
+            let dto = snapshot_to_dto(&output.snapshot);
+            RpcResponse::success(
+                req_id,
+                json!({
+                    "session_id": output.session_id,
+                    "tree": dto.tree,
+                    "refs": dto.refs,
+                    "stats": dto.stats
+                }),
+            )
         }
         Err(e) => session_error_response(req_id, e),
     }

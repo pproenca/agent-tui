@@ -907,3 +907,622 @@ impl<R: SessionRepository> ScrollIntoViewUseCase for ScrollIntoViewUseCaseImpl<R
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{MockError, MockSessionRepository};
+
+    // ========================================================================
+    // ClickUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_click_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = ClickUseCaseImpl::new(repo);
+
+        let input = ClickInput {
+            session_id: None,
+            element_ref: "@e1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_click_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = ClickUseCaseImpl::new(repo);
+
+        let input = ClickInput {
+            session_id: Some("missing".to_string()),
+            element_ref: "@e1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // FillUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_fill_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = FillUseCaseImpl::new(repo);
+
+        let input = FillInput {
+            session_id: None,
+            element_ref: "@inp1".to_string(),
+            value: "test value".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_fill_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("nonexistent".to_string()))
+                .build(),
+        );
+        let usecase = FillUseCaseImpl::new(repo);
+
+        let input = FillInput {
+            session_id: Some("nonexistent".to_string()),
+            element_ref: "@inp1".to_string(),
+            value: "test".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // FindUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_find_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = FindUseCaseImpl::new(repo);
+
+        let input = FindInput::default();
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_find_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("unknown".to_string()))
+                .build(),
+        );
+        let usecase = FindUseCaseImpl::new(repo);
+
+        let input = FindInput {
+            session_id: Some("unknown".to_string()),
+            ..Default::default()
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // ToggleUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_toggle_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = ToggleUseCaseImpl::new(repo);
+
+        let input = ToggleInput {
+            session_id: None,
+            element_ref: "@cb1".to_string(),
+            state: None,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_toggle_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = ToggleUseCaseImpl::new(repo);
+
+        let input = ToggleInput {
+            session_id: Some("missing".to_string()),
+            element_ref: "@cb1".to_string(),
+            state: Some(true),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // SelectUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_select_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = SelectUseCaseImpl::new(repo);
+
+        let input = SelectInput {
+            session_id: None,
+            element_ref: "@sel1".to_string(),
+            option: "Option A".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_select_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = SelectUseCaseImpl::new(repo);
+
+        let input = SelectInput {
+            session_id: Some("missing".to_string()),
+            element_ref: "@sel1".to_string(),
+            option: "Option A".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // MultiselectUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_multiselect_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = MultiselectUseCaseImpl::new(repo);
+
+        let input = MultiselectInput {
+            session_id: None,
+            element_ref: "@msel1".to_string(),
+            options: vec!["A".to_string(), "B".to_string()],
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_multiselect_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = MultiselectUseCaseImpl::new(repo);
+
+        let input = MultiselectInput {
+            session_id: Some("missing".to_string()),
+            element_ref: "@msel1".to_string(),
+            options: vec!["A".to_string()],
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // ScrollIntoViewUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_scroll_into_view_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = ScrollIntoViewUseCaseImpl::new(repo);
+
+        let input = ScrollIntoViewInput {
+            session_id: None,
+            element_ref: "@e1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_scroll_into_view_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = ScrollIntoViewUseCaseImpl::new(repo);
+
+        let input = ScrollIntoViewInput {
+            session_id: Some("missing".to_string()),
+            element_ref: "@e1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // ScrollUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_scroll_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = ScrollUseCaseImpl::new(repo);
+
+        let input = ScrollInput {
+            session_id: None,
+            direction: "down".to_string(),
+            amount: 5,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_scroll_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = ScrollUseCaseImpl::new(repo);
+
+        let input = ScrollInput {
+            session_id: Some("missing".to_string()),
+            direction: "up".to_string(),
+            amount: 3,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // CountUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_count_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = CountUseCaseImpl::new(repo);
+
+        let input = CountInput {
+            session_id: None,
+            role: Some("button".to_string()),
+            name: None,
+            text: None,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_count_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("unknown".to_string()))
+                .build(),
+        );
+        let usecase = CountUseCaseImpl::new(repo);
+
+        let input = CountInput {
+            session_id: Some("unknown".to_string()),
+            role: None,
+            name: None,
+            text: None,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // DoubleClickUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_double_click_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = DoubleClickUseCaseImpl::new(repo);
+
+        let input = DoubleClickInput {
+            session_id: None,
+            element_ref: "@e1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_double_click_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = DoubleClickUseCaseImpl::new(repo);
+
+        let input = DoubleClickInput {
+            session_id: Some("missing".to_string()),
+            element_ref: "@e1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // FocusUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_focus_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = FocusUseCaseImpl::new(repo);
+
+        let input = FocusInput {
+            session_id: None,
+            element_ref: "@inp1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_focus_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = FocusUseCaseImpl::new(repo);
+
+        let input = FocusInput {
+            session_id: Some("missing".to_string()),
+            element_ref: "@inp1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // ClearUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_clear_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = ClearUseCaseImpl::new(repo);
+
+        let input = ClearInput {
+            session_id: None,
+            element_ref: "@inp1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_clear_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = ClearUseCaseImpl::new(repo);
+
+        let input = ClearInput {
+            session_id: Some("missing".to_string()),
+            element_ref: "@inp1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // SelectAllUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_select_all_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = SelectAllUseCaseImpl::new(repo);
+
+        let input = SelectAllInput {
+            session_id: None,
+            element_ref: "@inp1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_select_all_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = SelectAllUseCaseImpl::new(repo);
+
+        let input = SelectAllInput {
+            session_id: Some("missing".to_string()),
+            element_ref: "@inp1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // GetTextUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_get_text_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = GetTextUseCaseImpl::new(repo);
+
+        let input = ElementStateInput {
+            session_id: None,
+            element_ref: "@e1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    // ========================================================================
+    // GetValueUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_get_value_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = GetValueUseCaseImpl::new(repo);
+
+        let input = ElementStateInput {
+            session_id: None,
+            element_ref: "@inp1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    // ========================================================================
+    // IsVisibleUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_is_visible_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = IsVisibleUseCaseImpl::new(repo);
+
+        let input = ElementStateInput {
+            session_id: None,
+            element_ref: "@e1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    // ========================================================================
+    // IsFocusedUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_is_focused_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = IsFocusedUseCaseImpl::new(repo);
+
+        let input = ElementStateInput {
+            session_id: None,
+            element_ref: "@e1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    // ========================================================================
+    // IsEnabledUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_is_enabled_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = IsEnabledUseCaseImpl::new(repo);
+
+        let input = ElementStateInput {
+            session_id: None,
+            element_ref: "@e1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    // ========================================================================
+    // IsCheckedUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_is_checked_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = IsCheckedUseCaseImpl::new(repo);
+
+        let input = ElementStateInput {
+            session_id: None,
+            element_ref: "@cb1".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    // ========================================================================
+    // GetFocusedUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_get_focused_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = GetFocusedUseCaseImpl::new(repo);
+
+        let result = usecase.execute(None);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    // ========================================================================
+    // GetTitleUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_get_title_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = GetTitleUseCaseImpl::new(repo);
+
+        let result = usecase.execute(None);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+}

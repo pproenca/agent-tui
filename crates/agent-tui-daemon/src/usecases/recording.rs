@@ -99,3 +99,109 @@ impl<R: SessionRepository> RecordStatusUseCase for RecordStatusUseCaseImpl<R> {
         Ok(session_guard.recording_status())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{MockError, MockSessionRepository};
+
+    // ========================================================================
+    // RecordStartUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_record_start_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = RecordStartUseCaseImpl::new(repo);
+
+        let input = RecordStartInput { session_id: None };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_record_start_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = RecordStartUseCaseImpl::new(repo);
+
+        let input = RecordStartInput {
+            session_id: Some("missing".to_string()),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // RecordStopUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_record_stop_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = RecordStopUseCaseImpl::new(repo);
+
+        let input = RecordStopInput {
+            session_id: None,
+            format: None,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_record_stop_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = RecordStopUseCaseImpl::new(repo);
+
+        let input = RecordStopInput {
+            session_id: Some("missing".to_string()),
+            format: Some("json".to_string()),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // RecordStatusUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_record_status_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = RecordStatusUseCaseImpl::new(repo);
+
+        let input = RecordStatusInput { session_id: None };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_record_status_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = RecordStatusUseCaseImpl::new(repo);
+
+        let input = RecordStatusInput {
+            session_id: Some("missing".to_string()),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+}

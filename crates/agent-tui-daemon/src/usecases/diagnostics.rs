@@ -278,6 +278,7 @@ mod tests {
 
     use crate::domain::session_types::{SessionId, SessionInfo};
     use crate::session::Session;
+    use crate::test_support::{MockError, MockSessionRepository};
 
     struct MockRepository {
         session_count: usize,
@@ -374,5 +375,193 @@ mod tests {
         assert_eq!(output.poison_recoveries, 1);
         assert_eq!(output.active_connections, 1);
         assert_eq!(output.session_count, 2);
+    }
+
+    // ========================================================================
+    // TraceUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_trace_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = TraceUseCaseImpl::new(repo);
+
+        let input = TraceInput {
+            session_id: None,
+            start: false,
+            stop: false,
+            count: 100,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_trace_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = TraceUseCaseImpl::new(repo);
+
+        let input = TraceInput {
+            session_id: Some("missing".to_string()),
+            start: true,
+            stop: false,
+            count: 50,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // ConsoleUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_console_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = ConsoleUseCaseImpl::new(repo);
+
+        let input = ConsoleInput {
+            session_id: None,
+            count: 100,
+            clear: false,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_console_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = ConsoleUseCaseImpl::new(repo);
+
+        let input = ConsoleInput {
+            session_id: Some("missing".to_string()),
+            count: 50,
+            clear: true,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // ErrorsUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_errors_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = ErrorsUseCaseImpl::new(repo);
+
+        let input = ErrorsInput {
+            session_id: None,
+            count: 100,
+            clear: false,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_errors_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = ErrorsUseCaseImpl::new(repo);
+
+        let input = ErrorsInput {
+            session_id: Some("missing".to_string()),
+            count: 50,
+            clear: false,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // PtyReadUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_pty_read_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = PtyReadUseCaseImpl::new(repo);
+
+        let input = PtyReadInput {
+            session_id: None,
+            max_bytes: 4096,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_pty_read_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = PtyReadUseCaseImpl::new(repo);
+
+        let input = PtyReadInput {
+            session_id: Some("missing".to_string()),
+            max_bytes: 1024,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    // ========================================================================
+    // PtyWriteUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_pty_write_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = PtyWriteUseCaseImpl::new(repo);
+
+        let input = PtyWriteInput {
+            session_id: None,
+            data: "hello".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_pty_write_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = PtyWriteUseCaseImpl::new(repo);
+
+        let input = PtyWriteInput {
+            session_id: Some("missing".to_string()),
+            data: "test data".to_string(),
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 }

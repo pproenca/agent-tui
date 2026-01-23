@@ -1,6 +1,7 @@
 #![deny(clippy::all)]
 
 pub mod adapters;
+
 pub mod ansi_keys;
 mod config;
 pub mod domain;
@@ -14,6 +15,8 @@ mod select_helpers;
 mod server;
 mod session;
 mod terminal_state;
+#[cfg(test)]
+pub mod test_support;
 pub mod transport;
 mod usecase_container;
 pub mod usecases;

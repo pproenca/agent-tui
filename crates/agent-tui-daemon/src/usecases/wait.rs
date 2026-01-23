@@ -78,3 +78,85 @@ impl<R: SessionRepository> WaitUseCase for WaitUseCaseImpl<R> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{MockError, MockSessionRepository};
+
+    // ========================================================================
+    // WaitUseCase Tests (Error paths)
+    // ========================================================================
+
+    #[test]
+    fn test_wait_usecase_returns_error_when_no_active_session() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = WaitUseCaseImpl::new(repo);
+
+        let input = WaitInput {
+            session_id: None,
+            text: Some("loading".to_string()),
+            timeout_ms: 5000,
+            condition: None,
+            target: None,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_wait_usecase_returns_error_when_session_not_found() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_resolve_error(MockError::NotFound("missing".to_string()))
+                .build(),
+        );
+        let usecase = WaitUseCaseImpl::new(repo);
+
+        let input = WaitInput {
+            session_id: Some("missing".to_string()),
+            text: Some("ready".to_string()),
+            timeout_ms: 1000,
+            condition: None,
+            target: None,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_wait_usecase_returns_error_with_stable_condition() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = WaitUseCaseImpl::new(repo);
+
+        let input = WaitInput {
+            session_id: None,
+            text: None,
+            timeout_ms: 5000,
+            condition: Some("stable".to_string()),
+            target: None,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_wait_usecase_returns_error_with_element_condition() {
+        let repo = Arc::new(MockSessionRepository::new());
+        let usecase = WaitUseCaseImpl::new(repo);
+
+        let input = WaitInput {
+            session_id: None,
+            text: Some("@btn1".to_string()),
+            timeout_ms: 5000,
+            condition: Some("element".to_string()),
+            target: None,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+}

@@ -3,11 +3,15 @@
 pub mod ansi_keys;
 mod config;
 mod error;
+pub mod handlers;
 mod lock_helpers;
 mod metrics;
+mod pty_session;
 mod select_helpers;
 mod server;
 mod session;
+mod terminal_state;
+pub mod transport;
 mod wait;
 
 pub use config::DaemonConfig;
@@ -18,6 +22,7 @@ pub use lock_helpers::LOCK_TIMEOUT;
 pub use lock_helpers::MAX_BACKOFF;
 pub use lock_helpers::acquire_session_lock;
 pub use metrics::DaemonMetrics;
+pub use pty_session::PtySession;
 pub use select_helpers::navigate_to_option;
 pub use select_helpers::parse_select_options;
 pub use select_helpers::strip_ansi_codes;
@@ -32,8 +37,15 @@ pub use session::SessionInfo;
 pub use session::SessionManager;
 pub use session::SessionPersistence;
 pub use session::TraceEntry;
+pub use terminal_state::TerminalState;
 pub use wait::StableTracker;
 pub use wait::WaitCondition;
 pub use wait::check_condition;
+
+pub use transport::TransportConnection;
+pub use transport::TransportError;
+pub use transport::TransportListener;
+pub use transport::unix_socket::UnixSocketConnection;
+pub use transport::unix_socket::UnixSocketListener;
 
 pub type Result<T> = std::result::Result<T, SessionError>;

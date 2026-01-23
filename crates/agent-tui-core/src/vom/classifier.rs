@@ -1,4 +1,4 @@
-use agent_tui_terminal::Color;
+use crate::style::Color;
 
 use crate::vom::Cluster;
 use crate::vom::Component;
@@ -147,8 +147,8 @@ fn is_panel_border(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::CellStyle;
     use crate::vom::Rect;
-    use agent_tui_terminal::CellStyle;
 
     fn make_cluster(text: &str, style: CellStyle, x: u16, y: u16) -> Cluster {
         Cluster {

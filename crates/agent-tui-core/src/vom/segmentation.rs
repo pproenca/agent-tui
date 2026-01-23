@@ -1,35 +1,28 @@
-use agent_tui_terminal::ScreenBuffer;
-
+use crate::screen::ScreenGrid;
 use crate::vom::Cluster;
 
-pub fn segment_buffer(buffer: &ScreenBuffer) -> Vec<Cluster> {
+pub fn segment_buffer(buffer: &impl ScreenGrid) -> Vec<Cluster> {
     let mut clusters = Vec::new();
 
-    for (y, row) in buffer.cells.iter().enumerate() {
+    for y in 0..buffer.rows() {
         let mut current: Option<Cluster> = None;
 
-        for (x, cell) in row.iter().enumerate() {
-            let style_match = current
-                .as_ref()
-                .map(|c| c.style == cell.style)
-                .unwrap_or(false);
+        for x in 0..buffer.cols() {
+            if let Some((char, style)) = buffer.cell(y, x) {
+                let style_match = current.as_ref().map(|c| c.style == style).unwrap_or(false);
 
-            if style_match {
-                if let Some(c) = &mut current {
-                    c.extend(cell.char);
-                }
-            } else {
-                if let Some(mut c) = current.take() {
-                    c.seal();
-                    clusters.push(c);
-                }
+                if style_match {
+                    if let Some(c) = &mut current {
+                        c.extend(char);
+                    }
+                } else {
+                    if let Some(mut c) = current.take() {
+                        c.seal();
+                        clusters.push(c);
+                    }
 
-                current = Some(Cluster::new(
-                    x as u16,
-                    y as u16,
-                    cell.char,
-                    cell.style.clone(),
-                ));
+                    current = Some(Cluster::new(x as u16, y as u16, char, style));
+                }
             }
         }
 
@@ -45,12 +38,39 @@ pub fn segment_buffer(buffer: &ScreenBuffer) -> Vec<Cluster> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_tui_terminal::Cell;
-    use agent_tui_terminal::CellStyle;
-    use agent_tui_terminal::Color;
+    use crate::style::CellStyle;
+    use crate::style::Color;
 
-    fn make_buffer(cells: Vec<Vec<Cell>>) -> ScreenBuffer {
-        ScreenBuffer { cells }
+    #[derive(Debug, Clone)]
+    struct Cell {
+        char: char,
+        style: CellStyle,
+    }
+
+    #[derive(Debug)]
+    struct MockScreenBuffer {
+        cells: Vec<Vec<Cell>>,
+    }
+
+    impl ScreenGrid for MockScreenBuffer {
+        fn rows(&self) -> usize {
+            self.cells.len()
+        }
+
+        fn cols(&self) -> usize {
+            self.cells.first().map(|r| r.len()).unwrap_or(0)
+        }
+
+        fn cell(&self, row: usize, col: usize) -> Option<(char, CellStyle)> {
+            self.cells
+                .get(row)
+                .and_then(|r| r.get(col))
+                .map(|c| (c.char, c.style.clone()))
+        }
+    }
+
+    fn make_buffer(cells: Vec<Vec<Cell>>) -> MockScreenBuffer {
+        MockScreenBuffer { cells }
     }
 
     fn make_cell(char: char, bold: bool, bg: Option<Color>) -> Cell {
@@ -213,7 +233,7 @@ mod tests {
             })
         }
 
-        fn arb_buffer(max_rows: usize, max_cols: usize) -> impl Strategy<Value = ScreenBuffer> {
+        fn arb_buffer(max_rows: usize, max_cols: usize) -> impl Strategy<Value = MockScreenBuffer> {
             prop::collection::vec(
                 prop::collection::vec(arb_cell(), 1..=max_cols),
                 1..=max_rows,
@@ -233,7 +253,7 @@ mod tests {
                         row
                     })
                     .collect();
-                ScreenBuffer { cells: normalized }
+                MockScreenBuffer { cells: normalized }
             })
         }
 
@@ -261,8 +281,8 @@ mod tests {
             #[test]
             fn cluster_bounds_within_buffer(buffer in arb_buffer(10, 40)) {
                 let clusters = segment_buffer(&buffer);
-                let rows = buffer.cells.len() as u16;
-                let cols = buffer.cells.first().map(|r| r.len()).unwrap_or(0) as u16;
+                let rows = buffer.rows() as u16;
+                let cols = buffer.cols() as u16;
 
                 for cluster in &clusters {
                     prop_assert!(

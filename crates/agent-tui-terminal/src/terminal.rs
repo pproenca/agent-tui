@@ -4,22 +4,7 @@ use std::sync::Mutex;
 use vt100::Parser;
 
 use agent_tui_common::mutex_lock_or_recover;
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct CellStyle {
-    pub bold: bool,
-    pub underline: bool,
-    pub inverse: bool,
-    pub fg_color: Option<Color>,
-    pub bg_color: Option<Color>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Color {
-    Default,
-    Indexed(u8),
-    Rgb(u8, u8, u8),
-}
+use agent_tui_core::{CellStyle, Color, ScreenGrid};
 
 #[derive(Debug, Clone)]
 pub struct Cell {
@@ -30,6 +15,23 @@ pub struct Cell {
 #[derive(Debug, Clone)]
 pub struct ScreenBuffer {
     pub cells: Vec<Vec<Cell>>,
+}
+
+impl ScreenGrid for ScreenBuffer {
+    fn rows(&self) -> usize {
+        self.cells.len()
+    }
+
+    fn cols(&self) -> usize {
+        self.cells.first().map(|r| r.len()).unwrap_or(0)
+    }
+
+    fn cell(&self, row: usize, col: usize) -> Option<(char, CellStyle)> {
+        self.cells
+            .get(row)
+            .and_then(|r| r.get(col))
+            .map(|c| (c.char, c.style.clone()))
+    }
 }
 
 #[derive(Debug, Clone)]

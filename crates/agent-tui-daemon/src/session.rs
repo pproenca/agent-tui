@@ -21,12 +21,12 @@ use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_common::rwlock_read_or_recover;
 use agent_tui_common::rwlock_write_or_recover;
 use agent_tui_core::Element;
-use agent_tui_core::component_to_element;
-use agent_tui_core::find_element_by_ref;
 use agent_tui_terminal::CursorPosition;
 use agent_tui_terminal::PtyHandle;
-use agent_tui_terminal::VirtualTerminal;
 use agent_tui_terminal::key_to_escape_sequence;
+
+use crate::pty_session::PtySession;
+use crate::terminal_state::TerminalState;
 
 pub use crate::error::SessionError;
 
@@ -201,9 +201,8 @@ pub struct Session {
     pub id: SessionId,
     pub command: String,
     pub created_at: DateTime<Utc>,
-    pty: PtyHandle,
-    terminal: VirtualTerminal,
-    cached_elements: Vec<Element>,
+    pty: PtySession,
+    terminal: TerminalState,
     recording: RecordingState,
     trace: TraceState,
     held_modifiers: ModifierState,
@@ -216,9 +215,8 @@ impl Session {
             id,
             command,
             created_at: Utc::now(),
-            pty,
-            terminal: VirtualTerminal::new(cols, rows),
-            cached_elements: Vec::new(),
+            pty: PtySession::new(pty),
+            terminal: TerminalState::new(cols, rows),
             recording: RecordingState::new(),
             trace: TraceState::new(),
             held_modifiers: ModifierState::default(),
@@ -256,7 +254,7 @@ impl Session {
                         break;
                     }
 
-                    return Err(SessionError::Pty(e));
+                    return Err(e);
                 }
             }
         }
@@ -273,26 +271,16 @@ impl Session {
     }
 
     pub fn detect_elements(&mut self) -> &[Element] {
-        let buffer = self.terminal.screen_buffer();
         let cursor = self.terminal.cursor();
-        let components = agent_tui_core::analyze(&buffer, cursor.row, cursor.col);
-
-        self.cached_elements = components
-            .iter()
-            .filter(|c| c.role.is_interactive())
-            .enumerate()
-            .map(|(i, c)| component_to_element(c, i, cursor.row, cursor.col))
-            .collect();
-
-        &self.cached_elements
+        self.terminal.detect_elements(cursor.row, cursor.col)
     }
 
     pub fn cached_elements(&self) -> &[Element] {
-        &self.cached_elements
+        self.terminal.cached_elements()
     }
 
     pub fn find_element(&self, element_ref: &str) -> Option<&Element> {
-        find_element_by_ref(&self.cached_elements, element_ref)
+        self.terminal.find_element(element_ref)
     }
 
     pub fn keystroke(&self, key: &str) -> Result<(), SessionError> {
@@ -366,9 +354,7 @@ impl Session {
     }
 
     pub fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
-        self.pty
-            .try_read(buf, timeout_ms)
-            .map_err(SessionError::Pty)
+        self.pty.try_read(buf, timeout_ms)
     }
 
     pub fn start_recording(&mut self) {
@@ -485,9 +471,8 @@ impl Session {
     }
 
     pub fn analyze_screen(&self) -> Vec<agent_tui_core::Component> {
-        let buffer = self.terminal.screen_buffer();
         let cursor = self.terminal.cursor();
-        agent_tui_core::analyze(&buffer, cursor.row, cursor.col)
+        self.terminal.analyze_screen(cursor.row, cursor.col)
     }
 }
 

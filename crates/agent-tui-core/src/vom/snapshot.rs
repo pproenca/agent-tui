@@ -4,10 +4,10 @@ use crate::vom::{Component, Rect};
 
 #[derive(Debug, Clone, Default)]
 pub struct SnapshotOptions {
-    pub interactive: bool,
+    pub interactive_only: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bounds {
     pub x: u16,
     pub y: u16,
@@ -26,6 +26,11 @@ impl From<Rect> for Bounds {
     }
 }
 
+/// Reference to a detected UI element.
+///
+/// # Stability
+/// - `ref_id`: Sequential within a snapshot. Not stable across snapshots.
+/// - `visual_hash`: Uses `DefaultHasher`, stable within a session but not across binary versions.
 #[derive(Debug, Clone)]
 pub struct ElementRef {
     pub role: String,
@@ -35,26 +40,14 @@ pub struct ElementRef {
     pub nth: Option<usize>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RefMap {
     pub refs: HashMap<String, ElementRef>,
 }
 
 impl RefMap {
-    pub fn new() -> Self {
-        Self {
-            refs: HashMap::new(),
-        }
-    }
-
     pub fn get(&self, ref_id: &str) -> Option<&ElementRef> {
         self.refs.get(ref_id)
-    }
-}
-
-impl Default for RefMap {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -76,13 +69,13 @@ pub fn format_snapshot(
     components: &[Component],
     options: &SnapshotOptions,
 ) -> AccessibilitySnapshot {
-    let mut refs = RefMap::new();
+    let mut refs = RefMap::default();
     let mut lines = Vec::new();
     let mut ref_counter = 0usize;
     let mut interactive_count = 0usize;
 
     for component in components {
-        if options.interactive && !component.role.is_interactive() {
+        if options.interactive_only && !component.role.is_interactive() {
             continue;
         }
 
@@ -97,7 +90,8 @@ pub fn format_snapshot(
         let line = if name.is_empty() {
             format!("- {} [ref={}]", component.role, ref_id)
         } else {
-            format!("- {} \"{}\" [ref={}]", component.role, name, ref_id)
+            let escaped = name.replace('"', "\\\"");
+            format!("- {} \"{}\" [ref={}]", component.role, escaped, ref_id)
         };
         lines.push(line);
 
@@ -292,7 +286,9 @@ mod tests {
             make_component(Role::StaticText, "Hello", 5, 0, 5),
             make_component(Role::Input, ">", 0, 1, 1),
         ];
-        let options = SnapshotOptions { interactive: true };
+        let options = SnapshotOptions {
+            interactive_only: true,
+        };
         let snapshot = format_snapshot(&components, &options);
 
         assert_eq!(snapshot.stats.total, 2);
@@ -307,7 +303,9 @@ mod tests {
             make_component(Role::Panel, "───", 0, 0, 3),
             make_component(Role::Button, "OK", 5, 0, 2),
         ];
-        let options = SnapshotOptions { interactive: true };
+        let options = SnapshotOptions {
+            interactive_only: true,
+        };
         let snapshot = format_snapshot(&components, &options);
 
         assert_eq!(snapshot.stats.total, 1);
@@ -321,7 +319,9 @@ mod tests {
             make_component(Role::Status, "⠋ Loading", 0, 0, 10),
             make_component(Role::Button, "Cancel", 0, 1, 6),
         ];
-        let options = SnapshotOptions { interactive: true };
+        let options = SnapshotOptions {
+            interactive_only: true,
+        };
         let snapshot = format_snapshot(&components, &options);
 
         assert_eq!(snapshot.stats.total, 1);
@@ -339,11 +339,20 @@ mod tests {
             make_component(Role::Tab, "Tab1", 0, 4, 4),
             make_component(Role::PromptMarker, ">", 0, 5, 1),
         ];
-        let options = SnapshotOptions { interactive: true };
+        let options = SnapshotOptions {
+            interactive_only: true,
+        };
         let snapshot = format_snapshot(&components, &options);
 
         assert_eq!(snapshot.stats.total, 6);
         assert_eq!(snapshot.stats.interactive, 6);
+    }
+
+    #[test]
+    fn test_snapshot_escapes_quotes_in_name() {
+        let components = vec![make_component(Role::Button, r#"Say "Hello""#, 0, 0, 12)];
+        let snapshot = format_snapshot(&components, &SnapshotOptions::default());
+        assert!(snapshot.tree.contains(r#"Say \"Hello\""#));
     }
 
     #[test]
@@ -354,7 +363,9 @@ mod tests {
             make_component(Role::StaticText, "C", 0, 2, 1),
             make_component(Role::Input, "D", 0, 3, 1),
         ];
-        let options = SnapshotOptions { interactive: true };
+        let options = SnapshotOptions {
+            interactive_only: true,
+        };
         let snapshot = format_snapshot(&components, &options);
 
         assert!(snapshot.refs.get("e1").is_some());
@@ -433,7 +444,7 @@ mod tests {
                 let all_snapshot = format_snapshot(&components, &SnapshotOptions::default());
                 let interactive_snapshot = format_snapshot(
                     &components,
-                    &SnapshotOptions { interactive: true }
+                    &SnapshotOptions { interactive_only: true }
                 );
 
                 prop_assert!(interactive_snapshot.stats.total <= all_snapshot.stats.total);

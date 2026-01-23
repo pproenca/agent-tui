@@ -5,28 +5,28 @@ use agent_tui_ipc::{
     AccessibilitySnapshotDto, BoundsDto, ElementRefDto, RefMapDto, SnapshotStatsDto,
 };
 
-pub fn bounds_to_dto(b: Bounds) -> BoundsDto {
+pub fn bounds_to_dto(bounds: &Bounds) -> BoundsDto {
     BoundsDto {
-        x: b.x,
-        y: b.y,
-        width: b.width,
-        height: b.height,
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
     }
 }
 
-pub fn element_ref_to_dto(e: ElementRef) -> ElementRefDto {
+pub fn element_ref_to_dto(element: ElementRef) -> ElementRefDto {
     ElementRefDto {
-        role: e.role,
-        name: e.name,
-        bounds: bounds_to_dto(e.bounds),
-        visual_hash: e.visual_hash,
-        nth: e.nth,
+        role: element.role,
+        name: element.name,
+        bounds: bounds_to_dto(&element.bounds),
+        visual_hash: element.visual_hash,
+        nth: element.nth,
     }
 }
 
-pub fn ref_map_to_dto(r: RefMap) -> RefMapDto {
+pub fn ref_map_to_dto(ref_map: RefMap) -> RefMapDto {
     RefMapDto {
-        refs: r
+        refs: ref_map
             .refs
             .into_iter()
             .map(|(k, v)| (k, element_ref_to_dto(v)))
@@ -34,19 +34,19 @@ pub fn ref_map_to_dto(r: RefMap) -> RefMapDto {
     }
 }
 
-pub fn stats_to_dto(s: SnapshotStats) -> SnapshotStatsDto {
+pub fn stats_to_dto(stats: &SnapshotStats) -> SnapshotStatsDto {
     SnapshotStatsDto {
-        total: s.total,
-        interactive: s.interactive,
-        lines: s.lines,
+        total: stats.total,
+        interactive: stats.interactive,
+        lines: stats.lines,
     }
 }
 
-pub fn snapshot_to_dto(s: AccessibilitySnapshot) -> AccessibilitySnapshotDto {
+pub fn snapshot_to_dto(snapshot: AccessibilitySnapshot) -> AccessibilitySnapshotDto {
     AccessibilitySnapshotDto {
-        tree: s.tree,
-        refs: ref_map_to_dto(s.refs),
-        stats: stats_to_dto(s.stats),
+        tree: snapshot.tree,
+        refs: ref_map_to_dto(snapshot.refs),
+        stats: stats_to_dto(&snapshot.stats),
     }
 }
 
@@ -63,7 +63,7 @@ mod tests {
             width: 20,
             height: 3,
         };
-        let dto = bounds_to_dto(core_bounds);
+        let dto = bounds_to_dto(&core_bounds);
 
         assert_eq!(dto.x, 10);
         assert_eq!(dto.y, 5);
@@ -188,7 +188,7 @@ mod tests {
             interactive: 5,
             lines: 10,
         };
-        let dto = stats_to_dto(core_stats);
+        let dto = stats_to_dto(&core_stats);
 
         assert_eq!(dto.total, 10);
         assert_eq!(dto.interactive, 5);

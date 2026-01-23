@@ -86,7 +86,7 @@ impl<R: SessionRepository> AccessibilitySnapshotUseCase for AccessibilitySnapsho
         let components = session_guard.analyze_screen();
 
         let options = SnapshotOptions {
-            interactive: input.interactive_only,
+            interactive_only: input.interactive_only,
         };
         let snapshot = format_snapshot(&components, &options);
 

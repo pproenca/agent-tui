@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct BoundsDto {
     pub x: u16,
     pub y: u16,
@@ -13,6 +13,7 @@ pub struct BoundsDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ElementRefDto {
     pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     pub bounds: BoundsDto,
     pub visual_hash: u64,
@@ -26,7 +27,7 @@ pub struct RefMapDto {
     pub refs: HashMap<String, ElementRefDto>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SnapshotStatsDto {
     pub total: usize,
     pub interactive: usize,

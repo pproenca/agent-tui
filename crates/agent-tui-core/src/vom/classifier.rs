@@ -208,10 +208,6 @@ mod tests {
         assert_eq!(role, Role::StaticText);
     }
 
-    // ============================================================
-    // Status role detection tests
-    // ============================================================
-
     #[test]
     fn test_status_spinner_braille() {
         // Braille spinner characters used in CLI loaders
@@ -263,10 +259,6 @@ mod tests {
         assert_ne!(role, Role::Status);
     }
 
-    // ============================================================
-    // ToolBlock role detection tests
-    // ============================================================
-
     #[test]
     fn test_tool_block_top_border() {
         // Rounded top border with title: ╭─ Write ─╮
@@ -306,10 +298,6 @@ mod tests {
         assert_eq!(role, Role::Panel);
     }
 
-    // ============================================================
-    // PromptMarker role detection tests
-    // ============================================================
-
     #[test]
     fn test_prompt_marker_simple() {
         // Simple prompt marker at start of line
@@ -338,10 +326,6 @@ mod tests {
     fn test_prompt_marker_is_interactive() {
         assert!(Role::PromptMarker.is_interactive());
     }
-
-    // ============================================================
-    // Y/N button detection tests
-    // ============================================================
 
     #[test]
     fn test_yn_button_y_with_spaces() {
@@ -378,10 +362,6 @@ mod tests {
         let role = infer_role(&cluster, 99, 99);
         assert_eq!(role, Role::Checkbox);
     }
-
-    // ============================================================
-    // Property-based tests
-    // ============================================================
 
     mod prop_tests {
         use super::*;

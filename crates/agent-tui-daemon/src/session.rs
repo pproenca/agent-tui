@@ -433,6 +433,10 @@ impl crate::repository::SessionOps for Session {
     fn pty_write(&mut self, data: &[u8]) -> Result<(), SessionError> {
         Session::pty_write(self, data)
     }
+
+    fn analyze_screen(&self) -> Vec<agent_tui_core::Component> {
+        Session::analyze_screen(self)
+    }
 }
 
 /// Lock ordering: sessions → active_session → Session mutex

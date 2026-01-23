@@ -53,12 +53,24 @@ fn infer_role(cluster: &Cluster, cursor_row: u16, cursor_col: u16) -> Role {
         return Role::Checkbox;
     }
 
+    if is_prompt_marker(text) {
+        return Role::PromptMarker;
+    }
+
     if is_menu_item(text) {
         return Role::MenuItem;
     }
 
+    if is_tool_block_border(text) {
+        return Role::ToolBlock;
+    }
+
     if is_panel_border(text) {
         return Role::Panel;
+    }
+
+    if is_status_indicator(text) {
+        return Role::Status;
     }
 
     Role::StaticText
@@ -142,6 +154,42 @@ fn is_panel_border(text: &str) -> bool {
 
     let box_count = text.chars().filter(|c| box_chars.contains(c)).count();
     box_count > total / 2
+}
+
+fn is_status_indicator(text: &str) -> bool {
+    let text = text.trim();
+    if text.is_empty() {
+        return false;
+    }
+
+    let first_char = text.chars().next().unwrap();
+
+    const BRAILLE_SPINNERS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    const CIRCLE_SPINNERS: [char; 4] = ['◐', '◑', '◒', '◓'];
+    const STATUS_CHARS: [char; 4] = ['✓', '✔', '✗', '✘'];
+
+    BRAILLE_SPINNERS.contains(&first_char)
+        || CIRCLE_SPINNERS.contains(&first_char)
+        || STATUS_CHARS.contains(&first_char)
+}
+
+fn is_tool_block_border(text: &str) -> bool {
+    let text = text.trim();
+    if text.is_empty() {
+        return false;
+    }
+
+    let first_char = text.chars().next().unwrap();
+    let last_char = text.chars().last().unwrap();
+
+    const ROUNDED_CORNERS: [char; 4] = ['╭', '╮', '╰', '╯'];
+
+    ROUNDED_CORNERS.contains(&first_char) || ROUNDED_CORNERS.contains(&last_char)
+}
+
+fn is_prompt_marker(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed == ">" || trimmed == "> "
 }
 
 #[cfg(test)]
@@ -270,6 +318,162 @@ mod tests {
 
         let role = infer_role(&cluster, 5, 15);
         assert_eq!(role, Role::StaticText);
+    }
+
+    // ============================================================
+    // Status role detection tests
+    // ============================================================
+
+    #[test]
+    fn test_status_spinner_braille() {
+        // Braille spinner characters used in CLI loaders
+        for spinner in ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] {
+            let text = format!("{} Loading...", spinner);
+            let cluster = make_cluster(&text, CellStyle::default(), 0, 0);
+            let role = infer_role(&cluster, 99, 99);
+            assert_eq!(role, Role::Status, "Failed for spinner: {}", spinner);
+        }
+    }
+
+    #[test]
+    fn test_status_spinner_circle() {
+        // Circle spinner characters
+        for spinner in ['◐', '◑', '◒', '◓'] {
+            let text = format!("{} Processing", spinner);
+            let cluster = make_cluster(&text, CellStyle::default(), 0, 0);
+            let role = infer_role(&cluster, 99, 99);
+            assert_eq!(role, Role::Status, "Failed for spinner: {}", spinner);
+        }
+    }
+
+    #[test]
+    fn test_status_thinking_text() {
+        let cluster = make_cluster("⠋ Thinking...", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Status);
+    }
+
+    #[test]
+    fn test_status_done_indicator() {
+        let cluster = make_cluster("✓ Done", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Status);
+    }
+
+    #[test]
+    fn test_status_checkmark_complete() {
+        let cluster = make_cluster("✔ Complete", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Status);
+    }
+
+    #[test]
+    fn test_status_not_regular_text() {
+        // Regular text should NOT be detected as status
+        let cluster = make_cluster("Hello World", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_ne!(role, Role::Status);
+    }
+
+    // ============================================================
+    // ToolBlock role detection tests
+    // ============================================================
+
+    #[test]
+    fn test_tool_block_top_border() {
+        // Rounded top border with title: ╭─ Write ─╮
+        let cluster = make_cluster("╭─ Write ─────────────────────╮", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::ToolBlock);
+    }
+
+    #[test]
+    fn test_tool_block_bottom_border() {
+        // Rounded bottom border: ╰──────────────────────────────╯
+        let cluster = make_cluster("╰──────────────────────────────╯", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::ToolBlock);
+    }
+
+    #[test]
+    fn test_tool_block_not_regular_panel() {
+        // Regular panel border (square corners) should be Panel, not ToolBlock
+        let cluster = make_cluster("┌──────────────────────────────┐", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Panel);
+    }
+
+    // ============================================================
+    // PromptMarker role detection tests
+    // ============================================================
+
+    #[test]
+    fn test_prompt_marker_simple() {
+        // Simple prompt marker at start of line
+        let cluster = make_cluster(">", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::PromptMarker);
+    }
+
+    #[test]
+    fn test_prompt_marker_with_space() {
+        // Prompt marker with trailing space
+        let cluster = make_cluster("> ", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::PromptMarker);
+    }
+
+    #[test]
+    fn test_prompt_marker_not_menu_item() {
+        // Menu item with content after > should be MenuItem, not PromptMarker
+        let cluster = make_cluster("> Option 1", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::MenuItem);
+    }
+
+    #[test]
+    fn test_prompt_marker_is_interactive() {
+        assert!(Role::PromptMarker.is_interactive());
+    }
+
+    // ============================================================
+    // Y/N button detection tests
+    // ============================================================
+
+    #[test]
+    fn test_yn_button_y_with_spaces() {
+        let cluster = make_cluster("[ Y ]", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Button);
+    }
+
+    #[test]
+    fn test_yn_button_n_with_spaces() {
+        let cluster = make_cluster("[ N ]", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Button);
+    }
+
+    #[test]
+    fn test_yn_button_yes() {
+        let cluster = make_cluster("[Yes]", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Button);
+    }
+
+    #[test]
+    fn test_yn_button_no() {
+        let cluster = make_cluster("[No]", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Button);
+    }
+
+    #[test]
+    fn test_yn_not_checkbox() {
+        // Single letter checkboxes should still be detected
+        let cluster = make_cluster("[x]", CellStyle::default(), 0, 0);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Checkbox);
     }
 
     // ============================================================

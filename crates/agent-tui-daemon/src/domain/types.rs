@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use agent_tui_core::CursorPosition;
 use agent_tui_core::Element;
+use agent_tui_core::vom::snapshot::AccessibilitySnapshot;
 
 use super::session_types::ErrorEntry;
 use super::session_types::RecordingFrame;
@@ -42,6 +43,18 @@ pub struct SnapshotOutput {
     pub screen: String,
     pub elements: Option<Vec<Element>>,
     pub cursor: Option<CursorPosition>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AccessibilitySnapshotInput {
+    pub session_id: Option<String>,
+    pub interactive_only: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccessibilitySnapshotOutput {
+    pub session_id: SessionId,
+    pub snapshot: AccessibilitySnapshot,
 }
 
 #[derive(Debug, Clone)]

@@ -80,6 +80,9 @@ pub fn role_to_element_type(role: Role) -> ElementType {
         Role::MenuItem => ElementType::MenuItem,
         Role::StaticText => ElementType::ListItem,
         Role::Panel => ElementType::ListItem,
+        Role::Status => ElementType::Spinner,
+        Role::ToolBlock => ElementType::ListItem,
+        Role::PromptMarker => ElementType::Input,
     }
 }
 

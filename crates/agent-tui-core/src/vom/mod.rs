@@ -1,5 +1,6 @@
 pub mod classifier;
 pub mod segmentation;
+pub mod snapshot;
 
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -93,13 +94,21 @@ pub enum Role {
     Panel,
     Checkbox,
     MenuItem,
+    Status,
+    ToolBlock,
+    PromptMarker,
 }
 
 impl Role {
     pub fn is_interactive(&self) -> bool {
         matches!(
             self,
-            Role::Button | Role::Tab | Role::Input | Role::Checkbox | Role::MenuItem
+            Role::Button
+                | Role::Tab
+                | Role::Input
+                | Role::Checkbox
+                | Role::MenuItem
+                | Role::PromptMarker
         )
     }
 }
@@ -114,6 +123,9 @@ impl std::fmt::Display for Role {
             Role::Panel => write!(f, "panel"),
             Role::Checkbox => write!(f, "checkbox"),
             Role::MenuItem => write!(f, "menuitem"),
+            Role::Status => write!(f, "status"),
+            Role::ToolBlock => write!(f, "toolblock"),
+            Role::PromptMarker => write!(f, "prompt"),
         }
     }
 }

@@ -58,6 +58,22 @@ impl ErrorCategory {
     }
 }
 
+impl std::str::FromStr for ErrorCategory {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "not_found" => Ok(ErrorCategory::NotFound),
+            "invalid_input" => Ok(ErrorCategory::InvalidInput),
+            "busy" => Ok(ErrorCategory::Busy),
+            "internal" => Ok(ErrorCategory::Internal),
+            "external" => Ok(ErrorCategory::External),
+            "timeout" => Ok(ErrorCategory::Timeout),
+            _ => Err(()),
+        }
+    }
+}
+
 impl std::fmt::Display for ErrorCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_str())
@@ -166,5 +182,31 @@ mod tests {
         assert_eq!(ErrorCategory::Internal.as_str(), "internal");
         assert_eq!(ErrorCategory::External.as_str(), "external");
         assert_eq!(ErrorCategory::Timeout.as_str(), "timeout");
+    }
+
+    #[test]
+    fn test_category_from_str() {
+        assert_eq!(
+            "not_found".parse::<ErrorCategory>(),
+            Ok(ErrorCategory::NotFound)
+        );
+        assert_eq!(
+            "invalid_input".parse::<ErrorCategory>(),
+            Ok(ErrorCategory::InvalidInput)
+        );
+        assert_eq!("busy".parse::<ErrorCategory>(), Ok(ErrorCategory::Busy));
+        assert_eq!(
+            "internal".parse::<ErrorCategory>(),
+            Ok(ErrorCategory::Internal)
+        );
+        assert_eq!(
+            "external".parse::<ErrorCategory>(),
+            Ok(ErrorCategory::External)
+        );
+        assert_eq!(
+            "timeout".parse::<ErrorCategory>(),
+            Ok(ErrorCategory::Timeout)
+        );
+        assert!("unknown".parse::<ErrorCategory>().is_err());
     }
 }

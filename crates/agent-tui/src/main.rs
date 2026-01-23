@@ -11,12 +11,41 @@ use agent_tui::handlers::HandlerContext;
 use agent_tui_common::Colors;
 use agent_tui_common::color_init;
 use agent_tui_daemon::start_daemon;
+use agent_tui_ipc::ClientError;
 use agent_tui_ipc::ensure_daemon;
 
 fn main() {
     if let Err(e) = run() {
-        eprintln!("{} {}", Colors::error("Error:"), e);
-        std::process::exit(1);
+        if let Some(client_error) = e.downcast_ref::<ClientError>() {
+            eprintln!("{} {}", Colors::error("Error:"), client_error);
+            if let Some(suggestion) = client_error.suggestion() {
+                eprintln!("{} {}", Colors::dim("Suggestion:"), suggestion);
+            }
+            if client_error.is_retryable() {
+                eprintln!(
+                    "{}",
+                    Colors::dim("(This error may be transient - retry may succeed)")
+                );
+            }
+            std::process::exit(exit_code_for_error(client_error));
+        } else {
+            eprintln!("{} {}", Colors::error("Error:"), e);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn exit_code_for_error(error: &ClientError) -> i32 {
+    use agent_tui_ipc::error_codes::ErrorCategory;
+
+    match error.category() {
+        Some(ErrorCategory::InvalidInput) => 64, // EX_USAGE
+        Some(ErrorCategory::NotFound) => 69,     // EX_UNAVAILABLE
+        Some(ErrorCategory::Busy) => 73,         // EX_CANTCREAT
+        Some(ErrorCategory::External) => 74,     // EX_IOERR
+        Some(ErrorCategory::Internal) => 74,     // EX_IOERR
+        Some(ErrorCategory::Timeout) => 75,      // EX_TEMPFAIL
+        None => 1,
     }
 }
 

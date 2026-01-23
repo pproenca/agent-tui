@@ -15,12 +15,22 @@ use serde_json::json;
 use thiserror::Error;
 
 use agent_tui_common::Colors;
+use agent_tui_ipc::ClientError;
 use agent_tui_ipc::DaemonClient;
 
 #[derive(Error, Debug)]
 pub enum AttachError {
     #[error("Terminal error: {0}")]
     Terminal(#[from] io::Error),
+
+    #[error("PTY write failed: {0}")]
+    PtyWrite(String),
+
+    #[error("PTY read failed: {0}")]
+    PtyRead(String),
+
+    #[error("Event read failed")]
+    EventRead,
 }
 
 pub fn attach_ipc(client: &mut DaemonClient, session_id: &str) -> Result<(), AttachError> {
@@ -79,8 +89,8 @@ fn attach_ipc_loop(client: &mut DaemonClient, session_id: &str) -> Result<(), At
                             "session": session_id,
                             "data": data_b64
                         });
-                        if client.call("pty_write", Some(params)).is_err() {
-                            break;
+                        if let Err(e) = client.call("pty_write", Some(params)) {
+                            return Err(AttachError::PtyWrite(format_client_error(&e)));
                         }
                     }
                 }
@@ -93,7 +103,7 @@ fn attach_ipc_loop(client: &mut DaemonClient, session_id: &str) -> Result<(), At
                     let _ = client.call("resize", Some(params));
                 }
                 Ok(_) => {}
-                Err(_) => break,
+                Err(_) => return Err(AttachError::EventRead),
             }
         }
 
@@ -116,13 +126,21 @@ fn attach_ipc_loop(client: &mut DaemonClient, session_id: &str) -> Result<(), At
                     }
                 }
             }
-            Err(_) => {
-                break;
+            Err(e) => {
+                return Err(AttachError::PtyRead(format_client_error(&e)));
             }
         }
     }
 
     Ok(())
+}
+
+fn format_client_error(error: &ClientError) -> String {
+    let mut msg = error.to_string();
+    if let Some(suggestion) = error.suggestion() {
+        msg.push_str(&format!(" ({})", suggestion));
+    }
+    msg
 }
 
 fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {

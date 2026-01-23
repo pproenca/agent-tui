@@ -5,6 +5,7 @@ use serde_json::json;
 
 use agent_tui_common::Colors;
 use agent_tui_common::ValueExt;
+use agent_tui_ipc::ClientError;
 use agent_tui_ipc::DaemonClient;
 use agent_tui_ipc::socket_path;
 
@@ -225,6 +226,27 @@ impl<'a> HandlerContext<'a> {
     ) -> HandlerResult {
         self.output_success_result(result, success_msg, failure_prefix)?;
         Ok(())
+    }
+
+    /// Display a ClientError with structured information.
+    pub fn display_error(&self, error: &ClientError) {
+        match self.format {
+            OutputFormat::Json => {
+                eprintln!("{}", error.to_json());
+            }
+            OutputFormat::Text => {
+                eprintln!("{} {}", Colors::error("Error:"), error);
+                if let Some(suggestion) = error.suggestion() {
+                    eprintln!("{} {}", Colors::dim("Suggestion:"), suggestion);
+                }
+                if error.is_retryable() {
+                    eprintln!(
+                        "{}",
+                        Colors::dim("(This error may be transient - retry may succeed)")
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -579,30 +601,42 @@ pub fn handle_resize(ctx: &mut HandlerContext, cols: u16, rows: u16) -> HandlerR
 pub fn handle_version(ctx: &mut HandlerContext) -> HandlerResult {
     let cli_version = env!("CARGO_PKG_VERSION");
 
-    let daemon_version = match ctx.client.call("health", None) {
-        Ok(result) => result
-            .get("version")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string(),
-        Err(_) => "unavailable".to_string(),
+    let (daemon_version, daemon_error) = match ctx.client.call("health", None) {
+        Ok(result) => (
+            result
+                .get("version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            None,
+        ),
+        Err(e) => ("unavailable".to_string(), Some(e.to_string())),
     };
 
     match ctx.format {
         OutputFormat::Json => {
-            println!(
-                "{}",
-                json!({
-                    "cli_version": cli_version,
-                    "daemon_version": daemon_version,
-                    "mode": "daemon"
-                })
-            );
+            let mut output = json!({
+                "cli_version": cli_version,
+                "daemon_version": daemon_version,
+                "mode": "daemon"
+            });
+            if let Some(err) = &daemon_error {
+                output["daemon_error"] = json!(err);
+            }
+            println!("{}", output);
         }
         OutputFormat::Text => {
             println!("{}", Colors::bold("agent-tui"));
             println!("  CLI version: {}", cli_version);
-            println!("  Daemon version: {}", daemon_version);
+            if let Some(err) = &daemon_error {
+                println!(
+                    "  Daemon version: {} ({})",
+                    Colors::dim(&daemon_version),
+                    Colors::error(err)
+                );
+            } else {
+                println!("  Daemon version: {}", daemon_version);
+            }
         }
     }
     Ok(())

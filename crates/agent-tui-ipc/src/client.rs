@@ -76,6 +76,8 @@ struct Response {
 struct RpcError {
     code: i32,
     message: String,
+    #[serde(default)]
+    data: Option<Value>,
 }
 
 pub struct DaemonClient;
@@ -86,7 +88,7 @@ fn is_retriable_error(error: &ClientError) -> bool {
             io_err.kind(),
             ErrorKind::ConnectionRefused | ErrorKind::WouldBlock | ErrorKind::TimedOut
         ),
-        ClientError::RpcError { code, .. } => error_codes::is_retryable(*code),
+        ClientError::RpcError { retryable, .. } => *retryable,
         _ => false,
     }
 }
@@ -148,9 +150,38 @@ impl DaemonClient {
         let response: Response = serde_json::from_str(&response_line)?;
 
         if let Some(error) = response.error {
+            let (category, retryable, context, suggestion) = if let Some(data) = error.data.as_ref()
+            {
+                let cat = data
+                    .get("category")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<error_codes::ErrorCategory>().ok());
+                let retry = data
+                    .get("retryable")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or_else(|| error_codes::is_retryable(error.code));
+                let ctx = data.get("context").cloned();
+                let sug = data
+                    .get("suggestion")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                (cat, retry, ctx, sug)
+            } else {
+                (
+                    Some(error_codes::category_for_code(error.code)),
+                    error_codes::is_retryable(error.code),
+                    None,
+                    None,
+                )
+            };
+
             return Err(ClientError::RpcError {
                 code: error.code,
                 message: error.message,
+                category,
+                retryable,
+                context,
+                suggestion,
             });
         }
 
@@ -317,6 +348,10 @@ mod tests {
         let err = ClientError::RpcError {
             code: -32601,
             message: "Method not found".to_string(),
+            category: None,
+            retryable: false,
+            context: None,
+            suggestion: None,
         };
         assert_eq!(err.to_string(), "RPC error (-32601): Method not found");
     }
@@ -367,6 +402,10 @@ mod tests {
         let err = ClientError::RpcError {
             code: -32600,
             message: "Invalid request".to_string(),
+            category: None,
+            retryable: false,
+            context: None,
+            suggestion: None,
         };
         assert!(!is_retriable_error(&err));
     }
@@ -376,6 +415,10 @@ mod tests {
         let err = ClientError::RpcError {
             code: error_codes::LOCK_TIMEOUT,
             message: "Lock timeout".to_string(),
+            category: Some(error_codes::ErrorCategory::Busy),
+            retryable: true,
+            context: None,
+            suggestion: None,
         };
         assert!(is_retriable_error(&err));
     }

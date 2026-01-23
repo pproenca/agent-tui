@@ -19,6 +19,12 @@ pub enum SessionError {
     Pty(#[from] PtyError),
     #[error("Element not found: {0}")]
     ElementNotFound(String),
+    #[error("Element {element_ref} is a {actual} not a {expected}")]
+    WrongElementType {
+        element_ref: String,
+        actual: String,
+        expected: String,
+    },
     #[error("Invalid key: {0}")]
     InvalidKey(String),
     #[error("Session limit reached: maximum {0} sessions allowed")]
@@ -34,6 +40,7 @@ impl SessionError {
             SessionError::NotFound(_) => error_codes::SESSION_NOT_FOUND,
             SessionError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
             SessionError::ElementNotFound(_) => error_codes::ELEMENT_NOT_FOUND,
+            SessionError::WrongElementType { .. } => error_codes::WRONG_ELEMENT_TYPE,
             SessionError::InvalidKey(_) => error_codes::INVALID_KEY,
             SessionError::LimitReached(_) => error_codes::SESSION_LIMIT,
             SessionError::Pty(_) => error_codes::PTY_ERROR,
@@ -52,6 +59,17 @@ impl SessionError {
             SessionError::NotFound(id) => json!({ "session_id": id }),
             SessionError::NoActiveSession => json!({}),
             SessionError::ElementNotFound(element_ref) => json!({ "element_ref": element_ref }),
+            SessionError::WrongElementType {
+                element_ref,
+                actual,
+                expected,
+            } => {
+                json!({
+                    "element_ref": element_ref,
+                    "actual_type": actual,
+                    "expected_type": expected
+                })
+            }
             SessionError::InvalidKey(key) => json!({ "key": key }),
             SessionError::LimitReached(max) => json!({ "max_sessions": max }),
             SessionError::Pty(pty_err) => pty_err.context(),
@@ -74,6 +92,11 @@ impl SessionError {
                     element_ref
                 )
             }
+            SessionError::WrongElementType {
+                element_ref,
+                actual,
+                ..
+            } => suggest_command_for_type(actual, element_ref),
             SessionError::InvalidKey(_) => {
                 "Supported keys: Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp/Down, F1-F12. Modifiers: Ctrl+, Alt+, Shift+".to_string()
             }
@@ -386,6 +409,15 @@ impl From<SessionError> for DomainError {
             SessionError::ElementNotFound(element_ref) => DomainError::ElementNotFound {
                 element_ref,
                 session_id: None,
+            },
+            SessionError::WrongElementType {
+                element_ref,
+                actual,
+                expected,
+            } => DomainError::WrongElementType {
+                element_ref,
+                actual,
+                expected,
             },
             SessionError::InvalidKey(key) => DomainError::InvalidKey { key },
             SessionError::LimitReached(max) => DomainError::SessionLimitReached { max },

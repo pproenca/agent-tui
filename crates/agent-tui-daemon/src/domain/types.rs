@@ -104,6 +104,32 @@ pub struct TypeOutput {
     pub success: bool,
 }
 
+/// Input for keydown event.
+#[derive(Debug, Clone)]
+pub struct KeydownInput {
+    pub session_id: Option<String>,
+    pub key: String,
+}
+
+/// Output from keydown event.
+#[derive(Debug, Clone)]
+pub struct KeydownOutput {
+    pub success: bool,
+}
+
+/// Input for keyup event.
+#[derive(Debug, Clone)]
+pub struct KeyupInput {
+    pub session_id: Option<String>,
+    pub key: String,
+}
+
+/// Output from keyup event.
+#[derive(Debug, Clone)]
+pub struct KeyupOutput {
+    pub success: bool,
+}
+
 /// Input for waiting for a condition.
 #[derive(Debug, Clone)]
 pub struct WaitInput {
@@ -205,6 +231,21 @@ pub struct FocusCheckOutput {
     pub focused: bool,
 }
 
+/// Output for element enabled check.
+#[derive(Debug, Clone)]
+pub struct IsEnabledOutput {
+    pub found: bool,
+    pub enabled: bool,
+}
+
+/// Output for element checked check.
+#[derive(Debug, Clone)]
+pub struct IsCheckedOutput {
+    pub found: bool,
+    pub checked: bool,
+    pub message: Option<String>,
+}
+
 /// Output for getting element text.
 #[derive(Debug, Clone)]
 pub struct GetTextOutput {
@@ -224,6 +265,58 @@ pub struct GetValueOutput {
 pub struct GetFocusedOutput {
     pub found: bool,
     pub element: Option<Element>,
+}
+
+/// Input for double-clicking an element.
+#[derive(Debug, Clone)]
+pub struct DoubleClickInput {
+    pub session_id: Option<String>,
+    pub element_ref: String,
+}
+
+/// Output from double-clicking an element.
+#[derive(Debug, Clone)]
+pub struct DoubleClickOutput {
+    pub success: bool,
+}
+
+/// Input for focusing an element.
+#[derive(Debug, Clone)]
+pub struct FocusInput {
+    pub session_id: Option<String>,
+    pub element_ref: String,
+}
+
+/// Output from focusing an element.
+#[derive(Debug, Clone)]
+pub struct FocusOutput {
+    pub success: bool,
+}
+
+/// Input for clearing an element's content.
+#[derive(Debug, Clone)]
+pub struct ClearInput {
+    pub session_id: Option<String>,
+    pub element_ref: String,
+}
+
+/// Output from clearing an element.
+#[derive(Debug, Clone)]
+pub struct ClearOutput {
+    pub success: bool,
+}
+
+/// Input for selecting all content in an element.
+#[derive(Debug, Clone)]
+pub struct SelectAllInput {
+    pub session_id: Option<String>,
+    pub element_ref: String,
+}
+
+/// Output from selecting all content.
+#[derive(Debug, Clone)]
+pub struct SelectAllOutput {
+    pub success: bool,
 }
 
 /// Input for toggling a checkbox.
@@ -274,6 +367,25 @@ pub struct MultiselectOutput {
     pub message: Option<String>,
 }
 
+/// Input for starting recording.
+#[derive(Debug, Clone)]
+pub struct RecordStartInput {
+    pub session_id: Option<String>,
+}
+
+/// Input for stopping recording.
+#[derive(Debug, Clone)]
+pub struct RecordStopInput {
+    pub session_id: Option<String>,
+    pub format: Option<String>,
+}
+
+/// Input for checking recording status.
+#[derive(Debug, Clone)]
+pub struct RecordStatusInput {
+    pub session_id: Option<String>,
+}
+
 /// Output from starting recording.
 #[derive(Debug, Clone)]
 pub struct RecordStartOutput {
@@ -288,6 +400,8 @@ pub struct RecordStopOutput {
     pub frame_count: usize,
     pub frames: Vec<RecordingFrame>,
     pub format: String,
+    pub cols: u16,
+    pub rows: u16,
 }
 
 /// Output from checking recording status.
@@ -373,4 +487,73 @@ pub struct ScrollIntoViewOutput {
     pub success: bool,
     pub scrolls_needed: usize,
     pub message: Option<String>,
+}
+
+/// Input for PTY read operations.
+#[derive(Debug, Clone)]
+pub struct PtyReadInput {
+    pub session_id: Option<String>,
+    pub max_bytes: usize,
+}
+
+/// Output from PTY read operations.
+#[derive(Debug, Clone)]
+pub struct PtyReadOutput {
+    pub session_id: SessionId,
+    pub data: String,
+    pub bytes_read: usize,
+}
+
+/// Input for PTY write operations.
+#[derive(Debug, Clone)]
+pub struct PtyWriteInput {
+    pub session_id: Option<String>,
+    pub data: String,
+}
+
+/// Output from PTY write operations.
+#[derive(Debug, Clone)]
+pub struct PtyWriteOutput {
+    pub session_id: SessionId,
+    pub bytes_written: usize,
+    pub success: bool,
+}
+
+/// Input for session-only operations (recording, health checks, etc.)
+#[derive(Debug, Clone)]
+pub struct SessionInput {
+    pub session_id: Option<String>,
+}
+
+/// Input for health check.
+#[derive(Debug, Clone, Default)]
+pub struct HealthInput;
+
+/// Output from health check.
+#[derive(Debug, Clone)]
+pub struct HealthOutput {
+    pub status: String,
+    pub pid: u32,
+    pub uptime_ms: u64,
+    pub session_count: usize,
+    pub version: String,
+    pub active_connections: usize,
+    pub total_requests: u64,
+    pub error_count: u64,
+}
+
+/// Input for metrics.
+#[derive(Debug, Clone, Default)]
+pub struct MetricsInput;
+
+/// Output from metrics.
+#[derive(Debug, Clone)]
+pub struct MetricsOutput {
+    pub requests_total: u64,
+    pub errors_total: u64,
+    pub lock_timeouts: u64,
+    pub poison_recoveries: u64,
+    pub uptime_ms: u64,
+    pub active_connections: usize,
+    pub session_count: usize,
 }

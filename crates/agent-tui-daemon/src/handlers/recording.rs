@@ -2,9 +2,12 @@ use agent_tui_ipc::{RpcRequest, RpcResponse};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+use super::common::session_error_response;
+use crate::domain::{RecordStartInput, RecordStatusInput, RecordStopInput};
 use crate::error::DomainError;
 use crate::lock_helpers::{LOCK_TIMEOUT, acquire_session_lock};
 use crate::session::{RecordingFrame, SessionManager};
+use crate::usecases::{RecordStartUseCase, RecordStatusUseCase, RecordStopUseCase};
 
 fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
     RpcResponse::domain_error(
@@ -82,6 +85,100 @@ fn build_asciicast(session_id: &str, cols: u16, rows: u16, frames: &[RecordingFr
         "version": 2,
         "data": output.join("\n")
     })
+}
+
+/// Handle record_start requests using the use case pattern.
+pub fn handle_record_start_uc<U: RecordStartUseCase>(
+    usecase: &U,
+    request: RpcRequest,
+) -> RpcResponse {
+    let session_id = request.param_str("session").map(String::from);
+    let req_id = request.id;
+
+    let input = RecordStartInput { session_id };
+
+    match usecase.execute(input) {
+        Ok(output) => RpcResponse::success(
+            req_id,
+            json!({
+                "success": output.success,
+                "session_id": output.session_id,
+                "recording": true
+            }),
+        ),
+        Err(e) => session_error_response(req_id, e),
+    }
+}
+
+/// Handle record_stop requests using the use case pattern.
+pub fn handle_record_stop_uc<U: RecordStopUseCase>(
+    usecase: &U,
+    request: RpcRequest,
+) -> RpcResponse {
+    let session_id = request.param_str("session").map(String::from);
+    let format = request.param_str("format").map(String::from);
+    let req_id = request.id;
+
+    let input = RecordStopInput { session_id, format };
+
+    match usecase.execute(input) {
+        Ok(output) => {
+            let recording_data = if output.format == "asciicast" {
+                build_asciicast(
+                    output.session_id.as_ref(),
+                    output.cols,
+                    output.rows,
+                    &output.frames,
+                )
+            } else {
+                let frame_data: Vec<_> = output
+                    .frames
+                    .iter()
+                    .map(|f| {
+                        json!({
+                            "timestamp_ms": f.timestamp_ms,
+                            "screen": f.screen
+                        })
+                    })
+                    .collect();
+                json!({ "frames": frame_data, "frame_count": output.frame_count })
+            };
+
+            RpcResponse::success(
+                req_id,
+                json!({
+                    "success": true,
+                    "session_id": output.session_id,
+                    "frame_count": output.frame_count,
+                    "recording": recording_data
+                }),
+            )
+        }
+        Err(e) => session_error_response(req_id, e),
+    }
+}
+
+/// Handle record_status requests using the use case pattern.
+pub fn handle_record_status_uc<U: RecordStatusUseCase>(
+    usecase: &U,
+    request: RpcRequest,
+) -> RpcResponse {
+    let session_id = request.param_str("session").map(String::from);
+    let req_id = request.id;
+
+    let input = RecordStatusInput { session_id };
+
+    match usecase.execute(input) {
+        Ok(status) => RpcResponse::success(
+            req_id,
+            json!({
+                "recording": status.is_recording,
+                "frame_count": status.frame_count,
+                "duration_ms": status.duration_ms
+            }),
+        ),
+        Err(e) => session_error_response(req_id, e),
+    }
 }
 
 pub fn handle_record_start(

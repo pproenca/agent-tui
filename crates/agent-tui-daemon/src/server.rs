@@ -201,62 +201,114 @@ impl DaemonServer {
             "resize" => handlers::session::handle_resize(&self.usecases.session.resize, request),
             "attach" => handlers::session::handle_attach(&self.usecases.session.attach, request),
 
-            // Element handlers - key operations use use cases, others use session_manager
+            // Element handlers - using use cases
             "snapshot" => {
                 handlers::elements::handle_snapshot_uc(&self.usecases.elements.snapshot, request)
             }
             "click" => handlers::elements::handle_click_uc(&self.usecases.elements.click, request),
-            "dbl_click" => handlers::elements::handle_dbl_click(&self.session_manager, request),
-            "fill" => handlers::elements::handle_fill(&self.session_manager, request),
-            "find" => handlers::elements::handle_find(&self.session_manager, request),
-            "count" => handlers::elements::handle_count(&self.session_manager, request),
-            "scroll" => handlers::elements::handle_scroll(&self.session_manager, request),
-            "scroll_into_view" => {
-                handlers::elements::handle_scroll_into_view(&self.session_manager, request)
+            "dbl_click" => {
+                handlers::elements::handle_dbl_click_uc(&self.usecases.elements.dbl_click, request)
             }
-            "get_text" => handlers::elements::handle_get_text(&self.session_manager, request),
-            "get_value" => handlers::elements::handle_get_value(&self.session_manager, request),
-            "is_visible" => handlers::elements::handle_is_visible(&self.session_manager, request),
-            "is_focused" => handlers::elements::handle_is_focused(&self.session_manager, request),
-            "is_enabled" => handlers::elements::handle_is_enabled(&self.session_manager, request),
-            "is_checked" => handlers::elements::handle_is_checked(&self.session_manager, request),
-            "get_focused" => handlers::elements::handle_get_focused(&self.session_manager, request),
-            "get_title" => handlers::elements::handle_get_title(&self.session_manager, request),
-            "focus" => handlers::elements::handle_focus(&self.session_manager, request),
-            "clear" => handlers::elements::handle_clear(&self.session_manager, request),
-            "select_all" => handlers::elements::handle_select_all(&self.session_manager, request),
-            "toggle" => handlers::elements::handle_toggle(&self.session_manager, request),
-            "select" => handlers::elements::handle_select(&self.session_manager, request),
-            "multiselect" => handlers::elements::handle_multiselect(&self.session_manager, request),
+            "fill" => handlers::elements::handle_fill_uc(&self.usecases.elements.fill, request),
+            "find" => handlers::elements::handle_find_uc(&self.usecases.elements.find, request),
+            "count" => handlers::elements::handle_count_uc(&self.usecases.elements.count, request),
+            "scroll" => {
+                handlers::elements::handle_scroll_uc(&self.usecases.elements.scroll, request)
+            }
+            "scroll_into_view" => handlers::elements::handle_scroll_into_view_uc(
+                &self.usecases.elements.scroll_into_view,
+                request,
+            ),
+            "get_text" => {
+                handlers::elements::handle_get_text_uc(&self.usecases.elements.get_text, request)
+            }
+            "get_value" => {
+                handlers::elements::handle_get_value_uc(&self.usecases.elements.get_value, request)
+            }
+            "is_visible" => handlers::elements::handle_is_visible_uc(
+                &self.usecases.elements.is_visible,
+                request,
+            ),
+            "is_focused" => handlers::elements::handle_is_focused_uc(
+                &self.usecases.elements.is_focused,
+                request,
+            ),
+            "is_enabled" => handlers::elements::handle_is_enabled_uc(
+                &self.usecases.elements.is_enabled,
+                request,
+            ),
+            "is_checked" => handlers::elements::handle_is_checked_uc(
+                &self.usecases.elements.is_checked,
+                request,
+            ),
+            "get_focused" => handlers::elements::handle_get_focused_uc(
+                &self.usecases.elements.get_focused,
+                request,
+            ),
+            "get_title" => {
+                handlers::elements::handle_get_title_uc(&self.usecases.elements.get_title, request)
+            }
+            "focus" => handlers::elements::handle_focus_uc(&self.usecases.elements.focus, request),
+            "clear" => handlers::elements::handle_clear_uc(&self.usecases.elements.clear, request),
+            "select_all" => handlers::elements::handle_select_all_uc(
+                &self.usecases.elements.select_all,
+                request,
+            ),
+            "toggle" => {
+                handlers::elements::handle_toggle_uc(&self.usecases.elements.toggle, request)
+            }
+            "select" => {
+                handlers::elements::handle_select_uc(&self.usecases.elements.select, request)
+            }
+            "multiselect" => handlers::elements::handle_multiselect_uc(
+                &self.usecases.elements.multiselect,
+                request,
+            ),
 
             // Input handlers - keystroke and type use use cases
             "keystroke" => {
                 handlers::input::handle_keystroke_uc(&self.usecases.input.keystroke, request)
             }
-            "keydown" => handlers::input::handle_keydown(&self.session_manager, request),
-            "keyup" => handlers::input::handle_keyup(&self.session_manager, request),
+            "keydown" => handlers::input::handle_keydown_uc(&self.usecases.input.keydown, request),
+            "keyup" => handlers::input::handle_keyup_uc(&self.usecases.input.keyup, request),
             "type" => handlers::input::handle_type_uc(&self.usecases.input.type_text, request),
 
             // Wait handler using use case
             "wait" => handlers::wait::handle_wait_uc(&self.usecases.wait, request),
 
-            // Recording handlers
-            "record_start" => {
-                handlers::recording::handle_record_start(&self.session_manager, request)
-            }
-            "record_stop" => {
-                handlers::recording::handle_record_stop(&self.session_manager, request)
-            }
-            "record_status" => {
-                handlers::recording::handle_record_status(&self.session_manager, request)
-            }
+            // Recording handlers - using use cases
+            "record_start" => handlers::recording::handle_record_start_uc(
+                &self.usecases.recording.record_start,
+                request,
+            ),
+            "record_stop" => handlers::recording::handle_record_stop_uc(
+                &self.usecases.recording.record_stop,
+                request,
+            ),
+            "record_status" => handlers::recording::handle_record_status_uc(
+                &self.usecases.recording.record_status,
+                request,
+            ),
 
-            // Diagnostics handlers
-            "trace" => handlers::diagnostics::handle_trace(&self.session_manager, request),
-            "console" => handlers::diagnostics::handle_console(&self.session_manager, request),
-            "errors" => handlers::diagnostics::handle_errors(&self.session_manager, request),
-            "pty_read" => handlers::diagnostics::handle_pty_read(&self.session_manager, request),
-            "pty_write" => handlers::diagnostics::handle_pty_write(&self.session_manager, request),
+            // Diagnostics handlers - using use cases
+            "trace" => {
+                handlers::diagnostics::handle_trace_uc(&self.usecases.diagnostics.trace, request)
+            }
+            "console" => handlers::diagnostics::handle_console_uc(
+                &self.usecases.diagnostics.console,
+                request,
+            ),
+            "errors" => {
+                handlers::diagnostics::handle_errors_uc(&self.usecases.diagnostics.errors, request)
+            }
+            "pty_read" => handlers::diagnostics::handle_pty_read_uc(
+                &self.usecases.diagnostics.pty_read,
+                request,
+            ),
+            "pty_write" => handlers::diagnostics::handle_pty_write_uc(
+                &self.usecases.diagnostics.pty_write,
+                request,
+            ),
 
             "screen" => RpcResponse::error(
                 request.id,

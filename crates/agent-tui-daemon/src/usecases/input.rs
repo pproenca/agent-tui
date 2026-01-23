@@ -9,12 +9,10 @@ use crate::domain::{
 use crate::error::SessionError;
 use crate::repository::SessionRepository;
 
-/// Use case for sending a keystroke.
 pub trait KeystrokeUseCase: Send + Sync {
     fn execute(&self, input: KeystrokeInput) -> Result<KeystrokeOutput, SessionError>;
 }
 
-/// Implementation of the keystroke use case.
 pub struct KeystrokeUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -36,12 +34,10 @@ impl<R: SessionRepository> KeystrokeUseCase for KeystrokeUseCaseImpl<R> {
     }
 }
 
-/// Use case for typing text.
 pub trait TypeUseCase: Send + Sync {
     fn execute(&self, input: TypeInput) -> Result<TypeOutput, SessionError>;
 }
 
-/// Implementation of the type use case.
 pub struct TypeUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -63,12 +59,10 @@ impl<R: SessionRepository> TypeUseCase for TypeUseCaseImpl<R> {
     }
 }
 
-/// Use case for sending a key down event.
 pub trait KeydownUseCase: Send + Sync {
     fn execute(&self, input: KeydownInput) -> Result<KeydownOutput, SessionError>;
 }
 
-/// Implementation of the keydown use case.
 pub struct KeydownUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -90,12 +84,10 @@ impl<R: SessionRepository> KeydownUseCase for KeydownUseCaseImpl<R> {
     }
 }
 
-/// Use case for sending a key up event.
 pub trait KeyupUseCase: Send + Sync {
     fn execute(&self, input: KeyupInput) -> Result<KeyupOutput, SessionError>;
 }
 
-/// Implementation of the keyup use case.
 pub struct KeyupUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }

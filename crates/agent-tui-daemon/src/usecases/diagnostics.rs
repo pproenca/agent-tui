@@ -14,12 +14,10 @@ use crate::error::SessionError;
 use crate::metrics::DaemonMetrics;
 use crate::repository::SessionRepository;
 
-/// Use case for trace operations.
 pub trait TraceUseCase: Send + Sync {
     fn execute(&self, input: TraceInput) -> Result<TraceOutput, SessionError>;
 }
 
-/// Implementation of the trace use case.
 pub struct TraceUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -45,12 +43,10 @@ impl<R: SessionRepository> TraceUseCase for TraceUseCaseImpl<R> {
     }
 }
 
-/// Use case for console operations.
 pub trait ConsoleUseCase: Send + Sync {
     fn execute(&self, input: ConsoleInput) -> Result<ConsoleOutput, SessionError>;
 }
 
-/// Implementation of the console use case.
 pub struct ConsoleUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -77,12 +73,10 @@ impl<R: SessionRepository> ConsoleUseCase for ConsoleUseCaseImpl<R> {
     }
 }
 
-/// Use case for errors operations.
 pub trait ErrorsUseCase: Send + Sync {
     fn execute(&self, input: ErrorsInput) -> Result<ErrorsOutput, SessionError>;
 }
 
-/// Implementation of the errors use case.
 pub struct ErrorsUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -108,12 +102,10 @@ impl<R: SessionRepository> ErrorsUseCase for ErrorsUseCaseImpl<R> {
     }
 }
 
-/// Use case for PTY read operations.
 pub trait PtyReadUseCase: Send + Sync {
     fn execute(&self, input: PtyReadInput) -> Result<PtyReadOutput, SessionError>;
 }
 
-/// Implementation of the PTY read use case.
 pub struct PtyReadUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -151,12 +143,10 @@ impl<R: SessionRepository> PtyReadUseCase for PtyReadUseCaseImpl<R> {
     }
 }
 
-/// Use case for PTY write operations.
 pub trait PtyWriteUseCase: Send + Sync {
     fn execute(&self, input: PtyWriteInput) -> Result<PtyWriteOutput, SessionError>;
 }
 
-/// Implementation of the PTY write use case.
 pub struct PtyWriteUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -183,12 +173,10 @@ impl<R: SessionRepository> PtyWriteUseCase for PtyWriteUseCaseImpl<R> {
     }
 }
 
-/// Use case for health check operations.
 pub trait HealthUseCase: Send + Sync {
     fn execute(&self, input: HealthInput) -> Result<HealthOutput, SessionError>;
 }
 
-/// Implementation of the health check use case.
 pub struct HealthUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
     metrics: Arc<DaemonMetrics>,
@@ -227,12 +215,10 @@ impl<R: SessionRepository> HealthUseCase for HealthUseCaseImpl<R> {
     }
 }
 
-/// Use case for metrics operations.
 pub trait MetricsUseCase: Send + Sync {
     fn execute(&self, input: MetricsInput) -> Result<MetricsOutput, SessionError>;
 }
 
-/// Implementation of the metrics use case.
 pub struct MetricsUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
     metrics: Arc<DaemonMetrics>,

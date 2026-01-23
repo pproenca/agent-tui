@@ -17,12 +17,10 @@ use crate::error::SessionError;
 use crate::repository::SessionRepository;
 use crate::select_helpers::navigate_to_option;
 
-/// Use case for clicking an element.
 pub trait ClickUseCase: Send + Sync {
     fn execute(&self, input: ClickInput) -> Result<ClickOutput, SessionError>;
 }
 
-/// Implementation of the click use case.
 pub struct ClickUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -49,12 +47,10 @@ impl<R: SessionRepository> ClickUseCase for ClickUseCaseImpl<R> {
     }
 }
 
-/// Use case for filling an element with text.
 pub trait FillUseCase: Send + Sync {
     fn execute(&self, input: FillInput) -> Result<FillOutput, SessionError>;
 }
 
-/// Implementation of the fill use case.
 pub struct FillUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -86,12 +82,10 @@ impl<R: SessionRepository> FillUseCase for FillUseCaseImpl<R> {
     }
 }
 
-/// Use case for finding elements.
 pub trait FindUseCase: Send + Sync {
     fn execute(&self, input: FindInput) -> Result<FindOutput, SessionError>;
 }
 
-/// Implementation of the find use case.
 pub struct FindUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -170,12 +164,10 @@ impl<R: SessionRepository> FindUseCase for FindUseCaseImpl<R> {
     }
 }
 
-/// Use case for scrolling.
 pub trait ScrollUseCase: Send + Sync {
     fn execute(&self, input: ScrollInput) -> Result<ScrollOutput, SessionError>;
 }
 
-/// Implementation of the scroll use case.
 pub struct ScrollUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -212,12 +204,10 @@ impl<R: SessionRepository> ScrollUseCase for ScrollUseCaseImpl<R> {
     }
 }
 
-/// Use case for counting elements.
 pub trait CountUseCase: Send + Sync {
     fn execute(&self, input: CountInput) -> Result<CountOutput, SessionError>;
 }
 
-/// Implementation of the count use case.
 pub struct CountUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -265,12 +255,10 @@ impl<R: SessionRepository> CountUseCase for CountUseCaseImpl<R> {
     }
 }
 
-/// Use case for double-clicking an element.
 pub trait DoubleClickUseCase: Send + Sync {
     fn execute(&self, input: DoubleClickInput) -> Result<DoubleClickOutput, SessionError>;
 }
 
-/// Implementation of the double-click use case.
 pub struct DoubleClickUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -301,12 +289,10 @@ impl<R: SessionRepository> DoubleClickUseCase for DoubleClickUseCaseImpl<R> {
     }
 }
 
-/// Use case for focusing an element.
 pub trait FocusUseCase: Send + Sync {
     fn execute(&self, input: FocusInput) -> Result<FocusOutput, SessionError>;
 }
 
-/// Implementation of the focus use case.
 pub struct FocusUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -337,12 +323,10 @@ impl<R: SessionRepository> FocusUseCase for FocusUseCaseImpl<R> {
     }
 }
 
-/// Use case for clearing an element's content.
 pub trait ClearUseCase: Send + Sync {
     fn execute(&self, input: ClearInput) -> Result<ClearOutput, SessionError>;
 }
 
-/// Implementation of the clear use case.
 pub struct ClearUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -373,12 +357,10 @@ impl<R: SessionRepository> ClearUseCase for ClearUseCaseImpl<R> {
     }
 }
 
-/// Use case for selecting all content in an element.
 pub trait SelectAllUseCase: Send + Sync {
     fn execute(&self, input: SelectAllInput) -> Result<SelectAllOutput, SessionError>;
 }
 
-/// Implementation of the select all use case.
 pub struct SelectAllUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -409,12 +391,10 @@ impl<R: SessionRepository> SelectAllUseCase for SelectAllUseCaseImpl<R> {
     }
 }
 
-/// Use case for toggling a checkbox/radio.
 pub trait ToggleUseCase: Send + Sync {
     fn execute(&self, input: ToggleInput) -> Result<ToggleOutput, SessionError>;
 }
 
-/// Implementation of the toggle use case.
 pub struct ToggleUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -464,12 +444,10 @@ impl<R: SessionRepository> ToggleUseCase for ToggleUseCaseImpl<R> {
     }
 }
 
-/// Use case for selecting an option.
 pub trait SelectUseCase: Send + Sync {
     fn execute(&self, input: SelectInput) -> Result<SelectOutput, SessionError>;
 }
 
-/// Implementation of the select use case.
 pub struct SelectUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -512,12 +490,10 @@ impl<R: SessionRepository> SelectUseCase for SelectUseCaseImpl<R> {
     }
 }
 
-/// Use case for multiselect.
 pub trait MultiselectUseCase: Send + Sync {
     fn execute(&self, input: MultiselectInput) -> Result<MultiselectOutput, SessionError>;
 }
 
-/// Implementation of the multiselect use case.
 pub struct MultiselectUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -564,7 +540,6 @@ impl<R: SessionRepository> MultiselectUseCase for MultiselectUseCaseImpl<R> {
 // Element Query Use Cases
 // ============================================================================
 
-/// Use case for getting element text.
 pub trait GetTextUseCase: Send + Sync {
     fn execute(&self, input: ElementStateInput) -> Result<GetTextOutput, SessionError>;
 }
@@ -604,7 +579,6 @@ impl<R: SessionRepository> GetTextUseCase for GetTextUseCaseImpl<R> {
     }
 }
 
-/// Use case for getting element value.
 pub trait GetValueUseCase: Send + Sync {
     fn execute(&self, input: ElementStateInput) -> Result<GetValueOutput, SessionError>;
 }
@@ -640,7 +614,6 @@ impl<R: SessionRepository> GetValueUseCase for GetValueUseCaseImpl<R> {
     }
 }
 
-/// Use case for checking element visibility.
 pub trait IsVisibleUseCase: Send + Sync {
     fn execute(&self, input: ElementStateInput) -> Result<VisibilityOutput, SessionError>;
 }
@@ -671,7 +644,6 @@ impl<R: SessionRepository> IsVisibleUseCase for IsVisibleUseCaseImpl<R> {
     }
 }
 
-/// Use case for checking if element is focused.
 pub trait IsFocusedUseCase: Send + Sync {
     fn execute(&self, input: ElementStateInput) -> Result<FocusCheckOutput, SessionError>;
 }
@@ -707,7 +679,6 @@ impl<R: SessionRepository> IsFocusedUseCase for IsFocusedUseCaseImpl<R> {
     }
 }
 
-/// Use case for checking if element is enabled.
 pub trait IsEnabledUseCase: Send + Sync {
     fn execute(&self, input: ElementStateInput) -> Result<IsEnabledOutput, SessionError>;
 }
@@ -743,7 +714,6 @@ impl<R: SessionRepository> IsEnabledUseCase for IsEnabledUseCaseImpl<R> {
     }
 }
 
-/// Use case for checking if element is checked.
 pub trait IsCheckedUseCase: Send + Sync {
     fn execute(&self, input: ElementStateInput) -> Result<IsCheckedOutput, SessionError>;
 }
@@ -795,7 +765,6 @@ impl<R: SessionRepository> IsCheckedUseCase for IsCheckedUseCaseImpl<R> {
     }
 }
 
-/// Use case for getting the focused element.
 pub trait GetFocusedUseCase: Send + Sync {
     fn execute(&self, session_id: Option<&str>) -> Result<GetFocusedOutput, SessionError>;
 }
@@ -831,7 +800,6 @@ impl<R: SessionRepository> GetFocusedUseCase for GetFocusedUseCaseImpl<R> {
     }
 }
 
-/// Use case for getting session title.
 pub trait GetTitleUseCase: Send + Sync {
     fn execute(&self, session_id: Option<&str>) -> Result<GetTitleOutput, SessionError>;
 }
@@ -858,7 +826,6 @@ impl<R: SessionRepository> GetTitleUseCase for GetTitleUseCaseImpl<R> {
     }
 }
 
-/// Use case for scrolling an element into view.
 pub trait ScrollIntoViewUseCase: Send + Sync {
     fn execute(&self, input: ScrollIntoViewInput) -> Result<ScrollIntoViewOutput, SessionError>;
 }

@@ -9,12 +9,10 @@ use crate::domain::{
 use crate::error::SessionError;
 use crate::repository::SessionRepository;
 
-/// Use case for starting recording.
 pub trait RecordStartUseCase: Send + Sync {
     fn execute(&self, input: RecordStartInput) -> Result<RecordStartOutput, SessionError>;
 }
 
-/// Implementation of the record start use case.
 pub struct RecordStartUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -39,12 +37,10 @@ impl<R: SessionRepository> RecordStartUseCase for RecordStartUseCaseImpl<R> {
     }
 }
 
-/// Use case for stopping recording.
 pub trait RecordStopUseCase: Send + Sync {
     fn execute(&self, input: RecordStopInput) -> Result<RecordStopOutput, SessionError>;
 }
 
-/// Implementation of the record stop use case.
 pub struct RecordStopUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -75,12 +71,10 @@ impl<R: SessionRepository> RecordStopUseCase for RecordStopUseCaseImpl<R> {
     }
 }
 
-/// Use case for checking recording status.
 pub trait RecordStatusUseCase: Send + Sync {
     fn execute(&self, input: RecordStatusInput) -> Result<RecordStatusOutput, SessionError>;
 }
 
-/// Implementation of the record status use case.
 pub struct RecordStatusUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }

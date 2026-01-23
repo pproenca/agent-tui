@@ -7,12 +7,10 @@ use crate::error::SessionError;
 use crate::repository::SessionRepository;
 use crate::session::SessionId;
 
-/// Use case for spawning a new session.
 pub trait SpawnUseCase: Send + Sync {
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SessionError>;
 }
 
-/// Implementation of the spawn use case.
 pub struct SpawnUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -39,12 +37,10 @@ impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
     }
 }
 
-/// Use case for killing a session.
 pub trait KillUseCase: Send + Sync {
     fn execute(&self, session_id: Option<String>) -> Result<KillOutput, SessionError>;
 }
 
-/// Implementation of the kill use case.
 pub struct KillUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -72,12 +68,10 @@ impl<R: SessionRepository> KillUseCase for KillUseCaseImpl<R> {
     }
 }
 
-/// Use case for listing sessions.
 pub trait SessionsUseCase: Send + Sync {
     fn execute(&self) -> SessionsOutput;
 }
 
-/// Implementation of the sessions list use case.
 pub struct SessionsUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -100,12 +94,10 @@ impl<R: SessionRepository> SessionsUseCase for SessionsUseCaseImpl<R> {
     }
 }
 
-/// Use case for restarting a session.
 pub trait RestartUseCase: Send + Sync {
     fn execute(&self, session_id: Option<String>) -> Result<RestartOutput, SessionError>;
 }
 
-/// Output from restarting a session.
 #[derive(Debug, Clone)]
 pub struct RestartOutput {
     pub old_session_id: SessionId,
@@ -114,7 +106,6 @@ pub struct RestartOutput {
     pub pid: u32,
 }
 
-/// Implementation of the restart use case.
 pub struct RestartUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -155,12 +146,10 @@ impl<R: SessionRepository> RestartUseCase for RestartUseCaseImpl<R> {
     }
 }
 
-/// Use case for attaching to a session.
 pub trait AttachUseCase: Send + Sync {
     fn execute(&self, session_id: &str) -> Result<AttachOutput, SessionError>;
 }
 
-/// Output from attaching to a session.
 #[derive(Debug, Clone)]
 pub struct AttachOutput {
     pub session_id: SessionId,
@@ -168,7 +157,6 @@ pub struct AttachOutput {
     pub message: String,
 }
 
-/// Implementation of the attach use case.
 pub struct AttachUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
@@ -205,12 +193,10 @@ impl<R: SessionRepository> AttachUseCase for AttachUseCaseImpl<R> {
     }
 }
 
-/// Use case for resizing a session.
 pub trait ResizeUseCase: Send + Sync {
     fn execute(&self, input: ResizeInput) -> Result<ResizeOutput, SessionError>;
 }
 
-/// Implementation of the resize use case.
 pub struct ResizeUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }

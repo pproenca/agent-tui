@@ -7,12 +7,10 @@ use crate::error::SessionError;
 use crate::repository::SessionRepository;
 use crate::session::SessionId;
 
-/// Use case for taking a snapshot of a session.
 pub trait SnapshotUseCase: Send + Sync {
     fn execute(&self, input: SnapshotInput) -> Result<SnapshotOutput, SessionError>;
 }
 
-/// Implementation of the snapshot use case.
 pub struct SnapshotUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }

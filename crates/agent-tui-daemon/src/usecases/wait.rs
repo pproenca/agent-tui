@@ -8,12 +8,10 @@ use crate::error::SessionError;
 use crate::repository::SessionRepository;
 use crate::wait::{StableTracker, WaitCondition, check_condition};
 
-/// Use case for waiting for a condition.
 pub trait WaitUseCase: Send + Sync {
     fn execute(&self, input: WaitInput) -> Result<WaitOutput, SessionError>;
 }
 
-/// Implementation of the wait use case.
 pub struct WaitUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }

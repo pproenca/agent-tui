@@ -273,67 +273,16 @@ impl<R: SessionRepository> MetricsUseCase for MetricsUseCaseImpl<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use std::sync::Mutex;
 
-    use crate::domain::session_types::{SessionId, SessionInfo};
-    use crate::session::Session;
     use crate::test_support::{MockError, MockSessionRepository};
-
-    struct MockRepository {
-        session_count: usize,
-    }
-
-    impl SessionRepository for MockRepository {
-        fn spawn(
-            &self,
-            _command: &str,
-            _args: &[String],
-            _cwd: Option<&str>,
-            _env: Option<&HashMap<String, String>>,
-            _session_id: Option<String>,
-            _cols: u16,
-            _rows: u16,
-        ) -> Result<(SessionId, u32), SessionError> {
-            unimplemented!()
-        }
-
-        fn get(&self, _session_id: &str) -> Result<Arc<Mutex<Session>>, SessionError> {
-            unimplemented!()
-        }
-
-        fn active(&self) -> Result<Arc<Mutex<Session>>, SessionError> {
-            unimplemented!()
-        }
-
-        fn resolve(&self, _session_id: Option<&str>) -> Result<Arc<Mutex<Session>>, SessionError> {
-            unimplemented!()
-        }
-
-        fn set_active(&self, _session_id: &str) -> Result<(), SessionError> {
-            unimplemented!()
-        }
-
-        fn list(&self) -> Vec<SessionInfo> {
-            vec![]
-        }
-
-        fn kill(&self, _session_id: &str) -> Result<(), SessionError> {
-            unimplemented!()
-        }
-
-        fn session_count(&self) -> usize {
-            self.session_count
-        }
-
-        fn active_session_id(&self) -> Option<SessionId> {
-            None
-        }
-    }
 
     #[test]
     fn test_health_usecase_returns_correct_output() {
-        let repo = Arc::new(MockRepository { session_count: 5 });
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_session_count(5)
+                .build(),
+        );
         let metrics = Arc::new(DaemonMetrics::new());
         metrics.record_request();
         metrics.record_request();
@@ -356,7 +305,11 @@ mod tests {
 
     #[test]
     fn test_metrics_usecase_returns_correct_output() {
-        let repo = Arc::new(MockRepository { session_count: 2 });
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_session_count(2)
+                .build(),
+        );
         let metrics = Arc::new(DaemonMetrics::new());
         metrics.record_request();
         metrics.record_lock_timeout();

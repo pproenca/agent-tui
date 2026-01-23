@@ -57,62 +57,11 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::{Session, SessionInfo};
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    struct MockSessionRepository;
-
-    impl SessionRepository for MockSessionRepository {
-        fn spawn(
-            &self,
-            _command: &str,
-            _args: &[String],
-            _cwd: Option<&str>,
-            _env: Option<&HashMap<String, String>>,
-            _session_id: Option<String>,
-            _cols: u16,
-            _rows: u16,
-        ) -> Result<(SessionId, u32), SessionError> {
-            unimplemented!()
-        }
-
-        fn get(&self, _session_id: &str) -> Result<Arc<Mutex<Session>>, SessionError> {
-            Err(SessionError::NotFound("test".to_string()))
-        }
-
-        fn active(&self) -> Result<Arc<Mutex<Session>>, SessionError> {
-            Err(SessionError::NoActiveSession)
-        }
-
-        fn resolve(&self, _session_id: Option<&str>) -> Result<Arc<Mutex<Session>>, SessionError> {
-            Err(SessionError::NoActiveSession)
-        }
-
-        fn set_active(&self, _session_id: &str) -> Result<(), SessionError> {
-            unimplemented!()
-        }
-
-        fn list(&self) -> Vec<SessionInfo> {
-            vec![]
-        }
-
-        fn kill(&self, _session_id: &str) -> Result<(), SessionError> {
-            unimplemented!()
-        }
-
-        fn session_count(&self) -> usize {
-            0
-        }
-
-        fn active_session_id(&self) -> Option<SessionId> {
-            None
-        }
-    }
+    use crate::test_support::MockSessionRepository;
 
     #[test]
     fn test_snapshot_usecase_returns_error_when_no_session() {
-        let repository = Arc::new(MockSessionRepository);
+        let repository = Arc::new(MockSessionRepository::new());
         let usecase = SnapshotUseCaseImpl::new(repository);
 
         let input = SnapshotInput::default();

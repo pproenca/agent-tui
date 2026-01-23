@@ -3,6 +3,7 @@ use std::sync::Arc;
 use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_core::vom::snapshot::{SnapshotOptions, format_snapshot};
 
+use crate::adapters::core_snapshot_to_domain;
 use crate::domain::{
     AccessibilitySnapshotInput, AccessibilitySnapshotOutput, SnapshotInput, SnapshotOutput,
 };
@@ -87,8 +88,10 @@ impl<R: SessionRepository> AccessibilitySnapshotUseCase for AccessibilitySnapsho
 
         let options = SnapshotOptions {
             interactive_only: input.interactive_only,
+            ..Default::default()
         };
-        let snapshot = format_snapshot(&components, &options);
+        let core_snapshot = format_snapshot(&components, &options);
+        let snapshot = core_snapshot_to_domain(&core_snapshot);
 
         Ok(AccessibilitySnapshotOutput {
             session_id,

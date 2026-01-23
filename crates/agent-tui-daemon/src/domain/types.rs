@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use agent_tui_core::CursorPosition;
 use agent_tui_core::Element;
-use agent_tui_core::vom::snapshot::AccessibilitySnapshot;
 
 use super::session_types::ErrorEntry;
 use super::session_types::RecordingFrame;
@@ -51,10 +50,53 @@ pub struct AccessibilitySnapshotInput {
     pub interactive_only: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DomainBounds {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainElementRef {
+    pub role: String,
+    pub name: Option<String>,
+    pub bounds: DomainBounds,
+    pub visual_hash: u64,
+    pub nth: Option<usize>,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DomainRefMap {
+    pub refs: HashMap<String, DomainElementRef>,
+}
+
+impl DomainRefMap {
+    pub fn get(&self, ref_id: &str) -> Option<&DomainElementRef> {
+        self.refs.get(ref_id)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainSnapshotStats {
+    pub total: usize,
+    pub interactive: usize,
+    pub lines: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainAccessibilitySnapshot {
+    pub tree: String,
+    pub refs: DomainRefMap,
+    pub stats: DomainSnapshotStats,
+}
+
 #[derive(Debug, Clone)]
 pub struct AccessibilitySnapshotOutput {
     pub session_id: SessionId,
-    pub snapshot: AccessibilitySnapshot,
+    pub snapshot: DomainAccessibilitySnapshot,
 }
 
 #[derive(Debug, Clone)]

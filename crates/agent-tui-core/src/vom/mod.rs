@@ -164,12 +164,18 @@ impl std::fmt::Display for Role {
     }
 }
 
+pub use classifier::ClassifyOptions;
 pub use classifier::classify;
 pub use segmentation::segment_buffer;
 
 pub fn analyze(buffer: &impl ScreenGrid, cursor_row: u16, cursor_col: u16) -> Vec<Component> {
     let clusters = segment_buffer(buffer);
-    classify(clusters, cursor_row, cursor_col)
+    classify(
+        clusters,
+        cursor_row,
+        cursor_col,
+        &ClassifyOptions::default(),
+    )
 }
 
 pub fn hash_cluster(cluster: &Cluster) -> u64 {

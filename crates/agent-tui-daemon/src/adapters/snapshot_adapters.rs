@@ -1,11 +1,12 @@
-use agent_tui_core::vom::snapshot::{
-    AccessibilitySnapshot, Bounds, ElementRef, RefMap, SnapshotStats,
-};
 use agent_tui_ipc::{
     AccessibilitySnapshotDto, BoundsDto, ElementRefDto, RefMapDto, SnapshotStatsDto,
 };
 
-pub fn bounds_to_dto(bounds: &Bounds) -> BoundsDto {
+use crate::domain::{
+    DomainAccessibilitySnapshot, DomainBounds, DomainElementRef, DomainRefMap, DomainSnapshotStats,
+};
+
+pub fn bounds_to_dto(bounds: &DomainBounds) -> BoundsDto {
     BoundsDto {
         x: bounds.x,
         y: bounds.y,
@@ -14,10 +15,10 @@ pub fn bounds_to_dto(bounds: &Bounds) -> BoundsDto {
     }
 }
 
-pub fn element_ref_to_dto(element: ElementRef) -> ElementRefDto {
+pub fn element_ref_to_dto(element: &DomainElementRef) -> ElementRefDto {
     ElementRefDto {
-        role: element.role,
-        name: element.name,
+        role: element.role.clone(),
+        name: element.name.clone(),
         bounds: bounds_to_dto(&element.bounds),
         visual_hash: element.visual_hash,
         nth: element.nth,
@@ -25,17 +26,17 @@ pub fn element_ref_to_dto(element: ElementRef) -> ElementRefDto {
     }
 }
 
-pub fn ref_map_to_dto(ref_map: RefMap) -> RefMapDto {
+pub fn ref_map_to_dto(ref_map: &DomainRefMap) -> RefMapDto {
     RefMapDto {
         refs: ref_map
             .refs
-            .into_iter()
-            .map(|(k, v)| (k, element_ref_to_dto(v)))
+            .iter()
+            .map(|(k, v)| (k.clone(), element_ref_to_dto(v)))
             .collect(),
     }
 }
 
-pub fn stats_to_dto(stats: &SnapshotStats) -> SnapshotStatsDto {
+pub fn stats_to_dto(stats: &DomainSnapshotStats) -> SnapshotStatsDto {
     SnapshotStatsDto {
         total: stats.total,
         interactive: stats.interactive,
@@ -43,10 +44,10 @@ pub fn stats_to_dto(stats: &SnapshotStats) -> SnapshotStatsDto {
     }
 }
 
-pub fn snapshot_to_dto(snapshot: AccessibilitySnapshot) -> AccessibilitySnapshotDto {
+pub fn snapshot_to_dto(snapshot: &DomainAccessibilitySnapshot) -> AccessibilitySnapshotDto {
     AccessibilitySnapshotDto {
-        tree: snapshot.tree,
-        refs: ref_map_to_dto(snapshot.refs),
+        tree: snapshot.tree.clone(),
+        refs: ref_map_to_dto(&snapshot.refs),
         stats: stats_to_dto(&snapshot.stats),
     }
 }
@@ -58,13 +59,13 @@ mod tests {
 
     #[test]
     fn test_bounds_to_dto_conversion() {
-        let core_bounds = Bounds {
+        let bounds = DomainBounds {
             x: 10,
             y: 5,
             width: 20,
             height: 3,
         };
-        let dto = bounds_to_dto(&core_bounds);
+        let dto = bounds_to_dto(&bounds);
 
         assert_eq!(dto.x, 10);
         assert_eq!(dto.y, 5);
@@ -74,10 +75,10 @@ mod tests {
 
     #[test]
     fn test_element_ref_to_dto_conversion() {
-        let core_ref = ElementRef {
+        let elem_ref = DomainElementRef {
             role: "button".to_string(),
             name: Some("OK".to_string()),
-            bounds: Bounds {
+            bounds: DomainBounds {
                 x: 5,
                 y: 10,
                 width: 4,
@@ -87,7 +88,7 @@ mod tests {
             nth: Some(2),
             selected: false,
         };
-        let dto = element_ref_to_dto(core_ref);
+        let dto = element_ref_to_dto(&elem_ref);
 
         assert_eq!(dto.role, "button");
         assert_eq!(dto.name, Some("OK".to_string()));
@@ -98,10 +99,10 @@ mod tests {
 
     #[test]
     fn test_element_ref_to_dto_with_none_name() {
-        let core_ref = ElementRef {
+        let elem_ref = DomainElementRef {
             role: "panel".to_string(),
             name: None,
-            bounds: Bounds {
+            bounds: DomainBounds {
                 x: 0,
                 y: 0,
                 width: 10,
@@ -111,7 +112,7 @@ mod tests {
             nth: None,
             selected: false,
         };
-        let dto = element_ref_to_dto(core_ref);
+        let dto = element_ref_to_dto(&elem_ref);
 
         assert_eq!(dto.role, "panel");
         assert_eq!(dto.name, None);
@@ -123,10 +124,10 @@ mod tests {
         let mut refs = HashMap::new();
         refs.insert(
             "e1".to_string(),
-            ElementRef {
+            DomainElementRef {
                 role: "input".to_string(),
                 name: None,
-                bounds: Bounds {
+                bounds: DomainBounds {
                     x: 0,
                     y: 0,
                     width: 10,
@@ -137,8 +138,8 @@ mod tests {
                 selected: false,
             },
         );
-        let core_refmap = RefMap { refs };
-        let dto = ref_map_to_dto(core_refmap);
+        let refmap = DomainRefMap { refs };
+        let dto = ref_map_to_dto(&refmap);
 
         assert!(dto.refs.contains_key("e1"));
         assert_eq!(dto.refs["e1"].role, "input");
@@ -149,10 +150,10 @@ mod tests {
         let mut refs = HashMap::new();
         refs.insert(
             "e1".to_string(),
-            ElementRef {
+            DomainElementRef {
                 role: "button".to_string(),
                 name: Some("OK".to_string()),
-                bounds: Bounds {
+                bounds: DomainBounds {
                     x: 0,
                     y: 0,
                     width: 2,
@@ -165,10 +166,10 @@ mod tests {
         );
         refs.insert(
             "e2".to_string(),
-            ElementRef {
+            DomainElementRef {
                 role: "input".to_string(),
                 name: Some(">".to_string()),
-                bounds: Bounds {
+                bounds: DomainBounds {
                     x: 5,
                     y: 0,
                     width: 10,
@@ -179,8 +180,8 @@ mod tests {
                 selected: false,
             },
         );
-        let core_refmap = RefMap { refs };
-        let dto = ref_map_to_dto(core_refmap);
+        let refmap = DomainRefMap { refs };
+        let dto = ref_map_to_dto(&refmap);
 
         assert_eq!(dto.refs.len(), 2);
         assert!(dto.refs.contains_key("e1"));
@@ -189,12 +190,12 @@ mod tests {
 
     #[test]
     fn test_stats_to_dto_conversion() {
-        let core_stats = SnapshotStats {
+        let stats = DomainSnapshotStats {
             total: 10,
             interactive: 5,
             lines: 10,
         };
-        let dto = stats_to_dto(&core_stats);
+        let dto = stats_to_dto(&stats);
 
         assert_eq!(dto.total, 10);
         assert_eq!(dto.interactive, 5);
@@ -206,10 +207,10 @@ mod tests {
         let mut refs = HashMap::new();
         refs.insert(
             "e1".to_string(),
-            ElementRef {
+            DomainElementRef {
                 role: "button".to_string(),
                 name: Some("Submit".to_string()),
-                bounds: Bounds {
+                bounds: DomainBounds {
                     x: 0,
                     y: 0,
                     width: 6,
@@ -220,16 +221,16 @@ mod tests {
                 selected: false,
             },
         );
-        let core_snapshot = AccessibilitySnapshot {
+        let snapshot = DomainAccessibilitySnapshot {
             tree: "- button \"Submit\" [ref=e1]".to_string(),
-            refs: RefMap { refs },
-            stats: SnapshotStats {
+            refs: DomainRefMap { refs },
+            stats: DomainSnapshotStats {
                 total: 1,
                 interactive: 1,
                 lines: 1,
             },
         };
-        let dto = snapshot_to_dto(core_snapshot);
+        let dto = snapshot_to_dto(&snapshot);
 
         assert_eq!(dto.tree, "- button \"Submit\" [ref=e1]");
         assert_eq!(dto.stats.total, 1);
@@ -241,10 +242,10 @@ mod tests {
         let mut refs = HashMap::new();
         refs.insert(
             "e1".to_string(),
-            ElementRef {
+            DomainElementRef {
                 role: "checkbox".to_string(),
                 name: Some("[x] Enabled".to_string()),
-                bounds: Bounds {
+                bounds: DomainBounds {
                     x: 5,
                     y: 10,
                     width: 12,
@@ -255,16 +256,16 @@ mod tests {
                 selected: false,
             },
         );
-        let core_snapshot = AccessibilitySnapshot {
+        let snapshot = DomainAccessibilitySnapshot {
             tree: "- checkbox \"[x] Enabled\" [ref=e1]".to_string(),
-            refs: RefMap { refs },
-            stats: SnapshotStats {
+            refs: DomainRefMap { refs },
+            stats: DomainSnapshotStats {
                 total: 1,
                 interactive: 1,
                 lines: 1,
             },
         };
-        let dto = snapshot_to_dto(core_snapshot);
+        let dto = snapshot_to_dto(&snapshot);
         let json = serde_json::to_string(&dto).unwrap();
 
         assert!(json.contains("\"tree\""));

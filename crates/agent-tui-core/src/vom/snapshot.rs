@@ -2,9 +2,21 @@ use std::collections::HashMap;
 
 use crate::vom::{Component, Rect};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SnapshotOptions {
     pub interactive_only: bool,
+    /// Row threshold for Tab detection (elements on row <= threshold with inverse are Tabs).
+    /// Default: 2
+    pub tab_row_threshold: u16,
+}
+
+impl Default for SnapshotOptions {
+    fn default() -> Self {
+        Self {
+            interactive_only: false,
+            tab_row_threshold: 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,8 +104,9 @@ pub fn format_snapshot(
         let role_str = component.role.to_string();
 
         // Compute nth (0-indexed ordinal within same role)
-        let nth = *role_counts.get(&role_str).unwrap_or(&0);
-        *role_counts.entry(role_str.clone()).or_insert(0) += 1;
+        let entry = role_counts.entry(role_str.clone()).or_insert(0);
+        let nth = *entry;
+        *entry += 1;
 
         let line = if name.is_empty() {
             format!("- {} [ref={}]", component.role, ref_id)
@@ -294,6 +307,7 @@ mod tests {
         ];
         let options = SnapshotOptions {
             interactive_only: true,
+            ..Default::default()
         };
         let snapshot = format_snapshot(&components, &options);
 
@@ -311,6 +325,7 @@ mod tests {
         ];
         let options = SnapshotOptions {
             interactive_only: true,
+            ..Default::default()
         };
         let snapshot = format_snapshot(&components, &options);
 
@@ -327,6 +342,7 @@ mod tests {
         ];
         let options = SnapshotOptions {
             interactive_only: true,
+            ..Default::default()
         };
         let snapshot = format_snapshot(&components, &options);
 
@@ -347,6 +363,7 @@ mod tests {
         ];
         let options = SnapshotOptions {
             interactive_only: true,
+            ..Default::default()
         };
         let snapshot = format_snapshot(&components, &options);
 
@@ -371,6 +388,7 @@ mod tests {
         ];
         let options = SnapshotOptions {
             interactive_only: true,
+            ..Default::default()
         };
         let snapshot = format_snapshot(&components, &options);
 
@@ -497,7 +515,7 @@ mod tests {
                 let all_snapshot = format_snapshot(&components, &SnapshotOptions::default());
                 let interactive_snapshot = format_snapshot(
                     &components,
-                    &SnapshotOptions { interactive_only: true }
+                    &SnapshotOptions { interactive_only: true, ..Default::default() }
                 );
 
                 prop_assert!(interactive_snapshot.stats.total <= all_snapshot.stats.total);

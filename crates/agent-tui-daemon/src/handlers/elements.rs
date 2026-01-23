@@ -101,7 +101,7 @@ pub fn handle_accessibility_snapshot_uc<U: AccessibilitySnapshotUseCase>(
 
     match usecase.execute(input) {
         Ok(output) => {
-            let dto = snapshot_to_dto(output.snapshot);
+            let dto = snapshot_to_dto(&output.snapshot);
             RpcResponse::success(
                 req_id,
                 json!({

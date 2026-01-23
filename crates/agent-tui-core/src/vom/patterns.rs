@@ -49,11 +49,16 @@ pub fn is_button_text(text: &str) -> bool {
             return true;
         }
         // Exclude progress bar patterns: content is mostly progress characters (not counting spaces)
-        let progress_chars = inner
-            .chars()
-            .filter(|c| PROGRESS_BAR_CHARS.contains(c))
-            .count();
-        let non_space_chars = inner.chars().filter(|c| !c.is_whitespace()).count();
+        let (progress_chars, non_space_chars) = inner.chars().fold((0, 0), |(p, n), c| {
+            (
+                if PROGRESS_BAR_CHARS.contains(&c) {
+                    p + 1
+                } else {
+                    p
+                },
+                if !c.is_whitespace() { n + 1 } else { n },
+            )
+        });
         if non_space_chars > 0 && progress_chars > non_space_chars / 2 {
             return false;
         }
@@ -162,9 +167,8 @@ pub fn is_tool_block_border(text: &str) -> bool {
     let Some(first_char) = text.chars().next() else {
         return false;
     };
-    let Some(last_char) = text.chars().last() else {
-        return false;
-    };
+    // Safe: last() always exists when first exists (non-empty string)
+    let last_char = text.chars().last().unwrap();
 
     ROUNDED_CORNERS.contains(&first_char) || ROUNDED_CORNERS.contains(&last_char)
 }
@@ -268,9 +272,10 @@ fn is_file_path(text: &str) -> bool {
 
 /// Check if text ends with a common file extension.
 fn has_file_extension(text: &str) -> bool {
-    const EXTENSIONS: [&str; 20] = [
+    const EXTENSIONS: [&str; 30] = [
         ".rs", ".js", ".ts", ".tsx", ".jsx", ".py", ".go", ".java", ".c", ".cpp", ".h", ".hpp",
-        ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".html", ".css",
+        ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".html", ".css", ".sh", ".sql", ".xml",
+        ".vue", ".svelte", ".rb", ".php", ".swift", ".kt", ".scala",
     ];
     EXTENSIONS.iter().any(|ext| text.ends_with(ext))
 }
@@ -290,10 +295,8 @@ pub fn is_error_message(text: &str) -> bool {
     }
 
     // Check error prefixes
-    for prefix in ERROR_PREFIXES {
-        if text.starts_with(prefix) {
-            return true;
-        }
+    if ERROR_PREFIXES.iter().any(|prefix| text.starts_with(prefix)) {
+        return true;
     }
 
     // Check failure markers
@@ -351,16 +354,8 @@ pub fn is_code_block_border(text: &str) -> bool {
     }
 
     // Should not be a full panel border (with corners)
-    let has_corners = text.contains('┌')
-        || text.contains('┐')
-        || text.contains('└')
-        || text.contains('┘')
-        || text.contains('╭')
-        || text.contains('╮')
-        || text.contains('╰')
-        || text.contains('╯');
-
-    if has_corners {
+    const CORNER_CHARS: [char; 8] = ['┌', '┐', '└', '┘', '╭', '╮', '╰', '╯'];
+    if text.chars().any(|c| CORNER_CHARS.contains(&c)) {
         return false;
     }
 

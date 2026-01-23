@@ -37,6 +37,14 @@ pub struct PtyHandle {
     reader_fd: RawFd,
 }
 
+impl Drop for PtyHandle {
+    fn drop(&mut self) {
+        if self.is_running() {
+            let _ = self.kill();
+        }
+    }
+}
+
 impl PtyHandle {
     pub fn spawn(
         command: &str,
@@ -135,6 +143,8 @@ impl PtyHandle {
             revents: 0,
         };
 
+        // SAFETY: poll() is safe with valid pollfd. fd is from PTY master,
+        // timeout is passed directly, and return value is checked for errors.
         let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
 
         if result < 0 {

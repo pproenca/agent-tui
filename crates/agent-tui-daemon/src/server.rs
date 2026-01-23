@@ -17,7 +17,7 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -239,7 +239,11 @@ impl ElementFilter<'_> {
 
 const MAX_CONNECTIONS: usize = 64;
 const MAX_REQUEST_SIZE: usize = 1_048_576; // 1MB
-const IDLE_TIMEOUT_SECS: u64 = 300; // 5 minutes
+const CHANNEL_CAPACITY: usize = 256;
+const MAX_TERMINAL_COLS: u16 = 500;
+const MAX_TERMINAL_ROWS: u16 = 200;
+const MIN_TERMINAL_COLS: u16 = 10;
+const MIN_TERMINAL_ROWS: u16 = 5;
 
 pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
@@ -258,12 +262,12 @@ impl Default for DaemonServer {
 
 struct ThreadPool {
     workers: Vec<thread::JoinHandle<()>>,
-    sender: Sender<UnixStream>,
+    sender: SyncSender<UnixStream>,
 }
 
 impl ThreadPool {
     fn new(size: usize, server: Arc<DaemonServer>, shutdown: Arc<AtomicBool>) -> Self {
-        let (sender, receiver) = mpsc::channel::<UnixStream>();
+        let (sender, receiver) = mpsc::sync_channel::<UnixStream>(CHANNEL_CAPACITY);
         let receiver = Arc::new(std::sync::Mutex::new(receiver));
 
         let mut workers = Vec::with_capacity(size);
@@ -273,44 +277,64 @@ impl ThreadPool {
             let server = Arc::clone(&server);
             let shutdown = Arc::clone(&shutdown);
 
-            let handle = thread::Builder::new()
-                .name(format!("worker-{}", id))
-                .spawn(move || {
-                    loop {
-                        if shutdown.load(Ordering::Relaxed) {
-                            break;
-                        }
+            let handle =
+                match thread::Builder::new()
+                    .name(format!("worker-{}", id))
+                    .spawn(move || {
+                        loop {
+                            if shutdown.load(Ordering::Relaxed) {
+                                break;
+                            }
 
-                        let stream = {
-                            let lock = match receiver.lock() {
-                                Ok(l) => l,
-                                Err(e) => {
-                                    eprintln!("Worker {} receiver lock poisoned: {}", id, e);
-                                    break;
+                            let stream = {
+                                let lock = match receiver.lock() {
+                                    Ok(l) => l,
+                                    Err(e) => {
+                                        eprintln!("Worker {} receiver lock poisoned: {}", id, e);
+                                        break;
+                                    }
+                                };
+                                match lock.recv_timeout(Duration::from_millis(100)) {
+                                    Ok(stream) => stream,
+                                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
                                 }
                             };
-                            match lock.recv_timeout(Duration::from_millis(100)) {
-                                Ok(stream) => stream,
-                                Err(mpsc::RecvTimeoutError::Timeout) => continue,
-                                Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                            }
-                        };
 
-                        server.active_connections.fetch_add(1, Ordering::Relaxed);
-                        server.handle_client(stream);
-                        server.active_connections.fetch_sub(1, Ordering::Relaxed);
+                            server.active_connections.fetch_add(1, Ordering::Relaxed);
+                            server.handle_client(stream);
+                            server.active_connections.fetch_sub(1, Ordering::Relaxed);
+                        }
+                    }) {
+                    Ok(h) => h,
+                    Err(e) => {
+                        eprintln!("Failed to spawn worker {}: {}", id, e);
+                        continue;
                     }
-                })
-                .expect("Failed to spawn worker thread");
+                };
 
             workers.push(handle);
+        }
+
+        if workers.is_empty() {
+            panic!("Failed to spawn any worker threads");
+        }
+
+        if workers.len() < size {
+            eprintln!(
+                "Warning: Only spawned {}/{} worker threads",
+                workers.len(),
+                size
+            );
         }
 
         ThreadPool { workers, sender }
     }
 
     fn execute(&self, stream: UnixStream) -> Result<(), UnixStream> {
-        self.sender.send(stream).map_err(|e| e.0)
+        self.sender.try_send(stream).map_err(|e| match e {
+            mpsc::TrySendError::Full(s) | mpsc::TrySendError::Disconnected(s) => s,
+        })
     }
 
     fn shutdown(self) {
@@ -643,6 +667,9 @@ impl DaemonServer {
 
         let cols = params.get("cols").and_then(|v| v.as_u64()).unwrap_or(80) as u16;
         let rows = params.get("rows").and_then(|v| v.as_u64()).unwrap_or(24) as u16;
+
+        let cols = cols.clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS);
+        let rows = rows.clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS);
 
         match self
             .session_manager
@@ -1044,8 +1071,12 @@ impl DaemonServer {
     }
 
     fn handle_resize(&self, request: RpcRequest) -> RpcResponse {
-        let cols = request.param_u16("cols", 80);
-        let rows = request.param_u16("rows", 24);
+        let cols = request
+            .param_u16("cols", 80)
+            .clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS);
+        let rows = request
+            .param_u16("rows", 24)
+            .clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS);
         let session_id = request.param_str("session");
 
         let req_id = request.id;
@@ -1800,8 +1831,15 @@ impl DaemonServer {
     }
 
     fn handle_client(&self, stream: UnixStream) {
-        if let Err(e) = stream.set_read_timeout(Some(Duration::from_secs(IDLE_TIMEOUT_SECS))) {
+        let idle_timeout = DaemonConfig::from_env().idle_timeout;
+
+        if let Err(e) = stream.set_read_timeout(Some(idle_timeout)) {
             eprintln!("Failed to set read timeout: {}", e);
+            return;
+        }
+
+        if let Err(e) = stream.set_write_timeout(Some(Duration::from_secs(30))) {
+            eprintln!("Failed to set write timeout: {}", e);
             return;
         }
 
@@ -1977,6 +2015,10 @@ pub fn start_daemon() -> std::io::Result<()> {
 
     if socket_path.exists() {
         let _ = std::fs::remove_file(&socket_path);
+    }
+
+    if lock_path.exists() {
+        let _ = std::fs::remove_file(&lock_path);
     }
 
     eprintln!("Daemon shutdown complete");

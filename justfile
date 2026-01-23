@@ -78,3 +78,19 @@ test-crate crate:
 # Lint a specific crate
 lint-crate crate:
     cargo clippy -p {{crate}} -- -D warnings
+
+# Release with patch version bump
+release-patch:
+    ./scripts/release.sh patch
+
+# Release with minor version bump
+release-minor:
+    ./scripts/release.sh minor
+
+# Release with major version bump
+release-major:
+    ./scripts/release.sh major
+
+# Release with explicit version
+release version:
+    ./scripts/release.sh {{version}}

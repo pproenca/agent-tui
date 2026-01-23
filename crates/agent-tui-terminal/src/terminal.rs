@@ -45,9 +45,11 @@ pub struct VirtualTerminal {
     rows: u16,
 }
 
+const MAX_SCROLLBACK: usize = 1000;
+
 impl VirtualTerminal {
     pub fn new(cols: u16, rows: u16) -> Self {
-        let parser = Parser::new(rows, cols, 0);
+        let parser = Parser::new(rows, cols, MAX_SCROLLBACK);
         Self {
             parser: Arc::new(Mutex::new(parser)),
             cols,

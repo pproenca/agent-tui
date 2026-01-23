@@ -3,12 +3,12 @@
 printf '%s\n' "Running pre-push checks..."
 
 printf '\n→ Checking formatting...\n'
-npm run format:check || exit 1
+cargo fmt --all --check || exit 1
 
 printf '\n→ Running clippy...\n'
-npm run lint || exit 1
+cargo clippy --workspace -- -D warnings || exit 1
 
 printf '\n→ Running tests...\n'
-npm run test || exit 1
+cargo test --workspace || exit 1
 
 printf '\nAll pre-push checks passed!\n'

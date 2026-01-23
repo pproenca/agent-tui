@@ -1,0 +1,22 @@
+#![deny(clippy::all)]
+
+mod client;
+mod error;
+mod socket;
+mod types;
+
+// Re-export error_codes from common for backwards compatibility
+pub use agent_tui_common::error_codes;
+
+pub use client::DaemonClient;
+pub use client::DaemonClientConfig;
+pub use client::ensure_daemon;
+pub use client::start_daemon_background;
+pub use error::ClientError;
+pub use socket::socket_path;
+pub use types::ErrorData;
+pub use types::RpcRequest;
+pub use types::RpcResponse;
+pub use types::RpcServerError;
+
+pub type Result<T> = std::result::Result<T, ClientError>;

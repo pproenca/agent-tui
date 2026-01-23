@@ -306,20 +306,14 @@ agent-tui --session project-b fill @e1 "value"
 
 ```
 agent-tui/
-├── cli/                          # Rust CLI + Daemon
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs               # Entry point
-│       ├── commands.rs           # Command parsing
-│       ├── connection.rs         # IPC client
-│       ├── protocol.rs           # JSON-RPC types
-│       └── daemon/               # Native daemon
-│           ├── mod.rs            # Daemon entry point
-│           ├── session.rs        # Session management
-│           ├── pty.rs            # PTY handling
-│           ├── terminal.rs       # Terminal emulation
-│           └── detection/        # Element detection
-│
+├── crates/
+│   ├── agent-tui/                # CLI binary
+│   ├── agent-tui-common/         # Shared utilities
+│   ├── agent-tui-terminal/       # PTY & terminal emulation
+│   ├── agent-tui-core/           # VOM element detection
+│   ├── agent-tui-ipc/            # IPC client & protocol
+│   └── agent-tui-daemon/         # Session management & server
+├── Cargo.toml                    # Workspace manifest
 └── README.md
 ```
 

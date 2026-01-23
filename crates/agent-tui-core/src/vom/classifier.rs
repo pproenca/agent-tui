@@ -1,5 +1,10 @@
 use crate::style::Color;
 
+/// ANSI indexed color for blue background (indicates tab in many TUIs)
+const TAB_BG_BLUE: u8 = 4;
+/// ANSI indexed color for cyan background (indicates tab in many TUIs)
+const TAB_BG_CYAN: u8 = 6;
+
 use crate::vom::Cluster;
 use crate::vom::Component;
 use crate::vom::Role;
@@ -44,7 +49,7 @@ fn infer_role(cluster: &Cluster, cursor_row: u16, cursor_col: u16) -> Role {
     }
 
     if let Some(Color::Indexed(idx)) = &cluster.style.bg_color {
-        if *idx == 4 || *idx == 6 {
+        if *idx == TAB_BG_BLUE || *idx == TAB_BG_CYAN {
             return Role::Tab;
         }
     }

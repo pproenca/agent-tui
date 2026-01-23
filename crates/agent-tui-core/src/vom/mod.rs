@@ -1,4 +1,5 @@
 pub mod classifier;
+pub mod patterns;
 pub mod segmentation;
 pub mod snapshot;
 

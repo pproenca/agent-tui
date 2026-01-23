@@ -73,6 +73,7 @@ pub fn format_snapshot(
     let mut lines = Vec::new();
     let mut ref_counter = 0usize;
     let mut interactive_count = 0usize;
+    let mut role_counts: HashMap<String, usize> = HashMap::new();
 
     for component in components {
         if options.interactive_only && !component.role.is_interactive() {
@@ -87,6 +88,12 @@ pub fn format_snapshot(
         }
 
         let name = component.text_content.trim();
+        let role_str = component.role.to_string();
+
+        // Compute nth (0-indexed ordinal within same role)
+        let nth = *role_counts.get(&role_str).unwrap_or(&0);
+        *role_counts.entry(role_str.clone()).or_insert(0) += 1;
+
         let line = if name.is_empty() {
             format!("- {} [ref={}]", component.role, ref_id)
         } else {
@@ -98,15 +105,11 @@ pub fn format_snapshot(
         refs.refs.insert(
             ref_id,
             ElementRef {
-                role: component.role.to_string(),
-                name: if name.is_empty() {
-                    None
-                } else {
-                    Some(name.to_string())
-                },
+                role: role_str,
+                name: (!name.is_empty()).then(|| name.to_string()),
                 bounds: component.bounds.into(),
                 visual_hash: component.visual_hash,
-                nth: None,
+                nth: Some(nth),
             },
         );
     }
@@ -373,6 +376,33 @@ mod tests {
         assert!(snapshot.refs.get("e3").is_none());
     }
 
+    #[test]
+    fn test_nth_field_populated() {
+        let components = vec![
+            make_component(Role::Button, "A", 0, 0, 1),
+            make_component(Role::StaticText, "text", 5, 0, 4),
+            make_component(Role::Button, "B", 10, 0, 1),
+            make_component(Role::Button, "C", 15, 0, 1),
+        ];
+        let snapshot = format_snapshot(&components, &SnapshotOptions::default());
+
+        // First button: nth=0
+        let e1 = snapshot.refs.get("e1").unwrap();
+        assert_eq!(e1.nth, Some(0));
+
+        // StaticText: nth=0 (first of its role)
+        let e2 = snapshot.refs.get("e2").unwrap();
+        assert_eq!(e2.nth, Some(0));
+
+        // Second button: nth=1
+        let e3 = snapshot.refs.get("e3").unwrap();
+        assert_eq!(e3.nth, Some(1));
+
+        // Third button: nth=2
+        let e4 = snapshot.refs.get("e4").unwrap();
+        assert_eq!(e4.nth, Some(2));
+    }
+
     mod prop_tests {
         use super::*;
         use proptest::prelude::*;
@@ -481,6 +511,28 @@ mod tests {
                         snapshot.tree.contains(&ref_marker),
                         "Tree missing ref marker: {}", ref_marker
                     );
+                }
+            }
+
+            #[test]
+            fn nth_is_sequential_per_role(
+                components in prop::collection::vec(arb_component(), 1..20)
+            ) {
+                let snapshot = format_snapshot(&components, &SnapshotOptions::default());
+
+                // Group elements by role
+                let mut by_role: HashMap<String, Vec<usize>> = HashMap::new();
+                for elem in snapshot.refs.refs.values() {
+                    by_role.entry(elem.role.clone())
+                        .or_default()
+                        .push(elem.nth.unwrap());
+                }
+
+                // Each role's nth values should be 0..n
+                for (role, mut nths) in by_role {
+                    nths.sort();
+                    let expected: Vec<usize> = (0..nths.len()).collect();
+                    prop_assert_eq!(nths, expected, "Non-sequential nth for role: {}", role);
                 }
             }
         }

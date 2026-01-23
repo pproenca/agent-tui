@@ -115,9 +115,14 @@ pub fn is_checkbox(text: &str) -> bool {
     )
 }
 
+/// Menu item dash prefix: "- " (dash followed by space).
+/// Distinct from diff deletion prefix which is "-" followed by non-space.
+const MENU_ITEM_DASH_PREFIX: &str = "- ";
+
 /// Detect menu item patterns.
 ///
 /// Menu items typically start with arrow or bullet characters.
+/// Note: "- text" (dash + space) is a menu item, while "-text" is a diff deletion.
 pub fn is_menu_item(text: &str) -> bool {
     text.starts_with('>')
         || text.starts_with('❯')
@@ -126,7 +131,7 @@ pub fn is_menu_item(text: &str) -> bool {
         || text.starts_with('▶')
         || text.starts_with("• ")
         || text.starts_with("* ")
-        || text.starts_with("- ")
+        || text.starts_with(MENU_ITEM_DASH_PREFIX)
 }
 
 /// Detect panel border patterns.
@@ -168,7 +173,7 @@ pub fn is_tool_block_border(text: &str) -> bool {
         return false;
     };
     // Safe: last() always exists when first exists (non-empty string)
-    let last_char = text.chars().last().unwrap();
+    let last_char = text.chars().last().expect("non-empty string has a last char");
 
     ROUNDED_CORNERS.contains(&first_char) || ROUNDED_CORNERS.contains(&last_char)
 }
@@ -312,6 +317,10 @@ pub fn is_error_message(text: &str) -> bool {
 /// Detect diff line patterns.
 ///
 /// Diff lines start with `+`, `-`, or `@@`.
+///
+/// Note: Both `is_diff_line` and `is_menu_item` may return true for strings
+/// starting with "- ". The classifier determines which role takes priority
+/// based on classification order (menu items are checked before diff lines).
 pub fn is_diff_line(text: &str) -> bool {
     let text = text.trim();
     if text.is_empty() {

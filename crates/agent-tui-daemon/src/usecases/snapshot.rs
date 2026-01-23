@@ -3,7 +3,9 @@ use std::sync::Arc;
 use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_core::vom::snapshot::{SnapshotOptions, format_snapshot};
 
-use crate::adapters::core_snapshot_to_domain;
+use crate::adapters::{
+    core_cursor_to_domain, core_elements_to_domain, core_snapshot_to_domain,
+};
 use crate::domain::{
     AccessibilitySnapshotInput, AccessibilitySnapshotOutput, SnapshotInput, SnapshotOutput,
 };
@@ -41,13 +43,13 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
         let session_id = SessionId::from(session_guard.id.as_str());
 
         let elements = if input.include_elements {
-            Some(session_guard.detect_elements().to_vec())
+            Some(core_elements_to_domain(session_guard.detect_elements()))
         } else {
             None
         };
 
         let cursor = if input.include_cursor {
-            Some(session_guard.cursor())
+            Some(core_cursor_to_domain(&session_guard.cursor()))
         } else {
             None
         };

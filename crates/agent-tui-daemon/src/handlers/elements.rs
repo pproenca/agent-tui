@@ -1,4 +1,3 @@
-use agent_tui_core::Element;
 use agent_tui_ipc::{RpcRequest, RpcResponse};
 use serde_json::{Value, json};
 
@@ -9,8 +8,9 @@ use crate::adapters::{
     parse_snapshot_input, scroll_output_to_response, snapshot_to_dto,
 };
 use crate::domain::{
-    AccessibilitySnapshotInput, ClearInput, ClickInput, DoubleClickInput, ElementStateInput,
-    FocusInput, MultiselectInput, ScrollIntoViewInput, SelectAllInput, SelectInput, ToggleInput,
+    AccessibilitySnapshotInput, ClearInput, ClickInput, DomainElement, DoubleClickInput,
+    ElementStateInput, FocusInput, MultiselectInput, ScrollIntoViewInput, SelectAllInput,
+    SelectInput, ToggleInput,
 };
 use crate::select_helpers::strip_ansi_codes;
 use crate::usecases::{
@@ -21,7 +21,7 @@ use crate::usecases::{
     SnapshotUseCase, ToggleUseCase,
 };
 
-fn element_to_json(el: &Element) -> Value {
+fn element_to_json(el: &DomainElement) -> Value {
     json!({
         "ref": el.element_ref,
         "type": el.element_type.as_str(),

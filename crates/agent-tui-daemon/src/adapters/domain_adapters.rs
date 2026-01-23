@@ -1,9 +1,11 @@
 use agent_tui_core::vom::snapshot::{
     AccessibilitySnapshot, Bounds, ElementRef, RefMap, SnapshotStats,
 };
+use agent_tui_core::{CursorPosition, Element, ElementType, Position};
 
 use crate::domain::{
-    DomainAccessibilitySnapshot, DomainBounds, DomainElementRef, DomainRefMap, DomainSnapshotStats,
+    DomainAccessibilitySnapshot, DomainBounds, DomainCursorPosition, DomainElement,
+    DomainElementRef, DomainElementType, DomainPosition, DomainRefMap, DomainSnapshotStats,
 };
 
 pub fn core_bounds_to_domain(bounds: &Bounds) -> DomainBounds {
@@ -82,6 +84,57 @@ fn core_element_ref_into_domain(element: ElementRef) -> DomainElementRef {
         nth: element.nth,
         selected: element.selected,
     }
+}
+
+pub fn core_cursor_to_domain(cursor: &CursorPosition) -> DomainCursorPosition {
+    DomainCursorPosition {
+        row: cursor.row,
+        col: cursor.col,
+        visible: cursor.visible,
+    }
+}
+
+pub fn core_position_to_domain(pos: &Position) -> DomainPosition {
+    DomainPosition {
+        row: pos.row,
+        col: pos.col,
+        width: pos.width,
+        height: pos.height,
+    }
+}
+
+pub fn core_element_type_to_domain(et: &ElementType) -> DomainElementType {
+    match et {
+        ElementType::Button => DomainElementType::Button,
+        ElementType::Input => DomainElementType::Input,
+        ElementType::Checkbox => DomainElementType::Checkbox,
+        ElementType::Radio => DomainElementType::Radio,
+        ElementType::Select => DomainElementType::Select,
+        ElementType::MenuItem => DomainElementType::MenuItem,
+        ElementType::ListItem => DomainElementType::ListItem,
+        ElementType::Spinner => DomainElementType::Spinner,
+        ElementType::Progress => DomainElementType::Progress,
+        ElementType::Link => DomainElementType::Link,
+    }
+}
+
+pub fn core_element_to_domain(el: &Element) -> DomainElement {
+    DomainElement {
+        element_ref: el.element_ref.clone(),
+        element_type: core_element_type_to_domain(&el.element_type),
+        label: el.label.clone(),
+        value: el.value.clone(),
+        position: core_position_to_domain(&el.position),
+        focused: el.focused,
+        selected: el.selected,
+        checked: el.checked,
+        disabled: el.disabled,
+        hint: el.hint.clone(),
+    }
+}
+
+pub fn core_elements_to_domain(elements: &[Element]) -> Vec<DomainElement> {
+    elements.iter().map(core_element_to_domain).collect()
 }
 
 #[cfg(test)]

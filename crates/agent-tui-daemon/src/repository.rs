@@ -8,6 +8,28 @@ use agent_tui_core::Element;
 use crate::error::SessionError;
 use crate::session::{Session, SessionId, SessionInfo, SessionManager};
 
+/// Operations on a session needed by use cases and algorithms.
+///
+/// This trait enables dependency inversion for modules like wait.rs and select_helpers.rs,
+/// allowing them to work with any type that provides session-like operations without
+/// depending directly on the Session concrete type.
+pub trait SessionOps {
+    /// Update terminal state from PTY.
+    fn update(&mut self) -> Result<(), SessionError>;
+
+    /// Get the current screen text.
+    fn screen_text(&self) -> String;
+
+    /// Run element detection and return detected elements.
+    fn detect_elements(&mut self) -> &[Element];
+
+    /// Find an element by reference (id, role, or text).
+    fn find_element(&self, element_ref: &str) -> Option<&Element>;
+
+    /// Write raw bytes to the PTY.
+    fn pty_write(&mut self, data: &[u8]) -> Result<(), SessionError>;
+}
+
 /// Repository trait for session access and management.
 ///
 /// This trait abstracts the session storage and retrieval operations,
@@ -121,5 +143,15 @@ mod tests {
 
         let manager = SessionManager::new();
         assert_object_safe(&manager);
+    }
+
+    #[test]
+    fn test_session_ops_trait_is_usable_as_generic_bound() {
+        fn assert_generic_bound<S: SessionOps>(_session: &S) {}
+
+        // This test verifies that SessionOps can be used as a generic constraint.
+        // The actual usage is verified by wait.rs and select_helpers.rs compilation.
+        // The function signature is enough to prove the trait works as a bound.
+        let _ = assert_generic_bound::<Session>;
     }
 }

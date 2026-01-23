@@ -501,7 +501,7 @@ impl<R: SessionRepository> SelectUseCase for SelectUseCaseImpl<R> {
         }
 
         let screen_text = session_guard.screen_text();
-        navigate_to_option(&mut session_guard, &input.option, &screen_text)?;
+        navigate_to_option(&mut *session_guard, &input.option, &screen_text)?;
         session_guard.pty_write(b"\r")?;
 
         Ok(SelectOutput {

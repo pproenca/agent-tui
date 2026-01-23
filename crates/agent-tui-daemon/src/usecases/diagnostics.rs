@@ -1,13 +1,17 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 
 use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_terminal::PtyError;
 
 use crate::domain::{
-    ConsoleInput, ConsoleOutput, ErrorsInput, ErrorsOutput, PtyReadInput, PtyReadOutput,
-    PtyWriteInput, PtyWriteOutput, TraceInput, TraceOutput,
+    ConsoleInput, ConsoleOutput, ErrorsInput, ErrorsOutput, HealthInput, HealthOutput,
+    MetricsInput, MetricsOutput, PtyReadInput, PtyReadOutput, PtyWriteInput, PtyWriteOutput,
+    TraceInput, TraceOutput,
 };
 use crate::error::SessionError;
+use crate::metrics::DaemonMetrics;
 use crate::repository::SessionRepository;
 
 /// Use case for trace operations.
@@ -176,5 +180,199 @@ impl<R: SessionRepository> PtyWriteUseCase for PtyWriteUseCaseImpl<R> {
             }),
             Err(e) => Err(SessionError::Pty(PtyError::Write(e.to_string()))),
         }
+    }
+}
+
+/// Use case for health check operations.
+pub trait HealthUseCase: Send + Sync {
+    fn execute(&self, input: HealthInput) -> Result<HealthOutput, SessionError>;
+}
+
+/// Implementation of the health check use case.
+pub struct HealthUseCaseImpl<R: SessionRepository> {
+    repository: Arc<R>,
+    metrics: Arc<DaemonMetrics>,
+    start_time: Instant,
+    active_connections: Arc<AtomicUsize>,
+}
+
+impl<R: SessionRepository> HealthUseCaseImpl<R> {
+    pub fn new(
+        repository: Arc<R>,
+        metrics: Arc<DaemonMetrics>,
+        start_time: Instant,
+        active_connections: Arc<AtomicUsize>,
+    ) -> Self {
+        Self {
+            repository,
+            metrics,
+            start_time,
+            active_connections,
+        }
+    }
+}
+
+impl<R: SessionRepository> HealthUseCase for HealthUseCaseImpl<R> {
+    fn execute(&self, _input: HealthInput) -> Result<HealthOutput, SessionError> {
+        Ok(HealthOutput {
+            status: "healthy".to_string(),
+            pid: std::process::id(),
+            uptime_ms: self.start_time.elapsed().as_millis() as u64,
+            session_count: self.repository.session_count(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            active_connections: self.active_connections.load(Ordering::Relaxed),
+            total_requests: self.metrics.requests(),
+            error_count: self.metrics.errors(),
+        })
+    }
+}
+
+/// Use case for metrics operations.
+pub trait MetricsUseCase: Send + Sync {
+    fn execute(&self, input: MetricsInput) -> Result<MetricsOutput, SessionError>;
+}
+
+/// Implementation of the metrics use case.
+pub struct MetricsUseCaseImpl<R: SessionRepository> {
+    repository: Arc<R>,
+    metrics: Arc<DaemonMetrics>,
+    start_time: Instant,
+    active_connections: Arc<AtomicUsize>,
+}
+
+impl<R: SessionRepository> MetricsUseCaseImpl<R> {
+    pub fn new(
+        repository: Arc<R>,
+        metrics: Arc<DaemonMetrics>,
+        start_time: Instant,
+        active_connections: Arc<AtomicUsize>,
+    ) -> Self {
+        Self {
+            repository,
+            metrics,
+            start_time,
+            active_connections,
+        }
+    }
+}
+
+impl<R: SessionRepository> MetricsUseCase for MetricsUseCaseImpl<R> {
+    fn execute(&self, _input: MetricsInput) -> Result<MetricsOutput, SessionError> {
+        Ok(MetricsOutput {
+            requests_total: self.metrics.requests(),
+            errors_total: self.metrics.errors(),
+            lock_timeouts: self.metrics.lock_timeouts(),
+            poison_recoveries: self.metrics.poison_recoveries(),
+            uptime_ms: self.start_time.elapsed().as_millis() as u64,
+            active_connections: self.active_connections.load(Ordering::Relaxed),
+            session_count: self.repository.session_count(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    use crate::domain::session_types::{SessionId, SessionInfo};
+    use crate::session::Session;
+
+    struct MockRepository {
+        session_count: usize,
+    }
+
+    impl SessionRepository for MockRepository {
+        fn spawn(
+            &self,
+            _command: &str,
+            _args: &[String],
+            _cwd: Option<&str>,
+            _env: Option<&HashMap<String, String>>,
+            _session_id: Option<String>,
+            _cols: u16,
+            _rows: u16,
+        ) -> Result<(SessionId, u32), SessionError> {
+            unimplemented!()
+        }
+
+        fn get(&self, _session_id: &str) -> Result<Arc<Mutex<Session>>, SessionError> {
+            unimplemented!()
+        }
+
+        fn active(&self) -> Result<Arc<Mutex<Session>>, SessionError> {
+            unimplemented!()
+        }
+
+        fn resolve(&self, _session_id: Option<&str>) -> Result<Arc<Mutex<Session>>, SessionError> {
+            unimplemented!()
+        }
+
+        fn set_active(&self, _session_id: &str) -> Result<(), SessionError> {
+            unimplemented!()
+        }
+
+        fn list(&self) -> Vec<SessionInfo> {
+            vec![]
+        }
+
+        fn kill(&self, _session_id: &str) -> Result<(), SessionError> {
+            unimplemented!()
+        }
+
+        fn session_count(&self) -> usize {
+            self.session_count
+        }
+
+        fn active_session_id(&self) -> Option<SessionId> {
+            None
+        }
+    }
+
+    #[test]
+    fn test_health_usecase_returns_correct_output() {
+        let repo = Arc::new(MockRepository { session_count: 5 });
+        let metrics = Arc::new(DaemonMetrics::new());
+        metrics.record_request();
+        metrics.record_request();
+        metrics.record_error();
+
+        let active_connections = Arc::new(AtomicUsize::new(3));
+        let start_time = Instant::now();
+
+        let usecase = HealthUseCaseImpl::new(repo, metrics, start_time, active_connections);
+
+        let output = usecase.execute(HealthInput).unwrap();
+
+        assert_eq!(output.status, "healthy");
+        assert_eq!(output.session_count, 5);
+        assert_eq!(output.active_connections, 3);
+        assert_eq!(output.total_requests, 2);
+        assert_eq!(output.error_count, 1);
+        assert!(!output.version.is_empty());
+    }
+
+    #[test]
+    fn test_metrics_usecase_returns_correct_output() {
+        let repo = Arc::new(MockRepository { session_count: 2 });
+        let metrics = Arc::new(DaemonMetrics::new());
+        metrics.record_request();
+        metrics.record_lock_timeout();
+        metrics.record_poison_recovery();
+
+        let active_connections = Arc::new(AtomicUsize::new(1));
+        let start_time = Instant::now();
+
+        let usecase = MetricsUseCaseImpl::new(repo, metrics, start_time, active_connections);
+
+        let output = usecase.execute(MetricsInput).unwrap();
+
+        assert_eq!(output.requests_total, 1);
+        assert_eq!(output.errors_total, 0);
+        assert_eq!(output.lock_timeouts, 1);
+        assert_eq!(output.poison_recoveries, 1);
+        assert_eq!(output.active_connections, 1);
+        assert_eq!(output.session_count, 2);
     }
 }

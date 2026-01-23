@@ -29,7 +29,6 @@ const CHANNEL_CAPACITY: usize = 128;
 pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
     usecases: UseCaseContainer<SessionManager>,
-    start_time: Instant,
     #[allow(dead_code)]
     shutdown: Arc<AtomicBool>,
     active_connections: Arc<AtomicUsize>,
@@ -138,27 +137,41 @@ impl DaemonServer {
 
     pub fn with_config(config: DaemonConfig) -> Self {
         let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
-        let usecases = UseCaseContainer::new(Arc::clone(&session_manager));
+        let metrics = Arc::new(DaemonMetrics::new());
+        let start_time = Instant::now();
+        let active_connections = Arc::new(AtomicUsize::new(0));
+        let usecases = UseCaseContainer::new(
+            Arc::clone(&session_manager),
+            Arc::clone(&metrics),
+            start_time,
+            Arc::clone(&active_connections),
+        );
         Self {
             session_manager,
             usecases,
-            start_time: Instant::now(),
             shutdown: Arc::new(AtomicBool::new(false)),
-            active_connections: Arc::new(AtomicUsize::new(0)),
-            metrics: Arc::new(DaemonMetrics::new()),
+            active_connections,
+            metrics,
         }
     }
 
     pub fn with_shutdown_and_config(shutdown: Arc<AtomicBool>, config: DaemonConfig) -> Self {
         let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
-        let usecases = UseCaseContainer::new(Arc::clone(&session_manager));
+        let metrics = Arc::new(DaemonMetrics::new());
+        let start_time = Instant::now();
+        let active_connections = Arc::new(AtomicUsize::new(0));
+        let usecases = UseCaseContainer::new(
+            Arc::clone(&session_manager),
+            Arc::clone(&metrics),
+            start_time,
+            Arc::clone(&active_connections),
+        );
         Self {
             session_manager,
             usecases,
-            start_time: Instant::now(),
             shutdown,
-            active_connections: Arc::new(AtomicUsize::new(0)),
-            metrics: Arc::new(DaemonMetrics::new()),
+            active_connections,
+            metrics,
         }
     }
 
@@ -175,19 +188,12 @@ impl DaemonServer {
         match request.method.as_str() {
             "ping" => RpcResponse::success(request.id, json!({ "pong": true })),
 
-            "health" => handlers::diagnostics::handle_health(
-                &self.session_manager,
-                &self.metrics,
-                self.start_time,
-                &self.active_connections,
-                request,
-            ),
+            "health" => {
+                handlers::diagnostics::handle_health_uc(&self.usecases.diagnostics.health, request)
+            }
 
-            "metrics" => handlers::diagnostics::handle_metrics(
-                &self.session_manager,
-                &self.metrics,
-                self.start_time,
-                &self.active_connections,
+            "metrics" => handlers::diagnostics::handle_metrics_uc(
+                &self.usecases.diagnostics.metrics,
                 request,
             ),
 

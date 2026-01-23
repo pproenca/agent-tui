@@ -113,15 +113,15 @@ The daemon follows Clean Architecture with these layers (dependencies point inwa
 
 #### Intentional Partial Boundaries
 
-These root-level modules contain pure algorithmic logic and are acceptable as partial boundaries:
+These root-level modules are acceptable as partial boundaries:
 
 | Module | Purpose | Rationale |
 |--------|---------|-----------|
-| `wait.rs` | Wait condition algorithms | Pure logic, no external dependencies |
+| `wait.rs` | Wait condition algorithms | Uses `SessionOps` trait for dependency inversion |
 | `ansi_keys.rs` | ANSI key sequence mappings | Static data, no I/O |
-| `select_helpers.rs` | Element selection algorithms | Pure navigation logic |
+| `select_helpers.rs` | Element selection algorithms | Uses `SessionOps` trait for dependency inversion |
 
-These modules are used by use cases but don't warrant full layer separation because they have no external dependencies and adding abstraction would increase complexity without architectural benefit.
+These modules are used by use cases. The `wait.rs` and `select_helpers.rs` modules use the `SessionOps` trait (defined in `repository.rs`) for dependency inversion, allowing them to work with any session-like type without depending on the concrete `Session` implementation.
 
 ### IPC (`crates/agent-tui-ipc/src/`)
 

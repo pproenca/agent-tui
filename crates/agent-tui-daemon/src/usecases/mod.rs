@@ -7,8 +7,9 @@ mod snapshot;
 mod wait;
 
 pub use diagnostics::{
-    ConsoleUseCase, ConsoleUseCaseImpl, ErrorsUseCase, ErrorsUseCaseImpl, PtyReadUseCase,
-    PtyReadUseCaseImpl, PtyWriteUseCase, PtyWriteUseCaseImpl, TraceUseCase, TraceUseCaseImpl,
+    ConsoleUseCase, ConsoleUseCaseImpl, ErrorsUseCase, ErrorsUseCaseImpl, HealthUseCase,
+    HealthUseCaseImpl, MetricsUseCase, MetricsUseCaseImpl, PtyReadUseCase, PtyReadUseCaseImpl,
+    PtyWriteUseCase, PtyWriteUseCaseImpl, TraceUseCase, TraceUseCaseImpl,
 };
 pub use elements::{
     ClearUseCase, ClearUseCaseImpl, ClickUseCase, ClickUseCaseImpl, CountUseCase, CountUseCaseImpl,

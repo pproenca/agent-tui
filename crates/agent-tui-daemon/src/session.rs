@@ -413,6 +413,28 @@ impl Session {
     }
 }
 
+impl crate::repository::SessionOps for Session {
+    fn update(&mut self) -> Result<(), SessionError> {
+        Session::update(self)
+    }
+
+    fn screen_text(&self) -> String {
+        Session::screen_text(self)
+    }
+
+    fn detect_elements(&mut self) -> &[Element] {
+        Session::detect_elements(self)
+    }
+
+    fn find_element(&self, element_ref: &str) -> Option<&Element> {
+        Session::find_element(self, element_ref)
+    }
+
+    fn pty_write(&mut self, data: &[u8]) -> Result<(), SessionError> {
+        Session::pty_write(self, data)
+    }
+}
+
 /// Lock ordering: sessions → active_session → Session mutex
 ///
 /// When acquiring multiple locks, always follow this order to prevent deadlocks.

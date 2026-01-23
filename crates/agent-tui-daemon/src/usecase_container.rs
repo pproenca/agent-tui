@@ -1,17 +1,20 @@
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::time::Instant;
 
+use crate::metrics::DaemonMetrics;
 use crate::repository::SessionRepository;
 use crate::usecases::{
     AttachUseCaseImpl, ClearUseCaseImpl, ClickUseCaseImpl, ConsoleUseCaseImpl, CountUseCaseImpl,
     DoubleClickUseCaseImpl, ErrorsUseCaseImpl, FillUseCaseImpl, FindUseCaseImpl, FocusUseCaseImpl,
     GetFocusedUseCaseImpl, GetTextUseCaseImpl, GetTitleUseCaseImpl, GetValueUseCaseImpl,
-    IsCheckedUseCaseImpl, IsEnabledUseCaseImpl, IsFocusedUseCaseImpl, IsVisibleUseCaseImpl,
-    KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl, KillUseCaseImpl,
-    MultiselectUseCaseImpl, PtyReadUseCaseImpl, PtyWriteUseCaseImpl, RecordStartUseCaseImpl,
-    RecordStatusUseCaseImpl, RecordStopUseCaseImpl, ResizeUseCaseImpl, RestartUseCaseImpl,
-    ScrollIntoViewUseCaseImpl, ScrollUseCaseImpl, SelectAllUseCaseImpl, SelectUseCaseImpl,
-    SessionsUseCaseImpl, SnapshotUseCaseImpl, SpawnUseCaseImpl, ToggleUseCaseImpl,
-    TraceUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
+    HealthUseCaseImpl, IsCheckedUseCaseImpl, IsEnabledUseCaseImpl, IsFocusedUseCaseImpl,
+    IsVisibleUseCaseImpl, KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl,
+    KillUseCaseImpl, MetricsUseCaseImpl, MultiselectUseCaseImpl, PtyReadUseCaseImpl,
+    PtyWriteUseCaseImpl, RecordStartUseCaseImpl, RecordStatusUseCaseImpl, RecordStopUseCaseImpl,
+    ResizeUseCaseImpl, RestartUseCaseImpl, ScrollIntoViewUseCaseImpl, ScrollUseCaseImpl,
+    SelectAllUseCaseImpl, SelectUseCaseImpl, SessionsUseCaseImpl, SnapshotUseCaseImpl,
+    SpawnUseCaseImpl, ToggleUseCaseImpl, TraceUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
 };
 
 /// Container holding all use case implementations.
@@ -86,11 +89,18 @@ pub struct DiagnosticsUseCases<R: SessionRepository + 'static> {
     pub errors: ErrorsUseCaseImpl<R>,
     pub pty_read: PtyReadUseCaseImpl<R>,
     pub pty_write: PtyWriteUseCaseImpl<R>,
+    pub health: HealthUseCaseImpl<R>,
+    pub metrics: MetricsUseCaseImpl<R>,
 }
 
 impl<R: SessionRepository + 'static> UseCaseContainer<R> {
     /// Create a new UseCaseContainer with all use cases initialized.
-    pub fn new(repository: Arc<R>) -> Self {
+    pub fn new(
+        repository: Arc<R>,
+        metrics: Arc<DaemonMetrics>,
+        start_time: Instant,
+        active_connections: Arc<AtomicUsize>,
+    ) -> Self {
         Self {
             session: SessionUseCases {
                 spawn: SpawnUseCaseImpl::new(Arc::clone(&repository)),
@@ -141,6 +151,18 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 errors: ErrorsUseCaseImpl::new(Arc::clone(&repository)),
                 pty_read: PtyReadUseCaseImpl::new(Arc::clone(&repository)),
                 pty_write: PtyWriteUseCaseImpl::new(Arc::clone(&repository)),
+                health: HealthUseCaseImpl::new(
+                    Arc::clone(&repository),
+                    Arc::clone(&metrics),
+                    start_time,
+                    Arc::clone(&active_connections),
+                ),
+                metrics: MetricsUseCaseImpl::new(
+                    Arc::clone(&repository),
+                    metrics,
+                    start_time,
+                    active_connections,
+                ),
             },
             wait: WaitUseCaseImpl::new(repository),
         }

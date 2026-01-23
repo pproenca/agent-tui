@@ -59,7 +59,7 @@ impl<R: SessionRepository> WaitUseCase for WaitUseCaseImpl<R> {
                 let mut session_guard = mutex_lock_or_recover(&session);
                 session_guard.update()?;
 
-                if check_condition(&mut session_guard, &condition, &mut stable_tracker) {
+                if check_condition(&mut *session_guard, &condition, &mut stable_tracker) {
                     return Ok(WaitOutput {
                         found: true,
                         elapsed_ms: start.elapsed().as_millis() as u64,

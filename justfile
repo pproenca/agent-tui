@@ -21,7 +21,7 @@ format-check:
 
 # Run clippy lints
 lint:
-    cargo clippy --workspace -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # Run tests
 test:
@@ -94,7 +94,7 @@ test-crate crate:
 
 # Lint a specific crate
 lint-crate crate:
-    cargo clippy -p {{crate}} -- -D warnings
+    cargo clippy -p {{crate}} --all-targets -- -D warnings
 
 # Release with patch version bump
 release-patch:

@@ -9,7 +9,7 @@ printf '\n→ Building workspace...\n'
 cargo build --workspace || exit 1
 
 printf '\n→ Running clippy...\n'
-cargo clippy --workspace -- -D warnings || exit 1
+cargo clippy --workspace --all-targets -- -D warnings || exit 1
 
 printf '\n→ Running tests...\n'
 cargo test --workspace || exit 1

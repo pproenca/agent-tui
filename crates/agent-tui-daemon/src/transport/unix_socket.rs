@@ -214,7 +214,7 @@ mod tests {
             TransportError::ConnectionClosed
         ));
 
-        let other = std::io::Error::new(std::io::ErrorKind::Other, "other");
+        let other = std::io::Error::other("other");
         assert!(matches!(TransportError::from(other), TransportError::Io(_)));
     }
 

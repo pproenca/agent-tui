@@ -135,9 +135,9 @@ mod tests {
 
     #[test]
     fn test_session_repository_trait_is_object_safe() {
-        fn assert_object_safe<T: ?Sized>(_: &T)
+        fn assert_object_safe<T>(_: &T)
         where
-            T: SessionRepository,
+            T: SessionRepository + ?Sized,
         {
         }
 

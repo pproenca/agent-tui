@@ -4,14 +4,14 @@
  * sync-version.js - Synchronizes version between package.json and Cargo.toml
  *
  * This script is called automatically by npm's version lifecycle hook.
- * It reads the version from package.json and updates cli/Cargo.toml to match.
+ * It reads the version from package.json and updates the workspace Cargo.toml to match.
  */
 
 const fs = require('fs');
 const path = require('path');
 
 const PACKAGE_JSON_PATH = path.join(__dirname, '..', 'package.json');
-const CARGO_TOML_PATH = path.join(__dirname, '..', 'cli', 'Cargo.toml');
+const CARGO_TOML_PATH = path.join(__dirname, '..', 'Cargo.toml');
 
 function getPackageVersion() {
   const packageJson = JSON.parse(fs.readFileSync(PACKAGE_JSON_PATH, 'utf8'));
@@ -21,7 +21,7 @@ function getPackageVersion() {
 function updateCargoVersion(newVersion) {
   let cargoToml = fs.readFileSync(CARGO_TOML_PATH, 'utf8');
 
-  // Match the version line in [package] section
+  // Match the version line in [workspace.package] section
   // This regex handles: version = "x.y.z"
   const versionRegex = /^(version\s*=\s*")([^"]+)(")/m;
 

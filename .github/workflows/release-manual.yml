@@ -31,7 +31,7 @@ jobs:
 
       - name: Validate versions match
         run: |
-          CARGO_VERSION=$(grep '^version' cli/Cargo.toml | head -1 | cut -d'"' -f2)
+          CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
           NPM_VERSION=$(node -p "require('./package.json').version")
           INPUT_VERSION="${{ inputs.version }}"
 
@@ -99,8 +99,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('cli/Cargo.lock') }}
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-cargo-release-
 
@@ -110,18 +110,16 @@ jobs:
 
       - name: Build with cross
         if: matrix.cross
-        working-directory: cli
-        run: cross build --release --target ${{ matrix.target }}
+        run: cross build --release --target ${{ matrix.target }} -p agent-tui
 
       - name: Build native
         if: ${{ !matrix.cross }}
-        working-directory: cli
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} -p agent-tui
 
       - name: Prepare artifact
         run: |
           mkdir -p dist
-          cp cli/target/${{ matrix.target }}/release/agent-tui dist/${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/agent-tui dist/${{ matrix.artifact }}
           chmod +x dist/${{ matrix.artifact }}
 
       - name: Upload artifact
@@ -254,7 +252,7 @@ jobs:
       - name: Check if version already published
         id: crates-check
         run: |
-          VERSION=$(grep '^version' cli/Cargo.toml | head -1 | cut -d'"' -f2)
+          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
           if cargo search agent-tui --limit 1 | grep -q "agent-tui = \"$VERSION\""; then
             echo "Version $VERSION already published to crates.io"
             echo "skip=true" >> $GITHUB_OUTPUT
@@ -264,7 +262,6 @@ jobs:
 
       - name: Publish to crates.io
         if: steps.crates-check.outputs.skip != 'true'
-        working-directory: cli
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish
+        run: cargo publish -p agent-tui

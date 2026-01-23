@@ -111,3 +111,7 @@ release-major:
 # Release with explicit version
 release version:
     ./scripts/release.sh {{version}}
+
+# Install git hooks (pre-push checks)
+setup-hooks:
+    ./scripts/setup-hooks.sh

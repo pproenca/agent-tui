@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use agent_tui_common::mutex_lock_or_recover;
 
+use crate::adapters::{core_element_to_domain, core_elements_to_domain};
 use crate::ansi_keys;
 use crate::domain::{
     ClearInput, ClearOutput, ClickInput, ClickOutput, CountInput, CountOutput, DoubleClickInput,
@@ -159,8 +160,12 @@ impl<R: SessionRepository> FindUseCase for FindUseCaseImpl<R> {
         };
 
         let count = elements.len();
+        let domain_elements = core_elements_to_domain(&elements);
 
-        Ok(FindOutput { elements, count })
+        Ok(FindOutput {
+            elements: domain_elements,
+            count,
+        })
     }
 }
 
@@ -791,7 +796,7 @@ impl<R: SessionRepository> GetFocusedUseCase for GetFocusedUseCaseImpl<R> {
             .cached_elements()
             .iter()
             .find(|e| e.focused)
-            .cloned();
+            .map(core_element_to_domain);
 
         Ok(GetFocusedOutput {
             found: focused_el.is_some(),

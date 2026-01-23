@@ -211,6 +211,10 @@ impl DaemonServer {
             "snapshot" => {
                 handlers::elements::handle_snapshot_uc(&self.usecases.elements.snapshot, request)
             }
+            "accessibility_snapshot" => handlers::elements::handle_accessibility_snapshot_uc(
+                &self.usecases.elements.accessibility_snapshot,
+                request,
+            ),
             "click" => handlers::elements::handle_click_uc(&self.usecases.elements.click, request),
             "dbl_click" => {
                 handlers::elements::handle_dbl_click_uc(&self.usecases.elements.dbl_click, request)

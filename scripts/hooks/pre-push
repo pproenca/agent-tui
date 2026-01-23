@@ -1,0 +1,30 @@
+#!/bin/bash
+#
+# Pre-push hook: Run formatting and lint checks before pushing
+# These match the CI checks to catch issues early
+#
+
+set -e
+
+echo "Running pre-push checks..."
+
+# Check formatting
+echo "Checking formatting..."
+if ! cargo fmt --all -- --check; then
+    echo ""
+    echo "ERROR: Formatting check failed!"
+    echo "Run 'cargo fmt --all' to fix formatting issues."
+    exit 1
+fi
+
+# Run clippy
+echo "Running clippy..."
+if ! cargo clippy --workspace --all-targets --all-features -- -D warnings; then
+    echo ""
+    echo "ERROR: Clippy found warnings/errors!"
+    echo "Fix the issues above before pushing."
+    exit 1
+fi
+
+echo "Pre-push checks passed!"
+exit 0

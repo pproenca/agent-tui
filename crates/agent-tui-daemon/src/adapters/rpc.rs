@@ -1,11 +1,10 @@
-use agent_tui_core::Element;
 use agent_tui_ipc::{RpcRequest, RpcResponse};
 use serde_json::{Value, json};
 
 use crate::domain::{
-    ClickInput, CountInput, CountOutput, FillInput, FindInput, KeystrokeInput, KillOutput,
-    ResizeInput, ResizeOutput, ScrollInput, ScrollOutput, SessionsOutput, SnapshotInput,
-    SnapshotOutput, SpawnInput, SpawnOutput, TypeInput, WaitInput, WaitOutput,
+    ClickInput, CountInput, CountOutput, DomainElement, FillInput, FindInput, KeystrokeInput,
+    KillOutput, ResizeInput, ResizeOutput, ScrollInput, ScrollOutput, SessionsOutput,
+    SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, TypeInput, WaitInput, WaitOutput,
 };
 use crate::error::{DomainError, SessionError};
 use crate::usecases::{AttachOutput, RestartOutput};
@@ -15,8 +14,8 @@ const MAX_TERMINAL_ROWS: u16 = 200;
 const MIN_TERMINAL_COLS: u16 = 10;
 const MIN_TERMINAL_ROWS: u16 = 5;
 
-/// Convert an Element to JSON representation.
-pub fn element_to_json(el: &Element) -> Value {
+/// Convert a DomainElement to JSON representation.
+pub fn element_to_json(el: &DomainElement) -> Value {
     json!({
         "ref": el.element_ref,
         "type": el.element_type.as_str(),

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use agent_tui_core::Component;
 use agent_tui_core::CursorPosition;
 use agent_tui_core::Element;
 
@@ -28,6 +29,9 @@ pub trait SessionOps {
 
     /// Write raw bytes to the PTY.
     fn pty_write(&mut self, data: &[u8]) -> Result<(), SessionError>;
+
+    /// Analyze screen and return VOM components.
+    fn analyze_screen(&self) -> Vec<Component>;
 }
 
 /// Repository trait for session access and management.

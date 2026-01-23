@@ -163,6 +163,22 @@ impl MockDaemon {
                     "size": { "cols": super::TEST_COLS, "rows": super::TEST_ROWS }
                 })),
             );
+            h.insert(
+                "accessibility_snapshot".to_string(),
+                MockResponse::Success(serde_json::json!({
+                    "session_id": super::TEST_SESSION_ID,
+                    "tree": "- button \"OK\" [ref=e1]\n- textbox \"Input\" [ref=e2]",
+                    "refs": {
+                        "e1": { "row": 5, "col": 10, "width": 4, "height": 1 },
+                        "e2": { "row": 7, "col": 10, "width": 20, "height": 1 }
+                    },
+                    "stats": {
+                        "total_elements": 2,
+                        "interactive_elements": 2,
+                        "filtered_elements": 0
+                    }
+                })),
+            );
             // Deprecated method returns error
             h.insert(
                 "screen".to_string(),

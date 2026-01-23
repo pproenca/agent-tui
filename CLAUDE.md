@@ -85,6 +85,44 @@ Supported roles: `Button`, `Tab`, `Input`, `StaticText`, `Panel`, `Checkbox`, `M
 | `session.rs` | Session management, state |
 | `wait.rs` | Wait conditions, stable tracking |
 
+#### Clean Architecture Layers
+
+The daemon follows Clean Architecture with these layers (dependencies point inward):
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Infrastructure Layer                      │
+│  server.rs, session.rs, repository.rs, pty_session.rs       │
+│  (External interfaces: JSON-RPC, PTY, file I/O)             │
+├─────────────────────────────────────────────────────────────┤
+│                  Interface Adapters Layer                    │
+│  handlers/*.rs, adapters/rpc.rs                             │
+│  (Request/response conversion, orchestration)               │
+├─────────────────────────────────────────────────────────────┤
+│                      Use Cases Layer                         │
+│  usecases/*.rs (44 use cases in 6 files)                    │
+│  (Business logic, orchestrates domain operations)           │
+├─────────────────────────────────────────────────────────────┤
+│                       Domain Layer                           │
+│  domain/types.rs, domain/session_types.rs                   │
+│  (Core types: SessionId, SessionInfo, input/output DTOs)    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Dependency Rule**: Inner layers NEVER import from outer layers. Domain types must not depend on infrastructure.
+
+#### Intentional Partial Boundaries
+
+These root-level modules contain pure algorithmic logic and are acceptable as partial boundaries:
+
+| Module | Purpose | Rationale |
+|--------|---------|-----------|
+| `wait.rs` | Wait condition algorithms | Pure logic, no external dependencies |
+| `ansi_keys.rs` | ANSI key sequence mappings | Static data, no I/O |
+| `select_helpers.rs` | Element selection algorithms | Pure navigation logic |
+
+These modules are used by use cases but don't warrant full layer separation because they have no external dependencies and adding abstraction would increase complexity without architectural benefit.
+
 ### IPC (`crates/agent-tui-ipc/src/`)
 
 | File | Purpose |

@@ -1,14 +1,71 @@
 use std::collections::HashMap;
 
-use agent_tui_core::CursorPosition;
-use agent_tui_core::Element;
-
 use super::session_types::ErrorEntry;
 use super::session_types::RecordingFrame;
 use super::session_types::RecordingStatus;
 use super::session_types::SessionId;
 use super::session_types::SessionInfo;
 use super::session_types::TraceEntry;
+
+#[derive(Debug, Clone, Copy)]
+pub struct DomainCursorPosition {
+    pub row: u16,
+    pub col: u16,
+    pub visible: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainPosition {
+    pub row: u16,
+    pub col: u16,
+    pub width: Option<u16>,
+    pub height: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DomainElementType {
+    Button,
+    Input,
+    Checkbox,
+    Radio,
+    Select,
+    MenuItem,
+    ListItem,
+    Spinner,
+    Progress,
+    Link,
+}
+
+impl DomainElementType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DomainElementType::Button => "button",
+            DomainElementType::Input => "input",
+            DomainElementType::Checkbox => "checkbox",
+            DomainElementType::Radio => "radio",
+            DomainElementType::Select => "select",
+            DomainElementType::MenuItem => "menuitem",
+            DomainElementType::ListItem => "listitem",
+            DomainElementType::Spinner => "spinner",
+            DomainElementType::Progress => "progress",
+            DomainElementType::Link => "link",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainElement {
+    pub element_ref: String,
+    pub element_type: DomainElementType,
+    pub label: Option<String>,
+    pub value: Option<String>,
+    pub position: DomainPosition,
+    pub focused: bool,
+    pub selected: bool,
+    pub checked: Option<bool>,
+    pub disabled: Option<bool>,
+    pub hint: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct SpawnInput {
@@ -40,8 +97,63 @@ pub struct SnapshotInput {
 pub struct SnapshotOutput {
     pub session_id: SessionId,
     pub screen: String,
-    pub elements: Option<Vec<Element>>,
-    pub cursor: Option<CursorPosition>,
+    pub elements: Option<Vec<DomainElement>>,
+    pub cursor: Option<DomainCursorPosition>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AccessibilitySnapshotInput {
+    pub session_id: Option<String>,
+    pub interactive_only: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DomainBounds {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainElementRef {
+    pub role: String,
+    pub name: Option<String>,
+    pub bounds: DomainBounds,
+    pub visual_hash: u64,
+    pub nth: Option<usize>,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DomainRefMap {
+    pub refs: HashMap<String, DomainElementRef>,
+}
+
+impl DomainRefMap {
+    pub fn get(&self, ref_id: &str) -> Option<&DomainElementRef> {
+        self.refs.get(ref_id)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainSnapshotStats {
+    pub total: usize,
+    pub interactive: usize,
+    pub lines: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainAccessibilitySnapshot {
+    pub tree: String,
+    pub refs: DomainRefMap,
+    pub stats: DomainSnapshotStats,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccessibilitySnapshotOutput {
+    pub session_id: SessionId,
+    pub snapshot: DomainAccessibilitySnapshot,
 }
 
 #[derive(Debug, Clone)]
@@ -143,7 +255,7 @@ pub struct FindInput {
 
 #[derive(Debug, Clone)]
 pub struct FindOutput {
-    pub elements: Vec<Element>,
+    pub elements: Vec<DomainElement>,
     pub count: usize,
 }
 
@@ -230,7 +342,7 @@ pub struct GetValueOutput {
 #[derive(Debug, Clone)]
 pub struct GetFocusedOutput {
     pub found: bool,
-    pub element: Option<Element>,
+    pub element: Option<DomainElement>,
 }
 
 #[derive(Debug, Clone)]

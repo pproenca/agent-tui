@@ -35,5 +35,8 @@ pub use session::{
     ResizeUseCaseImpl, RestartOutput, RestartUseCase, RestartUseCaseImpl, SessionsUseCase,
     SessionsUseCaseImpl, SpawnUseCase, SpawnUseCaseImpl,
 };
-pub use snapshot::{SnapshotUseCase, SnapshotUseCaseImpl};
+pub use snapshot::{
+    AccessibilitySnapshotUseCase, AccessibilitySnapshotUseCaseImpl, SnapshotUseCase,
+    SnapshotUseCaseImpl,
+};
 pub use wait::{WaitUseCase, WaitUseCaseImpl};

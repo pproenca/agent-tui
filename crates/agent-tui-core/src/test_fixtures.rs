@@ -25,6 +25,36 @@ pub struct MockScreenBuffer {
     pub cells: Vec<Vec<Cell>>,
 }
 
+impl MockScreenBuffer {
+    pub fn new(cols: usize, rows: usize) -> Self {
+        let cells = (0..rows)
+            .map(|_| {
+                (0..cols)
+                    .map(|_| Cell {
+                        char: ' ',
+                        style: CellStyle::default(),
+                    })
+                    .collect()
+            })
+            .collect();
+        Self { cells }
+    }
+
+    pub fn set_line(&mut self, row: usize, content: &[(char, CellStyle)]) {
+        if row >= self.cells.len() {
+            return;
+        }
+        for (col, (ch, style)) in content.iter().enumerate() {
+            if col < self.cells[row].len() {
+                self.cells[row][col] = Cell {
+                    char: *ch,
+                    style: style.clone(),
+                };
+            }
+        }
+    }
+}
+
 impl ScreenGrid for MockScreenBuffer {
     fn rows(&self) -> usize {
         self.cells.len()
@@ -79,6 +109,7 @@ pub fn make_component(role: Role, text: &str, x: u16, y: u16, width: u16) -> Com
         bounds: Rect::new(x, y, width, 1),
         text_content: text.to_string(),
         visual_hash: 0,
+        selected: false,
     }
 }
 

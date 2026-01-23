@@ -85,6 +85,44 @@ Supported roles: `Button`, `Tab`, `Input`, `StaticText`, `Panel`, `Checkbox`, `M
 | `session.rs` | Session management, state |
 | `wait.rs` | Wait conditions, stable tracking |
 
+#### Clean Architecture Layers
+
+The daemon follows Clean Architecture with these layers (dependencies point inward):
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Infrastructure Layer                      │
+│  server.rs, session.rs, repository.rs, pty_session.rs       │
+│  (External interfaces: JSON-RPC, PTY, file I/O)             │
+├─────────────────────────────────────────────────────────────┤
+│                  Interface Adapters Layer                    │
+│  handlers/*.rs, adapters/rpc.rs                             │
+│  (Request/response conversion, orchestration)               │
+├─────────────────────────────────────────────────────────────┤
+│                      Use Cases Layer                         │
+│  usecases/*.rs (44 use cases in 6 files)                    │
+│  (Business logic, orchestrates domain operations)           │
+├─────────────────────────────────────────────────────────────┤
+│                       Domain Layer                           │
+│  domain/types.rs, domain/session_types.rs                   │
+│  (Core types: SessionId, SessionInfo, input/output DTOs)    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Dependency Rule**: Inner layers NEVER import from outer layers. Domain types must not depend on infrastructure.
+
+#### Intentional Partial Boundaries
+
+These root-level modules are acceptable as partial boundaries:
+
+| Module | Purpose | Rationale |
+|--------|---------|-----------|
+| `wait.rs` | Wait condition algorithms | Uses `SessionOps` trait for dependency inversion |
+| `ansi_keys.rs` | ANSI key sequence mappings | Static data, no I/O |
+| `select_helpers.rs` | Element selection algorithms | Uses `SessionOps` trait for dependency inversion |
+
+These modules are used by use cases. The `wait.rs` and `select_helpers.rs` modules use the `SessionOps` trait (defined in `repository.rs`) for dependency inversion, allowing them to work with any session-like type without depending on the concrete `Session` implementation.
+
 ### IPC (`crates/agent-tui-ipc/src/`)
 
 | File | Purpose |
@@ -156,6 +194,68 @@ Shell scripts for full system testing:
 | `AGENT_TUI_LOCK_TIMEOUT` | Session lock timeout (seconds) | 5 |
 | `AGENT_TUI_IDLE_TIMEOUT` | Idle connection timeout (seconds) | 300 |
 | `AGENT_TUI_MAX_REQUEST` | Max request size (bytes) | 1048576 (1MB) |
+
+## Feature Development Pipeline
+
+For complex features, use the structured pipeline:
+
+```
+/brainstorm → /spec → /plan-tdd → Execute
+```
+
+### Pipeline Commands
+
+| Command | Input | Output | Purpose |
+|---------|-------|--------|---------|
+| `/brainstorm <name>` | Ideas | `brainstorm.md` | Capture raw ideas, explore problem space |
+| `/spec <name>` | `brainstorm.md` | `spec.md` | Formalize decisions, define interfaces |
+| `/plan-tdd <name>` | `spec.md` | TaskList + `plan-summary.md` | Create executable TDD tasks |
+
+### Artifact Location
+
+All artifacts live in `.claude/specs/<feature-name>/`:
+```
+.claude/specs/plugin-system/
+├── brainstorm.md     ← Raw ideas, open questions
+├── spec.md           ← Formal spec with decisions
+└── plan-summary.md   ← Task plan overview
+```
+
+### When to Use Each Stage
+
+**Full Pipeline** (`/brainstorm` → `/spec` → `/plan-tdd`):
+- New features with unclear requirements
+- Architectural changes
+- Features needing stakeholder input
+
+**Skip to Spec** (`/spec` → `/plan-tdd`):
+- Requirements already clear
+- Enhancing existing feature
+
+**Direct to Tasks** (`/plan-tdd` only):
+- Well-defined small features
+- Bug fixes with known solution
+- Refactoring with clear target
+
+### TDD Task Pattern
+Every feature follows Red-Green-Refactor with enforced dependencies:
+1. `[RED]` Write failing test → blocks implementation
+2. `[GREEN]` Implement to pass → blocked by test
+3. `[REFACTOR]` Clean up → blocked by implementation
+
+**Dependency Setup (TaskUpdate):**
+```
+TaskCreate: "[RED] Write test for X" → returns id "1"
+TaskCreate: "[GREEN] Implement X" → returns id "2"
+TaskUpdate(taskId: "2", addBlockedBy: ["1"])  # enforces test-first
+```
+
+### Carpaccio Slicing
+Tasks are atomic and demonstrable:
+- Each completable in a single focused action
+- One clear outcome per task
+- Always includes verification command
+- If you say "and", split it
 
 ## Getting Started
 

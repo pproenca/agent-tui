@@ -2,11 +2,11 @@ use std::thread;
 use std::time::Duration;
 
 use crate::ansi_keys;
-use crate::session::Session;
-use crate::session::SessionError;
+use crate::error::SessionError;
+use crate::repository::SessionOps;
 
-pub fn navigate_to_option(
-    sess: &mut Session,
+pub fn navigate_to_option<S: SessionOps>(
+    sess: &mut S,
     target: &str,
     screen_text: &str,
 ) -> Result<(), SessionError> {

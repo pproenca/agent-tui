@@ -80,7 +80,33 @@ struct RpcError {
     data: Option<Value>,
 }
 
-pub struct DaemonClient;
+/// Trait for daemon client implementations.
+///
+/// This trait abstracts the communication with the daemon, allowing for
+/// different transport implementations (Unix socket, mock for testing, etc.).
+pub trait DaemonClient: Send + Sync {
+    /// Make an RPC call to the daemon.
+    fn call(&mut self, method: &str, params: Option<Value>) -> Result<Value, ClientError>;
+
+    /// Make an RPC call with custom configuration.
+    fn call_with_config(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+        config: &DaemonClientConfig,
+    ) -> Result<Value, ClientError>;
+
+    /// Make an RPC call with retry logic.
+    fn call_with_retry(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+        max_retries: u32,
+    ) -> Result<Value, ClientError>;
+}
+
+/// Unix socket-based daemon client implementation.
+pub struct UnixSocketClient;
 
 fn is_retriable_error(error: &ClientError) -> bool {
     match error {
@@ -93,7 +119,7 @@ fn is_retriable_error(error: &ClientError) -> bool {
     }
 }
 
-impl DaemonClient {
+impl UnixSocketClient {
     pub fn connect() -> Result<Self, ClientError> {
         let path = socket_path();
         if !path.exists() {
@@ -114,12 +140,14 @@ impl DaemonClient {
 
         UnixStream::connect(path).is_ok()
     }
+}
 
-    pub fn call(&mut self, method: &str, params: Option<Value>) -> Result<Value, ClientError> {
+impl DaemonClient for UnixSocketClient {
+    fn call(&mut self, method: &str, params: Option<Value>) -> Result<Value, ClientError> {
         self.call_with_config(method, params, &DaemonClientConfig::default())
     }
 
-    pub fn call_with_config(
+    fn call_with_config(
         &mut self,
         method: &str,
         params: Option<Value>,
@@ -188,7 +216,7 @@ impl DaemonClient {
         response.result.ok_or(ClientError::InvalidResponse)
     }
 
-    pub fn call_with_retry(
+    fn call_with_retry(
         &mut self,
         method: &str,
         params: Option<Value>,
@@ -251,7 +279,7 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
 
     for i in 0..50 {
         std::thread::sleep(std::time::Duration::from_millis(100));
-        if DaemonClient::is_daemon_running() {
+        if UnixSocketClient::is_daemon_running() {
             return Ok(());
         }
         if i == 49 {
@@ -272,12 +300,12 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
     Err(ClientError::DaemonNotRunning)
 }
 
-pub fn ensure_daemon() -> Result<DaemonClient, ClientError> {
-    if !DaemonClient::is_daemon_running() {
+pub fn ensure_daemon() -> Result<UnixSocketClient, ClientError> {
+    if !UnixSocketClient::is_daemon_running() {
         start_daemon_background()?;
     }
 
-    DaemonClient::connect()
+    UnixSocketClient::connect()
 }
 
 #[cfg(test)]

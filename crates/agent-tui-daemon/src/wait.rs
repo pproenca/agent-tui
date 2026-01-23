@@ -3,7 +3,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
 
-use crate::session::Session;
+use crate::repository::SessionOps;
 
 #[derive(Debug, Clone)]
 pub enum WaitCondition {
@@ -115,8 +115,8 @@ impl StableTracker {
     }
 }
 
-pub fn check_condition(
-    session: &mut Session,
+pub fn check_condition<S: SessionOps>(
+    session: &mut S,
     condition: &WaitCondition,
     stable_tracker: &mut StableTracker,
 ) -> bool {

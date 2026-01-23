@@ -19,7 +19,7 @@ use agent_tui_ipc::DaemonClient;
 
 pub use crate::error::AttachError;
 
-pub fn attach_ipc(client: &mut DaemonClient, session_id: &str) -> Result<(), AttachError> {
+pub fn attach_ipc<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<(), AttachError> {
     eprintln!(
         "{} Attaching to session {}...",
         Colors::dim("[attach]"),
@@ -56,7 +56,7 @@ pub fn attach_ipc(client: &mut DaemonClient, session_id: &str) -> Result<(), Att
     result
 }
 
-fn attach_ipc_loop(client: &mut DaemonClient, session_id: &str) -> Result<(), AttachError> {
+fn attach_ipc_loop<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<(), AttachError> {
     let mut stdout = io::stdout();
 
     loop {

@@ -2,6 +2,7 @@
 
 mod client;
 mod error;
+mod mock_client;
 mod socket;
 mod types;
 
@@ -10,9 +11,11 @@ pub use agent_tui_common::error_codes;
 
 pub use client::DaemonClient;
 pub use client::DaemonClientConfig;
+pub use client::UnixSocketClient;
 pub use client::ensure_daemon;
 pub use client::start_daemon_background;
 pub use error::ClientError;
+pub use mock_client::MockClient;
 pub use socket::socket_path;
 pub use types::ErrorData;
 pub use types::RpcRequest;

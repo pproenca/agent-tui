@@ -7,8 +7,6 @@ repository.workspace = true
 description = "VOM analysis engine for agent-tui"
 
 [dependencies]
-agent-tui-common.workspace = true
-agent-tui-terminal.workspace = true
 uuid.workspace = true
 regex.workspace = true
 

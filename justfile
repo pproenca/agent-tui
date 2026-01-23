@@ -21,11 +21,28 @@ format-check:
 
 # Run clippy lints
 lint:
-    cargo clippy --workspace -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # Run tests
 test:
     cargo test --workspace
+
+# Run unit tests only (~2s)
+test-unit:
+    cargo test --lib --workspace
+
+# Run integration tests with mock daemon (~8s)
+test-integration:
+    cargo test --test concurrent_tests --test connection_failure_tests \
+        --test dbl_click_tests --test e2e_daemon_tests \
+        --test error_propagation_tests --test lock_timeout_tests \
+        --test parameter_validation_tests --test pty_operations_tests \
+        --test response_edge_cases_tests --test retry_mechanism_tests \
+        --test session_state_tests
+
+# Run E2E tests with real daemon (~31s)
+test-e2e:
+    cargo test --test e2e_workflow_tests
 
 # Run tests with output
 test-verbose:
@@ -77,7 +94,7 @@ test-crate crate:
 
 # Lint a specific crate
 lint-crate crate:
-    cargo clippy -p {{crate}} -- -D warnings
+    cargo clippy -p {{crate}} --all-targets -- -D warnings
 
 # Release with patch version bump
 release-patch:

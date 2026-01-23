@@ -6,8 +6,8 @@ use std::hash::Hasher;
 
 use uuid::Uuid;
 
-use agent_tui_terminal::CellStyle;
-use agent_tui_terminal::ScreenBuffer;
+use crate::screen::ScreenGrid;
+use crate::style::CellStyle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Rect {
@@ -121,7 +121,7 @@ impl std::fmt::Display for Role {
 pub use classifier::classify;
 pub use segmentation::segment_buffer;
 
-pub fn analyze(buffer: &ScreenBuffer, cursor_row: u16, cursor_col: u16) -> Vec<Component> {
+pub fn analyze(buffer: &impl ScreenGrid, cursor_row: u16, cursor_col: u16) -> Vec<Component> {
     let clusters = segment_buffer(buffer);
     classify(clusters, cursor_row, cursor_col)
 }

@@ -205,6 +205,13 @@ Every feature follows Red-Green-Refactor with enforced dependencies:
 2. `[GREEN]` Implement to pass → blocked by test
 3. `[REFACTOR]` Clean up → blocked by implementation
 
+**Dependency Setup (TaskUpdate):**
+```
+TaskCreate: "[RED] Write test for X" → returns id "1"
+TaskCreate: "[GREEN] Implement X" → returns id "2"
+TaskUpdate(taskId: "2", addBlockedBy: ["1"])  # enforces test-first
+```
+
 ### Carpaccio Slicing
 Tasks are atomic and demonstrable:
 - Each completable in a single focused action

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use agent_tui_core::CursorPosition;
 use agent_tui_core::Element;
-use agent_tui_terminal::CursorPosition;
 
 use crate::error::SessionError;
 use crate::session::{Session, SessionId, SessionInfo, SessionManager};

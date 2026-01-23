@@ -15,7 +15,6 @@ use chrono::DateTime;
 use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
-use uuid::Uuid;
 
 use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_common::rwlock_read_or_recover;
@@ -28,6 +27,12 @@ use agent_tui_terminal::key_to_escape_sequence;
 use crate::pty_session::PtySession;
 use crate::terminal_state::TerminalState;
 
+pub use crate::domain::session_types::ErrorEntry;
+pub use crate::domain::session_types::RecordingFrame;
+pub use crate::domain::session_types::RecordingStatus;
+pub use crate::domain::session_types::SessionId;
+pub use crate::domain::session_types::SessionInfo;
+pub use crate::domain::session_types::TraceEntry;
 pub use crate::error::SessionError;
 
 const MAX_RECORDING_FRAMES: usize = 1000;
@@ -46,54 +51,6 @@ fn push_bounded<T>(queue: &mut VecDeque<T>, item: T, max_size: usize) {
     queue.push_back(item);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionId(String);
-
-impl SessionId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-
-    pub fn generate() -> Self {
-        Self(Uuid::new_v4().to_string()[..8].to_string())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for SessionId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl AsRef<str> for SessionId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for SessionId {
-    fn from(s: String) -> Self {
-        Self(s)
-    }
-}
-
-impl From<&str> for SessionId {
-    fn from(s: &str) -> Self {
-        Self(s.to_string())
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct RecordingFrame {
-    pub timestamp_ms: u64,
-    pub screen: String,
-}
-
 struct RecordingState {
     is_recording: bool,
     start_time: Instant,
@@ -110,13 +67,6 @@ impl RecordingState {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct TraceEntry {
-    pub timestamp_ms: u64,
-    pub action: String,
-    pub details: Option<String>,
-}
-
 struct TraceState {
     is_tracing: bool,
     start_time: Instant,
@@ -131,19 +81,6 @@ impl TraceState {
             entries: VecDeque::new(),
         }
     }
-}
-
-pub struct RecordingStatus {
-    pub is_recording: bool,
-    pub frame_count: usize,
-    pub duration_ms: u64,
-}
-
-#[derive(Clone, Debug)]
-pub struct ErrorEntry {
-    pub timestamp: String,
-    pub message: String,
-    pub source: String,
 }
 
 struct ErrorState {
@@ -679,29 +616,6 @@ impl SessionManager {
 
     pub fn active_session_id(&self) -> Option<SessionId> {
         rwlock_read_or_recover(&self.active_session).clone()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SessionInfo {
-    pub id: SessionId,
-    pub command: String,
-    pub pid: u32,
-    pub running: bool,
-    pub created_at: String,
-    pub size: (u16, u16),
-}
-
-impl SessionInfo {
-    pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "id": self.id,
-            "command": self.command,
-            "pid": self.pid,
-            "running": self.running,
-            "created_at": self.created_at,
-            "size": { "cols": self.size.0, "rows": self.size.1 }
-        })
     }
 }
 

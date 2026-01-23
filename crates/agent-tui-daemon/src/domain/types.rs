@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use agent_tui_core::CursorPosition;
 use agent_tui_core::Element;
 
-use crate::session::ErrorEntry;
-use crate::session::RecordingFrame;
-use crate::session::RecordingStatus;
-use crate::session::SessionId;
-use crate::session::SessionInfo;
-use crate::session::TraceEntry;
+use super::session_types::ErrorEntry;
+use super::session_types::RecordingFrame;
+use super::session_types::RecordingStatus;
+use super::session_types::SessionId;
+use super::session_types::SessionInfo;
+use super::session_types::TraceEntry;
 
 /// Input for spawning a new session.
 #[derive(Debug, Clone)]

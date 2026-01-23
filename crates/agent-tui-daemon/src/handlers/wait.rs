@@ -4,11 +4,30 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::common::domain_error_response;
+use super::common::{domain_error_response, session_error_response};
+use crate::adapters::parse_wait_input;
 use crate::error::DomainError;
 use crate::lock_helpers::acquire_session_lock;
 use crate::session::SessionManager;
+use crate::usecases::WaitUseCase;
 use crate::wait::{StableTracker, WaitCondition, check_condition};
+
+/// Handle wait requests using the use case pattern.
+pub fn handle_wait_uc<U: WaitUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let input = parse_wait_input(&request);
+    let req_id = request.id;
+
+    match usecase.execute(input) {
+        Ok(output) => RpcResponse::success(
+            req_id,
+            json!({
+                "found": output.found,
+                "elapsed_ms": output.elapsed_ms
+            }),
+        ),
+        Err(e) => session_error_response(req_id, e),
+    }
+}
 
 fn build_wait_suggestion(condition: &WaitCondition) -> String {
     match condition {

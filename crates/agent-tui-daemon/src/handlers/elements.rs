@@ -6,12 +6,15 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use super::common::{domain_error_response, lock_timeout_response};
+use super::common::{domain_error_response, lock_timeout_response, session_error_response};
+use crate::adapters::parse_snapshot_input;
 use crate::ansi_keys;
+use crate::domain::ClickInput;
 use crate::error::DomainError;
 use crate::lock_helpers::{LOCK_TIMEOUT, acquire_session_lock};
 use crate::select_helpers::{navigate_to_option, strip_ansi_codes};
 use crate::session::{Session, SessionManager};
+use crate::usecases::{ClickUseCase, SnapshotUseCase};
 
 fn update_with_warning(sess: &mut Session) -> Option<String> {
     let warning = match sess.update() {
@@ -113,6 +116,48 @@ impl ElementFilter<'_> {
     }
 }
 
+/// Handle snapshot requests using the use case pattern.
+pub fn handle_snapshot_uc<U: SnapshotUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let input = parse_snapshot_input(&request);
+    let should_strip_ansi = request
+        .params
+        .as_ref()
+        .map(|p| p.bool_or("strip_ansi", false))
+        .unwrap_or(false);
+    let req_id = request.id;
+
+    match usecase.execute(input) {
+        Ok(output) => {
+            let mut screen = output.screen;
+            if should_strip_ansi {
+                screen = strip_ansi_codes(&screen);
+            }
+
+            let mut response = json!({
+                "session_id": output.session_id,
+                "screen": screen
+            });
+
+            if let Some(elements) = output.elements {
+                let elements_json: Vec<Value> = elements.iter().map(element_to_json).collect();
+                response["elements"] = json!(elements_json);
+            }
+
+            if let Some(cursor) = output.cursor {
+                response["cursor"] = json!({
+                    "row": cursor.row,
+                    "col": cursor.col,
+                    "visible": cursor.visible
+                });
+            }
+
+            RpcResponse::success(req_id, response)
+        }
+        Err(e) => session_error_response(req_id, e),
+    }
+}
+
+/// Legacy handle_snapshot using SessionManager directly.
 pub fn handle_snapshot(session_manager: &Arc<SessionManager>, request: RpcRequest) -> RpcResponse {
     let params = request.params.as_ref().cloned().unwrap_or(json!({}));
     let session_id = request.param_str("session");
@@ -174,6 +219,27 @@ pub fn handle_snapshot(session_manager: &Arc<SessionManager>, request: RpcReques
     }
 }
 
+/// Handle click requests using the use case pattern.
+pub fn handle_click_uc<U: ClickUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let element_ref = match request.require_str("ref") {
+        Ok(r) => r.to_string(),
+        Err(resp) => return resp,
+    };
+    let session_id = request.param_str("session").map(String::from);
+    let req_id = request.id;
+
+    let input = ClickInput {
+        session_id,
+        element_ref,
+    };
+
+    match usecase.execute(input) {
+        Ok(_output) => RpcResponse::action_success(req_id),
+        Err(e) => session_error_response(req_id, e),
+    }
+}
+
+/// Legacy handle_click using SessionManager directly.
 pub fn handle_click(session_manager: &Arc<SessionManager>, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),

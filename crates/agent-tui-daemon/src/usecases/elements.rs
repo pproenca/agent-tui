@@ -2,7 +2,11 @@ use std::sync::Arc;
 
 use agent_tui_common::mutex_lock_or_recover;
 
-use crate::domain::{ClickInput, ClickOutput, FillInput, FillOutput, FindInput, FindOutput};
+use crate::ansi_keys;
+use crate::domain::{
+    ClickInput, ClickOutput, CountInput, CountOutput, FillInput, FillOutput, FindInput, FindOutput,
+    ScrollInput, ScrollOutput,
+};
 use crate::error::SessionError;
 use crate::repository::SessionRepository;
 
@@ -156,5 +160,100 @@ impl<R: SessionRepository> FindUseCase for FindUseCaseImpl<R> {
         let count = elements.len();
 
         Ok(FindOutput { elements, count })
+    }
+}
+
+/// Use case for scrolling.
+pub trait ScrollUseCase: Send + Sync {
+    fn execute(&self, input: ScrollInput) -> Result<ScrollOutput, SessionError>;
+}
+
+/// Implementation of the scroll use case.
+pub struct ScrollUseCaseImpl<R: SessionRepository> {
+    repository: Arc<R>,
+}
+
+impl<R: SessionRepository> ScrollUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
+    }
+}
+
+impl<R: SessionRepository> ScrollUseCase for ScrollUseCaseImpl<R> {
+    fn execute(&self, input: ScrollInput) -> Result<ScrollOutput, SessionError> {
+        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session_guard = mutex_lock_or_recover(&session);
+
+        let key_seq: &[u8] = match input.direction.as_str() {
+            "up" => ansi_keys::UP,
+            "down" => ansi_keys::DOWN,
+            "left" => ansi_keys::LEFT,
+            "right" => ansi_keys::RIGHT,
+            _ => {
+                return Err(SessionError::InvalidKey(format!(
+                    "Invalid direction: {}",
+                    input.direction
+                )));
+            }
+        };
+
+        for _ in 0..input.amount {
+            session_guard.pty_write(key_seq)?;
+        }
+
+        Ok(ScrollOutput { success: true })
+    }
+}
+
+/// Use case for counting elements.
+pub trait CountUseCase: Send + Sync {
+    fn execute(&self, input: CountInput) -> Result<CountOutput, SessionError>;
+}
+
+/// Implementation of the count use case.
+pub struct CountUseCaseImpl<R: SessionRepository> {
+    repository: Arc<R>,
+}
+
+impl<R: SessionRepository> CountUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
+    }
+}
+
+impl<R: SessionRepository> CountUseCase for CountUseCaseImpl<R> {
+    fn execute(&self, input: CountInput) -> Result<CountOutput, SessionError> {
+        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let mut session_guard = mutex_lock_or_recover(&session);
+
+        session_guard.update()?;
+        let all_elements = session_guard.detect_elements();
+
+        let count = all_elements
+            .iter()
+            .filter(|el| {
+                if let Some(ref role) = input.role {
+                    let el_type = format!("{:?}", el.element_type).to_lowercase();
+                    if !el_type.contains(&role.to_lowercase()) {
+                        return false;
+                    }
+                }
+                if let Some(ref name) = input.name {
+                    let el_label = el.label.as_deref().unwrap_or("");
+                    if !el_label.to_lowercase().contains(&name.to_lowercase()) {
+                        return false;
+                    }
+                }
+                if let Some(ref text) = input.text {
+                    let el_text = el.label.as_deref().unwrap_or("").to_lowercase();
+                    if !el_text.contains(&text.to_lowercase()) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .count();
+
+        Ok(CountOutput { count })
     }
 }

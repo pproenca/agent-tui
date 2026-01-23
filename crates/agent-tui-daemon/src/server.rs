@@ -1,12 +1,16 @@
 use agent_tui_ipc::RpcResponse;
 use agent_tui_ipc::socket_path;
 
+use crate::config::DaemonConfig;
 use crate::error::DaemonError;
 use crate::handlers;
+use crate::metrics::DaemonMetrics;
+use crate::session::SessionManager;
 use crate::transport::{
     TransportConnection, TransportError, TransportListener, UnixSocketConnection,
     UnixSocketListener,
 };
+use crate::usecase_container::UseCaseContainer;
 use serde_json::json;
 use signal_hook::consts::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
@@ -19,15 +23,12 @@ use std::sync::mpsc::{self, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::config::DaemonConfig;
-use crate::metrics::DaemonMetrics;
-use crate::session::SessionManager;
-
 const MAX_CONNECTIONS: usize = 64;
 const CHANNEL_CAPACITY: usize = 128;
 
 pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
+    usecases: UseCaseContainer<SessionManager>,
     start_time: Instant,
     #[allow(dead_code)]
     shutdown: Arc<AtomicBool>,
@@ -136,8 +137,11 @@ impl DaemonServer {
     }
 
     pub fn with_config(config: DaemonConfig) -> Self {
+        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
+        let usecases = UseCaseContainer::new(Arc::clone(&session_manager));
         Self {
-            session_manager: Arc::new(SessionManager::with_max_sessions(config.max_sessions)),
+            session_manager,
+            usecases,
             start_time: Instant::now(),
             shutdown: Arc::new(AtomicBool::new(false)),
             active_connections: Arc::new(AtomicUsize::new(0)),
@@ -146,8 +150,11 @@ impl DaemonServer {
     }
 
     pub fn with_shutdown_and_config(shutdown: Arc<AtomicBool>, config: DaemonConfig) -> Self {
+        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
+        let usecases = UseCaseContainer::new(Arc::clone(&session_manager));
         Self {
-            session_manager: Arc::new(SessionManager::with_max_sessions(config.max_sessions)),
+            session_manager,
+            usecases,
             start_time: Instant::now(),
             shutdown,
             active_connections: Arc::new(AtomicUsize::new(0)),
@@ -184,15 +191,21 @@ impl DaemonServer {
                 request,
             ),
 
-            "spawn" => handlers::session::handle_spawn(&self.session_manager, request),
-            "kill" => handlers::session::handle_kill(&self.session_manager, request),
-            "restart" => handlers::session::handle_restart(&self.session_manager, request),
-            "sessions" => handlers::session::handle_sessions(&self.session_manager, request),
-            "resize" => handlers::session::handle_resize(&self.session_manager, request),
-            "attach" => handlers::session::handle_attach(&self.session_manager, request),
+            // Session handlers using use cases
+            "spawn" => handlers::session::handle_spawn(&self.usecases.session.spawn, request),
+            "kill" => handlers::session::handle_kill(&self.usecases.session.kill, request),
+            "restart" => handlers::session::handle_restart(&self.usecases.session.restart, request),
+            "sessions" => {
+                handlers::session::handle_sessions(&self.usecases.session.sessions, request)
+            }
+            "resize" => handlers::session::handle_resize(&self.usecases.session.resize, request),
+            "attach" => handlers::session::handle_attach(&self.usecases.session.attach, request),
 
-            "snapshot" => handlers::elements::handle_snapshot(&self.session_manager, request),
-            "click" => handlers::elements::handle_click(&self.session_manager, request),
+            // Element handlers - key operations use use cases, others use session_manager
+            "snapshot" => {
+                handlers::elements::handle_snapshot_uc(&self.usecases.elements.snapshot, request)
+            }
+            "click" => handlers::elements::handle_click_uc(&self.usecases.elements.click, request),
             "dbl_click" => handlers::elements::handle_dbl_click(&self.session_manager, request),
             "fill" => handlers::elements::handle_fill(&self.session_manager, request),
             "find" => handlers::elements::handle_find(&self.session_manager, request),
@@ -216,13 +229,18 @@ impl DaemonServer {
             "select" => handlers::elements::handle_select(&self.session_manager, request),
             "multiselect" => handlers::elements::handle_multiselect(&self.session_manager, request),
 
-            "keystroke" => handlers::input::handle_keystroke(&self.session_manager, request),
+            // Input handlers - keystroke and type use use cases
+            "keystroke" => {
+                handlers::input::handle_keystroke_uc(&self.usecases.input.keystroke, request)
+            }
             "keydown" => handlers::input::handle_keydown(&self.session_manager, request),
             "keyup" => handlers::input::handle_keyup(&self.session_manager, request),
-            "type" => handlers::input::handle_type(&self.session_manager, request),
+            "type" => handlers::input::handle_type_uc(&self.usecases.input.type_text, request),
 
-            "wait" => handlers::wait::handle_wait(&self.session_manager, request),
+            // Wait handler using use case
+            "wait" => handlers::wait::handle_wait_uc(&self.usecases.wait, request),
 
+            // Recording handlers
             "record_start" => {
                 handlers::recording::handle_record_start(&self.session_manager, request)
             }
@@ -233,6 +251,7 @@ impl DaemonServer {
                 handlers::recording::handle_record_status(&self.session_manager, request)
             }
 
+            // Diagnostics handlers
             "trace" => handlers::diagnostics::handle_trace(&self.session_manager, request),
             "console" => handlers::diagnostics::handle_console(&self.session_manager, request),
             "errors" => handlers::diagnostics::handle_errors(&self.session_manager, request),

@@ -1,11 +1,48 @@
 use agent_tui_ipc::{RpcRequest, RpcResponse};
 use std::sync::Arc;
 
-use super::common::{domain_error_response, lock_timeout_response};
+use super::common::{domain_error_response, lock_timeout_response, session_error_response};
+use crate::domain::{KeystrokeInput, TypeInput};
 use crate::error::DomainError;
 use crate::lock_helpers::{LOCK_TIMEOUT, acquire_session_lock};
 use crate::session::SessionManager;
+use crate::usecases::{KeystrokeUseCase, TypeUseCase};
 
+/// Handle keystroke requests using the use case pattern.
+pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let key = match request.require_str("key") {
+        Ok(k) => k.to_string(),
+        Err(resp) => return resp,
+    };
+    let session_id = request.param_str("session").map(String::from);
+    let req_id = request.id;
+
+    let input = KeystrokeInput { session_id, key };
+
+    match usecase.execute(input) {
+        Ok(_) => RpcResponse::action_success(req_id),
+        Err(e) => session_error_response(req_id, e),
+    }
+}
+
+/// Handle type requests using the use case pattern.
+pub fn handle_type_uc<U: TypeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let text = match request.require_str("text") {
+        Ok(t) => t.to_string(),
+        Err(resp) => return resp,
+    };
+    let session_id = request.param_str("session").map(String::from);
+    let req_id = request.id;
+
+    let input = TypeInput { session_id, text };
+
+    match usecase.execute(input) {
+        Ok(_) => RpcResponse::action_success(req_id),
+        Err(e) => session_error_response(req_id, e),
+    }
+}
+
+/// Legacy handle_keystroke using SessionManager directly.
 pub fn handle_keystroke(session_manager: &Arc<SessionManager>, request: RpcRequest) -> RpcResponse {
     with_session_action(session_manager, &request, "key", |sess, key| {
         sess.keystroke(key).map_err(|e| e.into())

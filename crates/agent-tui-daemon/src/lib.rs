@@ -15,6 +15,7 @@ mod server;
 mod session;
 mod terminal_state;
 pub mod transport;
+mod usecase_container;
 pub mod usecases;
 mod wait;
 
@@ -44,6 +45,10 @@ pub use session::SessionManager;
 pub use session::SessionPersistence;
 pub use session::TraceEntry;
 pub use terminal_state::TerminalState;
+pub use usecase_container::ElementUseCases;
+pub use usecase_container::InputUseCases;
+pub use usecase_container::SessionUseCases;
+pub use usecase_container::UseCaseContainer;
 pub use wait::StableTracker;
 pub use wait::WaitCondition;
 pub use wait::check_condition;

@@ -3,10 +3,12 @@ use agent_tui_ipc::{RpcRequest, RpcResponse};
 use serde_json::{Value, json};
 
 use crate::domain::{
-    ClickInput, FillInput, FindInput, KeystrokeInput, KillOutput, ScrollInput, SessionsOutput,
-    SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, TypeInput, WaitInput, WaitOutput,
+    ClickInput, CountInput, CountOutput, FillInput, FindInput, KeystrokeInput, KillOutput,
+    ResizeInput, ResizeOutput, ScrollInput, ScrollOutput, SessionsOutput, SnapshotInput,
+    SnapshotOutput, SpawnInput, SpawnOutput, TypeInput, WaitInput, WaitOutput,
 };
 use crate::error::{DomainError, SessionError};
+use crate::usecases::{AttachOutput, RestartOutput};
 
 const MAX_TERMINAL_COLS: u16 = 500;
 const MAX_TERMINAL_ROWS: u16 = 200;
@@ -302,6 +304,92 @@ pub fn fill_success_response(id: u64, element_ref: &str) -> RpcResponse {
             "message": format!("Filled {} with value", element_ref)
         }),
     )
+}
+
+/// Parse ResizeInput from RpcRequest.
+pub fn parse_resize_input(request: &RpcRequest) -> ResizeInput {
+    let cols = request
+        .param_u16("cols", 80)
+        .clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS);
+    let rows = request
+        .param_u16("rows", 24)
+        .clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS);
+
+    ResizeInput {
+        session_id: request.param_str("session").map(String::from),
+        cols,
+        rows,
+    }
+}
+
+/// Convert ResizeOutput to RpcResponse.
+pub fn resize_output_to_response(id: u64, output: ResizeOutput) -> RpcResponse {
+    RpcResponse::success(
+        id,
+        json!({
+            "success": output.success,
+            "session_id": output.session_id,
+            "size": { "cols": output.session_id, "rows": output.session_id }
+        }),
+    )
+}
+
+/// Convert RestartOutput to RpcResponse.
+pub fn restart_output_to_response(id: u64, output: RestartOutput) -> RpcResponse {
+    RpcResponse::success(
+        id,
+        json!({
+            "success": true,
+            "old_session_id": output.old_session_id,
+            "new_session_id": output.new_session_id,
+            "command": output.command,
+            "pid": output.pid
+        }),
+    )
+}
+
+/// Convert AttachOutput to RpcResponse.
+pub fn attach_output_to_response(id: u64, output: AttachOutput) -> RpcResponse {
+    RpcResponse::success(
+        id,
+        json!({
+            "success": output.success,
+            "session_id": output.session_id,
+            "message": output.message
+        }),
+    )
+}
+
+/// Convert ScrollOutput to RpcResponse.
+pub fn scroll_output_to_response(
+    id: u64,
+    output: ScrollOutput,
+    direction: &str,
+    amount: u16,
+) -> RpcResponse {
+    RpcResponse::success(
+        id,
+        json!({
+            "success": output.success,
+            "direction": direction,
+            "amount": amount
+        }),
+    )
+}
+
+/// Parse CountInput from RpcRequest.
+pub fn parse_count_input(request: &RpcRequest) -> CountInput {
+    CountInput {
+        session_id: request.param_str("session").map(String::from),
+        role: request.param_str("role").map(String::from),
+        name: request.param_str("name").map(String::from),
+        text: request.param_str("text").map(String::from),
+    }
+}
+
+/// Convert CountOutput to RpcResponse.
+pub fn count_output_to_response(id: u64, output: CountOutput) -> RpcResponse {
+    RpcResponse::success(id, json!({ "count": output.count }))
 }
 
 #[cfg(test)]

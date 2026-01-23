@@ -1,3 +1,8 @@
+//! CLI binary and command handlers for agent-tui.
+//!
+//! This crate provides the command-line interface for interacting with TUI applications
+//! through the agent-tui daemon.
+
 #![deny(clippy::all)]
 
 pub mod attach;
@@ -15,3 +20,4 @@ pub use agent_tui_daemon::SessionManager;
 pub use agent_tui_ipc::ClientError;
 pub use agent_tui_ipc::DaemonClient;
 pub use error::AttachError;
+pub use handlers::HandlerResult;

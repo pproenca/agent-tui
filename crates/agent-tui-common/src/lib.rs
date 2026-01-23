@@ -1,3 +1,7 @@
+//! Common utilities and types shared across agent-tui crates.
+//!
+//! Provides error codes, color handling, JSON extensions, and synchronization utilities.
+
 #![deny(clippy::all)]
 
 mod color;

@@ -1,3 +1,8 @@
+//! Core types and Visual Object Model (VOM) for agent-tui.
+//!
+//! This crate provides the element detection system that identifies UI components
+//! (buttons, inputs, tabs, etc.) in terminal screens using Connected-Component Labeling.
+
 #![deny(clippy::all)]
 
 mod element;

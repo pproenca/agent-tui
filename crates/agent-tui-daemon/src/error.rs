@@ -170,98 +170,55 @@ impl DaemonError {
 }
 
 /// Domain-specific errors with semantic codes and structured context.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum DomainError {
-    /// Session with given ID does not exist
+    #[error("Session not found: {session_id}")]
     SessionNotFound { session_id: String },
-    /// No session is currently active (none specified and no default)
+
+    #[error("No active session")]
     NoActiveSession,
-    /// Element with given ref not found in current screen
+
+    #[error("Element not found: {element_ref}")]
     ElementNotFound {
         element_ref: String,
         session_id: Option<String>,
     },
-    /// Element exists but is wrong type for operation
+
+    #[error("Element {element_ref} is a {actual} not a {expected}")]
     WrongElementType {
         element_ref: String,
         actual: String,
         expected: String,
     },
-    /// Invalid key name provided for keystroke
+
+    #[error("Invalid key: {key}")]
     InvalidKey { key: String },
-    /// Maximum session limit reached
+
+    #[error("Session limit reached: maximum {max} sessions allowed")]
     SessionLimitReached { max: usize },
-    /// Failed to acquire session lock within timeout
+
+    #[error("Lock timeout{}", session_id.as_ref().map(|id| format!(" for session: {}", id)).unwrap_or_default())]
     LockTimeout { session_id: Option<String> },
-    /// PTY communication error
+
+    #[error("PTY error during {operation}: {reason}")]
     PtyError { operation: String, reason: String },
-    /// Wait condition not met within timeout
+
+    #[error("Timeout waiting for: {condition}")]
     WaitTimeout {
         condition: String,
         elapsed_ms: u64,
         timeout_ms: u64,
     },
-    /// Command to spawn not found
+
+    #[error("Command not found: {command}")]
     CommandNotFound { command: String },
-    /// Permission denied when spawning command
+
+    #[error("Permission denied: {command}")]
     PermissionDenied { command: String },
-    /// Generic error (for backwards compatibility)
+
+    #[error("{message}")]
     Generic { message: String },
 }
-
-impl std::fmt::Display for DomainError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DomainError::SessionNotFound { session_id } => {
-                write!(f, "Session not found: {}", session_id)
-            }
-            DomainError::NoActiveSession => {
-                write!(f, "No active session")
-            }
-            DomainError::ElementNotFound { element_ref, .. } => {
-                write!(f, "Element not found: {}", element_ref)
-            }
-            DomainError::WrongElementType {
-                element_ref,
-                actual,
-                expected,
-            } => {
-                write!(
-                    f,
-                    "Element {} is a {} not a {}",
-                    element_ref, actual, expected
-                )
-            }
-            DomainError::InvalidKey { key } => {
-                write!(f, "Invalid key: {}", key)
-            }
-            DomainError::SessionLimitReached { max } => {
-                write!(f, "Session limit reached: maximum {} sessions allowed", max)
-            }
-            DomainError::LockTimeout { session_id } => match session_id {
-                Some(id) => write!(f, "Lock timeout for session: {}", id),
-                None => write!(f, "Lock timeout"),
-            },
-            DomainError::PtyError { operation, reason } => {
-                write!(f, "PTY error during {}: {}", operation, reason)
-            }
-            DomainError::WaitTimeout { condition, .. } => {
-                write!(f, "Timeout waiting for: {}", condition)
-            }
-            DomainError::CommandNotFound { command } => {
-                write!(f, "Command not found: {}", command)
-            }
-            DomainError::PermissionDenied { command } => {
-                write!(f, "Permission denied: {}", command)
-            }
-            DomainError::Generic { message } => {
-                write!(f, "{}", message)
-            }
-        }
-    }
-}
-
-impl std::error::Error for DomainError {}
 
 impl DomainError {
     /// Returns the JSON-RPC error code for this error.

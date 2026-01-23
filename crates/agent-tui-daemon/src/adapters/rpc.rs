@@ -1,4 +1,4 @@
-use agent_tui_ipc::{RpcRequest, RpcResponse};
+use agent_tui_ipc::{RpcRequest, RpcResponse, params};
 use serde_json::{Value, json};
 
 use crate::domain::{
@@ -60,48 +60,34 @@ pub fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
     domain_error_response(id, &err)
 }
 
-/// Parse SpawnInput from RpcRequest.
+/// Parse SpawnInput from RpcRequest using shared params type.
 #[allow(clippy::result_large_err)]
 pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse> {
-    let params = request
+    let rpc_params: params::SpawnParams = request
         .params
         .as_ref()
-        .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))?;
+        .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))
+        .and_then(|p| {
+            serde_json::from_value(p.clone()).map_err(|e| {
+                RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", e))
+            })
+        })?;
 
-    let command = params
-        .get("command")
-        .and_then(|v| v.as_str())
-        .unwrap_or("bash")
-        .to_string();
-
-    let args: Vec<String> = params
-        .get("args")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let cwd = params.get("cwd").and_then(|v| v.as_str()).map(String::from);
-
-    let session_id = params
-        .get("session")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let cols = params.get("cols").and_then(|v| v.as_u64()).unwrap_or(80) as u16;
-    let rows = params.get("rows").and_then(|v| v.as_u64()).unwrap_or(24) as u16;
+    // Use "bash" as default if command is empty
+    let command = if rpc_params.command.is_empty() {
+        "bash".to_string()
+    } else {
+        rpc_params.command
+    };
 
     Ok(SpawnInput {
         command,
-        args,
-        cwd,
+        args: rpc_params.args,
+        cwd: rpc_params.cwd,
         env: None,
-        session_id,
-        cols: cols.clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS),
-        rows: rows.clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS),
+        session_id: rpc_params.session,
+        cols: rpc_params.cols.clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS),
+        rows: rpc_params.rows.clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS),
     })
 }
 
@@ -116,20 +102,21 @@ pub fn spawn_output_to_response(id: u64, output: SpawnOutput) -> RpcResponse {
     )
 }
 
-/// Parse SnapshotInput from RpcRequest.
+/// Parse SnapshotInput from RpcRequest using shared params type.
 pub fn parse_snapshot_input(request: &RpcRequest) -> SnapshotInput {
-    let session_id = request.param_str("session").map(String::from);
-    let include_elements = request.param_bool("elements", false);
-    let region = request.param_str("region").map(String::from);
-    let strip_ansi = request.param_bool("strip_ansi", false);
-    let include_cursor = request.param_bool("cursor", false);
+    // Deserialize to shared params type, then convert to domain type
+    let rpc_params: params::SnapshotParams = request
+        .params
+        .as_ref()
+        .and_then(|p| serde_json::from_value(p.clone()).ok())
+        .unwrap_or_default();
 
     SnapshotInput {
-        session_id,
-        include_elements,
-        region,
-        strip_ansi,
-        include_cursor,
+        session_id: rpc_params.session,
+        include_elements: rpc_params.include_elements,
+        region: rpc_params.region,
+        strip_ansi: rpc_params.strip_ansi,
+        include_cursor: rpc_params.include_cursor,
     }
 }
 
@@ -179,17 +166,23 @@ pub fn parse_fill_input(request: &RpcRequest) -> Result<FillInput, RpcResponse> 
     })
 }
 
-/// Parse FindInput from RpcRequest.
+/// Parse FindInput from RpcRequest using shared params type.
 pub fn parse_find_input(request: &RpcRequest) -> FindInput {
+    let rpc_params: params::FindParams = request
+        .params
+        .as_ref()
+        .and_then(|p| serde_json::from_value(p.clone()).ok())
+        .unwrap_or_default();
+
     FindInput {
-        session_id: request.param_str("session").map(String::from),
-        role: request.param_str("role").map(String::from),
-        name: request.param_str("name").map(String::from),
-        text: request.param_str("text").map(String::from),
-        placeholder: request.param_str("placeholder").map(String::from),
-        focused: request.param_bool_opt("focused"),
-        nth: request.param_u64_opt("nth").map(|n| n as usize),
-        exact: request.param_bool("exact", false),
+        session_id: rpc_params.session,
+        role: rpc_params.role,
+        name: rpc_params.name,
+        text: rpc_params.text,
+        placeholder: rpc_params.placeholder,
+        focused: rpc_params.focused,
+        nth: rpc_params.nth,
+        exact: rpc_params.exact,
     }
 }
 
@@ -215,14 +208,20 @@ pub fn parse_type_input(request: &RpcRequest) -> Result<TypeInput, RpcResponse> 
     })
 }
 
-/// Parse WaitInput from RpcRequest.
+/// Parse WaitInput from RpcRequest using shared params type.
 pub fn parse_wait_input(request: &RpcRequest) -> WaitInput {
+    let rpc_params: params::WaitParams = request
+        .params
+        .as_ref()
+        .and_then(|p| serde_json::from_value(p.clone()).ok())
+        .unwrap_or_default();
+
     WaitInput {
-        session_id: request.param_str("session").map(String::from),
-        text: request.param_str("text").map(String::from),
-        timeout_ms: request.param_u64("timeout_ms", 30000),
-        condition: request.param_str("condition").map(String::from),
-        target: request.param_str("target").map(String::from),
+        session_id: rpc_params.session,
+        text: rpc_params.text,
+        timeout_ms: rpc_params.timeout_ms,
+        condition: rpc_params.condition,
+        target: rpc_params.target,
     }
 }
 
@@ -305,19 +304,22 @@ pub fn fill_success_response(id: u64, element_ref: &str) -> RpcResponse {
     )
 }
 
-/// Parse ResizeInput from RpcRequest.
+/// Parse ResizeInput from RpcRequest using shared params type.
 pub fn parse_resize_input(request: &RpcRequest) -> ResizeInput {
-    let cols = request
-        .param_u16("cols", 80)
-        .clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS);
-    let rows = request
-        .param_u16("rows", 24)
-        .clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS);
+    let rpc_params: params::ResizeParams = request
+        .params
+        .as_ref()
+        .and_then(|p| serde_json::from_value(p.clone()).ok())
+        .unwrap_or(params::ResizeParams {
+            cols: 80,
+            rows: 24,
+            session: None,
+        });
 
     ResizeInput {
-        session_id: request.param_str("session").map(String::from),
-        cols,
-        rows,
+        session_id: rpc_params.session,
+        cols: rpc_params.cols.clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS),
+        rows: rpc_params.rows.clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS),
     }
 }
 
@@ -376,13 +378,19 @@ pub fn scroll_output_to_response(
     )
 }
 
-/// Parse CountInput from RpcRequest.
+/// Parse CountInput from RpcRequest using shared params type.
 pub fn parse_count_input(request: &RpcRequest) -> CountInput {
+    let rpc_params: params::CountParams = request
+        .params
+        .as_ref()
+        .and_then(|p| serde_json::from_value(p.clone()).ok())
+        .unwrap_or_default();
+
     CountInput {
-        session_id: request.param_str("session").map(String::from),
-        role: request.param_str("role").map(String::from),
-        name: request.param_str("name").map(String::from),
-        text: request.param_str("text").map(String::from),
+        session_id: rpc_params.session,
+        role: rpc_params.role,
+        name: rpc_params.name,
+        text: rpc_params.text,
     }
 }
 
@@ -452,8 +460,8 @@ mod tests {
             "snapshot",
             Some(json!({
                 "session": "abc123",
-                "elements": true,
-                "cursor": true
+                "include_elements": true,
+                "include_cursor": true
             })),
         );
         let input = parse_snapshot_input(&request);

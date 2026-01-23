@@ -3,6 +3,7 @@
 mod client;
 mod error;
 mod mock_client;
+pub mod params;
 mod snapshot_dto;
 mod socket;
 mod types;

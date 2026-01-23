@@ -7,6 +7,7 @@ use agent_tui_common::Colors;
 use agent_tui_common::ValueExt;
 use agent_tui_ipc::ClientError;
 use agent_tui_ipc::DaemonClient;
+use agent_tui_ipc::params;
 use agent_tui_ipc::socket_path;
 
 use crate::commands::FindParams;
@@ -319,14 +320,15 @@ pub fn handle_spawn<C: DaemonClient>(
     cols: u16,
     rows: u16,
 ) -> HandlerResult {
-    let params = json!({
-        "command": command,
-        "args": args,
-        "cwd": cwd,
-        "session": ctx.session,
-        "cols": cols,
-        "rows": rows
-    });
+    let rpc_params = params::SpawnParams {
+        command,
+        args,
+        cwd,
+        session: ctx.session.clone(),
+        cols,
+        rows,
+    };
+    let params = serde_json::to_value(rpc_params)?;
 
     let result = ctx.client.call("spawn", Some(params))?;
 
@@ -349,13 +351,14 @@ pub fn handle_snapshot<C: DaemonClient>(
     strip_ansi: bool,
     include_cursor: bool,
 ) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session,
-        "include_elements": elements,
-        "region": region,
-        "strip_ansi": strip_ansi,
-        "include_cursor": include_cursor
-    });
+    let rpc_params = params::SnapshotParams {
+        session: ctx.session.clone(),
+        include_elements: elements,
+        region,
+        strip_ansi,
+        include_cursor,
+    };
+    let params = serde_json::to_value(rpc_params)?;
 
     let result = ctx.client.call("snapshot", Some(params))?;
 
@@ -413,10 +416,11 @@ pub fn handle_accessibility_snapshot<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     interactive_only: bool,
 ) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session,
-        "interactive": interactive_only
-    });
+    let rpc_params = params::AccessibilitySnapshotParams {
+        session: ctx.session.clone(),
+        interactive: interactive_only,
+    };
+    let params = serde_json::to_value(rpc_params)?;
 
     let result = ctx.client.call("accessibility_snapshot", Some(params))?;
 
@@ -475,19 +479,20 @@ pub fn handle_type<C: DaemonClient>(ctx: &mut HandlerContext<C>, text: String) -
 
 pub fn handle_wait<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
-    params: WaitParams,
+    wait_params: WaitParams,
 ) -> HandlerResult {
-    let (cond, tgt) = params.resolve_condition();
+    let (cond, tgt) = wait_params.resolve_condition();
 
-    let rpc_params = json!({
-        "text": params.text,
-        "timeout_ms": params.timeout,
-        "session": ctx.session,
-        "condition": cond,
-        "target": tgt
-    });
+    let rpc_params = params::WaitParams {
+        session: ctx.session.clone(),
+        text: wait_params.text.clone(),
+        timeout_ms: wait_params.timeout,
+        condition: cond,
+        target: tgt,
+    };
+    let params_json = serde_json::to_value(rpc_params)?;
 
-    let result = ctx.client.call("wait", Some(rpc_params))?;
+    let result = ctx.client.call("wait", Some(params_json))?;
     let found = result.bool_or("found", false);
     let elapsed_ms = result.u64_or("elapsed_ms", 0);
 
@@ -620,11 +625,12 @@ pub fn handle_resize<C: DaemonClient>(
     cols: u16,
     rows: u16,
 ) -> HandlerResult {
-    let params = json!({
-        "cols": cols,
-        "rows": rows,
-        "session": ctx.session
-    });
+    let rpc_params = params::ResizeParams {
+        cols,
+        rows,
+        session: ctx.session.clone(),
+    };
+    let params = serde_json::to_value(rpc_params)?;
 
     let result = ctx.client.call("resize", Some(params))?;
 
@@ -726,20 +732,28 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
 
 pub fn handle_find<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
-    params: FindParams,
+    find_params: FindParams,
 ) -> HandlerResult {
-    let rpc_params = json!({
-        "session": ctx.session,
-        "role": params.role,
-        "name": params.name,
-        "text": params.text,
-        "placeholder": params.placeholder,
-        "focused": params.focused,
-        "nth": params.nth,
-        "exact": params.exact
-    });
+    // Convert bool to Option<bool>: true -> Some(true), false -> None (don't filter)
+    let focused_opt = if find_params.focused {
+        Some(true)
+    } else {
+        None
+    };
 
-    let result = ctx.client.call("find", Some(rpc_params))?;
+    let rpc_params = params::FindParams {
+        session: ctx.session.clone(),
+        role: find_params.role,
+        name: find_params.name,
+        text: find_params.text,
+        placeholder: find_params.placeholder,
+        focused: focused_opt,
+        nth: find_params.nth,
+        exact: find_params.exact,
+    };
+    let params_json = serde_json::to_value(rpc_params)?;
+
+    let result = ctx.client.call("find", Some(params_json))?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -945,12 +959,13 @@ pub fn handle_count<C: DaemonClient>(
     name: Option<String>,
     text: Option<String>,
 ) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session,
-        "role": role,
-        "name": name,
-        "text": text
-    });
+    let rpc_params = params::CountParams {
+        session: ctx.session.clone(),
+        role,
+        name,
+        text,
+    };
+    let params = serde_json::to_value(rpc_params)?;
 
     let result = ctx.client.call("count", Some(params))?;
 
@@ -1130,12 +1145,13 @@ pub fn handle_trace<C: DaemonClient>(
     start: bool,
     stop: bool,
 ) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session,
-        "start": start,
-        "stop": stop,
-        "count": count
-    });
+    let rpc_params = params::TraceParams {
+        session: ctx.session.clone(),
+        start,
+        stop,
+        count,
+    };
+    let params = serde_json::to_value(rpc_params)?;
 
     let result = ctx.client.call("trace", Some(params))?;
 
@@ -1177,11 +1193,12 @@ pub fn handle_console<C: DaemonClient>(
     lines: usize,
     clear: bool,
 ) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session,
-        "count": lines,
-        "clear": clear
-    });
+    let rpc_params = params::ConsoleParams {
+        session: ctx.session.clone(),
+        count: lines,
+        clear,
+    };
+    let params = serde_json::to_value(rpc_params)?;
 
     let result = ctx.client.call("console", Some(params))?;
 
@@ -1204,11 +1221,12 @@ pub fn handle_errors<C: DaemonClient>(
     count: usize,
     clear: bool,
 ) -> HandlerResult {
-    let params = json!({
-        "session": ctx.session,
-        "count": count,
-        "clear": clear
-    });
+    let rpc_params = params::ErrorsParams {
+        session: ctx.session.clone(),
+        count,
+        clear,
+    };
+    let params = serde_json::to_value(rpc_params)?;
 
     let result = ctx.client.call("errors", Some(params))?;
 

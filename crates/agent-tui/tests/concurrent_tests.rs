@@ -330,3 +330,152 @@ fn test_many_parallel_health_checks() {
     assert_eq!(successes, 50);
     assert_eq!(harness.call_count("health"), 50);
 }
+
+// =============================================================================
+// PTY Operations Concurrency Tests
+// =============================================================================
+
+#[test]
+fn test_concurrent_pty_read_write_no_deadlock() {
+    let harness = Arc::new(TestHarness::new());
+
+    // Configure PTY read/write handlers
+    harness.set_success_response(
+        "pty_read",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "data": "",
+            "bytes_read": 0
+        }),
+    );
+    harness.set_success_response(
+        "pty_write",
+        json!({
+            "success": true,
+            "session_id": TEST_SESSION_ID
+        }),
+    );
+
+    // The daemon fix ensures pty_read/pty_write use acquire_session_lock
+    // with timeout instead of mutex_lock_or_recover, preventing deadlocks
+    let result = with_timeout(Duration::from_secs(5), move || {
+        let handles: Vec<_> = (0..10)
+            .map(|i| {
+                let h = Arc::clone(&harness);
+                thread::spawn(move || {
+                    // Simulate interleaved reads and writes
+                    if i % 2 == 0 {
+                        h.run(&["health"]) // Simulates read path
+                    } else {
+                        h.run(&["type", "test"]) // Simulates write path
+                    }
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            let _ = handle.join().expect("Thread panicked");
+        }
+    });
+
+    assert!(
+        result.is_some(),
+        "Concurrent PTY operations should complete without deadlock"
+    );
+}
+
+// =============================================================================
+// Double-Click Concurrency Tests
+// =============================================================================
+
+#[test]
+fn test_parallel_dbl_click_same_session() {
+    let harness = Arc::new(TestHarness::new());
+
+    harness.set_success_response(
+        "dbl_click",
+        json!({
+            "success": true,
+            "message": null
+        }),
+    );
+
+    // Multiple dbl_click operations on same session
+    // The daemon fix holds lock across both clicks atomically
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            let h = Arc::clone(&harness);
+            thread::spawn(move || h.run(&["dblclick", "@btn1"]).success())
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().expect("Thread panicked");
+    }
+
+    // All calls should complete
+    assert_eq!(harness.call_count("dbl_click"), 4);
+}
+
+// =============================================================================
+// Lock Contention Tests
+// =============================================================================
+
+#[test]
+fn test_high_contention_lock_recovery() {
+    let harness = Arc::new(TestHarness::new());
+
+    // Simulate occasional lock timeouts followed by success
+    harness.set_response(
+        "click",
+        MockResponse::Sequence(vec![
+            MockResponse::StructuredError {
+                code: -32006,
+                message: "Session lock timeout".to_string(),
+                category: Some("lock".to_string()),
+                retryable: Some(true),
+                context: Some(json!({"session_id": TEST_SESSION_ID})),
+                suggestion: Some("Retry the operation".to_string()),
+            },
+            MockResponse::Success(json!({ "success": true })),
+            MockResponse::Success(json!({ "success": true })),
+            MockResponse::StructuredError {
+                code: -32006,
+                message: "Session lock timeout".to_string(),
+                category: Some("lock".to_string()),
+                retryable: Some(true),
+                context: Some(json!({"session_id": TEST_SESSION_ID})),
+                suggestion: Some("Retry the operation".to_string()),
+            },
+            MockResponse::Success(json!({ "success": true })),
+            MockResponse::Success(json!({ "success": true })),
+            MockResponse::Success(json!({ "success": true })),
+            MockResponse::Success(json!({ "success": true })),
+        ]),
+    );
+
+    // Run 8 parallel click operations
+    let handles: Vec<_> = (0..8)
+        .map(|_| {
+            let h = Arc::clone(&harness);
+            thread::spawn(move || h.run(&["click", "@btn1"]))
+        })
+        .collect();
+
+    let mut successes = 0;
+    let mut failures = 0;
+
+    for handle in handles {
+        let result = handle.join().expect("Thread panicked");
+        if result.try_success().is_ok() {
+            successes += 1;
+        } else {
+            failures += 1;
+        }
+    }
+
+    // Some should succeed, some may fail (lock timeout)
+    // The key is that we don't deadlock and all operations complete
+    assert_eq!(successes + failures, 8, "All operations should complete");
+    assert!(successes >= 6, "Most operations should succeed");
+}

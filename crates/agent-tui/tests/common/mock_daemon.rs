@@ -443,6 +443,21 @@ impl MockDaemon {
                     "total_count": 0
                 })),
             );
+            h.insert(
+                "pty_read".to_string(),
+                MockResponse::Success(serde_json::json!({
+                    "session_id": super::TEST_SESSION_ID,
+                    "data": "",
+                    "bytes_read": 0
+                })),
+            );
+            h.insert(
+                "pty_write".to_string(),
+                MockResponse::Success(serde_json::json!({
+                    "success": true,
+                    "session_id": super::TEST_SESSION_ID
+                })),
+            );
         }
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();

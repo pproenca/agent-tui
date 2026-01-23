@@ -1,5 +1,4 @@
 use agent_tui_common::ValueExt;
-use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_core::Component;
 use agent_tui_core::Element;
 use agent_tui_ipc::RpcRequest;
@@ -498,22 +497,6 @@ impl DaemonServer {
         })
     }
 
-    #[allow(clippy::result_large_err)]
-    fn with_resolved_session(
-        &self,
-        request: &RpcRequest,
-    ) -> Result<(Arc<std::sync::Mutex<Session>>, String), RpcResponse> {
-        let element_ref = match request.require_str("ref") {
-            Ok(r) => r.to_owned(),
-            Err(resp) => return Err(resp),
-        };
-        let session_id = request.param_str("session");
-        match self.session_manager.resolve(session_id) {
-            Ok(s) => Ok((s, element_ref)),
-            Err(e) => Err(domain_error_response(request.id, &DomainError::from(e))),
-        }
-    }
-
     fn element_property<F, T>(
         &self,
         request: &RpcRequest,
@@ -827,31 +810,16 @@ impl DaemonServer {
 
     fn handle_dbl_click(&self, request: RpcRequest) -> RpcResponse {
         let req_id = request.id;
-        let (session, element_ref) = match self.with_resolved_session(&request) {
-            Ok(result) => result,
-            Err(resp) => return resp,
-        };
-
-        {
-            let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                return lock_timeout_response(req_id, request.param_str("session"));
-            };
-            if let Err(e) = sess.click(&element_ref) {
+        self.with_session_and_ref(&request, |sess, element_ref| {
+            if let Err(e) = sess.click(element_ref) {
                 return domain_error_response(req_id, &DomainError::from(e));
             }
-        }
-
-        thread::sleep(Duration::from_millis(50));
-
-        {
-            let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
-                return lock_timeout_response(req_id, request.param_str("session"));
-            };
-            match sess.click(&element_ref) {
+            thread::sleep(Duration::from_millis(50));
+            match sess.click(element_ref) {
                 Ok(()) => RpcResponse::action_success(req_id),
                 Err(e) => domain_error_response(req_id, &DomainError::from(e)),
             }
-        }
+        })
     }
 
     fn handle_fill(&self, request: RpcRequest) -> RpcResponse {
@@ -1799,7 +1767,10 @@ impl DaemonServer {
 
         match self.session_manager.get(session_id) {
             Ok(session) => {
-                let sess = mutex_lock_or_recover(&session);
+                let Some(sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
+                    self.metrics.record_lock_timeout();
+                    return lock_timeout_response(request.id, Some(session_id));
+                };
                 let mut buf = [0u8; 4096];
                 match sess.pty_try_read(&mut buf, timeout_ms) {
                     Ok(n) => {
@@ -1844,7 +1815,10 @@ impl DaemonServer {
 
         match self.session_manager.get(session_id) {
             Ok(session) => {
-                let sess = mutex_lock_or_recover(&session);
+                let Some(sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
+                    self.metrics.record_lock_timeout();
+                    return lock_timeout_response(request.id, Some(session_id));
+                };
                 match sess.pty_write(&data) {
                     Ok(()) => RpcResponse::success(
                         request.id,
@@ -2295,5 +2269,101 @@ mod tests {
         assert_eq!(server.active_connections.load(Ordering::Relaxed), 0);
         assert_eq!(server.metrics.requests(), 0);
         assert_eq!(server.metrics.errors(), 0);
+    }
+
+    #[test]
+    fn test_size_limited_reader_at_exact_limit() {
+        use std::io::Cursor;
+        // Line of exactly 10 bytes including newline
+        let data = "123456789\n";
+        assert_eq!(data.len(), 10);
+        let reader = BufReader::new(Cursor::new(data));
+        let limited = SizeLimitedReader::new(reader, 10);
+        let lines: Vec<_> = limited.collect();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].as_ref().unwrap(), "123456789");
+    }
+
+    #[test]
+    fn test_element_filter_matches_all_criteria() {
+        use super::ElementFilter;
+        use agent_tui_core::{Element, ElementType, Position};
+
+        let element = Element {
+            element_ref: "@btn1".to_string(),
+            element_type: ElementType::Button,
+            label: Some("Submit".to_string()),
+            value: Some("click me".to_string()),
+            hint: Some("Press to submit".to_string()),
+            position: Position {
+                row: 0,
+                col: 0,
+                width: Some(10),
+                height: Some(1),
+            },
+            focused: true,
+            selected: false,
+            checked: None,
+            disabled: None,
+        };
+
+        // Filter matching all criteria
+        let filter = ElementFilter {
+            role: Some("button"),
+            name: Some("Submit"),
+            text: Some("click"),
+            placeholder: Some("submit"),
+            focused_only: true,
+            exact: false,
+        };
+        assert!(filter.matches(&element));
+
+        // Filter with wrong role should not match
+        let filter_wrong_role = ElementFilter {
+            role: Some("input"),
+            name: None,
+            text: None,
+            placeholder: None,
+            focused_only: false,
+            exact: false,
+        };
+        assert!(!filter_wrong_role.matches(&element));
+
+        // Filter with focused_only on non-focused element
+        let unfocused_element = Element {
+            focused: false,
+            ..element.clone()
+        };
+        let filter_focused = ElementFilter {
+            role: None,
+            name: None,
+            text: None,
+            placeholder: None,
+            focused_only: true,
+            exact: false,
+        };
+        assert!(!filter_focused.matches(&unfocused_element));
+
+        // Exact matching
+        let filter_exact = ElementFilter {
+            role: None,
+            name: Some("Submit"),
+            text: None,
+            placeholder: None,
+            focused_only: false,
+            exact: true,
+        };
+        assert!(filter_exact.matches(&element));
+
+        // Exact matching fails on partial
+        let filter_exact_partial = ElementFilter {
+            role: None,
+            name: Some("Sub"),
+            text: None,
+            placeholder: None,
+            focused_only: false,
+            exact: true,
+        };
+        assert!(!filter_exact_partial.matches(&element));
     }
 }

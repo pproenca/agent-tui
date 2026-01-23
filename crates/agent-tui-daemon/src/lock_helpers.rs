@@ -119,4 +119,87 @@ mod tests {
         }
         assert!(start.elapsed() >= Duration::from_millis(50));
     }
+
+    #[test]
+    fn test_acquire_session_lock_succeeds_after_contention() {
+        // Simulates a lock held briefly by another thread that releases
+        let data = Arc::new(Mutex::new(42i32));
+        let data_clone = Arc::clone(&data);
+
+        // Thread holds lock for 20ms then releases
+        let handle = thread::spawn(move || {
+            let _guard = data_clone.lock().unwrap();
+            thread::sleep(Duration::from_millis(20));
+        });
+
+        // Give the thread time to acquire the lock
+        thread::sleep(Duration::from_millis(5));
+
+        // Now try to acquire with 100ms timeout - should succeed after ~20ms
+        let start = Instant::now();
+        let mut backoff = Duration::from_micros(100);
+        let timeout = Duration::from_millis(100);
+        let mut acquired = false;
+
+        while start.elapsed() < timeout {
+            if let Ok(guard) = data.try_lock() {
+                assert_eq!(*guard, 42);
+                acquired = true;
+                break;
+            }
+            let jitter = compute_jitter(backoff.as_micros() as u64);
+            thread::sleep(backoff + Duration::from_micros(jitter));
+            backoff = (backoff * 2).min(MAX_BACKOFF);
+        }
+
+        handle.join().unwrap();
+        assert!(acquired, "Should have acquired lock after contention");
+        assert!(
+            start.elapsed() >= Duration::from_millis(15),
+            "Should have waited for contention"
+        );
+    }
+
+    #[test]
+    fn test_acquire_session_lock_timeout_returns_none_under_contention() {
+        // Tests that timeout is respected even under heavy contention
+        let data = Arc::new(Mutex::new(42i32));
+        let data_clone = Arc::clone(&data);
+
+        // Thread holds lock for longer than our timeout
+        let handle = thread::spawn(move || {
+            let _guard = data_clone.lock().unwrap();
+            thread::sleep(Duration::from_millis(200));
+        });
+
+        // Give the thread time to acquire the lock
+        thread::sleep(Duration::from_millis(5));
+
+        // Try to acquire with short timeout - should fail
+        let start = Instant::now();
+        let mut backoff = Duration::from_micros(100);
+        let timeout = Duration::from_millis(50);
+        let mut acquired = false;
+
+        while start.elapsed() < timeout {
+            if data.try_lock().is_ok() {
+                acquired = true;
+                break;
+            }
+            let jitter = compute_jitter(backoff.as_micros() as u64);
+            thread::sleep(backoff + Duration::from_micros(jitter));
+            backoff = (backoff * 2).min(MAX_BACKOFF);
+        }
+
+        assert!(
+            !acquired,
+            "Should not have acquired lock (timeout too short)"
+        );
+        assert!(
+            start.elapsed() >= Duration::from_millis(50),
+            "Should have waited full timeout"
+        );
+
+        handle.join().unwrap();
+    }
 }

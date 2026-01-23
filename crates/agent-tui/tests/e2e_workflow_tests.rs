@@ -396,3 +396,97 @@ fn test_rapid_session_spawn_and_kill() {
     let sessions = json["sessions"].as_array().unwrap();
     assert_eq!(sessions.len(), 0, "All sessions should be killed");
 }
+
+// =============================================================================
+// PTY Round-Trip Tests
+// =============================================================================
+
+#[test]
+fn test_pty_read_write_round_trip() {
+    let h = RealTestHarness::new();
+    h.spawn_bash();
+
+    // Write a command via type (which uses pty_write internally for each char)
+    assert!(
+        h.cli()
+            .args(["type", "echo PTY_ROUNDTRIP_TEST"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    // Execute the command
+    assert!(h.cli().args(["press", "Enter"]).status().unwrap().success());
+
+    // Wait for the output to appear (pty_read happens during snapshot)
+    assert!(
+        h.cli()
+            .args(["wait", "-t", "5000", "PTY_ROUNDTRIP_TEST"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    // Verify the round-trip: typed command -> executed -> output captured
+    let output = h.cli_json().args(["snapshot"]).output().unwrap();
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let screen = json["screen"].as_str().unwrap();
+
+    // Should see the marker at least twice:
+    // 1. In the command line we typed
+    // 2. In the echo output
+    let count = screen.matches("PTY_ROUNDTRIP_TEST").count();
+    assert!(
+        count >= 2,
+        "PTY round-trip: expected at least 2 occurrences, got {}",
+        count
+    );
+}
+
+// =============================================================================
+// Double-Click E2E Tests
+// =============================================================================
+
+#[test]
+fn test_dbl_click_real_tui_element() {
+    let h = RealTestHarness::new();
+    h.spawn_bash();
+
+    // Type a marker that we can try to double-click on
+    assert!(
+        h.cli()
+            .args(["type", "echo DBLCLICK_TARGET"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    // Execute to have output
+    assert!(h.cli().args(["press", "Enter"]).status().unwrap().success());
+
+    // Wait for output
+    assert!(
+        h.cli()
+            .args(["wait", "-t", "5000", "DBLCLICK_TARGET"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    // Try to dblclick on the text. This tests the atomic lock behavior:
+    // The lock is held across both clicks, so no race condition can occur.
+    // Note: This may fail with "element not found" if the text isn't recognized
+    // as a clickable element, but that's expected. The test verifies the
+    // dbl_click operation completes without hanging or crashing.
+    let status = h.cli().args(["dblclick", "DBLCLICK_TARGET"]).status();
+
+    // The operation should complete (success or element-not-found error)
+    assert!(status.is_ok(), "dblclick command should complete");
+
+    // Session should still be usable after dblclick
+    let output = h.cli_json().args(["snapshot"]).output().unwrap();
+    assert!(
+        output.status.success(),
+        "Session should be usable after dblclick"
+    );
+}

@@ -101,21 +101,27 @@ EXAMPLES:
     agent-tui spawn vim -- file.txt
     agent-tui spawn --cols 80 --rows 24 nano"#)]
     Spawn {
+        /// Command to execute (e.g., bash, htop, vim)
         command: String,
 
+        /// Additional arguments for the command
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
 
+        /// Working directory for the spawned process
         #[arg(short = 'd', long)]
         cwd: Option<String>,
 
+        /// Terminal width in columns
         #[arg(long, default_value = "120")]
         cols: u16,
 
+        /// Terminal height in rows
         #[arg(long, default_value = "40")]
         rows: u16,
     },
 
+    /// Take a snapshot of the current screen state
     #[command(long_about = r#"Take a snapshot of the current screen state.
 
 Returns the current terminal screen content and optionally detects
@@ -131,37 +137,49 @@ EXAMPLES:
     agent-tui snapshot --strip-ansi # Plain text without colors
     agent-tui snapshot -f json      # JSON output for parsing"#)]
     Snapshot {
+        /// Include detected UI elements in output
         #[arg(short = 'i', long)]
         elements: bool,
 
+        /// Limit snapshot to a named region
         #[arg(long)]
         region: Option<String>,
 
+        /// Strip ANSI escape codes from output
         #[arg(long)]
         strip_ansi: bool,
 
+        /// Include cursor position in output
         #[arg(long)]
         include_cursor: bool,
     },
 
+    /// Click an element by reference
     Click {
+        /// Element reference (e.g., @btn1, @e3)
         #[arg(name = "ref")]
         element_ref: String,
     },
 
+    /// Double-click an element
     #[command(name = "dblclick")]
     DblClick {
+        /// Element reference (e.g., @item1)
         #[arg(name = "ref")]
         element_ref: String,
     },
 
+    /// Set the value of an input element
     Fill {
+        /// Element reference (e.g., @inp1)
         #[arg(name = "ref")]
         element_ref: String,
 
+        /// Value to set in the input
         value: String,
     },
 
+    /// Press a key or key combination
     #[command(long_about = r#"Press a key or key combination.
 
 Sends a key press to the active terminal session. Supports special keys,
@@ -185,13 +203,17 @@ EXAMPLES:
     agent-tui press ArrowDown
     agent-tui press F10"#)]
     Press {
+        /// Key name or combination (e.g., Enter, Ctrl+C)
         key: String,
     },
 
+    /// Type text character by character
     Type {
+        /// Text to type into the terminal
         text: String,
     },
 
+    /// Hold a key down for modifier sequences
     #[command(long_about = r#"Hold a key down for modifier sequences.
 
 Use this with keyup to create modifier key sequences. For example, hold Shift
@@ -211,9 +233,11 @@ EXAMPLES:
     agent-tui keyup Shift"#)]
     #[command(name = "keydown")]
     KeyDown {
+        /// Key to hold (Ctrl, Alt, Shift, Meta)
         key: String,
     },
 
+    /// Release a held key
     #[command(long_about = r#"Release a held key.
 
 Use this to release a key that was held with keydown.
@@ -224,9 +248,11 @@ EXAMPLES:
     agent-tui keyup Shift"#)]
     #[command(name = "keyup")]
     KeyUp {
+        /// Key to release
         key: String,
     },
 
+    /// Wait for a condition to be met
     #[command(long_about = r#"Wait for a condition to be met before continuing.
 
 Waits for text to appear, elements to change, or the screen to stabilize.
@@ -252,8 +278,10 @@ EXAMPLES:
         params: WaitParams,
     },
 
+    /// Terminate the current session
     Kill,
 
+    /// Restart the TUI application
     #[command(long_about = r#"Restart the TUI application.
 
 Kills the current session and respawns it with the same command.
@@ -266,20 +294,27 @@ EXAMPLES:
     agent-tui restart -s htop-abc123  # Restart specific session"#)]
     Restart,
 
+    /// List all active sessions
     Sessions,
 
+    /// Check daemon health status
     Health {
+        /// Show connection details
         #[arg(short, long)]
         verbose: bool,
     },
 
+    /// Select an option from a dropdown or list
     Select {
+        /// Element reference (e.g., @sel1)
         #[arg(name = "ref")]
         element_ref: String,
 
+        /// Option to select
         option: String,
     },
 
+    /// Select multiple options in a multi-select list
     #[command(long_about = r#"Select multiple options in a multi-select list.
 
 This is the TUI equivalent of browser's multi-select functionality.
@@ -295,42 +330,56 @@ EXAMPLES:
     agent-tui multiselect @list1 red blue green"#)]
     #[command(name = "multiselect")]
     MultiSelect {
+        /// Element reference (e.g., @list1)
         #[arg(name = "ref")]
         element_ref: String,
 
+        /// Options to select
         #[arg(required = true)]
         options: Vec<String>,
     },
 
+    /// Scroll the terminal viewport
     Scroll {
+        /// Scroll direction (up, down, left, right)
         #[arg(value_enum)]
         direction: ScrollDirection,
 
+        /// Number of lines/columns to scroll
         #[arg(short, long, default_value = "5")]
         amount: u16,
 
+        /// Target element for scoped scrolling (not yet implemented)
         #[arg(short, long)]
         element: Option<String>,
     },
 
+    /// Scroll until element is visible
     #[command(name = "scrollintoview")]
     ScrollIntoView {
+        /// Element reference to scroll into view
         #[arg(name = "ref")]
         element_ref: String,
     },
 
+    /// Set focus to an element
     Focus {
+        /// Element reference (e.g., @inp1)
         #[arg(name = "ref")]
         element_ref: String,
     },
 
+    /// Clear an input element's value
     Clear {
+        /// Element reference (e.g., @inp1)
         #[arg(name = "ref")]
         element_ref: String,
     },
 
+    /// Select all text in an input element
     #[command(name = "selectall")]
     SelectAll {
+        /// Element reference (e.g., @inp1)
         #[arg(name = "ref")]
         element_ref: String,
     },
@@ -341,6 +390,7 @@ EXAMPLES:
     #[command(subcommand)]
     Is(IsCommand),
 
+    /// Count elements matching criteria
     #[command(long_about = r#"Count elements matching criteria.
 
 This is the TUI equivalent of browser's count command.
@@ -351,16 +401,20 @@ EXAMPLES:
     agent-tui count --text "Submit"
     agent-tui count --role input --name "Email""#)]
     Count {
+        /// Element role to match (button, input, etc.)
         #[arg(long)]
         role: Option<String>,
 
+        /// Element name/label to match
         #[arg(long)]
         name: Option<String>,
 
+        /// Text content to match
         #[arg(long)]
         text: Option<String>,
     },
 
+    /// Toggle a checkbox or radio button
     #[command(long_about = r#"Toggle a checkbox or radio button.
 
 Use this to toggle the checked state of a checkbox or radio button.
@@ -373,13 +427,16 @@ EXAMPLES:
     agent-tui toggle @e5 --state true # Force checked
     agent-tui toggle @e5 --state false # Force unchecked"#)]
     Toggle {
+        /// Element reference (e.g., @cb1)
         #[arg(name = "ref")]
         element_ref: String,
 
+        /// Force specific state (true=checked, false=unchecked)
         #[arg(long)]
         state: Option<bool>,
     },
 
+    /// Check a checkbox element
     #[command(long_about = r#"Check a checkbox element.
 
 Ensures the checkbox is checked. If already checked, this is a no-op.
@@ -387,10 +444,12 @@ Ensures the checkbox is checked. If already checked, this is a no-op.
 EXAMPLES:
     agent-tui check @e2               # Check the checkbox"#)]
     Check {
+        /// Element reference (e.g., @cb1)
         #[arg(name = "ref")]
         element_ref: String,
     },
 
+    /// Uncheck a checkbox element
     #[command(long_about = r#"Uncheck a checkbox element.
 
 Ensures the checkbox is unchecked. If already unchecked, this is a no-op.
@@ -403,37 +462,50 @@ EXAMPLES:
         element_ref: String,
     },
 
+    /// Start recording session activity
     RecordStart,
 
+    /// Stop recording and save data
     RecordStop {
+        /// Output file path for the recording
         #[arg(short, long)]
         output: Option<String>,
 
+        /// Recording format (json or asciicast)
         #[arg(long = "record-format", value_enum, default_value = "json")]
         record_format: RecordFormat,
     },
 
+    /// Check recording status
     RecordStatus,
 
+    /// View or control performance tracing
     Trace {
+        /// Number of trace entries to show
         #[arg(short, long, default_value = "10")]
         count: usize,
 
+        /// Start tracing
         #[arg(long)]
         start: bool,
 
+        /// Stop tracing
         #[arg(long)]
         stop: bool,
     },
 
+    /// Show console output history
     Console {
+        /// Number of lines to show
         #[arg(short = 'n', long, default_value = "100")]
         lines: usize,
 
+        /// Clear console buffer
         #[arg(long)]
         clear: bool,
     },
 
+    /// Show captured errors from the session
     #[command(long_about = r#"Show captured errors from the session.
 
 Displays stderr output, non-zero exit codes, and signals received by the

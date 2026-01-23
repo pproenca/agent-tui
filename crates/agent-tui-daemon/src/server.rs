@@ -4,9 +4,9 @@ use agent_tui_core::Component;
 use agent_tui_core::Element;
 use agent_tui_ipc::RpcRequest;
 use agent_tui_ipc::RpcResponse;
-use agent_tui_ipc::ai_friendly_error;
-use agent_tui_ipc::lock_timeout_response;
 use agent_tui_ipc::socket_path;
+
+use crate::error::DomainError;
 use serde_json::Value;
 use serde_json::json;
 use signal_hook::consts::{SIGINT, SIGTERM};
@@ -266,7 +266,11 @@ struct ThreadPool {
 }
 
 impl ThreadPool {
-    fn new(size: usize, server: Arc<DaemonServer>, shutdown: Arc<AtomicBool>) -> Self {
+    fn new(
+        size: usize,
+        server: Arc<DaemonServer>,
+        shutdown: Arc<AtomicBool>,
+    ) -> std::io::Result<Self> {
         let (sender, receiver) = mpsc::sync_channel::<UnixStream>(CHANNEL_CAPACITY);
         let receiver = Arc::new(std::sync::Mutex::new(receiver));
 
@@ -317,7 +321,7 @@ impl ThreadPool {
         }
 
         if workers.is_empty() {
-            panic!("Failed to spawn any worker threads");
+            return Err(std::io::Error::other("Failed to spawn any worker threads"));
         }
 
         if workers.len() < size {
@@ -328,7 +332,7 @@ impl ThreadPool {
             );
         }
 
-        ThreadPool { workers, sender }
+        Ok(ThreadPool { workers, sender })
     }
 
     fn execute(&self, stream: UnixStream) -> Result<(), UnixStream> {
@@ -351,6 +355,26 @@ fn combine_warnings(a: Option<String>, b: Option<String>) -> Option<String> {
         (w @ Some(_), None) | (None, w @ Some(_)) => w,
         (None, None) => None,
     }
+}
+
+/// Convert a DomainError into an RpcResponse with structured error data.
+fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
+    RpcResponse::domain_error(
+        id,
+        err.code(),
+        &err.to_string(),
+        err.category().as_str(),
+        Some(err.context()),
+        Some(err.suggestion()),
+    )
+}
+
+/// Create a lock timeout error response.
+fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
+    let err = DomainError::LockTimeout {
+        session_id: session_id.map(String::from),
+    };
+    domain_error_response(id, &err)
 }
 
 impl DaemonServer {
@@ -399,11 +423,7 @@ impl DaemonServer {
                 };
                 f(&mut sess)
             }
-            Err(e) => RpcResponse::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
+            Err(e) => domain_error_response(request.id, &DomainError::from(e)),
         }
     }
 
@@ -425,11 +445,7 @@ impl DaemonServer {
                 };
                 f(&mut sess, element_ref)
             }
-            Err(e) => RpcResponse::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), session_id),
-            ),
+            Err(e) => domain_error_response(request.id, &DomainError::from(e)),
         }
     }
 
@@ -466,7 +482,18 @@ impl DaemonServer {
         let session_id = request.param_str("session");
         self.with_session(request, session_id, |sess| match f(sess, &value) {
             Ok(()) => RpcResponse::action_success(req_id),
-            Err(e) => RpcResponse::action_failed(req_id, Some(&value), &e.to_string()),
+            Err(e) => {
+                let err_str = e.to_string();
+                let domain_err = if err_str.contains("Invalid key") {
+                    DomainError::InvalidKey { key: value.clone() }
+                } else {
+                    DomainError::PtyError {
+                        operation: param.to_string(),
+                        reason: err_str,
+                    }
+                };
+                domain_error_response(req_id, &domain_err)
+            }
         })
     }
 
@@ -482,11 +509,7 @@ impl DaemonServer {
         let session_id = request.param_str("session");
         match self.session_manager.resolve(session_id) {
             Ok(s) => Ok((s, element_ref)),
-            Err(e) => Err(RpcResponse::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), None),
-            )),
+            Err(e) => Err(domain_error_response(request.id, &DomainError::from(e))),
         }
     }
 
@@ -508,12 +531,18 @@ impl DaemonServer {
                     field_name: extract(el),
                     "found": true
                 }),
-                None => json!({
-                    "ref": element_ref,
-                    field_name: serde_json::Value::Null,
-                    "found": false,
-                    "message": ai_friendly_error("Element not found", Some(element_ref))
-                }),
+                None => {
+                    let err = DomainError::ElementNotFound {
+                        element_ref: element_ref.to_string(),
+                        session_id: Some(sess.id.to_string()),
+                    };
+                    json!({
+                        "ref": element_ref,
+                        field_name: serde_json::Value::Null,
+                        "found": false,
+                        "message": err.suggestion()
+                    })
+                }
             };
             if let Some(warning) = update_warning {
                 response["warning"] = json!(warning);
@@ -526,14 +555,18 @@ impl DaemonServer {
         let req_id = request.id;
         self.with_detected_session_and_ref(request, |sess, element_ref, update_warning| {
             if sess.find_element(element_ref).is_none() {
-                return RpcResponse::element_not_found(req_id, element_ref);
+                let err = DomainError::ElementNotFound {
+                    element_ref: element_ref.to_string(),
+                    session_id: Some(sess.id.to_string()),
+                };
+                return domain_error_response(req_id, &err);
             }
             if let Err(e) = sess.pty_write(pty_bytes) {
-                return RpcResponse::error(
-                    req_id,
-                    -32000,
-                    &ai_friendly_error(&e.to_string(), None),
-                );
+                let err = DomainError::PtyError {
+                    operation: "write".to_string(),
+                    reason: e.to_string(),
+                };
+                return domain_error_response(req_id, &err);
             }
             let mut response = json!({ "success": true, "ref": element_ref });
             if let Some(warning) = update_warning {
@@ -682,35 +715,28 @@ impl DaemonServer {
                     "pid": pid
                 }),
             ),
-            Err(SessionError::LimitReached(max)) => RpcResponse::error(
-                request.id,
-                -32000,
-                &format!(
-                    "Session limit reached ({} max). Kill unused sessions with 'kill <session_id>' or increase limit with AGENT_TUI_MAX_SESSIONS env var.",
-                    max
-                ),
-            ),
+            Err(SessionError::LimitReached(max)) => {
+                let err = DomainError::SessionLimitReached { max };
+                domain_error_response(request.id, &err)
+            }
             Err(e) => {
                 let err_str = e.to_string();
-                let friendly_msg = if err_str.contains("No such file")
-                    || err_str.contains("not found")
-                {
-                    format!(
-                        "Failed to spawn '{}': Command not found. Check if the command exists and is in PATH.",
-                        command
-                    )
-                } else if err_str.contains("Permission denied") {
-                    format!(
-                        "Failed to spawn '{}': Permission denied. Check file permissions.",
-                        command
-                    )
-                } else {
-                    format!(
-                        "Failed to spawn '{}': {}. Run 'sessions' to see active sessions.",
-                        command, err_str
-                    )
-                };
-                RpcResponse::error(request.id, -32000, &friendly_msg)
+                let domain_err =
+                    if err_str.contains("No such file") || err_str.contains("not found") {
+                        DomainError::CommandNotFound {
+                            command: command.to_string(),
+                        }
+                    } else if err_str.contains("Permission denied") {
+                        DomainError::PermissionDenied {
+                            command: command.to_string(),
+                        }
+                    } else {
+                        DomainError::PtyError {
+                            operation: "spawn".to_string(),
+                            reason: err_str,
+                        }
+                    };
+                domain_error_response(request.id, &domain_err)
             }
         }
     }
@@ -793,7 +819,7 @@ impl DaemonServer {
         self.with_session_and_ref(&request, |sess, element_ref| {
             match sess.click(element_ref) {
                 Ok(()) => RpcResponse::action_success(req_id),
-                Err(e) => RpcResponse::action_failed(req_id, Some(element_ref), &e.to_string()),
+                Err(e) => domain_error_response(req_id, &DomainError::from(e)),
             }
         })
     }
@@ -810,7 +836,7 @@ impl DaemonServer {
                 return lock_timeout_response(req_id, request.param_str("session"));
             };
             if let Err(e) = sess.click(&element_ref) {
-                return RpcResponse::action_failed(req_id, Some(&element_ref), &e.to_string());
+                return domain_error_response(req_id, &DomainError::from(e));
             }
         }
 
@@ -822,7 +848,7 @@ impl DaemonServer {
             };
             match sess.click(&element_ref) {
                 Ok(()) => RpcResponse::action_success(req_id),
-                Err(e) => RpcResponse::action_failed(req_id, Some(&element_ref), &e.to_string()),
+                Err(e) => domain_error_response(req_id, &DomainError::from(e)),
             }
         }
     }
@@ -834,7 +860,6 @@ impl DaemonServer {
             Err(resp) => return resp,
         };
         self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
-
             let type_warning = match sess.find_element(element_ref) {
                 Some(el) => {
                     let el_type = el.element_type.as_str();
@@ -849,13 +874,20 @@ impl DaemonServer {
                     }
                 }
                 None => {
-                    return RpcResponse::element_not_found(req_id, element_ref);
+                    let err = DomainError::ElementNotFound {
+                        element_ref: element_ref.to_string(),
+                        session_id: Some(sess.id.to_string()),
+                    };
+                    return domain_error_response(req_id, &err);
                 }
             };
 
-
             if let Err(e) = sess.pty_write(value.as_bytes()) {
-                return RpcResponse::action_failed(req_id, Some(element_ref), &e.to_string());
+                let err = DomainError::PtyError {
+                    operation: "fill".to_string(),
+                    reason: e.to_string(),
+                };
+                return domain_error_response(req_id, &err);
             }
 
             let mut response = json!({
@@ -920,11 +952,7 @@ impl DaemonServer {
         let session = match self.session_manager.resolve(session_id) {
             Ok(s) => s,
             Err(e) => {
-                return RpcResponse::error(
-                    request.id,
-                    -32000,
-                    &ai_friendly_error(&e.to_string(), session_id),
-                );
+                return domain_error_response(request.id, &DomainError::from(e));
             }
         };
 
@@ -984,7 +1012,7 @@ impl DaemonServer {
             Some(id) => id.to_string(),
             None => match self.session_manager.active_session_id() {
                 Some(id) => id.to_string(),
-                None => return RpcResponse::error(request.id, -32000, "No active session"),
+                None => return domain_error_response(request.id, &DomainError::NoActiveSession),
             },
         };
 
@@ -996,11 +1024,7 @@ impl DaemonServer {
                     "session_id": session_to_kill
                 }),
             ),
-            Err(e) => RpcResponse::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), Some(&session_to_kill)),
-            ),
+            Err(e) => domain_error_response(request.id, &DomainError::from(e)),
         }
     }
 
@@ -1016,20 +1040,12 @@ impl DaemonServer {
                 (sess.id.to_string(), sess.command.clone(), cols, rows)
             }
             Err(e) => {
-                return RpcResponse::error(
-                    request.id,
-                    -32000,
-                    &ai_friendly_error(&e.to_string(), session_id),
-                );
+                return domain_error_response(request.id, &DomainError::from(e));
             }
         };
 
         if let Err(e) = self.session_manager.kill(&old_session_id) {
-            return RpcResponse::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), Some(&old_session_id)),
-            );
+            return domain_error_response(request.id, &DomainError::from(e));
         }
 
         match self
@@ -1046,14 +1062,7 @@ impl DaemonServer {
                     "pid": pid
                 }),
             ),
-            Err(e) => RpcResponse::error(
-                request.id,
-                -32000,
-                &format!(
-                    "Killed session {} but failed to respawn '{}': {}",
-                    old_session_id, command, e
-                ),
-            ),
+            Err(e) => domain_error_response(request.id, &DomainError::from(e)),
         }
     }
 
@@ -1089,7 +1098,13 @@ impl DaemonServer {
                     "size": { "cols": cols, "rows": rows }
                 }),
             ),
-            Err(e) => RpcResponse::action_failed(req_id, None, &e.to_string()),
+            Err(e) => {
+                let err = DomainError::PtyError {
+                    operation: "resize".to_string(),
+                    reason: e.to_string(),
+                };
+                domain_error_response(req_id, &err)
+            }
         })
     }
 
@@ -1178,10 +1193,16 @@ impl DaemonServer {
                         json!({ "ref": element_ref, "checked": checked, "found": true })
                     }
                 }
-                None => json!({
-                    "ref": element_ref, "checked": false, "found": false,
-                    "message": ai_friendly_error("Element not found", Some(element_ref))
-                }),
+                None => {
+                    let err = DomainError::ElementNotFound {
+                        element_ref: element_ref.to_string(),
+                        session_id: Some(sess.id.to_string()),
+                    };
+                    json!({
+                        "ref": element_ref, "checked": false, "found": false,
+                        "message": err.suggestion()
+                    })
+                }
             };
             if let Some(warning) = update_warning {
                 response["warning"] = json!(warning);
@@ -1237,7 +1258,11 @@ impl DaemonServer {
         self.with_session(&request, session_id, |sess| {
             for _ in 0..amount {
                 if let Err(e) = sess.pty_write(key_seq) {
-                    return RpcResponse::action_failed(req_id, None, &e.to_string());
+                    let err = DomainError::PtyError {
+                        operation: "scroll".to_string(),
+                        reason: e.to_string(),
+                    };
+                    return domain_error_response(req_id, &err);
                 }
             }
             RpcResponse::success(
@@ -1287,28 +1312,30 @@ impl DaemonServer {
                     }
 
                     if let Err(e) = sess.pty_write(ansi_keys::DOWN) {
-                        return RpcResponse::error(
-                            request.id,
-                            -32000,
-                            &ai_friendly_error(&e.to_string(), None),
-                        );
+                        let err = DomainError::PtyError {
+                            operation: "scroll".to_string(),
+                            reason: e.to_string(),
+                        };
+                        return domain_error_response(request.id, &err);
                     }
 
                     drop(sess);
                     thread::sleep(Duration::from_millis(50));
                 }
 
+                let err = DomainError::ElementNotFound {
+                    element_ref: element_ref.to_string(),
+                    session_id: session_id.map(String::from),
+                };
                 RpcResponse::success(
                     request.id,
                     json!({
                         "success": false,
-                        "message": ai_friendly_error("Element not found after scrolling", Some(element_ref))
+                        "message": err.suggestion()
                     }),
                 )
             }
-            Err(e) => {
-                RpcResponse::error(request.id, -32000, &ai_friendly_error(&e.to_string(), None))
-            }
+            Err(e) => domain_error_response(request.id, &DomainError::from(e)),
         }
     }
 
@@ -1360,15 +1387,19 @@ impl DaemonServer {
         let req_id = request.id;
         self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
             if sess.find_element(element_ref).is_none() {
-                return RpcResponse::element_not_found(req_id, element_ref);
+                let err = DomainError::ElementNotFound {
+                    element_ref: element_ref.to_string(),
+                    session_id: Some(sess.id.to_string()),
+                };
+                return domain_error_response(req_id, &err);
             }
 
             if let Err(e) = sess.pty_write(b"\x15") {
-                return RpcResponse::error(
-                    req_id,
-                    -32000,
-                    &ai_friendly_error(&e.to_string(), None),
-                );
+                let err = DomainError::PtyError {
+                    operation: "clear".to_string(),
+                    reason: e.to_string(),
+                };
+                return domain_error_response(req_id, &err);
             }
             let mut response = json!({ "success": true, "ref": element_ref });
             if let Some(warning) = update_warning {
@@ -1391,28 +1422,32 @@ impl DaemonServer {
                 Some(el) => {
                     let el_type = el.element_type.as_str();
                     if el_type != "checkbox" && el_type != "radio" {
-                        return RpcResponse::wrong_element_type(
-                            req_id,
-                            element_ref,
-                            el_type,
-                            "checkbox/radio",
-                        );
+                        let err = DomainError::WrongElementType {
+                            element_ref: element_ref.to_string(),
+                            actual: el_type.to_string(),
+                            expected: "checkbox/radio".to_string(),
+                        };
+                        return domain_error_response(req_id, &err);
                     }
                     el.checked.unwrap_or(false)
                 }
                 None => {
-                    return RpcResponse::element_not_found(req_id, element_ref);
+                    let err = DomainError::ElementNotFound {
+                        element_ref: element_ref.to_string(),
+                        session_id: Some(sess.id.to_string()),
+                    };
+                    return domain_error_response(req_id, &err);
                 }
             };
 
             let should_toggle = force_state != Some(current_checked);
             let new_checked = if should_toggle {
                 if let Err(e) = sess.pty_write(b" ") {
-                    return RpcResponse::error(
-                        req_id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), None),
-                    );
+                    let err = DomainError::PtyError {
+                        operation: "toggle".to_string(),
+                        reason: e.to_string(),
+                    };
+                    return domain_error_response(req_id, &err);
                 }
                 !current_checked
             } else {
@@ -1438,15 +1473,19 @@ impl DaemonServer {
         self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
             match sess.find_element(element_ref) {
                 Some(el) if el.element_type.as_str() != "select" => {
-                    return RpcResponse::wrong_element_type(
-                        req_id,
-                        element_ref,
-                        el.element_type.as_str(),
-                        "select",
-                    );
+                    let err = DomainError::WrongElementType {
+                        element_ref: element_ref.to_string(),
+                        actual: el.element_type.as_str().to_string(),
+                        expected: "select".to_string(),
+                    };
+                    return domain_error_response(req_id, &err);
                 }
                 None => {
-                    return RpcResponse::element_not_found(req_id, element_ref);
+                    let err = DomainError::ElementNotFound {
+                        element_ref: element_ref.to_string(),
+                        session_id: Some(sess.id.to_string()),
+                    };
+                    return domain_error_response(req_id, &err);
                 }
                 _ => {}
             }
@@ -1457,11 +1496,11 @@ impl DaemonServer {
                 navigate_to_option(sess, &option, &screen_text).and_then(|_| sess.pty_write(b"\r"));
 
             if let Err(e) = result {
-                return RpcResponse::error(
-                    req_id,
-                    -32000,
-                    &ai_friendly_error(&e.to_string(), None),
-                );
+                let err = DomainError::PtyError {
+                    operation: "select".to_string(),
+                    reason: e.to_string(),
+                };
+                return domain_error_response(req_id, &err);
             }
 
             let mut response = json!({ "success": true, "ref": element_ref, "option": option });
@@ -1487,11 +1526,15 @@ impl DaemonServer {
 
         self.with_detected_session_and_ref(&request, |sess, element_ref, update_warning| {
             if sess.find_element(element_ref).is_none() {
+                let err = DomainError::ElementNotFound {
+                    element_ref: element_ref.to_string(),
+                    session_id: Some(sess.id.to_string()),
+                };
                 return RpcResponse::success(
                     req_id,
                     json!({
                         "success": false,
-                        "message": ai_friendly_error("Element not found", Some(element_ref)),
+                        "message": err.suggestion(),
                         "selected_options": []
                     }),
                 );
@@ -1500,36 +1543,36 @@ impl DaemonServer {
             let mut selected = Vec::new();
             for option in &options {
                 if let Err(e) = sess.pty_write(option.as_bytes()) {
-                    return RpcResponse::error(
-                        req_id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), None),
-                    );
+                    let err = DomainError::PtyError {
+                        operation: "multiselect".to_string(),
+                        reason: e.to_string(),
+                    };
+                    return domain_error_response(req_id, &err);
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
                 if let Err(e) = sess.pty_write(b" ") {
-                    return RpcResponse::error(
-                        req_id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), None),
-                    );
+                    let err = DomainError::PtyError {
+                        operation: "multiselect".to_string(),
+                        reason: e.to_string(),
+                    };
+                    return domain_error_response(req_id, &err);
                 }
                 if let Err(e) = sess.pty_write(&[0x15]) {
-                    return RpcResponse::error(
-                        req_id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), None),
-                    );
+                    let err = DomainError::PtyError {
+                        operation: "multiselect".to_string(),
+                        reason: e.to_string(),
+                    };
+                    return domain_error_response(req_id, &err);
                 }
                 selected.push(option.clone());
             }
 
             if let Err(e) = sess.pty_write(b"\r") {
-                return RpcResponse::error(
-                    req_id,
-                    -32000,
-                    &ai_friendly_error(&e.to_string(), None),
-                );
+                let err = DomainError::PtyError {
+                    operation: "multiselect".to_string(),
+                    reason: e.to_string(),
+                };
+                return domain_error_response(req_id, &err);
             }
 
             let mut response =
@@ -1561,11 +1604,7 @@ impl DaemonServer {
                     "message": format!("Now attached to session {}", session_id)
                 }),
             ),
-            Err(e) => RpcResponse::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), Some(session_id)),
-            ),
+            Err(e) => domain_error_response(request.id, &DomainError::from(e)),
         }
     }
 
@@ -1773,18 +1812,16 @@ impl DaemonServer {
                             }),
                         )
                     }
-                    Err(e) => RpcResponse::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), Some(session_id)),
-                    ),
+                    Err(e) => {
+                        let err = DomainError::PtyError {
+                            operation: "read".to_string(),
+                            reason: e.to_string(),
+                        };
+                        domain_error_response(request.id, &err)
+                    }
                 }
             }
-            Err(e) => RpcResponse::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), Some(session_id)),
-            ),
+            Err(e) => domain_error_response(request.id, &DomainError::from(e)),
         }
     }
 
@@ -1815,18 +1852,16 @@ impl DaemonServer {
                             "session_id": session_id
                         }),
                     ),
-                    Err(e) => RpcResponse::error(
-                        request.id,
-                        -32000,
-                        &ai_friendly_error(&e.to_string(), Some(session_id)),
-                    ),
+                    Err(e) => {
+                        let err = DomainError::PtyError {
+                            operation: "write".to_string(),
+                            reason: e.to_string(),
+                        };
+                        domain_error_response(request.id, &err)
+                    }
                 }
             }
-            Err(e) => RpcResponse::error(
-                request.id,
-                -32000,
-                &ai_friendly_error(&e.to_string(), Some(session_id)),
-            ),
+            Err(e) => domain_error_response(request.id, &DomainError::from(e)),
         }
     }
 
@@ -1971,7 +2006,7 @@ pub fn start_daemon() -> std::io::Result<()> {
             }
         })?;
 
-    let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server), Arc::clone(&shutdown));
+    let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server), Arc::clone(&shutdown))?;
 
     while !shutdown.load(Ordering::Relaxed) {
         match listener.accept() {

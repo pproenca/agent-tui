@@ -2,6 +2,7 @@
 
 pub mod ansi_keys;
 mod config;
+mod error;
 mod lock_helpers;
 mod metrics;
 mod select_helpers;
@@ -10,6 +11,7 @@ mod session;
 mod wait;
 
 pub use config::DaemonConfig;
+pub use error::DomainError;
 pub use lock_helpers::LOCK_TIMEOUT;
 pub use lock_helpers::MAX_BACKOFF;
 pub use lock_helpers::acquire_session_lock;

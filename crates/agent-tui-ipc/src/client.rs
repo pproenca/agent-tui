@@ -12,6 +12,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::error::ClientError;
+use crate::error_codes;
 use crate::socket::socket_path;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -85,6 +86,7 @@ fn is_retriable_error(error: &ClientError) -> bool {
             io_err.kind(),
             ErrorKind::ConnectionRefused | ErrorKind::WouldBlock | ErrorKind::TimedOut
         ),
+        ClientError::RpcError { code, .. } => error_codes::is_retryable(*code),
         _ => false,
     }
 }
@@ -367,6 +369,15 @@ mod tests {
             message: "Invalid request".to_string(),
         };
         assert!(!is_retriable_error(&err));
+    }
+
+    #[test]
+    fn test_is_retriable_error_rpc_lock_timeout() {
+        let err = ClientError::RpcError {
+            code: error_codes::LOCK_TIMEOUT,
+            message: "Lock timeout".to_string(),
+        };
+        assert!(is_retriable_error(&err));
     }
 
     #[test]

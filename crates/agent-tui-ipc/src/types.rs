@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::Value;
 use serde_json::json;
 
-use crate::error_messages::ai_friendly_error;
+use crate::error_codes;
 
 #[derive(Debug, Deserialize)]
 pub struct RpcRequest {
@@ -83,6 +83,27 @@ pub struct RpcServerError {
     data: Option<Value>,
 }
 
+/// Structured error data for programmatic handling by AI agents.
+///
+/// This provides rich context about errors including:
+/// - Category for routing error handling logic
+/// - Retryable flag for automatic retry decisions
+/// - Context with error-specific details
+/// - Suggestion for how to resolve the error
+#[derive(Debug, Serialize)]
+pub struct ErrorData {
+    /// Error category (not_found, invalid_input, busy, internal, external, timeout)
+    pub category: String,
+    /// Whether this error might succeed on retry
+    pub retryable: bool,
+    /// Error-specific context (element_ref, session_id, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<Value>,
+    /// Human-readable suggestion for resolving the error
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suggestion: Option<String>,
+}
+
 impl RpcResponse {
     pub fn success(id: u64, result: Value) -> Self {
         Self {
@@ -120,57 +141,52 @@ impl RpcResponse {
         }
     }
 
+    /// Create an error response with structured ErrorData.
+    ///
+    /// This is the preferred method for domain errors as it provides
+    /// machine-readable context for AI agents.
+    pub fn error_with_data(id: u64, code: i32, message: &str, error_data: ErrorData) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            id,
+            result: None,
+            error: Some(RpcServerError {
+                code,
+                message: message.to_string(),
+                data: Some(serde_json::to_value(error_data).unwrap_or(json!({}))),
+            }),
+        }
+    }
+
+    /// Create an error response from a DomainError-like interface.
+    ///
+    /// This helper constructs a fully structured error response with:
+    /// - Semantic error code
+    /// - Human-readable message
+    /// - Category, retryable flag, context, and suggestion
+    pub fn domain_error(
+        id: u64,
+        code: i32,
+        message: &str,
+        category: &str,
+        context: Option<Value>,
+        suggestion: Option<String>,
+    ) -> Self {
+        Self::error_with_data(
+            id,
+            code,
+            message,
+            ErrorData {
+                category: category.to_string(),
+                retryable: error_codes::is_retryable(code),
+                context,
+                suggestion,
+            },
+        )
+    }
+
     pub fn action_success(id: u64) -> Self {
         Self::success(id, json!({ "success": true }))
-    }
-
-    pub fn action_failed(id: u64, element_ref: Option<&str>, error: &str) -> Self {
-        Self::success(
-            id,
-            json!({
-                "success": false,
-                "message": ai_friendly_error(error, element_ref)
-            }),
-        )
-    }
-
-    pub fn element_not_found(id: u64, element_ref: &str) -> Self {
-        Self::success(
-            id,
-            json!({
-                "success": false,
-                "message": ai_friendly_error("Element not found", Some(element_ref))
-            }),
-        )
-    }
-
-    pub fn wrong_element_type(id: u64, element_ref: &str, actual: &str, expected: &str) -> Self {
-        let suggestion = suggest_command_for_type(actual, element_ref);
-        let hint = if suggestion.is_empty() {
-            "Run 'snapshot -i' to see element types.".to_string()
-        } else {
-            suggestion
-        };
-        Self::success(
-            id,
-            json!({
-                "success": false,
-                "message": format!(
-                    "Element {} is a {} not a {}. {}",
-                    element_ref, actual, expected, hint
-                )
-            }),
-        )
-    }
-}
-
-fn suggest_command_for_type(element_type: &str, element_ref: &str) -> String {
-    match element_type {
-        "button" | "menuitem" | "listitem" => format!("Try: click {}", element_ref),
-        "checkbox" | "radio" => format!("Try: toggle {} or click {}", element_ref, element_ref),
-        "input" => format!("Try: fill {} <value>", element_ref),
-        "select" => format!("Try: select {} <option>", element_ref),
-        _ => String::new(),
     }
 }
 
@@ -252,20 +268,52 @@ mod tests {
     }
 
     #[test]
-    fn test_suggest_command_for_button() {
-        let suggestion = suggest_command_for_type("button", "@btn1");
-        assert_eq!(suggestion, "Try: click @btn1");
+    fn test_error_with_data_includes_structured_error() {
+        let error_data = ErrorData {
+            category: "not_found".to_string(),
+            retryable: false,
+            context: Some(json!({"element_ref": "@btn1"})),
+            suggestion: Some("Run 'snapshot -i' to see elements.".to_string()),
+        };
+        let resp = RpcResponse::error_with_data(42, -32003, "Element not found", error_data);
+        let json_str = serde_json::to_string(&resp).unwrap();
+        let parsed: Value = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(parsed["error"]["code"], -32003);
+        assert_eq!(parsed["error"]["data"]["category"], "not_found");
+        assert_eq!(parsed["error"]["data"]["retryable"], false);
+        assert_eq!(parsed["error"]["data"]["context"]["element_ref"], "@btn1");
     }
 
     #[test]
-    fn test_suggest_command_for_input() {
-        let suggestion = suggest_command_for_type("input", "@inp1");
-        assert_eq!(suggestion, "Try: fill @inp1 <value>");
+    fn test_domain_error_sets_retryable_for_lock_timeout() {
+        let resp = RpcResponse::domain_error(
+            1,
+            -32007, // LOCK_TIMEOUT
+            "Lock timeout",
+            "busy",
+            None,
+            Some("Try again".to_string()),
+        );
+        let json_str = serde_json::to_string(&resp).unwrap();
+        let parsed: Value = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(parsed["error"]["data"]["retryable"], true);
     }
 
     #[test]
-    fn test_suggest_command_for_unknown_type() {
-        let suggestion = suggest_command_for_type("unknown", "@el1");
-        assert_eq!(suggestion, "");
+    fn test_domain_error_not_retryable_for_element_not_found() {
+        let resp = RpcResponse::domain_error(
+            1,
+            -32003, // ELEMENT_NOT_FOUND
+            "Element not found",
+            "not_found",
+            Some(json!({"element_ref": "@btn1"})),
+            None,
+        );
+        let json_str = serde_json::to_string(&resp).unwrap();
+        let parsed: Value = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(parsed["error"]["data"]["retryable"], false);
     }
 }

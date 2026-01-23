@@ -18,6 +18,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tempfile::TempDir;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
@@ -47,6 +48,8 @@ struct Response {
 struct RpcError {
     code: i32,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<Value>,
 }
 
 /// Recorded request for test verification
@@ -63,12 +66,25 @@ pub enum MockResponse {
     Success(Value),
     /// Return an error
     Error { code: i32, message: String },
+    /// Return a structured error with category, context, retryable, suggestion
+    StructuredError {
+        code: i32,
+        message: String,
+        category: Option<String>,
+        retryable: Option<bool>,
+        context: Option<Value>,
+        suggestion: Option<String>,
+    },
     /// Return malformed JSON (for error handling tests)
     Malformed(String),
     /// Hang forever (for timeout tests) - use with small timeout
     Hang,
     /// Close connection immediately
     Disconnect,
+    /// Return different responses for each call (cycles through the list)
+    Sequence(Vec<MockResponse>),
+    /// Delay before returning the response
+    Delayed(Duration, Box<MockResponse>),
 }
 
 /// Mock daemon for testing
@@ -85,6 +101,8 @@ pub struct MockDaemon {
     requests: Arc<Mutex<Vec<RecordedRequest>>>,
     /// Custom response handlers by method
     handlers: Arc<Mutex<HashMap<String, MockResponse>>>,
+    /// Sequence counters for Sequence responses (tracks which index to return next)
+    sequence_counters: Arc<Mutex<HashMap<String, usize>>>,
 }
 
 impl MockDaemon {
@@ -100,6 +118,7 @@ impl MockDaemon {
 
         let requests = Arc::new(Mutex::new(Vec::new()));
         let handlers = Arc::new(Mutex::new(HashMap::new()));
+        let sequence_counters = Arc::new(Mutex::new(HashMap::new()));
 
         // Set up default handlers
         {
@@ -432,9 +451,17 @@ impl MockDaemon {
         let listener = UnixListener::bind(&socket_path).expect("Failed to bind socket");
         let requests_clone = requests.clone();
         let handlers_clone = handlers.clone();
+        let sequence_counters_clone = sequence_counters.clone();
 
         tokio::spawn(async move {
-            Self::run_server(listener, requests_clone, handlers_clone, shutdown_rx).await;
+            Self::run_server(
+                listener,
+                requests_clone,
+                handlers_clone,
+                sequence_counters_clone,
+                shutdown_rx,
+            )
+            .await;
         });
 
         // Give the server a moment to start
@@ -447,6 +474,7 @@ impl MockDaemon {
             shutdown_tx: Some(shutdown_tx),
             requests,
             handlers,
+            sequence_counters,
         }
     }
 
@@ -482,6 +510,39 @@ impl MockDaemon {
             .cloned()
     }
 
+    /// Get the count of calls for a specific method
+    pub fn call_count_for(&self, method: &str) -> usize {
+        self.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.method == method)
+            .count()
+    }
+
+    /// Get the nth call for a specific method (0-indexed)
+    pub fn nth_call_for(&self, method: &str, n: usize) -> Option<RecordedRequest> {
+        self.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.method == method)
+            .nth(n)
+            .cloned()
+    }
+
+    /// Reset the sequence counter for a method
+    pub fn reset_sequence(&self, method: &str) {
+        let mut counters = self.sequence_counters.lock().unwrap();
+        counters.remove(method);
+    }
+
+    /// Reset all sequence counters
+    pub fn reset_all_sequences(&self) {
+        let mut counters = self.sequence_counters.lock().unwrap();
+        counters.clear();
+    }
+
     /// Get environment variables to point CLI at this mock daemon
     pub fn env_vars(&self) -> Vec<(&'static str, String)> {
         vec![
@@ -508,6 +569,7 @@ impl MockDaemon {
         listener: UnixListener,
         requests: Arc<Mutex<Vec<RecordedRequest>>>,
         handlers: Arc<Mutex<HashMap<String, MockResponse>>>,
+        sequence_counters: Arc<Mutex<HashMap<String, usize>>>,
         mut shutdown_rx: oneshot::Receiver<()>,
     ) {
         loop {
@@ -517,8 +579,9 @@ impl MockDaemon {
                         Ok((stream, _)) => {
                             let requests = requests.clone();
                             let handlers = handlers.clone();
+                            let sequence_counters = sequence_counters.clone();
                             tokio::spawn(async move {
-                                Self::handle_connection(stream, requests, handlers).await;
+                                Self::handle_connection(stream, requests, handlers, sequence_counters).await;
                             });
                         }
                         Err(e) => {
@@ -538,6 +601,7 @@ impl MockDaemon {
         stream: tokio::net::UnixStream,
         requests: Arc<Mutex<Vec<RecordedRequest>>>,
         handlers: Arc<Mutex<HashMap<String, MockResponse>>>,
+        sequence_counters: Arc<Mutex<HashMap<String, usize>>>,
     ) {
         let (reader, mut writer) = stream.into_split();
         let mut buf_reader = BufReader::new(reader);
@@ -573,47 +637,16 @@ impl MockDaemon {
                 h.get(&request.method).cloned()
             };
 
-            let response_str = match handler {
-                Some(MockResponse::Success(result)) => {
-                    let response = Response {
-                        jsonrpc: "2.0".to_string(),
-                        id: request.id,
-                        result: Some(result),
-                        error: None,
-                    };
-                    serde_json::to_string(&response).unwrap()
-                }
-                Some(MockResponse::Error { code, message }) => {
-                    let response = Response {
-                        jsonrpc: "2.0".to_string(),
-                        id: request.id,
-                        result: None,
-                        error: Some(RpcError { code, message }),
-                    };
-                    serde_json::to_string(&response).unwrap()
-                }
-                Some(MockResponse::Malformed(s)) => s,
-                Some(MockResponse::Hang) => {
-                    // Sleep forever (will be killed when test times out)
-                    tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
-                    return;
-                }
-                Some(MockResponse::Disconnect) => {
-                    return;
-                }
-                None => {
-                    // Unknown method error
-                    let response = Response {
-                        jsonrpc: "2.0".to_string(),
-                        id: request.id,
-                        result: None,
-                        error: Some(RpcError {
-                            code: -32601,
-                            message: format!("Method not found: {}", request.method),
-                        }),
-                    };
-                    serde_json::to_string(&response).unwrap()
-                }
+            // Resolve Sequence to current response
+            let resolved_handler =
+                Self::resolve_handler(handler, &request.method, &sequence_counters);
+
+            let response_str =
+                Self::generate_response(resolved_handler, request.id, &request.method).await;
+
+            // None means we should disconnect
+            let Some(response_str) = response_str else {
+                return;
             };
 
             // Send response
@@ -628,6 +661,125 @@ impl MockDaemon {
             }
 
             line.clear();
+        }
+    }
+
+    /// Resolve Sequence handlers to the current response in the sequence
+    fn resolve_handler(
+        handler: Option<MockResponse>,
+        method: &str,
+        sequence_counters: &Arc<Mutex<HashMap<String, usize>>>,
+    ) -> Option<MockResponse> {
+        match handler {
+            Some(MockResponse::Sequence(responses)) if !responses.is_empty() => {
+                let mut counters = sequence_counters.lock().unwrap();
+                let index = counters.entry(method.to_string()).or_insert(0);
+                let response = responses[*index % responses.len()].clone();
+                *index += 1;
+                // Recursively resolve in case Sequence contains Sequence
+                drop(counters);
+                Self::resolve_handler(Some(response), method, sequence_counters)
+            }
+            other => other,
+        }
+    }
+
+    /// Generate a response string from a MockResponse, returns None for Disconnect
+    async fn generate_response(
+        handler: Option<MockResponse>,
+        request_id: u64,
+        method: &str,
+    ) -> Option<String> {
+        match handler {
+            Some(MockResponse::Success(result)) => {
+                let response = Response {
+                    jsonrpc: "2.0".to_string(),
+                    id: request_id,
+                    result: Some(result),
+                    error: None,
+                };
+                Some(serde_json::to_string(&response).unwrap())
+            }
+            Some(MockResponse::Error { code, message }) => {
+                let response = Response {
+                    jsonrpc: "2.0".to_string(),
+                    id: request_id,
+                    result: None,
+                    error: Some(RpcError {
+                        code,
+                        message,
+                        data: None,
+                    }),
+                };
+                Some(serde_json::to_string(&response).unwrap())
+            }
+            Some(MockResponse::StructuredError {
+                code,
+                message,
+                category,
+                retryable,
+                context,
+                suggestion,
+            }) => {
+                let mut data = serde_json::json!({});
+                if let Some(cat) = category {
+                    data["category"] = serde_json::json!(cat);
+                }
+                if let Some(retry) = retryable {
+                    data["retryable"] = serde_json::json!(retry);
+                }
+                if let Some(ctx) = context {
+                    data["context"] = ctx;
+                }
+                if let Some(sug) = suggestion {
+                    data["suggestion"] = serde_json::json!(sug);
+                }
+                let response = Response {
+                    jsonrpc: "2.0".to_string(),
+                    id: request_id,
+                    result: None,
+                    error: Some(RpcError {
+                        code,
+                        message,
+                        data: if data.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                            None
+                        } else {
+                            Some(data)
+                        },
+                    }),
+                };
+                Some(serde_json::to_string(&response).unwrap())
+            }
+            Some(MockResponse::Malformed(s)) => Some(s),
+            Some(MockResponse::Hang) => {
+                // Sleep forever (will be killed when test times out)
+                tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+                None
+            }
+            Some(MockResponse::Disconnect) => None,
+            Some(MockResponse::Delayed(duration, inner)) => {
+                tokio::time::sleep(duration).await;
+                // Box::into_inner is unstable, use *inner
+                Box::pin(Self::generate_response(Some(*inner), request_id, method)).await
+            }
+            Some(MockResponse::Sequence(_)) => {
+                // Should have been resolved by resolve_handler
+                unreachable!("Sequence should be resolved before generate_response")
+            }
+            None => {
+                // Unknown method error
+                let response = Response {
+                    jsonrpc: "2.0".to_string(),
+                    id: request_id,
+                    result: None,
+                    error: Some(RpcError {
+                        code: -32601,
+                        message: format!("Method not found: {}", method),
+                        data: None,
+                    }),
+                };
+                Some(serde_json::to_string(&response).unwrap())
+            }
         }
     }
 }

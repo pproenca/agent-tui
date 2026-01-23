@@ -76,3 +76,75 @@ where
     });
     rx.recv_timeout(duration).ok()
 }
+
+// ============================================================
+// Error assertion helpers
+// ============================================================
+
+use serde_json::Value;
+use std::time::Instant;
+
+/// Assert structured error data from a JSON error response.
+///
+/// Validates that the error contains the expected code, category, and retryable flag.
+pub fn assert_error_data(
+    json: &Value,
+    expected_code: Option<i32>,
+    expected_category: Option<&str>,
+    expected_retryable: Option<bool>,
+) {
+    if let Some(code) = expected_code {
+        assert_eq!(
+            json.get("code").and_then(|v| v.as_i64()),
+            Some(code as i64),
+            "Error code mismatch. JSON: {}",
+            json
+        );
+    }
+    if let Some(category) = expected_category {
+        assert_eq!(
+            json.get("category").and_then(|v| v.as_str()),
+            Some(category),
+            "Error category mismatch. JSON: {}",
+            json
+        );
+    }
+    if let Some(retryable) = expected_retryable {
+        assert_eq!(
+            json.get("retryable").and_then(|v| v.as_bool()),
+            Some(retryable),
+            "Error retryable flag mismatch. JSON: {}",
+            json
+        );
+    }
+}
+
+/// Execute a function and measure its duration.
+///
+/// Returns a tuple of (result, duration).
+pub fn timed<F, T>(f: F) -> (T, Duration)
+where
+    F: FnOnce() -> T,
+{
+    let start = Instant::now();
+    let result = f();
+    (result, start.elapsed())
+}
+
+/// Assert that a duration is within expected bounds (with tolerance).
+pub fn assert_duration_between(duration: Duration, min: Duration, max: Duration, context: &str) {
+    assert!(
+        duration >= min,
+        "{}: duration {:?} is less than minimum {:?}",
+        context,
+        duration,
+        min
+    );
+    assert!(
+        duration <= max,
+        "{}: duration {:?} exceeds maximum {:?}",
+        context,
+        duration,
+        max
+    );
+}

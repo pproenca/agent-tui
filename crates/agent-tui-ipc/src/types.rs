@@ -16,6 +16,16 @@ pub struct RpcRequest {
 }
 
 impl RpcRequest {
+    /// Create a new RpcRequest.
+    pub fn new(id: u64, method: String, params: Option<Value>) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            id,
+            method,
+            params,
+        }
+    }
+
     pub fn param_str(&self, key: &str) -> Option<&str> {
         self.params
             .as_ref()
@@ -23,20 +33,27 @@ impl RpcRequest {
             .and_then(|v| v.as_str())
     }
 
-    pub fn param_bool(&self, key: &str) -> Option<bool> {
+    pub fn param_bool_opt(&self, key: &str) -> Option<bool> {
         self.params.as_ref()?.get(key)?.as_bool()
+    }
+
+    pub fn param_bool(&self, key: &str, default: bool) -> bool {
+        self.param_bool_opt(key).unwrap_or(default)
     }
 
     pub fn param_array(&self, key: &str) -> Option<&Vec<Value>> {
         self.params.as_ref()?.get(key)?.as_array()
     }
 
-    pub fn param_u64(&self, key: &str, default: u64) -> u64 {
+    pub fn param_u64_opt(&self, key: &str) -> Option<u64> {
         self.params
             .as_ref()
             .and_then(|p| p.get(key))
             .and_then(|v| v.as_u64())
-            .unwrap_or(default)
+    }
+
+    pub fn param_u64(&self, key: &str, default: u64) -> u64 {
+        self.param_u64_opt(key).unwrap_or(default)
     }
 
     pub fn param_u16(&self, key: &str, default: u16) -> u16 {
@@ -216,10 +233,17 @@ mod tests {
     }
 
     #[test]
-    fn test_param_bool_extracts_boolean() {
+    fn test_param_bool_opt_extracts_boolean() {
         let req = make_request(Some(json!({"enabled": true, "disabled": false})));
-        assert_eq!(req.param_bool("enabled"), Some(true));
-        assert_eq!(req.param_bool("disabled"), Some(false));
+        assert_eq!(req.param_bool_opt("enabled"), Some(true));
+        assert_eq!(req.param_bool_opt("disabled"), Some(false));
+    }
+
+    #[test]
+    fn test_param_bool_with_default() {
+        let req = make_request(Some(json!({"enabled": true})));
+        assert!(req.param_bool("enabled", false));
+        assert!(!req.param_bool("missing", false));
     }
 
     #[test]

@@ -34,7 +34,10 @@ fn format_uptime_ms(uptime_ms: u64) -> String {
 /// Macro to generate get_* handlers that follow the same pattern
 macro_rules! get_handler {
     ($name:ident, $method:literal, $field:literal) => {
-        pub fn $name(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+        pub fn $name<C: DaemonClient>(
+            ctx: &mut HandlerContext<C>,
+            element_ref: String,
+        ) -> HandlerResult {
             let params = ctx.ref_params(&element_ref);
             let result = ctx.client.call($method, Some(params))?;
             ctx.output_get_result(&result, &element_ref, $field)
@@ -45,7 +48,10 @@ macro_rules! get_handler {
 /// Macro to generate is_* state check handlers that follow the same pattern
 macro_rules! state_check_handler {
     ($name:ident, $method:literal, $field:literal, $pos:literal, $neg:literal) => {
-        pub fn $name(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+        pub fn $name<C: DaemonClient>(
+            ctx: &mut HandlerContext<C>,
+            element_ref: String,
+        ) -> HandlerResult {
             let params = ctx.ref_params(&element_ref);
             let result = ctx.client.call($method, Some(params))?;
             ctx.output_state_check(&result, &element_ref, $field, $pos, $neg)
@@ -56,7 +62,7 @@ macro_rules! state_check_handler {
 /// Macro to generate key handlers (press, keydown, keyup) that follow the same pattern
 macro_rules! key_handler {
     ($name:ident, $method:literal, $success:expr) => {
-        pub fn $name(ctx: &mut HandlerContext, key: String) -> HandlerResult {
+        pub fn $name<C: DaemonClient>(ctx: &mut HandlerContext<C>, key: String) -> HandlerResult {
             let params = ctx.params_with(json!({ "key": key }));
             let result = ctx.client.call($method, Some(params))?;
             ctx.output_success_and_ok(&result, &$success(&key), concat!($method, " failed"))
@@ -67,24 +73,23 @@ macro_rules! key_handler {
 /// Macro to generate element ref action handlers (click, focus, clear, etc.)
 macro_rules! ref_action_handler {
     ($name:ident, $method:literal, $success:expr, $failure:literal) => {
-        pub fn $name(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+        pub fn $name<C: DaemonClient>(
+            ctx: &mut HandlerContext<C>,
+            element_ref: String,
+        ) -> HandlerResult {
             ctx.call_ref_action($method, &element_ref, &$success(&element_ref), $failure)
         }
     };
 }
 
-pub struct HandlerContext<'a> {
-    pub client: &'a mut DaemonClient,
+pub struct HandlerContext<'a, C: DaemonClient> {
+    pub client: &'a mut C,
     pub session: Option<String>,
     pub format: OutputFormat,
 }
 
-impl<'a> HandlerContext<'a> {
-    pub fn new(
-        client: &'a mut DaemonClient,
-        session: Option<String>,
-        format: OutputFormat,
-    ) -> Self {
+impl<'a, C: DaemonClient> HandlerContext<'a, C> {
+    pub fn new(client: &'a mut C, session: Option<String>, format: OutputFormat) -> Self {
         Self {
             client,
             session,
@@ -306,8 +311,8 @@ impl ElementView<'_> {
     }
 }
 
-pub fn handle_spawn(
-    ctx: &mut HandlerContext,
+pub fn handle_spawn<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     command: String,
     args: Vec<String>,
     cwd: Option<String>,
@@ -337,8 +342,8 @@ pub fn handle_spawn(
     })
 }
 
-pub fn handle_snapshot(
-    ctx: &mut HandlerContext,
+pub fn handle_snapshot<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     elements: bool,
     region: Option<String>,
     strip_ansi: bool,
@@ -417,7 +422,11 @@ ref_action_handler!(
     "Double-click failed"
 );
 
-pub fn handle_fill(ctx: &mut HandlerContext, element_ref: String, value: String) -> HandlerResult {
+pub fn handle_fill<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    element_ref: String,
+    value: String,
+) -> HandlerResult {
     let params = ctx.params_with(json!({ "ref": element_ref, "value": value }));
     let result = ctx.client.call("fill", Some(params))?;
     ctx.output_success_and_ok(&result, "Filled successfully", "Fill failed")
@@ -434,13 +443,16 @@ key_handler!(handle_keyup, "keyup", |k: &String| format!(
     k
 ));
 
-pub fn handle_type(ctx: &mut HandlerContext, text: String) -> HandlerResult {
+pub fn handle_type<C: DaemonClient>(ctx: &mut HandlerContext<C>, text: String) -> HandlerResult {
     let params = ctx.params_with(json!({ "text": text }));
     let result = ctx.client.call("type", Some(params))?;
     ctx.output_success_and_ok(&result, "Text typed", "Type failed")
 }
 
-pub fn handle_wait(ctx: &mut HandlerContext, params: WaitParams) -> HandlerResult {
+pub fn handle_wait<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    params: WaitParams,
+) -> HandlerResult {
     let (cond, tgt) = params.resolve_condition();
 
     let rpc_params = json!({
@@ -471,7 +483,7 @@ pub fn handle_wait(ctx: &mut HandlerContext, params: WaitParams) -> HandlerResul
     Ok(())
 }
 
-pub fn handle_kill(ctx: &mut HandlerContext) -> HandlerResult {
+pub fn handle_kill<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let result = ctx.client.call("kill", Some(ctx.session_params()))?;
 
     ctx.output_json_or(&result, || {
@@ -479,7 +491,7 @@ pub fn handle_kill(ctx: &mut HandlerContext) -> HandlerResult {
     })
 }
 
-pub fn handle_restart(ctx: &mut HandlerContext) -> HandlerResult {
+pub fn handle_restart<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let result = ctx.client.call("restart", Some(ctx.session_params()))?;
 
     ctx.output_json_or(&result, || {
@@ -492,7 +504,7 @@ pub fn handle_restart(ctx: &mut HandlerContext) -> HandlerResult {
     })
 }
 
-pub fn handle_sessions(ctx: &mut HandlerContext) -> HandlerResult {
+pub fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let result = ctx.client.call("sessions", None)?;
 
     ctx.output_json_or(&result, || {
@@ -548,7 +560,7 @@ pub fn handle_sessions(ctx: &mut HandlerContext) -> HandlerResult {
     })
 }
 
-pub fn handle_health(ctx: &mut HandlerContext, verbose: bool) -> HandlerResult {
+pub fn handle_health<C: DaemonClient>(ctx: &mut HandlerContext<C>, verbose: bool) -> HandlerResult {
     let result = ctx.client.call("health", None)?;
 
     ctx.output_json_or(&result, || {
@@ -579,7 +591,11 @@ pub fn handle_health(ctx: &mut HandlerContext, verbose: bool) -> HandlerResult {
     })
 }
 
-pub fn handle_resize(ctx: &mut HandlerContext, cols: u16, rows: u16) -> HandlerResult {
+pub fn handle_resize<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    cols: u16,
+    rows: u16,
+) -> HandlerResult {
     let params = json!({
         "cols": cols,
         "rows": rows,
@@ -598,7 +614,7 @@ pub fn handle_resize(ctx: &mut HandlerContext, cols: u16, rows: u16) -> HandlerR
     })
 }
 
-pub fn handle_version(ctx: &mut HandlerContext) -> HandlerResult {
+pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let cli_version = env!("CARGO_PKG_VERSION");
 
     let (daemon_version, daemon_error) = match ctx.client.call("health", None) {
@@ -642,7 +658,7 @@ pub fn handle_version(ctx: &mut HandlerContext) -> HandlerResult {
     Ok(())
 }
 
-pub fn handle_cleanup(ctx: &mut HandlerContext, all: bool) -> HandlerResult {
+pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -> HandlerResult {
     let sessions_result = ctx.client.call("sessions", None)?;
     let sessions = sessions_result.get("sessions").and_then(|v| v.as_array());
 
@@ -684,7 +700,10 @@ pub fn handle_cleanup(ctx: &mut HandlerContext, all: bool) -> HandlerResult {
     Ok(())
 }
 
-pub fn handle_find(ctx: &mut HandlerContext, params: FindParams) -> HandlerResult {
+pub fn handle_find<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    params: FindParams,
+) -> HandlerResult {
     let rpc_params = json!({
         "session": ctx.session,
         "role": params.role,
@@ -726,8 +745,8 @@ pub fn handle_find(ctx: &mut HandlerContext, params: FindParams) -> HandlerResul
     Ok(())
 }
 
-pub fn handle_select(
-    ctx: &mut HandlerContext,
+pub fn handle_select<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     element_ref: String,
     option: String,
 ) -> HandlerResult {
@@ -736,8 +755,8 @@ pub fn handle_select(
     ctx.output_success_and_ok(&result, &format!("Selected: {}", option), "Select failed")
 }
 
-pub fn handle_multiselect(
-    ctx: &mut HandlerContext,
+pub fn handle_multiselect<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     element_ref: String,
     options: Vec<String>,
 ) -> HandlerResult {
@@ -767,8 +786,8 @@ pub fn handle_multiselect(
     Ok(())
 }
 
-pub fn handle_scroll(
-    ctx: &mut HandlerContext,
+pub fn handle_scroll<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     direction: ScrollDirection,
     amount: u16,
 ) -> HandlerResult {
@@ -782,7 +801,10 @@ pub fn handle_scroll(
     )
 }
 
-pub fn handle_scroll_into_view(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+pub fn handle_scroll_into_view<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    element_ref: String,
+) -> HandlerResult {
     let params = ctx.params_with(json!({ "ref": element_ref }));
     let result = ctx.client.call("scroll_into_view", Some(params))?;
 
@@ -828,7 +850,7 @@ ref_action_handler!(
 get_handler!(handle_get_text, "get_text", "text");
 get_handler!(handle_get_value, "get_value", "value");
 
-pub fn handle_get_focused(ctx: &mut HandlerContext) -> HandlerResult {
+pub fn handle_get_focused<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let result = ctx.client.call("get_focused", Some(ctx.session_params()))?;
 
     match ctx.format {
@@ -852,7 +874,7 @@ pub fn handle_get_focused(ctx: &mut HandlerContext) -> HandlerResult {
     Ok(())
 }
 
-pub fn handle_get_title(ctx: &mut HandlerContext) -> HandlerResult {
+pub fn handle_get_title<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let result = ctx.client.call("get_title", Some(ctx.session_params()))?;
 
     ctx.output_json_or(&result, || {
@@ -893,8 +915,8 @@ state_check_handler!(
     "not checked"
 );
 
-pub fn handle_count(
-    ctx: &mut HandlerContext,
+pub fn handle_count<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     role: Option<String>,
     name: Option<String>,
     text: Option<String>,
@@ -913,8 +935,8 @@ pub fn handle_count(
     })
 }
 
-pub fn handle_toggle(
-    ctx: &mut HandlerContext,
+pub fn handle_toggle<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     element_ref: String,
     state: Option<bool>,
 ) -> HandlerResult {
@@ -945,8 +967,8 @@ pub fn handle_toggle(
     Ok(())
 }
 
-fn handle_check_state(
-    ctx: &mut HandlerContext,
+fn handle_check_state<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     element_ref: String,
     checked: bool,
 ) -> HandlerResult {
@@ -964,16 +986,22 @@ fn handle_check_state(
     )
 }
 
-pub fn handle_check(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+pub fn handle_check<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    element_ref: String,
+) -> HandlerResult {
     handle_check_state(ctx, element_ref, true)
 }
 
-pub fn handle_uncheck(ctx: &mut HandlerContext, element_ref: String) -> HandlerResult {
+pub fn handle_uncheck<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    element_ref: String,
+) -> HandlerResult {
     handle_check_state(ctx, element_ref, false)
 }
 
-pub fn handle_attach(
-    ctx: &mut HandlerContext,
+pub fn handle_attach<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     session_id: String,
     interactive: bool,
 ) -> HandlerResult {
@@ -1005,7 +1033,7 @@ pub fn handle_attach(
     Ok(())
 }
 
-pub fn handle_record_start(ctx: &mut HandlerContext) -> HandlerResult {
+pub fn handle_record_start<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let result = ctx
         .client
         .call("record_start", Some(ctx.session_params()))?;
@@ -1019,8 +1047,8 @@ pub fn handle_record_start(ctx: &mut HandlerContext) -> HandlerResult {
     })
 }
 
-pub fn handle_record_stop(
-    ctx: &mut HandlerContext,
+pub fn handle_record_stop<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     output: Option<String>,
     record_format: RecordFormat,
 ) -> HandlerResult {
@@ -1055,7 +1083,7 @@ pub fn handle_record_stop(
     Ok(())
 }
 
-pub fn handle_record_status(ctx: &mut HandlerContext) -> HandlerResult {
+pub fn handle_record_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let result = ctx
         .client
         .call("record_status", Some(ctx.session_params()))?;
@@ -1072,8 +1100,8 @@ pub fn handle_record_status(ctx: &mut HandlerContext) -> HandlerResult {
     })
 }
 
-pub fn handle_trace(
-    ctx: &mut HandlerContext,
+pub fn handle_trace<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
     count: usize,
     start: bool,
     stop: bool,
@@ -1120,7 +1148,11 @@ pub fn handle_trace(
     })
 }
 
-pub fn handle_console(ctx: &mut HandlerContext, lines: usize, clear: bool) -> HandlerResult {
+pub fn handle_console<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    lines: usize,
+    clear: bool,
+) -> HandlerResult {
     let params = json!({
         "session": ctx.session,
         "count": lines,
@@ -1143,7 +1175,11 @@ pub fn handle_console(ctx: &mut HandlerContext, lines: usize, clear: bool) -> Ha
     })
 }
 
-pub fn handle_errors(ctx: &mut HandlerContext, count: usize, clear: bool) -> HandlerResult {
+pub fn handle_errors<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    count: usize,
+    clear: bool,
+) -> HandlerResult {
     let params = json!({
         "session": ctx.session,
         "count": count,
@@ -1179,7 +1215,7 @@ pub fn handle_errors(ctx: &mut HandlerContext, count: usize, clear: bool) -> Han
     })
 }
 
-pub fn handle_env(ctx: &HandlerContext) -> HandlerResult {
+pub fn handle_env<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
     let vars = [
         (
             "AGENT_TUI_TRANSPORT",
@@ -1234,7 +1270,10 @@ pub fn handle_env(ctx: &HandlerContext) -> HandlerResult {
     Ok(())
 }
 
-pub fn handle_assert(ctx: &mut HandlerContext, condition: String) -> HandlerResult {
+pub fn handle_assert<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    condition: String,
+) -> HandlerResult {
     let parts: Vec<&str> = condition.splitn(2, ':').collect();
     if parts.len() != 2 {
         eprintln!("Invalid condition format. Use: text:pattern, element:ref, or session:id");

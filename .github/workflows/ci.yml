@@ -208,6 +208,7 @@ jobs:
   publish-check:
     name: Publish Dry-Run
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
     steps:
       - uses: actions/checkout@v4
 

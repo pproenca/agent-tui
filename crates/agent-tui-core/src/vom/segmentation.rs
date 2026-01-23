@@ -169,12 +169,12 @@ mod tests {
     fn test_button_like_pattern() {
         let bg = Some(Color::Indexed(4));
         let cells = vec![vec![
-            make_cell('[', false, bg.clone()),
-            make_cell(' ', false, bg.clone()),
-            make_cell('O', false, bg.clone()),
-            make_cell('K', false, bg.clone()),
-            make_cell(' ', false, bg.clone()),
-            make_cell(']', false, bg.clone()),
+            make_cell('[', false, bg),
+            make_cell(' ', false, bg),
+            make_cell('O', false, bg),
+            make_cell('K', false, bg),
+            make_cell(' ', false, bg),
+            make_cell(']', false, bg),
         ]];
         let buffer = make_buffer(cells);
         let clusters = segment_buffer(&buffer);

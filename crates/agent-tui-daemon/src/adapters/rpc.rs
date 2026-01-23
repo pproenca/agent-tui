@@ -221,7 +221,7 @@ pub fn parse_wait_input(request: &RpcRequest) -> WaitInput {
     WaitInput {
         session_id: request.param_str("session").map(String::from),
         text: request.param_str("text").map(String::from),
-        timeout_ms: request.param_u64("timeout", 30000),
+        timeout_ms: request.param_u64("timeout_ms", 30000),
         condition: request.param_str("condition").map(String::from),
         target: request.param_str("target").map(String::from),
     }
@@ -470,7 +470,7 @@ mod tests {
             "wait",
             Some(json!({
                 "text": "Ready",
-                "timeout": 5000
+                "timeout_ms": 5000
             })),
         );
         let input = parse_wait_input(&request);

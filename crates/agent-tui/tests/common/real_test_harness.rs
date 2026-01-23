@@ -32,11 +32,13 @@ impl RealTestHarness {
             .spawn()
             .expect("Failed to spawn test daemon");
 
-        for _ in 0..50 {
+        // Exponential backoff for faster daemon startup detection
+        let backoff_intervals = [5, 10, 20, 40, 80, 160, 320];
+        for ms in backoff_intervals {
             if daemon_socket.exists() {
                 break;
             }
-            std::thread::sleep(Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(ms));
         }
 
         if !daemon_socket.exists() {
@@ -104,7 +106,7 @@ impl RealTestHarness {
 
         let wait_status = self
             .cli()
-            .args(["-s", &session_id, "wait", "-t", "5000", "$"])
+            .args(["-s", &session_id, "wait", "-t", "1000", "$"])
             .status()
             .expect("wait command failed");
 

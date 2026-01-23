@@ -21,6 +21,7 @@ pub fn element_ref_to_dto(element: ElementRef) -> ElementRefDto {
         bounds: bounds_to_dto(&element.bounds),
         visual_hash: element.visual_hash,
         nth: element.nth,
+        selected: element.selected,
     }
 }
 
@@ -84,6 +85,7 @@ mod tests {
             },
             visual_hash: 12345,
             nth: Some(2),
+            selected: false,
         };
         let dto = element_ref_to_dto(core_ref);
 
@@ -107,6 +109,7 @@ mod tests {
             },
             visual_hash: 99999,
             nth: None,
+            selected: false,
         };
         let dto = element_ref_to_dto(core_ref);
 
@@ -131,6 +134,7 @@ mod tests {
                 },
                 visual_hash: 111,
                 nth: None,
+                selected: false,
             },
         );
         let core_refmap = RefMap { refs };
@@ -156,6 +160,7 @@ mod tests {
                 },
                 visual_hash: 111,
                 nth: None,
+                selected: false,
             },
         );
         refs.insert(
@@ -171,6 +176,7 @@ mod tests {
                 },
                 visual_hash: 222,
                 nth: None,
+                selected: false,
             },
         );
         let core_refmap = RefMap { refs };
@@ -211,6 +217,7 @@ mod tests {
                 },
                 visual_hash: 12345,
                 nth: None,
+                selected: false,
             },
         );
         let core_snapshot = AccessibilitySnapshot {
@@ -245,6 +252,7 @@ mod tests {
                 },
                 visual_hash: 99999,
                 nth: None,
+                selected: false,
             },
         );
         let core_snapshot = AccessibilitySnapshot {

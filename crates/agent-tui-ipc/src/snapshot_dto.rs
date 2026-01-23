@@ -19,6 +19,8 @@ pub struct ElementRefDto {
     pub visual_hash: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nth: Option<usize>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub selected: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +74,7 @@ mod tests {
             },
             visual_hash: 12345,
             nth: Some(2),
+            selected: false,
         };
         assert_eq!(element.role, "button");
         assert_eq!(element.name, Some("OK".to_string()));
@@ -100,6 +103,7 @@ mod tests {
                             },
                             visual_hash: 12345,
                             nth: None,
+                            selected: false,
                         },
                     );
                     map
@@ -141,6 +145,7 @@ mod tests {
                             },
                             visual_hash: 12345,
                             nth: None,
+                            selected: false,
                         },
                     );
                     map.insert(
@@ -156,6 +161,7 @@ mod tests {
                             },
                             visual_hash: 67890,
                             nth: None,
+                            selected: false,
                         },
                     );
                     map
@@ -196,6 +202,7 @@ mod tests {
                             },
                             visual_hash: 12345,
                             nth: None,
+                            selected: false,
                         },
                     );
                     map

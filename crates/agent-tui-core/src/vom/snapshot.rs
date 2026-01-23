@@ -38,6 +38,7 @@ pub struct ElementRef {
     pub bounds: Bounds,
     pub visual_hash: u64,
     pub nth: Option<usize>,
+    pub selected: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -110,6 +111,7 @@ pub fn format_snapshot(
                 bounds: component.bounds.into(),
                 visual_hash: component.visual_hash,
                 nth: Some(nth),
+                selected: component.selected,
             },
         );
     }
@@ -157,6 +159,7 @@ mod tests {
             bounds: Rect::new(x, y, width, 1),
             text_content: text.to_string(),
             visual_hash: 12345,
+            selected: false,
         }
     }
 
@@ -403,6 +406,25 @@ mod tests {
         assert_eq!(e4.nth, Some(2));
     }
 
+    #[test]
+    fn test_selected_state_from_inverse() {
+        let mut comp = make_component(Role::MenuItem, "Option 1", 0, 0, 8);
+        comp.selected = true;
+        let components = vec![comp];
+        let snapshot = format_snapshot(&components, &SnapshotOptions::default());
+        let elem = snapshot.refs.get("e1").unwrap();
+        assert!(elem.selected);
+    }
+
+    #[test]
+    fn test_selected_state_default_false() {
+        let comp = make_component(Role::MenuItem, "Option 1", 0, 0, 8);
+        let components = vec![comp];
+        let snapshot = format_snapshot(&components, &SnapshotOptions::default());
+        let elem = snapshot.refs.get("e1").unwrap();
+        assert!(!elem.selected);
+    }
+
     mod prop_tests {
         use super::*;
         use proptest::prelude::*;
@@ -436,6 +458,7 @@ mod tests {
                     bounds: Rect::new(x, y, width, 1),
                     text_content: text,
                     visual_hash: 12345,
+                    selected: false,
                 })
         }
 

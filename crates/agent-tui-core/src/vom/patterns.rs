@@ -27,10 +27,13 @@ const BOX_CHARS: [char; 22] = [
 /// Minimum length for bracketed text to be considered a button.
 const MIN_BUTTON_LENGTH: usize = 3;
 
+/// Progress bar characters that indicate the content is a progress bar, not a button.
+const PROGRESS_BAR_CHARS: [char; 8] = ['=', '>', '#', '.', '█', '▓', '░', '-'];
+
 /// Detect button-like text patterns.
 ///
 /// Buttons are identified by bracketed text like `[Submit]`, `<OK>`, or `(Cancel)`.
-/// Excludes checkbox patterns like `[x]` or `[ ]`.
+/// Excludes checkbox patterns like `[x]` or `[ ]` and progress bars like `[===>  ]`.
 pub fn is_button_text(text: &str) -> bool {
     if text.len() < MIN_BUTTON_LENGTH {
         return false;
@@ -38,7 +41,23 @@ pub fn is_button_text(text: &str) -> bool {
 
     if let Some(inner) = text.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
         let trimmed = inner.trim();
-        return !matches!(trimmed, "x" | "X" | " " | "" | "✓" | "✔");
+        if matches!(trimmed, "x" | "X" | " " | "" | "✓" | "✔") {
+            return false;
+        }
+        // If there are any alphabetic characters, it's a button
+        if inner.chars().any(|c| c.is_alphabetic()) {
+            return true;
+        }
+        // Exclude progress bar patterns: content is mostly progress characters (not counting spaces)
+        let progress_chars = inner
+            .chars()
+            .filter(|c| PROGRESS_BAR_CHARS.contains(c))
+            .count();
+        let non_space_chars = inner.chars().filter(|c| !c.is_whitespace()).count();
+        if non_space_chars > 0 && progress_chars > non_space_chars / 2 {
+            return false;
+        }
+        return true;
     }
 
     if let Some(inner) = text.strip_prefix('(').and_then(|s| s.strip_suffix(')')) {
@@ -158,9 +177,203 @@ pub fn is_prompt_marker(text: &str) -> bool {
     trimmed == ">" || trimmed == "> "
 }
 
+/// Progress bar block characters (filled and empty).
+const PROGRESS_FILLED: [char; 4] = ['█', '▓', '▒', '='];
+const PROGRESS_EMPTY: [char; 4] = ['░', '▒', ' ', '.'];
+const PROGRESS_ARROW: char = '>';
+
+/// Detect progress bar patterns.
+///
+/// Progress bars use block characters like `████░░░░` or bracket style `[===>  ]`.
+pub fn is_progress_bar(text: &str) -> bool {
+    let text = text.trim();
+    if text.is_empty() {
+        return false;
+    }
+
+    // Bracket-style progress: [===>    ] or [####....]
+    if text.starts_with('[') && text.ends_with(']') {
+        let inner = &text[1..text.len() - 1];
+        if inner.is_empty() {
+            return false;
+        }
+        let progress_chars: usize = inner
+            .chars()
+            .filter(|c| PROGRESS_FILLED.contains(c) || *c == PROGRESS_ARROW || *c == '#')
+            .count();
+        let empty_chars: usize = inner
+            .chars()
+            .filter(|c| PROGRESS_EMPTY.contains(c) || *c == '-')
+            .count();
+        return progress_chars + empty_chars > inner.len() / 2;
+    }
+
+    // Block-style progress: ████░░░░
+    let total_chars = text.chars().count();
+    let progress_chars: usize = text
+        .chars()
+        .filter(|c| PROGRESS_FILLED.contains(c) || PROGRESS_EMPTY.contains(c))
+        .count();
+
+    progress_chars > total_chars / 2
+}
+
+/// Detect link patterns (URLs and file paths).
+///
+/// Links include:
+/// - URLs: `https://example.com`, `http://...`, `file://...`
+/// - File paths: `src/main.rs`, `/absolute/path.txt`, `./relative/path`
+/// - File paths with line numbers: `src/main.rs:42`, `path/file.rs:123:45`
+pub fn is_link(text: &str) -> bool {
+    let text = text.trim();
+    if text.is_empty() {
+        return false;
+    }
+
+    // URL patterns
+    if text.starts_with("https://")
+        || text.starts_with("http://")
+        || text.starts_with("file://")
+        || text.starts_with("ftp://")
+    {
+        return true;
+    }
+
+    // File path heuristics
+    is_file_path(text)
+}
+
+/// Check if text looks like a file path.
+fn is_file_path(text: &str) -> bool {
+    // Strip line number suffix like :42 or :123:45
+    let path_part = text.split(':').next().unwrap_or(text);
+
+    // Absolute paths
+    if path_part.starts_with('/') && path_part.len() > 1 {
+        return has_file_extension(path_part) || path_part.contains('/');
+    }
+
+    // Relative paths starting with ./ or ../
+    if path_part.starts_with("./") || path_part.starts_with("../") {
+        return true;
+    }
+
+    // Paths containing / with file extension
+    if path_part.contains('/') && has_file_extension(path_part) {
+        return true;
+    }
+
+    false
+}
+
+/// Check if text ends with a common file extension.
+fn has_file_extension(text: &str) -> bool {
+    const EXTENSIONS: [&str; 20] = [
+        ".rs", ".js", ".ts", ".tsx", ".jsx", ".py", ".go", ".java", ".c", ".cpp", ".h", ".hpp",
+        ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".html", ".css",
+    ];
+    EXTENSIONS.iter().any(|ext| text.ends_with(ext))
+}
+
+/// Error message prefixes.
+const ERROR_PREFIXES: [&str; 6] = ["Error:", "error:", "ERROR:", "Error ", "error ", "ERROR "];
+/// Failure indicator characters.
+const FAILURE_CHARS: [char; 2] = ['✗', '✘'];
+
+/// Detect error message patterns.
+///
+/// Error messages start with error prefixes or failure markers.
+pub fn is_error_message(text: &str) -> bool {
+    let text = text.trim();
+    if text.is_empty() {
+        return false;
+    }
+
+    // Check error prefixes
+    for prefix in ERROR_PREFIXES {
+        if text.starts_with(prefix) {
+            return true;
+        }
+    }
+
+    // Check failure markers
+    if let Some(first_char) = text.chars().next() {
+        if FAILURE_CHARS.contains(&first_char) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Detect diff line patterns.
+///
+/// Diff lines start with `+`, `-`, or `@@`.
+pub fn is_diff_line(text: &str) -> bool {
+    let text = text.trim();
+    if text.is_empty() {
+        return false;
+    }
+
+    // Diff header
+    if text.starts_with("@@") {
+        return true;
+    }
+
+    // Addition line: + followed by content
+    if text.starts_with('+') && text.len() > 1 {
+        return true;
+    }
+
+    // Deletion line: - followed by content
+    if text.starts_with('-') && text.len() > 1 {
+        return true;
+    }
+
+    false
+}
+
+/// Code block border character (vertical line).
+const CODE_BLOCK_BORDER: char = '│';
+
+/// Detect code block border patterns.
+///
+/// Code blocks in Claude Code use `│` vertical borders.
+pub fn is_code_block_border(text: &str) -> bool {
+    let text = text.trim();
+    if text.is_empty() {
+        return false;
+    }
+
+    // Must contain the vertical border character
+    if !text.contains(CODE_BLOCK_BORDER) {
+        return false;
+    }
+
+    // Should not be a full panel border (with corners)
+    let has_corners = text.contains('┌')
+        || text.contains('┐')
+        || text.contains('└')
+        || text.contains('┘')
+        || text.contains('╭')
+        || text.contains('╮')
+        || text.contains('╰')
+        || text.contains('╯');
+
+    if has_corners {
+        return false;
+    }
+
+    // Count border vs non-border characters
+    let border_count = text.chars().filter(|c| *c == CODE_BLOCK_BORDER).count();
+
+    (1..=3).contains(&border_count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn test_button_patterns() {
@@ -244,5 +457,220 @@ mod tests {
         assert!(is_menu_item("- List item"));
 
         assert!(!is_menu_item("Normal text"));
+    }
+
+    // ============================================================
+    // NEW ROLE TESTS - Phase 1: RED (failing tests for new roles)
+    // ============================================================
+
+    #[test]
+    fn test_progress_bar_block_style() {
+        assert!(is_progress_bar("████░░░░"));
+        assert!(is_progress_bar("▓▓▓▓░░░░"));
+        assert!(is_progress_bar("███████░░░"));
+    }
+
+    #[test]
+    fn test_progress_bar_bracket_style() {
+        assert!(is_progress_bar("[===>    ]"));
+        assert!(is_progress_bar("[####....]"));
+        assert!(is_progress_bar("[========]"));
+    }
+
+    #[test]
+    fn test_progress_bar_threshold() {
+        // More than 50% progress chars should be detected
+        assert!(is_progress_bar("████████"));
+        // Less than 50% progress chars should not be detected
+        assert!(!is_progress_bar("█ text here"));
+    }
+
+    #[test]
+    fn test_progress_bar_not_regular_text() {
+        assert!(!is_progress_bar("Hello World"));
+        assert!(!is_progress_bar("Loading..."));
+        assert!(!is_progress_bar(""));
+    }
+
+    #[test]
+    fn test_link_urls() {
+        assert!(is_link("https://example.com"));
+        assert!(is_link("http://localhost:3000"));
+        assert!(is_link("file:///path/to/file"));
+        assert!(is_link("https://github.com/user/repo"));
+    }
+
+    #[test]
+    fn test_link_file_paths() {
+        assert!(is_link("src/main.rs"));
+        assert!(is_link("/absolute/path.txt"));
+        assert!(is_link("./relative/path.js"));
+        assert!(is_link("../parent/file.py"));
+    }
+
+    #[test]
+    fn test_link_file_paths_with_line_numbers() {
+        assert!(is_link("src/main.rs:42"));
+        assert!(is_link("path/file.rs:123:45"));
+        assert!(is_link("/absolute/path.txt:10"));
+    }
+
+    #[test]
+    fn test_link_not_regular_text() {
+        assert!(!is_link("Hello World"));
+        assert!(!is_link("normal text"));
+        assert!(!is_link(""));
+    }
+
+    #[test]
+    fn test_error_message_prefixes() {
+        assert!(is_error_message("Error: something went wrong"));
+        assert!(is_error_message("error: compilation failed"));
+        assert!(is_error_message("ERROR: critical failure"));
+    }
+
+    #[test]
+    fn test_error_message_failure_markers() {
+        assert!(is_error_message("✗ Failed to connect"));
+        assert!(is_error_message("✘ Error occurred"));
+    }
+
+    #[test]
+    fn test_error_message_not_regular_text() {
+        assert!(!is_error_message("Hello World"));
+        assert!(!is_error_message("Success!"));
+        assert!(!is_error_message(""));
+    }
+
+    #[test]
+    fn test_diff_line_additions() {
+        assert!(is_diff_line("+ added line"));
+        assert!(is_diff_line("+added"));
+    }
+
+    #[test]
+    fn test_diff_line_deletions() {
+        assert!(is_diff_line("- removed line"));
+        assert!(is_diff_line("-removed"));
+    }
+
+    #[test]
+    fn test_diff_line_headers() {
+        assert!(is_diff_line("@@ -1,5 +1,6 @@"));
+        assert!(is_diff_line("@@"));
+    }
+
+    #[test]
+    fn test_diff_line_not_regular_text() {
+        assert!(!is_diff_line("Hello World"));
+        assert!(!is_diff_line("normal text"));
+        assert!(!is_diff_line(""));
+    }
+
+    #[test]
+    fn test_code_block_border() {
+        assert!(is_code_block_border("│ let x = 5;"));
+        assert!(is_code_block_border("│"));
+        assert!(is_code_block_border("  │ fn main() {"));
+    }
+
+    #[test]
+    fn test_code_block_not_panel_border() {
+        // Panel borders (full box) should not match
+        assert!(!is_code_block_border("┌──────────┐"));
+        assert!(!is_code_block_border("└──────────┘"));
+    }
+
+    #[test]
+    fn test_code_block_not_regular_text() {
+        assert!(!is_code_block_border("Hello World"));
+        assert!(!is_code_block_border("normal text"));
+        assert!(!is_code_block_border(""));
+    }
+
+    proptest! {
+        #[test]
+        fn progress_bar_detection_is_deterministic(input in ".*") {
+            let result1 = is_progress_bar(&input);
+            let result2 = is_progress_bar(&input);
+            prop_assert_eq!(result1, result2);
+        }
+
+        #[test]
+        fn link_detection_is_deterministic(input in ".*") {
+            let result1 = is_link(&input);
+            let result2 = is_link(&input);
+            prop_assert_eq!(result1, result2);
+        }
+
+        #[test]
+        fn error_message_detection_is_deterministic(input in ".*") {
+            let result1 = is_error_message(&input);
+            let result2 = is_error_message(&input);
+            prop_assert_eq!(result1, result2);
+        }
+
+        #[test]
+        fn diff_line_detection_is_deterministic(input in ".*") {
+            let result1 = is_diff_line(&input);
+            let result2 = is_diff_line(&input);
+            prop_assert_eq!(result1, result2);
+        }
+
+        #[test]
+        fn code_block_border_detection_is_deterministic(input in ".*") {
+            let result1 = is_code_block_border(&input);
+            let result2 = is_code_block_border(&input);
+            prop_assert_eq!(result1, result2);
+        }
+
+        #[test]
+        fn url_links_always_detected(
+            protocol in "(https?|file|ftp)://",
+            domain in "[a-z]{3,10}\\.[a-z]{2,5}"
+        ) {
+            let url = format!("{}{}", protocol, domain);
+            prop_assert!(is_link(&url), "URL should be detected: {}", url);
+        }
+
+        #[test]
+        fn file_paths_with_extension_detected(
+            dir in "[a-z]{2,8}",
+            file in "[a-z]{2,10}",
+            ext in "(rs|js|ts|py|go)"
+        ) {
+            let path = format!("{}/{}.{}", dir, file, ext);
+            prop_assert!(is_link(&path), "File path should be detected: {}", path);
+        }
+
+        #[test]
+        fn progress_bar_block_style_detected(
+            filled in "[█▓]{2,10}",
+            empty in "[░]{2,10}"
+        ) {
+            let progress = format!("{}{}", filled, empty);
+            prop_assert!(is_progress_bar(&progress), "Progress bar should be detected: {}", progress);
+        }
+
+        #[test]
+        fn error_prefixes_always_detected(
+            prefix in "(Error:|error:|ERROR:)",
+            message in "[a-z]{5,20}"
+        ) {
+            let error = format!("{} {}", prefix, message);
+            prop_assert!(is_error_message(&error), "Error message should be detected: {}", error);
+        }
+
+        #[test]
+        fn diff_addition_lines_detected(content in "[a-z]{3,20}") {
+            let line = format!("+ {}", content);
+            prop_assert!(is_diff_line(&line), "Diff addition should be detected: {}", line);
+        }
+
+        #[test]
+        fn diff_deletion_lines_detected(content in "[a-z]{3,20}") {
+            let line = format!("- {}", content);
+            prop_assert!(is_diff_line(&line), "Diff deletion should be detected: {}", line);
+        }
     }
 }

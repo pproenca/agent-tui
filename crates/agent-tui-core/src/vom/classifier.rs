@@ -10,7 +10,8 @@ use crate::vom::Component;
 use crate::vom::Role;
 use crate::vom::hash_cluster;
 use crate::vom::patterns::{
-    is_button_text, is_checkbox, is_input_field, is_menu_item, is_panel_border, is_prompt_marker,
+    is_button_text, is_checkbox, is_code_block_border, is_diff_line, is_error_message,
+    is_input_field, is_link, is_menu_item, is_panel_border, is_progress_bar, is_prompt_marker,
     is_status_indicator, is_tool_block_border,
 };
 
@@ -20,10 +21,21 @@ pub fn classify(clusters: Vec<Cluster>, cursor_row: u16, cursor_col: u16) -> Vec
         .map(|cluster| {
             let role = infer_role(&cluster, cursor_row, cursor_col);
             let visual_hash = hash_cluster(&cluster);
+            let selected = is_selected(&cluster);
 
-            Component::new(role, cluster.rect, cluster.text.clone(), visual_hash)
+            Component::with_selected(
+                role,
+                cluster.rect,
+                cluster.text.clone(),
+                visual_hash,
+                selected,
+            )
         })
         .collect()
+}
+
+fn is_selected(cluster: &Cluster) -> bool {
+    cluster.style.inverse || cluster.text.starts_with('❯')
 }
 
 fn infer_role(cluster: &Cluster, cursor_row: u16, cursor_col: u16) -> Role {
@@ -44,7 +56,6 @@ fn infer_role(cluster: &Cluster, cursor_row: u16, cursor_col: u16) -> Role {
         if cluster.rect.y <= 2 {
             return Role::Tab;
         }
-
         return Role::MenuItem;
     }
 
@@ -52,6 +63,14 @@ fn infer_role(cluster: &Cluster, cursor_row: u16, cursor_col: u16) -> Role {
         if *idx == TAB_BG_BLUE || *idx == TAB_BG_CYAN {
             return Role::Tab;
         }
+    }
+
+    if is_link(text) {
+        return Role::Link;
+    }
+
+    if is_error_message(text) {
+        return Role::ErrorMessage;
     }
 
     if is_input_field(text) {
@@ -66,12 +85,24 @@ fn infer_role(cluster: &Cluster, cursor_row: u16, cursor_col: u16) -> Role {
         return Role::PromptMarker;
     }
 
+    if is_progress_bar(text) {
+        return Role::ProgressBar;
+    }
+
+    if is_diff_line(text) {
+        return Role::DiffLine;
+    }
+
     if is_menu_item(text) {
         return Role::MenuItem;
     }
 
     if is_tool_block_border(text) {
         return Role::ToolBlock;
+    }
+
+    if is_code_block_border(text) {
+        return Role::CodeBlock;
     }
 
     if is_panel_border(text) {
@@ -366,6 +397,129 @@ mod tests {
         let cluster = make_cluster("[x]", CellStyle::default(), 0, 0);
         let role = infer_role(&cluster, 99, 99);
         assert_eq!(role, Role::Checkbox);
+    }
+
+    // ============================================================
+    // NEW ROLE TESTS - Phase 1: RED (failing tests for new roles)
+    // ============================================================
+
+    #[test]
+    fn test_progress_bar_detection() {
+        let cluster = make_cluster("████░░░░", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::ProgressBar);
+    }
+
+    #[test]
+    fn test_progress_bar_bracket_detection() {
+        let cluster = make_cluster("[===>    ]", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::ProgressBar);
+    }
+
+    #[test]
+    fn test_link_url_detection() {
+        let cluster = make_cluster("https://example.com", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Link);
+    }
+
+    #[test]
+    fn test_link_file_path_detection() {
+        let cluster = make_cluster("src/main.rs:42", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::Link);
+    }
+
+    #[test]
+    fn test_link_is_interactive() {
+        assert!(Role::Link.is_interactive());
+    }
+
+    #[test]
+    fn test_error_message_detection() {
+        let cluster = make_cluster("Error: something failed", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::ErrorMessage);
+    }
+
+    #[test]
+    fn test_error_message_failure_marker() {
+        let cluster = make_cluster("✗ Failed to compile", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::ErrorMessage);
+    }
+
+    #[test]
+    fn test_error_message_not_interactive() {
+        assert!(!Role::ErrorMessage.is_interactive());
+    }
+
+    #[test]
+    fn test_diff_line_addition_detection() {
+        let cluster = make_cluster("+ added line", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::DiffLine);
+    }
+
+    #[test]
+    fn test_diff_line_deletion_detection() {
+        let cluster = make_cluster("- removed line", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::DiffLine);
+    }
+
+    #[test]
+    fn test_diff_line_header_detection() {
+        let cluster = make_cluster("@@ -1,5 +1,6 @@", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::DiffLine);
+    }
+
+    #[test]
+    fn test_diff_line_not_interactive() {
+        assert!(!Role::DiffLine.is_interactive());
+    }
+
+    #[test]
+    fn test_code_block_detection() {
+        let cluster = make_cluster("│ let x = 5;", CellStyle::default(), 0, 5);
+        let role = infer_role(&cluster, 99, 99);
+        assert_eq!(role, Role::CodeBlock);
+    }
+
+    #[test]
+    fn test_code_block_not_interactive() {
+        assert!(!Role::CodeBlock.is_interactive());
+    }
+
+    #[test]
+    fn test_menu_item_selected_via_inverse() {
+        let cluster = make_cluster(
+            "Option 1",
+            CellStyle {
+                inverse: true,
+                ..Default::default()
+            },
+            0,
+            5,
+        );
+        let components = classify(vec![cluster], 99, 99);
+        assert!(components[0].selected);
+    }
+
+    #[test]
+    fn test_menu_item_selected_via_prefix() {
+        let cluster = make_cluster("❯ Selected Option", CellStyle::default(), 0, 5);
+        let components = classify(vec![cluster], 99, 99);
+        assert!(components[0].selected);
+    }
+
+    #[test]
+    fn test_menu_item_not_selected_by_default() {
+        let cluster = make_cluster("Normal Option", CellStyle::default(), 0, 5);
+        let components = classify(vec![cluster], 99, 99);
+        assert!(!components[0].selected);
     }
 
     mod prop_tests {

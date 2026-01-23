@@ -3,58 +3,34 @@ use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::common::{domain_error_response, lock_timeout_response};
+use crate::adapters::{
+    domain_error_response, lock_timeout_response, parse_spawn_input, spawn_output_to_response,
+};
+use crate::domain::SpawnOutput;
 use crate::error::DomainError;
 use crate::lock_helpers::{LOCK_TIMEOUT, acquire_session_lock};
-use crate::session::{SessionError, SessionManager};
+use crate::repository::SessionRepository;
+use crate::session::SessionError;
 
-const MAX_TERMINAL_COLS: u16 = 500;
-const MAX_TERMINAL_ROWS: u16 = 200;
-const MIN_TERMINAL_COLS: u16 = 10;
-const MIN_TERMINAL_ROWS: u16 = 5;
-
-pub fn handle_spawn(session_manager: &Arc<SessionManager>, request: RpcRequest) -> RpcResponse {
-    let params = match request.params {
-        Some(p) => p,
-        None => return RpcResponse::error(request.id, -32602, "Missing params"),
+/// Handle spawn requests using the repository pattern.
+pub fn handle_spawn<R: SessionRepository>(repository: &Arc<R>, request: RpcRequest) -> RpcResponse {
+    let input = match parse_spawn_input(&request) {
+        Ok(input) => input,
+        Err(resp) => return resp,
     };
 
-    let command = params
-        .get("command")
-        .and_then(|v| v.as_str())
-        .unwrap_or("bash");
-
-    let args: Vec<String> = params
-        .get("args")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let cwd = params.get("cwd").and_then(|v| v.as_str());
-
-    let session_id = params
-        .get("session")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let cols = params.get("cols").and_then(|v| v.as_u64()).unwrap_or(80) as u16;
-    let rows = params.get("rows").and_then(|v| v.as_u64()).unwrap_or(24) as u16;
-
-    let cols = cols.clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS);
-    let rows = rows.clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS);
-
-    match session_manager.spawn(command, &args, cwd, None, session_id, cols, rows) {
-        Ok((session_id, pid)) => RpcResponse::success(
-            request.id,
-            json!({
-                "session_id": session_id,
-                "pid": pid
-            }),
-        ),
+    match repository.spawn(
+        &input.command,
+        &input.args,
+        input.cwd.as_deref(),
+        input.env.as_ref(),
+        input.session_id,
+        input.cols,
+        input.rows,
+    ) {
+        Ok((session_id, pid)) => {
+            spawn_output_to_response(request.id, SpawnOutput { session_id, pid })
+        }
         Err(SessionError::LimitReached(max)) => {
             let err = DomainError::SessionLimitReached { max };
             domain_error_response(request.id, &err)
@@ -63,11 +39,11 @@ pub fn handle_spawn(session_manager: &Arc<SessionManager>, request: RpcRequest) 
             let err_str = e.to_string();
             let domain_err = if err_str.contains("No such file") || err_str.contains("not found") {
                 DomainError::CommandNotFound {
-                    command: command.to_string(),
+                    command: input.command,
                 }
             } else if err_str.contains("Permission denied") {
                 DomainError::PermissionDenied {
-                    command: command.to_string(),
+                    command: input.command,
                 }
             } else {
                 DomainError::PtyError {
@@ -80,18 +56,19 @@ pub fn handle_spawn(session_manager: &Arc<SessionManager>, request: RpcRequest) 
     }
 }
 
-pub fn handle_kill(session_manager: &Arc<SessionManager>, request: RpcRequest) -> RpcResponse {
+/// Handle kill requests using the repository pattern.
+pub fn handle_kill<R: SessionRepository>(repository: &Arc<R>, request: RpcRequest) -> RpcResponse {
     let session_id = request.param_str("session");
 
     let session_to_kill = match session_id {
         Some(id) => id.to_string(),
-        None => match session_manager.active_session_id() {
+        None => match repository.active_session_id() {
             Some(id) => id.to_string(),
             None => return domain_error_response(request.id, &DomainError::NoActiveSession),
         },
     };
 
-    match session_manager.kill(&session_to_kill) {
+    match repository.kill(&session_to_kill) {
         Ok(()) => RpcResponse::success(
             request.id,
             json!({
@@ -103,10 +80,14 @@ pub fn handle_kill(session_manager: &Arc<SessionManager>, request: RpcRequest) -
     }
 }
 
-pub fn handle_restart(session_manager: &Arc<SessionManager>, request: RpcRequest) -> RpcResponse {
+/// Handle restart requests using the repository pattern.
+pub fn handle_restart<R: SessionRepository>(
+    repository: &Arc<R>,
+    request: RpcRequest,
+) -> RpcResponse {
     let session_id = request.param_str("session");
 
-    let (old_session_id, command, cols, rows) = match session_manager.resolve(session_id) {
+    let (old_session_id, command, cols, rows) = match repository.resolve(session_id) {
         Ok(session) => {
             let Some(sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
                 return lock_timeout_response(request.id, session_id);
@@ -119,11 +100,11 @@ pub fn handle_restart(session_manager: &Arc<SessionManager>, request: RpcRequest
         }
     };
 
-    if let Err(e) = session_manager.kill(&old_session_id) {
+    if let Err(e) = repository.kill(&old_session_id) {
         return domain_error_response(request.id, &DomainError::from(e));
     }
 
-    match session_manager.spawn(&command, &[], None, None, None, cols, rows) {
+    match repository.spawn(&command, &[], None, None, None, cols, rows) {
         Ok((new_session_id, pid)) => RpcResponse::success(
             request.id,
             json!({
@@ -138,9 +119,13 @@ pub fn handle_restart(session_manager: &Arc<SessionManager>, request: RpcRequest
     }
 }
 
-pub fn handle_sessions(session_manager: &Arc<SessionManager>, request: RpcRequest) -> RpcResponse {
-    let sessions = session_manager.list();
-    let active_id = session_manager.active_session_id();
+/// Handle sessions list requests using the repository pattern.
+pub fn handle_sessions<R: SessionRepository>(
+    repository: &Arc<R>,
+    request: RpcRequest,
+) -> RpcResponse {
+    let sessions = repository.list();
+    let active_id = repository.active_session_id();
 
     RpcResponse::success(
         request.id,
@@ -151,7 +136,16 @@ pub fn handle_sessions(session_manager: &Arc<SessionManager>, request: RpcReques
     )
 }
 
-pub fn handle_resize(session_manager: &Arc<SessionManager>, request: RpcRequest) -> RpcResponse {
+const MAX_TERMINAL_COLS: u16 = 500;
+const MAX_TERMINAL_ROWS: u16 = 200;
+const MIN_TERMINAL_COLS: u16 = 10;
+const MIN_TERMINAL_ROWS: u16 = 5;
+
+/// Handle resize requests using the repository pattern.
+pub fn handle_resize<R: SessionRepository>(
+    repository: &Arc<R>,
+    request: RpcRequest,
+) -> RpcResponse {
     let cols = request
         .param_u16("cols", 80)
         .clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS);
@@ -161,7 +155,7 @@ pub fn handle_resize(session_manager: &Arc<SessionManager>, request: RpcRequest)
     let session_id = request.param_str("session");
     let req_id = request.id;
 
-    match session_manager.resolve(session_id) {
+    match repository.resolve(session_id) {
         Ok(session) => {
             let Some(mut sess) = acquire_session_lock(&session, LOCK_TIMEOUT) else {
                 return lock_timeout_response(req_id, session_id);
@@ -188,19 +182,23 @@ pub fn handle_resize(session_manager: &Arc<SessionManager>, request: RpcRequest)
     }
 }
 
-pub fn handle_attach(session_manager: &Arc<SessionManager>, request: RpcRequest) -> RpcResponse {
+/// Handle attach requests using the repository pattern.
+pub fn handle_attach<R: SessionRepository>(
+    repository: &Arc<R>,
+    request: RpcRequest,
+) -> RpcResponse {
     let session_id = match request.require_str("session") {
         Ok(s) => s,
         Err(resp) => return resp,
     };
 
-    match session_manager.resolve(Some(session_id)) {
+    match repository.resolve(Some(session_id)) {
         Ok(session) => {
             let Some(mut sess) = acquire_session_lock(&session, Duration::from_millis(100)) else {
                 return lock_timeout_response(request.id, Some(session_id));
             };
             if sess.is_running() {
-                let _ = session_manager.set_active(session_id);
+                let _ = repository.set_active(session_id);
                 RpcResponse::success(
                     request.id,
                     json!({

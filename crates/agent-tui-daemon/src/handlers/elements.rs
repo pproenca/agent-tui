@@ -598,7 +598,7 @@ pub fn handle_toggle(session_manager: &Arc<SessionManager>, request: RpcRequest)
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let force_state = request.param_bool("state");
+    let force_state = request.param_bool_opt("state");
     let session_id = request.param_str("session");
     let req_id = request.id;
 

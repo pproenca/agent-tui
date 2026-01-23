@@ -1,17 +1,21 @@
 #![deny(clippy::all)]
 
+pub mod adapters;
 pub mod ansi_keys;
 mod config;
+pub mod domain;
 mod error;
 pub mod handlers;
 mod lock_helpers;
 mod metrics;
 mod pty_session;
+mod repository;
 mod select_helpers;
 mod server;
 mod session;
 mod terminal_state;
 pub mod transport;
+pub mod usecases;
 mod wait;
 
 pub use config::DaemonConfig;
@@ -23,6 +27,8 @@ pub use lock_helpers::MAX_BACKOFF;
 pub use lock_helpers::acquire_session_lock;
 pub use metrics::DaemonMetrics;
 pub use pty_session::PtySession;
+pub use repository::SessionRepository;
+pub use repository::SessionSnapshot;
 pub use select_helpers::navigate_to_option;
 pub use select_helpers::parse_select_options;
 pub use select_helpers::strip_ansi_codes;

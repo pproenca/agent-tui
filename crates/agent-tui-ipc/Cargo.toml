@@ -8,6 +8,7 @@ description = "JSON-RPC protocol and client for agent-tui"
 
 [dependencies]
 agent-tui-common.workspace = true
+async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

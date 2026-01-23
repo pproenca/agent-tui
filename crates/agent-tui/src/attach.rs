@@ -12,26 +12,12 @@ use crossterm::terminal;
 use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
 use serde_json::json;
-use thiserror::Error;
 
 use agent_tui_common::Colors;
 use agent_tui_ipc::ClientError;
 use agent_tui_ipc::DaemonClient;
 
-#[derive(Error, Debug)]
-pub enum AttachError {
-    #[error("Terminal error: {0}")]
-    Terminal(#[from] io::Error),
-
-    #[error("PTY write failed: {0}")]
-    PtyWrite(String),
-
-    #[error("PTY read failed: {0}")]
-    PtyRead(String),
-
-    #[error("Event read failed")]
-    EventRead,
-}
+pub use crate::error::AttachError;
 
 pub fn attach_ipc(client: &mut DaemonClient, session_id: &str) -> Result<(), AttachError> {
     eprintln!(

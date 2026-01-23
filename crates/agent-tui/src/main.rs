@@ -2,6 +2,7 @@ use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
 
+use agent_tui::attach::AttachError;
 use agent_tui::commands::Cli;
 use agent_tui::commands::Commands;
 use agent_tui::commands::GetCommand;
@@ -27,7 +28,21 @@ fn main() {
                     Colors::dim("(This error may be transient - retry may succeed)")
                 );
             }
-            std::process::exit(exit_code_for_error(client_error));
+            std::process::exit(exit_code_for_client_error(client_error));
+        } else if let Some(attach_error) = e.downcast_ref::<AttachError>() {
+            eprintln!("{} {}", Colors::error("Error:"), attach_error);
+            eprintln!(
+                "{} {}",
+                Colors::dim("Suggestion:"),
+                attach_error.suggestion()
+            );
+            if attach_error.is_retryable() {
+                eprintln!(
+                    "{}",
+                    Colors::dim("(This error may be transient - retry may succeed)")
+                );
+            }
+            std::process::exit(attach_error.exit_code());
         } else {
             eprintln!("{} {}", Colors::error("Error:"), e);
             std::process::exit(1);
@@ -35,7 +50,7 @@ fn main() {
     }
 }
 
-fn exit_code_for_error(error: &ClientError) -> i32 {
+fn exit_code_for_client_error(error: &ClientError) -> i32 {
     use agent_tui_ipc::error_codes::ErrorCategory;
 
     match error.category() {

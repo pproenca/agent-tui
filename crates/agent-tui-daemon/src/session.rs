@@ -16,7 +16,6 @@ use chrono::DateTime;
 use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
-use thiserror::Error;
 use uuid::Uuid;
 
 use agent_tui_common::mutex_lock_or_recover;
@@ -26,10 +25,11 @@ use agent_tui_core::Element;
 use agent_tui_core::component_to_element;
 use agent_tui_core::find_element_by_ref;
 use agent_tui_terminal::CursorPosition;
-use agent_tui_terminal::PtyError;
 use agent_tui_terminal::PtyHandle;
 use agent_tui_terminal::VirtualTerminal;
 use agent_tui_terminal::key_to_escape_sequence;
+
+pub use crate::error::SessionError;
 
 const MAX_RECORDING_FRAMES: usize = 1000;
 const MAX_TRACE_ENTRIES: usize = 500;
@@ -157,22 +157,6 @@ impl ErrorState {
             entries: VecDeque::new(),
         }
     }
-}
-
-#[derive(Error, Debug)]
-pub enum SessionError {
-    #[error("Session not found: {0}")]
-    NotFound(String),
-    #[error("No active session")]
-    NoActiveSession,
-    #[error("PTY error: {0}")]
-    Pty(#[from] PtyError),
-    #[error("Element not found: {0}")]
-    ElementNotFound(String),
-    #[error("Invalid key: {0}")]
-    InvalidKey(String),
-    #[error("Session limit reached: maximum {0} sessions allowed")]
-    LimitReached(usize),
 }
 
 #[derive(Clone, Copy)]

@@ -1,9 +1,10 @@
 #![deny(clippy::all)]
 
+pub mod error;
 mod pty;
 mod terminal;
 
-pub use pty::PtyError;
+pub use error::PtyError;
 pub use pty::PtyHandle;
 pub use pty::key_to_escape_sequence;
 pub use terminal::Cell;

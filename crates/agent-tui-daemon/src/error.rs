@@ -4,9 +4,88 @@
 //! structured context for AI agents to handle programmatically.
 
 use agent_tui_ipc::error_codes::{self, ErrorCategory};
+use agent_tui_terminal::PtyError;
 use serde_json::{Value, json};
+use thiserror::Error;
 
-use crate::session::SessionError;
+/// Session-level errors with structured context for AI agents.
+#[derive(Error, Debug)]
+pub enum SessionError {
+    #[error("Session not found: {0}")]
+    NotFound(String),
+    #[error("No active session")]
+    NoActiveSession,
+    #[error("PTY error: {0}")]
+    Pty(#[from] PtyError),
+    #[error("Element not found: {0}")]
+    ElementNotFound(String),
+    #[error("Invalid key: {0}")]
+    InvalidKey(String),
+    #[error("Session limit reached: maximum {0} sessions allowed")]
+    LimitReached(usize),
+}
+
+impl SessionError {
+    /// Returns the JSON-RPC error code for this error.
+    pub fn code(&self) -> i32 {
+        match self {
+            SessionError::NotFound(_) => error_codes::SESSION_NOT_FOUND,
+            SessionError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
+            SessionError::ElementNotFound(_) => error_codes::ELEMENT_NOT_FOUND,
+            SessionError::InvalidKey(_) => error_codes::INVALID_KEY,
+            SessionError::LimitReached(_) => error_codes::SESSION_LIMIT,
+            SessionError::Pty(_) => error_codes::PTY_ERROR,
+        }
+    }
+
+    /// Returns the error category for programmatic handling.
+    pub fn category(&self) -> ErrorCategory {
+        error_codes::category_for_code(self.code())
+    }
+
+    /// Returns structured context about the error for debugging.
+    pub fn context(&self) -> Value {
+        match self {
+            SessionError::NotFound(id) => json!({ "session_id": id }),
+            SessionError::NoActiveSession => json!({}),
+            SessionError::ElementNotFound(element_ref) => json!({ "element_ref": element_ref }),
+            SessionError::InvalidKey(key) => json!({ "key": key }),
+            SessionError::LimitReached(max) => json!({ "max_sessions": max }),
+            SessionError::Pty(pty_err) => pty_err.context(),
+        }
+    }
+
+    /// Returns a helpful suggestion for resolving the error.
+    pub fn suggestion(&self) -> String {
+        match self {
+            SessionError::NotFound(_) | SessionError::NoActiveSession => {
+                "Run 'sessions' to list active sessions or 'spawn <cmd>' to start a new one."
+                    .to_string()
+            }
+            SessionError::ElementNotFound(element_ref) => {
+                format!(
+                    "Element '{}' not found. Run 'snapshot -i' to see current elements and their refs.",
+                    element_ref
+                )
+            }
+            SessionError::InvalidKey(_) => {
+                "Supported keys: Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp/Down, F1-F12. Modifiers: Ctrl+, Alt+, Shift+".to_string()
+            }
+            SessionError::LimitReached(_) => {
+                "Kill unused sessions with 'kill <session_id>' or increase limit with AGENT_TUI_MAX_SESSIONS env var.".to_string()
+            }
+            SessionError::Pty(pty_err) => pty_err.suggestion(),
+        }
+    }
+
+    /// Returns whether this error is potentially transient and may succeed on retry.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            SessionError::Pty(pty_err) => pty_err.is_retryable(),
+            _ => error_codes::is_retryable(self.code()),
+        }
+    }
+}
 
 /// Domain-specific errors with semantic codes and structured context.
 #[derive(Debug)]
@@ -374,5 +453,83 @@ mod tests {
             expected: "input".into(),
         };
         assert_eq!(err.to_string(), "Element @el1 is a button not a input");
+    }
+
+    // SessionError tests
+    #[test]
+    fn test_session_error_not_found_code() {
+        let err = SessionError::NotFound("abc123".into());
+        assert_eq!(err.code(), error_codes::SESSION_NOT_FOUND);
+    }
+
+    #[test]
+    fn test_session_error_no_active_session_code() {
+        let err = SessionError::NoActiveSession;
+        assert_eq!(err.code(), error_codes::NO_ACTIVE_SESSION);
+    }
+
+    #[test]
+    fn test_session_error_element_not_found_code() {
+        let err = SessionError::ElementNotFound("@btn1".into());
+        assert_eq!(err.code(), error_codes::ELEMENT_NOT_FOUND);
+    }
+
+    #[test]
+    fn test_session_error_invalid_key_code() {
+        let err = SessionError::InvalidKey("BadKey".into());
+        assert_eq!(err.code(), error_codes::INVALID_KEY);
+    }
+
+    #[test]
+    fn test_session_error_limit_reached_code() {
+        let err = SessionError::LimitReached(16);
+        assert_eq!(err.code(), error_codes::SESSION_LIMIT);
+    }
+
+    #[test]
+    fn test_session_error_category() {
+        let err = SessionError::NotFound("abc".into());
+        assert_eq!(err.category(), ErrorCategory::NotFound);
+
+        let err = SessionError::InvalidKey("x".into());
+        assert_eq!(err.category(), ErrorCategory::InvalidInput);
+
+        let err = SessionError::LimitReached(10);
+        assert_eq!(err.category(), ErrorCategory::Busy);
+    }
+
+    #[test]
+    fn test_session_error_context() {
+        let err = SessionError::NotFound("sess123".into());
+        let ctx = err.context();
+        assert_eq!(ctx["session_id"], "sess123");
+
+        let err = SessionError::ElementNotFound("@btn5".into());
+        let ctx = err.context();
+        assert_eq!(ctx["element_ref"], "@btn5");
+
+        let err = SessionError::LimitReached(16);
+        let ctx = err.context();
+        assert_eq!(ctx["max_sessions"], 16);
+    }
+
+    #[test]
+    fn test_session_error_suggestion() {
+        let err = SessionError::NotFound("x".into());
+        assert!(err.suggestion().contains("sessions"));
+
+        let err = SessionError::ElementNotFound("@btn1".into());
+        assert!(err.suggestion().contains("snapshot"));
+
+        let err = SessionError::InvalidKey("x".into());
+        assert!(err.suggestion().contains("Enter"));
+    }
+
+    #[test]
+    fn test_session_error_is_retryable() {
+        assert!(!SessionError::NotFound("x".into()).is_retryable());
+        assert!(!SessionError::NoActiveSession.is_retryable());
+        assert!(!SessionError::ElementNotFound("x".into()).is_retryable());
+        assert!(!SessionError::InvalidKey("x".into()).is_retryable());
     }
 }

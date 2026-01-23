@@ -984,14 +984,10 @@ pub fn handle_attach(
 
     if interactive {
         if !result.bool_or("success", false) {
-            eprintln!("Failed to attach to session: {}", session_id);
-            std::process::exit(1);
+            return Err(format!("Failed to attach to session: {}", session_id).into());
         }
 
-        if let Err(e) = attach::attach_ipc(ctx.client, &session_id) {
-            eprintln!("Attach failed: {}", e);
-            std::process::exit(1);
-        }
+        attach::attach_ipc(ctx.client, &session_id)?;
     } else {
         match ctx.format {
             OutputFormat::Json => {
@@ -1001,8 +997,7 @@ pub fn handle_attach(
                 if result.bool_or("success", false) {
                     println!("Attached to session {}", Colors::session_id(&session_id));
                 } else {
-                    eprintln!("Failed to attach to session: {}", session_id);
-                    std::process::exit(1);
+                    return Err(format!("Failed to attach to session: {}", session_id).into());
                 }
             }
         }

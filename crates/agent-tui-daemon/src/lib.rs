@@ -12,6 +12,7 @@ mod wait;
 
 pub use config::DaemonConfig;
 pub use error::DomainError;
+pub use error::SessionError;
 pub use lock_helpers::LOCK_TIMEOUT;
 pub use lock_helpers::MAX_BACKOFF;
 pub use lock_helpers::acquire_session_lock;
@@ -25,7 +26,6 @@ pub use session::PersistedSession;
 pub use session::RecordingFrame;
 pub use session::RecordingStatus;
 pub use session::Session;
-pub use session::SessionError;
 pub use session::SessionId;
 pub use session::SessionInfo;
 pub use session::SessionManager;

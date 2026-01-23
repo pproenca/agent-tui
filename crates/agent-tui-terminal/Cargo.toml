@@ -8,7 +8,9 @@ description = "PTY and terminal emulation for agent-tui"
 
 [dependencies]
 agent-tui-common.workspace = true
+agent-tui-ipc.workspace = true
 portable-pty.workspace = true
+serde_json.workspace = true
 vt100.workspace = true
 thiserror.workspace = true
 

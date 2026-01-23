@@ -2,6 +2,7 @@
 
 pub mod attach;
 pub mod commands;
+pub mod error;
 pub mod handlers;
 
 pub use agent_tui_common::Colors;
@@ -13,3 +14,4 @@ pub use agent_tui_daemon::SessionId;
 pub use agent_tui_daemon::SessionManager;
 pub use agent_tui_ipc::ClientError;
 pub use agent_tui_ipc::DaemonClient;
+pub use error::AttachError;

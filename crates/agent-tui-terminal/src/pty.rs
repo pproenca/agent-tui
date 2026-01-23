@@ -10,23 +10,10 @@ use portable_pty::CommandBuilder;
 use portable_pty::MasterPty;
 use portable_pty::PtySize;
 use portable_pty::native_pty_system;
-use thiserror::Error;
 
 use agent_tui_common::mutex_lock_or_recover;
 
-#[derive(Error, Debug)]
-pub enum PtyError {
-    #[error("Failed to open PTY: {0}")]
-    Open(String),
-    #[error("Failed to spawn process: {0}")]
-    Spawn(String),
-    #[error("Failed to write to PTY: {0}")]
-    Write(String),
-    #[error("Failed to read from PTY: {0}")]
-    Read(String),
-    #[error("Failed to resize PTY: {0}")]
-    Resize(String),
-}
+pub use crate::error::PtyError;
 
 pub struct PtyHandle {
     master: Box<dyn MasterPty + Send>,

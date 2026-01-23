@@ -1981,8 +1981,9 @@ pub fn start_daemon() -> Result<(), DaemonError> {
         .map_err(|e| DaemonError::LockFailed(format!("failed to write PID to lock file: {}", e)))?;
 
     if socket_path.exists() {
-        std::fs::remove_file(&socket_path)
-            .map_err(|e| DaemonError::SocketBind(format!("failed to remove stale socket: {}", e)))?;
+        std::fs::remove_file(&socket_path).map_err(|e| {
+            DaemonError::SocketBind(format!("failed to remove stale socket: {}", e))
+        })?;
     }
 
     let listener = UnixListener::bind(&socket_path)
@@ -2001,8 +2002,8 @@ pub fn start_daemon() -> Result<(), DaemonError> {
         config,
     ));
 
-    let mut signals = Signals::new([SIGINT, SIGTERM])
-        .map_err(|e| DaemonError::SignalSetup(e.to_string()))?;
+    let mut signals =
+        Signals::new([SIGINT, SIGTERM]).map_err(|e| DaemonError::SignalSetup(e.to_string()))?;
     let shutdown_signal = Arc::clone(&shutdown);
     thread::Builder::new()
         .name("signal-handler".to_string())

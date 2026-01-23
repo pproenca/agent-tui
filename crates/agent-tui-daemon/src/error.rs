@@ -126,11 +126,19 @@ impl DaemonError {
     /// Returns structured context about the error for debugging.
     pub fn context(&self) -> Value {
         match self {
-            DaemonError::SocketBind(reason) => json!({ "operation": "socket_bind", "reason": reason }),
-            DaemonError::AlreadyRunning => json!({ "operation": "startup", "reason": "another instance running" }),
+            DaemonError::SocketBind(reason) => {
+                json!({ "operation": "socket_bind", "reason": reason })
+            }
+            DaemonError::AlreadyRunning => {
+                json!({ "operation": "startup", "reason": "another instance running" })
+            }
             DaemonError::LockFailed(reason) => json!({ "operation": "lock", "reason": reason }),
-            DaemonError::SignalSetup(reason) => json!({ "operation": "signal_setup", "reason": reason }),
-            DaemonError::ThreadPool(reason) => json!({ "operation": "thread_pool", "reason": reason }),
+            DaemonError::SignalSetup(reason) => {
+                json!({ "operation": "signal_setup", "reason": reason })
+            }
+            DaemonError::ThreadPool(reason) => {
+                json!({ "operation": "thread_pool", "reason": reason })
+            }
         }
     }
 
@@ -691,7 +699,10 @@ mod tests {
     #[test]
     fn test_daemon_error_display() {
         let err = DaemonError::AlreadyRunning;
-        assert_eq!(err.to_string(), "Another daemon instance is already running");
+        assert_eq!(
+            err.to_string(),
+            "Another daemon instance is already running"
+        );
     }
 
     // PtyError conversion test

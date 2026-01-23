@@ -46,15 +46,15 @@ impl TerminalState {
         self.terminal.clear();
     }
 
-    pub fn detect_elements(&mut self, cursor_row: u16, cursor_col: u16) -> &[Element] {
+    pub fn detect_elements(&mut self, cursor: &CursorPosition) -> &[Element] {
         let buffer = self.terminal.screen_buffer();
-        let components = agent_tui_core::analyze(&buffer, cursor_row, cursor_col);
+        let components = agent_tui_core::analyze(&buffer, cursor);
 
         self.cached_elements = components
             .iter()
             .filter(|c| c.role.is_interactive())
             .enumerate()
-            .map(|(i, c)| component_to_element(c, i, cursor_row, cursor_col))
+            .map(|(i, c)| component_to_element(c, i, cursor.row, cursor.col))
             .collect();
 
         &self.cached_elements
@@ -68,8 +68,8 @@ impl TerminalState {
         find_element_by_ref(&self.cached_elements, element_ref)
     }
 
-    pub fn analyze_screen(&self, cursor_row: u16, cursor_col: u16) -> Vec<Component> {
+    pub fn analyze_screen(&self, cursor: &CursorPosition) -> Vec<Component> {
         let buffer = self.terminal.screen_buffer();
-        agent_tui_core::analyze(&buffer, cursor_row, cursor_col)
+        agent_tui_core::analyze(&buffer, cursor)
     }
 }

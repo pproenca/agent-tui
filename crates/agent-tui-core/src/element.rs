@@ -31,6 +31,8 @@ pub enum ElementType {
     Spinner,
     /// Reserved for future VOM progress bar detection.
     Progress,
+    /// Clickable link (URL or file path).
+    Link,
 }
 
 impl ElementType {
@@ -45,6 +47,7 @@ impl ElementType {
             ElementType::ListItem => "listitem",
             ElementType::Spinner => "spinner",
             ElementType::Progress => "progress",
+            ElementType::Link => "link",
         }
     }
 }
@@ -80,6 +83,14 @@ pub fn role_to_element_type(role: Role) -> ElementType {
         Role::MenuItem => ElementType::MenuItem,
         Role::StaticText => ElementType::ListItem,
         Role::Panel => ElementType::ListItem,
+        Role::Status => ElementType::Spinner,
+        Role::ToolBlock => ElementType::ListItem,
+        Role::PromptMarker => ElementType::Input,
+        Role::ProgressBar => ElementType::Progress,
+        Role::Link => ElementType::Link,
+        Role::ErrorMessage => ElementType::ListItem,
+        Role::DiffLine => ElementType::ListItem,
+        Role::CodeBlock => ElementType::ListItem,
     }
 }
 
@@ -189,6 +200,7 @@ mod tests {
             bounds: Rect::new(x, y, width, 1),
             text_content: text.to_string(),
             visual_hash: 0,
+            selected: false,
         }
     }
 

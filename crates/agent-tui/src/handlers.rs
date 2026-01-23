@@ -409,6 +409,30 @@ pub fn handle_snapshot<C: DaemonClient>(
     Ok(())
 }
 
+pub fn handle_accessibility_snapshot<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    interactive_only: bool,
+) -> HandlerResult {
+    let params = json!({
+        "session": ctx.session,
+        "interactive": interactive_only
+    });
+
+    let result = ctx.client.call("accessibility_snapshot", Some(params))?;
+
+    match ctx.format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        OutputFormat::Text => {
+            if let Some(tree) = result.get("tree").and_then(|v| v.as_str()) {
+                println!("{}", tree);
+            }
+        }
+    }
+    Ok(())
+}
+
 ref_action_handler!(
     handle_click,
     "click",

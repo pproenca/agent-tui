@@ -1,5 +1,10 @@
 pub mod classifier;
+pub mod patterns;
 pub mod segmentation;
+pub mod snapshot;
+
+#[cfg(test)]
+mod integration_tests;
 
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -70,6 +75,7 @@ pub struct Component {
     pub bounds: Rect,
     pub text_content: String,
     pub visual_hash: u64,
+    pub selected: bool,
 }
 
 impl Component {
@@ -80,6 +86,24 @@ impl Component {
             bounds,
             text_content,
             visual_hash,
+            selected: false,
+        }
+    }
+
+    pub fn with_selected(
+        role: Role,
+        bounds: Rect,
+        text_content: String,
+        visual_hash: u64,
+        selected: bool,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            role,
+            bounds,
+            text_content,
+            visual_hash,
+            selected,
         }
     }
 }
@@ -93,13 +117,27 @@ pub enum Role {
     Panel,
     Checkbox,
     MenuItem,
+    Status,
+    ToolBlock,
+    PromptMarker,
+    ProgressBar,
+    Link,
+    ErrorMessage,
+    DiffLine,
+    CodeBlock,
 }
 
 impl Role {
     pub fn is_interactive(&self) -> bool {
         matches!(
             self,
-            Role::Button | Role::Tab | Role::Input | Role::Checkbox | Role::MenuItem
+            Role::Button
+                | Role::Tab
+                | Role::Input
+                | Role::Checkbox
+                | Role::MenuItem
+                | Role::PromptMarker
+                | Role::Link
         )
     }
 }
@@ -114,16 +152,25 @@ impl std::fmt::Display for Role {
             Role::Panel => write!(f, "panel"),
             Role::Checkbox => write!(f, "checkbox"),
             Role::MenuItem => write!(f, "menuitem"),
+            Role::Status => write!(f, "status"),
+            Role::ToolBlock => write!(f, "toolblock"),
+            Role::PromptMarker => write!(f, "prompt"),
+            Role::ProgressBar => write!(f, "progressbar"),
+            Role::Link => write!(f, "link"),
+            Role::ErrorMessage => write!(f, "error"),
+            Role::DiffLine => write!(f, "diff"),
+            Role::CodeBlock => write!(f, "codeblock"),
         }
     }
 }
 
+pub use classifier::ClassifyOptions;
 pub use classifier::classify;
 pub use segmentation::segment_buffer;
 
-pub fn analyze(buffer: &impl ScreenGrid, cursor_row: u16, cursor_col: u16) -> Vec<Component> {
+pub fn analyze(buffer: &impl ScreenGrid, cursor: &crate::CursorPosition) -> Vec<Component> {
     let clusters = segment_buffer(buffer);
-    classify(clusters, cursor_row, cursor_col)
+    classify(clusters, cursor, &ClassifyOptions::default())
 }
 
 pub fn hash_cluster(cluster: &Cluster) -> u64 {

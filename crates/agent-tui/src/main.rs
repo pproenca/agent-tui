@@ -127,10 +127,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         Commands::Snapshot {
             elements,
+            accessibility,
+            interactive_only,
             region,
             strip_ansi,
             include_cursor,
-        } => handlers::handle_snapshot(&mut ctx, elements, region, strip_ansi, include_cursor)?,
+        } => {
+            if accessibility {
+                handlers::handle_accessibility_snapshot(&mut ctx, interactive_only)?
+            } else {
+                handlers::handle_snapshot(&mut ctx, elements, region, strip_ansi, include_cursor)?
+            }
+        }
 
         Commands::Click { element_ref } => handlers::handle_click(&mut ctx, element_ref)?,
         Commands::DblClick { element_ref } => handlers::handle_dbl_click(&mut ctx, element_ref)?,

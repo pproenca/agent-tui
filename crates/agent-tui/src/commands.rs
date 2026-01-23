@@ -131,15 +131,29 @@ Element detection uses the Visual Object Model (VOM) which identifies
 UI components based on visual styling (colors, backgrounds) rather than
 text patterns. This provides reliable detection across different TUI frameworks.
 
+ACCESSIBILITY TREE FORMAT (-a):
+    Returns an agent-browser style accessibility tree with refs for elements:
+    - button "Submit" [ref=e1]
+    - textbox "Search" [ref=e2]
+
 EXAMPLES:
     agent-tui snapshot              # Just the screen
     agent-tui snapshot -i           # Screen + detected elements
-    agent-tui snapshot --strip-ansi # Plain text without colors
-    agent-tui snapshot -f json      # JSON output for parsing"#)]
+    agent-tui snapshot -a           # Accessibility tree format
+    agent-tui snapshot -a --interactive-only  # Only interactive elements
+    agent-tui snapshot --strip-ansi # Plain text without colors"#)]
     Snapshot {
         /// Include detected UI elements in output
         #[arg(short = 'i', long)]
         elements: bool,
+
+        /// Output accessibility tree format (agent-browser style)
+        #[arg(short = 'a', long)]
+        accessibility: bool,
+
+        /// Filter to interactive elements only (used with -a)
+        #[arg(long)]
+        interactive_only: bool,
 
         /// Limit snapshot to a named region
         #[arg(long)]
@@ -1019,6 +1033,7 @@ mod tests {
             region,
             strip_ansi,
             include_cursor,
+            ..
         } = cli.command
         else {
             panic!("Expected Snapshot command, got {:?}", cli.command);
@@ -1046,6 +1061,7 @@ mod tests {
             region,
             strip_ansi,
             include_cursor,
+            ..
         } = cli.command
         else {
             panic!("Expected Snapshot command, got {:?}", cli.command);
@@ -1054,6 +1070,41 @@ mod tests {
         assert_eq!(region, Some("modal".to_string()));
         assert!(strip_ansi);
         assert!(include_cursor);
+    }
+
+    /// Test snapshot accessibility tree format flag
+    #[test]
+    fn test_snapshot_accessibility_flag() {
+        let cli = Cli::parse_from(["agent-tui", "snapshot", "-a"]);
+        let Commands::Snapshot {
+            accessibility,
+            elements,
+            ..
+        } = cli.command
+        else {
+            panic!("Expected Snapshot command, got {:?}", cli.command);
+        };
+        assert!(accessibility, "-a should enable accessibility tree format");
+        assert!(!elements, "elements should be false by default");
+    }
+
+    /// Test snapshot accessibility with interactive-only filter
+    #[test]
+    fn test_snapshot_accessibility_interactive_only() {
+        let cli = Cli::parse_from(["agent-tui", "snapshot", "-a", "--interactive-only"]);
+        let Commands::Snapshot {
+            accessibility,
+            interactive_only,
+            ..
+        } = cli.command
+        else {
+            panic!("Expected Snapshot command, got {:?}", cli.command);
+        };
+        assert!(accessibility, "--accessibility should be set");
+        assert!(
+            interactive_only,
+            "--interactive-only should filter to interactive elements"
+        );
     }
 
     /// Test click command requires element ref

@@ -3,12 +3,21 @@
 //! These tests verify VOM analysis against known Claude Code screen patterns.
 //! Each test creates a realistic screen buffer and verifies all expected components.
 
+use crate::CursorPosition;
 use crate::style::CellStyle;
 use crate::test_fixtures::MockScreenBuffer;
 use crate::vom::{self, Role};
 
 fn make_screen_line(content: &str, style: CellStyle) -> Vec<(char, CellStyle)> {
     content.chars().map(|c| (c, style.clone())).collect()
+}
+
+fn no_cursor() -> CursorPosition {
+    CursorPosition {
+        row: 99,
+        col: 99,
+        visible: false,
+    }
 }
 
 fn styled_line(content: &str, bold: bool, inverse: bool) -> Vec<(char, CellStyle)> {
@@ -53,7 +62,7 @@ fn golden_permission_dialog() {
     );
     buffer.set_line(4, &make_screen_line("[Allow]", CellStyle::default()));
 
-    let components = vom::analyze(&buffer, 99, 99);
+    let components = vom::analyze(&buffer, &no_cursor());
 
     let toolblocks: Vec<_> = components
         .iter()
@@ -100,7 +109,7 @@ fn golden_tool_block_with_code() {
         ),
     );
 
-    let components = vom::analyze(&buffer, 99, 99);
+    let components = vom::analyze(&buffer, &no_cursor());
 
     let toolblocks: Vec<_> = components
         .iter()
@@ -132,7 +141,7 @@ fn golden_status_spinner() {
         &make_screen_line("  Found 42 files", CellStyle::default()),
     );
 
-    let components = vom::analyze(&buffer, 99, 99);
+    let components = vom::analyze(&buffer, &no_cursor());
 
     let status: Vec<_> = components
         .iter()
@@ -169,7 +178,7 @@ fn golden_error_output() {
         &make_screen_line("   |         ^^^ undefined", CellStyle::default()),
     );
 
-    let components = vom::analyze(&buffer, 99, 99);
+    let components = vom::analyze(&buffer, &no_cursor());
 
     let errors: Vec<_> = components
         .iter()
@@ -209,7 +218,7 @@ fn golden_diff_output() {
         &make_screen_line(" another unchanged", CellStyle::default()),
     );
 
-    let components = vom::analyze(&buffer, 99, 99);
+    let components = vom::analyze(&buffer, &no_cursor());
 
     let diffs: Vec<_> = components
         .iter()
@@ -235,7 +244,7 @@ fn golden_progress_indicator() {
     buffer.set_line(1, &make_screen_line("50% complete", CellStyle::default()));
     buffer.set_line(2, &make_screen_line("✓ Step 1 done", CellStyle::default()));
 
-    let components = vom::analyze(&buffer, 99, 99);
+    let components = vom::analyze(&buffer, &no_cursor());
 
     let progress: Vec<_> = components
         .iter()
@@ -265,7 +274,7 @@ fn golden_prompt_input() {
         &make_screen_line("Enter your query:", CellStyle::default()),
     );
 
-    let components = vom::analyze(&buffer, 99, 99);
+    let components = vom::analyze(&buffer, &no_cursor());
 
     let prompts: Vec<_> = components
         .iter()
@@ -288,7 +297,7 @@ fn golden_selected_menu_item() {
     buffer.set_line(4, &styled_line("❯ Second option", false, true));
     buffer.set_line(5, &make_screen_line("> Third option", CellStyle::default()));
 
-    let components = vom::analyze(&buffer, 99, 99);
+    let components = vom::analyze(&buffer, &no_cursor());
 
     let menu_items: Vec<_> = components
         .iter()

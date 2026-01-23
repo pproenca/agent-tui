@@ -83,10 +83,11 @@ pub fn format_snapshot(
     options: &SnapshotOptions,
 ) -> AccessibilitySnapshot {
     let mut refs = RefMap::default();
-    let mut lines = Vec::new();
+    let mut lines = Vec::with_capacity(components.len());
     let mut ref_counter = 0usize;
     let mut interactive_count = 0usize;
-    let mut role_counts: HashMap<String, usize> = HashMap::new();
+    // Preallocate for typical number of unique roles in a TUI screen
+    let mut role_counts: HashMap<String, usize> = HashMap::with_capacity(16);
 
     for component in components {
         if options.interactive_only && !component.role.is_interactive() {

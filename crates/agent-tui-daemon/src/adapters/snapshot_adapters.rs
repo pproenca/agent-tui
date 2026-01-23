@@ -52,6 +52,38 @@ pub fn snapshot_to_dto(snapshot: &DomainAccessibilitySnapshot) -> AccessibilityS
     }
 }
 
+/// Converts a Domain snapshot into a DTO, consuming the input.
+///
+/// Use this variant when ownership can be transferred to avoid cloning strings.
+pub fn snapshot_into_dto(snapshot: DomainAccessibilitySnapshot) -> AccessibilitySnapshotDto {
+    AccessibilitySnapshotDto {
+        tree: snapshot.tree,
+        refs: ref_map_into_dto(snapshot.refs),
+        stats: stats_to_dto(&snapshot.stats),
+    }
+}
+
+fn ref_map_into_dto(ref_map: DomainRefMap) -> RefMapDto {
+    RefMapDto {
+        refs: ref_map
+            .refs
+            .into_iter()
+            .map(|(k, v)| (k, element_ref_into_dto(v)))
+            .collect(),
+    }
+}
+
+fn element_ref_into_dto(element: DomainElementRef) -> ElementRefDto {
+    ElementRefDto {
+        role: element.role,
+        name: element.name,
+        bounds: bounds_to_dto(&element.bounds),
+        visual_hash: element.visual_hash,
+        nth: element.nth,
+        selected: element.selected,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

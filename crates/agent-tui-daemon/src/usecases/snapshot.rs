@@ -26,10 +26,15 @@ impl<R: SessionRepository> SnapshotUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
+    /// Executes the snapshot use case.
+    ///
+    /// **Side effect**: Calls `session_guard.update()` which reads pending PTY
+    /// output and updates the terminal emulator state before capturing the snapshot.
     fn execute(&self, input: SnapshotInput) -> Result<SnapshotOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let mut session_guard = mutex_lock_or_recover(&session);
 
+        // Update terminal state before capturing snapshot
         session_guard.update()?;
 
         let screen = session_guard.screen_text();
@@ -74,6 +79,11 @@ impl<R: SessionRepository> AccessibilitySnapshotUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> AccessibilitySnapshotUseCase for AccessibilitySnapshotUseCaseImpl<R> {
+    /// Executes the accessibility snapshot use case.
+    ///
+    /// **Side effect**: Calls `session_guard.update()` which reads pending PTY
+    /// output and updates the terminal emulator state before capturing the snapshot.
+    /// This ensures the snapshot reflects the most recent terminal content.
     fn execute(
         &self,
         input: AccessibilitySnapshotInput,
@@ -81,6 +91,7 @@ impl<R: SessionRepository> AccessibilitySnapshotUseCase for AccessibilitySnapsho
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let mut session_guard = mutex_lock_or_recover(&session);
 
+        // Update terminal state before capturing snapshot
         session_guard.update()?;
 
         let session_id = SessionId::from(session_guard.id.as_str());

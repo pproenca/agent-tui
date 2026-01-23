@@ -52,6 +52,38 @@ pub fn core_snapshot_to_domain(snapshot: &AccessibilitySnapshot) -> DomainAccess
     }
 }
 
+/// Converts a Core snapshot into a Domain snapshot, consuming the input.
+///
+/// Use this variant when ownership can be transferred to avoid cloning strings.
+pub fn core_snapshot_into_domain(snapshot: AccessibilitySnapshot) -> DomainAccessibilitySnapshot {
+    DomainAccessibilitySnapshot {
+        tree: snapshot.tree,
+        refs: core_ref_map_into_domain(snapshot.refs),
+        stats: core_stats_to_domain(&snapshot.stats),
+    }
+}
+
+fn core_ref_map_into_domain(ref_map: RefMap) -> DomainRefMap {
+    DomainRefMap {
+        refs: ref_map
+            .refs
+            .into_iter()
+            .map(|(k, v)| (k, core_element_ref_into_domain(v)))
+            .collect(),
+    }
+}
+
+fn core_element_ref_into_domain(element: ElementRef) -> DomainElementRef {
+    DomainElementRef {
+        role: element.role,
+        name: element.name,
+        bounds: core_bounds_to_domain(&element.bounds),
+        visual_hash: element.visual_hash,
+        nth: element.nth,
+        selected: element.selected,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

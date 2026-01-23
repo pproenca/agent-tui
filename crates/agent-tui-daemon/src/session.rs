@@ -209,7 +209,7 @@ impl Session {
 
     pub fn detect_elements(&mut self) -> &[Element] {
         let cursor = self.terminal.cursor();
-        self.terminal.detect_elements(cursor.row, cursor.col)
+        self.terminal.detect_elements(&cursor)
     }
 
     pub fn cached_elements(&self) -> &[Element] {
@@ -409,7 +409,7 @@ impl Session {
 
     pub fn analyze_screen(&self) -> Vec<agent_tui_core::Component> {
         let cursor = self.terminal.cursor();
-        self.terminal.analyze_screen(cursor.row, cursor.col)
+        self.terminal.analyze_screen(&cursor)
     }
 }
 

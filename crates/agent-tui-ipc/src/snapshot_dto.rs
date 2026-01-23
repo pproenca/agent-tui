@@ -2,6 +2,12 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+/// Returns true if the boolean is false (used by serde skip_serializing_if).
+#[inline]
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct BoundsDto {
     pub x: u16,
@@ -19,7 +25,7 @@ pub struct ElementRefDto {
     pub visual_hash: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nth: Option<usize>,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub selected: bool,
 }
 

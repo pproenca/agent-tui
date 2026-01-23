@@ -168,14 +168,9 @@ pub use classifier::ClassifyOptions;
 pub use classifier::classify;
 pub use segmentation::segment_buffer;
 
-pub fn analyze(buffer: &impl ScreenGrid, cursor_row: u16, cursor_col: u16) -> Vec<Component> {
+pub fn analyze(buffer: &impl ScreenGrid, cursor: &crate::CursorPosition) -> Vec<Component> {
     let clusters = segment_buffer(buffer);
-    classify(
-        clusters,
-        cursor_row,
-        cursor_col,
-        &ClassifyOptions::default(),
-    )
+    classify(clusters, cursor, &ClassifyOptions::default())
 }
 
 pub fn hash_cluster(cluster: &Cluster) -> u64 {

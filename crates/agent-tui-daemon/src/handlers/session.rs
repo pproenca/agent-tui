@@ -3,6 +3,7 @@ use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 
+use super::common::{domain_error_response, lock_timeout_response};
 use crate::error::DomainError;
 use crate::lock_helpers::{LOCK_TIMEOUT, acquire_session_lock};
 use crate::session::{SessionError, SessionManager};
@@ -11,24 +12,6 @@ const MAX_TERMINAL_COLS: u16 = 500;
 const MAX_TERMINAL_ROWS: u16 = 200;
 const MIN_TERMINAL_COLS: u16 = 10;
 const MIN_TERMINAL_ROWS: u16 = 5;
-
-fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
-    RpcResponse::domain_error(
-        id,
-        err.code(),
-        &err.to_string(),
-        err.category().as_str(),
-        Some(err.context()),
-        Some(err.suggestion()),
-    )
-}
-
-fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
-    let err = DomainError::LockTimeout {
-        session_id: session_id.map(String::from),
-    };
-    domain_error_response(id, &err)
-}
 
 pub fn handle_spawn(session_manager: &Arc<SessionManager>, request: RpcRequest) -> RpcResponse {
     let params = match request.params {

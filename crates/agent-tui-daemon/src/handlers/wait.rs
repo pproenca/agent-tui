@@ -4,21 +4,11 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use super::common::domain_error_response;
 use crate::error::DomainError;
 use crate::lock_helpers::acquire_session_lock;
 use crate::session::SessionManager;
 use crate::wait::{StableTracker, WaitCondition, check_condition};
-
-fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
-    RpcResponse::domain_error(
-        id,
-        err.code(),
-        &err.to_string(),
-        err.category().as_str(),
-        Some(err.context()),
-        Some(err.suggestion()),
-    )
-}
 
 fn build_wait_suggestion(condition: &WaitCondition) -> String {
     match condition {

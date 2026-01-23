@@ -4,28 +4,11 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
+use super::common::{domain_error_response, lock_timeout_response};
 use crate::error::DomainError;
 use crate::lock_helpers::{LOCK_TIMEOUT, acquire_session_lock};
 use crate::metrics::DaemonMetrics;
 use crate::session::SessionManager;
-
-fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
-    RpcResponse::domain_error(
-        id,
-        err.code(),
-        &err.to_string(),
-        err.category().as_str(),
-        Some(err.context()),
-        Some(err.suggestion()),
-    )
-}
-
-fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
-    let err = DomainError::LockTimeout {
-        session_id: session_id.map(String::from),
-    };
-    domain_error_response(id, &err)
-}
 
 pub fn handle_health(
     session_manager: &Arc<SessionManager>,

@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{agent_tui_cmd, MockResponse, TestHarness};
+use common::{MockResponse, TestHarness, agent_tui_cmd};
 use predicates::prelude::*;
 
 // =============================================================================

@@ -3,7 +3,7 @@
 //! These errors provide semantic codes, categories, and actionable suggestions
 //! to enable programmatic error handling.
 
-use agent_tui_ipc::error_codes::{self, ErrorCategory};
+use agent_tui_common::error_codes::{self, ErrorCategory};
 use serde_json::{Value, json};
 use thiserror::Error;
 

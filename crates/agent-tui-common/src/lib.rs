@@ -1,6 +1,7 @@
 #![deny(clippy::all)]
 
 mod color;
+pub mod error_codes;
 mod json_ext;
 mod sync;
 

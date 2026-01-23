@@ -2,9 +2,11 @@
 
 mod client;
 mod error;
-pub mod error_codes;
 mod socket;
 mod types;
+
+// Re-export error_codes from common for backwards compatibility
+pub use agent_tui_common::error_codes;
 
 pub use client::DaemonClient;
 pub use client::DaemonClientConfig;

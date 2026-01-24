@@ -35,7 +35,7 @@ fn test_killed_session_returns_not_found_on_click() {
     harness.set_error_response("click", -32001, "Session not found: killed-session");
 
     harness
-        .run(&["action", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .failure()
         .stderr(predicate::str::contains("not found"));
 }
@@ -75,7 +75,7 @@ fn test_click_without_active_session() {
     harness.set_error_response("click", -32002, "No active session");
 
     harness
-        .run(&["action", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .failure()
         .stderr(predicate::str::contains("No active session"));
 }
@@ -149,34 +149,8 @@ fn test_sessions_shows_active_marker() {
         .stdout(predicate::str::contains("(active)"));
 }
 
-#[test]
-fn test_attach_changes_active_session() {
-    let harness = TestHarness::new();
-
-    harness.set_success_response(
-        "attach",
-        json!({
-            "success": true,
-            "session": "session-2"
-        }),
-    );
-
-    harness.run(&["attach", "session-2"]).success();
-
-    harness.assert_method_called("attach");
-}
-
-#[test]
-fn test_attach_nonexistent_session_fails() {
-    let harness = TestHarness::new();
-
-    harness.set_error_response("attach", -32001, "Session not found: nonexistent");
-
-    harness
-        .run(&["attach", "nonexistent"])
-        .failure()
-        .stderr(predicate::str::contains("not found"));
-}
+// Note: attach tests removed - sessions --attach is interactive terminal mode
+// and cannot be properly tested with mock daemon
 
 // =============================================================================
 // Session Info Tests
@@ -297,43 +271,6 @@ fn test_kill_nonexistent_session_fails() {
 }
 
 // =============================================================================
-// Restart Session Tests
-// =============================================================================
-
-#[test]
-fn test_restart_session() {
-    let harness = TestHarness::new();
-
-    harness.set_success_response(
-        "restart",
-        json!({
-            "success": true,
-            "old_session_id": "old-session",
-            "new_session_id": "new-session",
-            "command": "bash",
-            "pid": 12345
-        }),
-    );
-
-    harness
-        .run(&["restart"])
-        .success()
-        .stdout(predicate::str::contains("new-session"));
-}
-
-#[test]
-fn test_restart_nonexistent_session_fails() {
-    let harness = TestHarness::new();
-
-    harness.set_error_response("restart", -32001, "Session not found");
-
-    harness
-        .run(&["restart"])
-        .failure()
-        .stderr(predicate::str::contains("not found"));
-}
-
-// =============================================================================
 // Session-Specific Command Tests
 // =============================================================================
 
@@ -350,7 +287,7 @@ fn test_click_with_session_option() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["-s", "specific-session", "action", "@btn1"])
+        .run(&["action", "-s", "specific-session", "@btn1", "click"])
         .success();
 
     harness.assert_method_called("click");

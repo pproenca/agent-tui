@@ -87,7 +87,7 @@ impl RealTestHarness {
     pub fn spawn_bash(&self) -> String {
         let output = self
             .cli_json()
-            .args(["spawn", "bash"])
+            .args(["run", "bash"])
             .output()
             .expect("spawn failed");
 

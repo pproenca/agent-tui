@@ -32,34 +32,6 @@ fn format_uptime_ms(uptime_ms: u64) -> String {
     }
 }
 
-/// Macro to generate get_* handlers that follow the same pattern
-macro_rules! get_handler {
-    ($name:ident, $method:literal, $field:literal) => {
-        pub fn $name<C: DaemonClient>(
-            ctx: &mut HandlerContext<C>,
-            element_ref: String,
-        ) -> HandlerResult {
-            let params = ctx.ref_params(&element_ref);
-            let result = ctx.client.call($method, Some(params))?;
-            ctx.output_get_result(&result, &element_ref, $field)
-        }
-    };
-}
-
-/// Macro to generate is_* state check handlers that follow the same pattern
-macro_rules! state_check_handler {
-    ($name:ident, $method:literal, $field:literal, $pos:literal, $neg:literal) => {
-        pub fn $name<C: DaemonClient>(
-            ctx: &mut HandlerContext<C>,
-            element_ref: String,
-        ) -> HandlerResult {
-            let params = ctx.ref_params(&element_ref);
-            let result = ctx.client.call($method, Some(params))?;
-            ctx.output_state_check(&result, &element_ref, $field, $pos, $neg)
-        }
-    };
-}
-
 /// Macro to generate key handlers (press, keydown, keyup) that follow the same pattern
 macro_rules! key_handler {
     ($name:ident, $method:literal, $success:expr) => {
@@ -146,61 +118,6 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         let params = self.ref_params(element_ref);
         let result = self.client.call(method, Some(params))?;
         self.output_success_result(&result, success_msg, failure_prefix)?;
-        Ok(())
-    }
-
-    fn output_state_check(
-        &self,
-        result: &Value,
-        element_ref: &str,
-        field: &str,
-        state_name: &str,
-        negative_state_name: &str,
-    ) -> HandlerResult {
-        let found = result.bool_or("found", true);
-        let state = result.bool_or(field, false);
-
-        match self.format {
-            OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(result)?);
-            }
-            OutputFormat::Text => {
-                if !found {
-                    eprintln!("Element not found: {}", element_ref);
-                    std::process::exit(1);
-                } else if state {
-                    println!("{} {} is {}", Colors::success("✓"), element_ref, state_name);
-                } else {
-                    println!(
-                        "{} {} is {}",
-                        Colors::error("✗"),
-                        element_ref,
-                        negative_state_name
-                    );
-                    std::process::exit(1);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn output_get_result(&self, result: &Value, element_ref: &str, field: &str) -> HandlerResult {
-        let found = result.bool_or("found", false);
-
-        match self.format {
-            OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(result)?);
-            }
-            OutputFormat::Text => {
-                if found {
-                    let value = result.str_or(field, "");
-                    println!("{}", value);
-                } else {
-                    eprintln!("Element not found: {}", element_ref);
-                    std::process::exit(1);
-                }
-            }
-        }
         Ok(())
     }
 
@@ -885,74 +802,6 @@ ref_action_handler!(
     "Select all failed"
 );
 
-get_handler!(handle_get_text, "get_text", "text");
-get_handler!(handle_get_value, "get_value", "value");
-
-pub fn handle_get_focused<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let result = ctx.client.call("get_focused", Some(ctx.session_params()))?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text => {
-            if result.bool_or("found", false) {
-                println!(
-                    "- {} \"{}\" [ref={}] [focused]",
-                    result.str_or("type", ""),
-                    result.str_or("label", ""),
-                    result.str_or("ref", "")
-                );
-            } else {
-                eprintln!("No focused element found");
-                std::process::exit(1);
-            }
-        }
-    }
-    Ok(())
-}
-
-pub fn handle_get_title<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let result = ctx.client.call("get_title", Some(ctx.session_params()))?;
-
-    ctx.output_json_or(&result, || {
-        println!(
-            "Session: {} | Command: {}",
-            result.str_or("session_id", ""),
-            result.str_or("title", "")
-        );
-    })
-}
-
-state_check_handler!(
-    handle_is_visible,
-    "is_visible",
-    "visible",
-    "visible",
-    "not visible"
-);
-state_check_handler!(
-    handle_is_focused,
-    "is_focused",
-    "focused",
-    "focused",
-    "not focused"
-);
-state_check_handler!(
-    handle_is_enabled,
-    "is_enabled",
-    "enabled",
-    "enabled",
-    "disabled"
-);
-state_check_handler!(
-    handle_is_checked,
-    "is_checked",
-    "checked",
-    "checked",
-    "not checked"
-);
-
 pub fn handle_count<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     role: Option<String>,
@@ -1004,39 +853,6 @@ pub fn handle_toggle<C: DaemonClient>(
         }
     }
     Ok(())
-}
-
-fn handle_check_state<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-    checked: bool,
-) -> HandlerResult {
-    let params = json!({ "ref": element_ref, "session": ctx.session, "state": checked });
-    let result = ctx.client.call("toggle", Some(params))?;
-    let (state_str, fail_prefix) = if checked {
-        ("checked", "Check failed")
-    } else {
-        ("unchecked", "Uncheck failed")
-    };
-    ctx.output_success_and_ok(
-        &result,
-        &format!("{} is now {}", element_ref, state_str),
-        fail_prefix,
-    )
-}
-
-pub fn handle_check<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-) -> HandlerResult {
-    handle_check_state(ctx, element_ref, true)
-}
-
-pub fn handle_uncheck<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-) -> HandlerResult {
-    handle_check_state(ctx, element_ref, false)
 }
 
 pub fn handle_attach<C: DaemonClient>(
@@ -1587,17 +1403,6 @@ mod tests {
     }
 
     #[test]
-    fn test_wait_condition_visible_alias() {
-        let params = WaitParams {
-            visible: Some("@inp1".to_string()),
-            ..Default::default()
-        };
-        let (cond, tgt) = params.resolve_condition();
-        assert_eq!(cond, Some("element".to_string()));
-        assert_eq!(tgt, Some("@inp1".to_string()));
-    }
-
-    #[test]
     fn test_wait_condition_focused() {
         let params = WaitParams {
             focused: Some("@inp1".to_string()),
@@ -1609,9 +1414,10 @@ mod tests {
     }
 
     #[test]
-    fn test_wait_condition_not_visible() {
+    fn test_wait_condition_element_gone() {
         let params = WaitParams {
-            not_visible: Some("@spinner".to_string()),
+            element: Some("@spinner".to_string()),
+            gone: true,
             ..Default::default()
         };
         let (cond, tgt) = params.resolve_condition();
@@ -1622,7 +1428,8 @@ mod tests {
     #[test]
     fn test_wait_condition_text_gone() {
         let params = WaitParams {
-            text_gone: Some("Loading...".to_string()),
+            text: Some("Loading...".to_string()),
+            gone: true,
             ..Default::default()
         };
         let (cond, tgt) = params.resolve_condition();

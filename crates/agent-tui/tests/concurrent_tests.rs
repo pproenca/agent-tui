@@ -24,7 +24,7 @@ fn test_parallel_snapshots_same_session() {
     let handles: Vec<_> = (0..4)
         .map(|_| {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["snapshot"]).success())
+            thread::spawn(move || harness.run(&["snap"]).success())
         })
         .collect();
 
@@ -44,7 +44,7 @@ fn test_parallel_snapshots_with_different_options() {
 
     // Configure snapshot response with elements
     harness.set_success_response(
-        "snapshot",
+        "snap",
         json!({
             "session_id": TEST_SESSION_ID,
             "screen": "Test screen content\n",
@@ -59,19 +59,19 @@ fn test_parallel_snapshots_with_different_options() {
     let handles = vec![
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["snapshot"]))
+            thread::spawn(move || harness.run(&["snap"]))
         },
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["snapshot", "-i"]))
+            thread::spawn(move || harness.run(&["snap", "-i"]))
         },
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["snapshot", "--include-cursor"]))
+            thread::spawn(move || harness.run(&["snap", "--include-cursor"]))
         },
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["-f", "json", "snapshot"]))
+            thread::spawn(move || harness.run(&["-f", "json", "snap"]))
         },
     ];
 
@@ -89,14 +89,14 @@ fn test_parallel_snapshots_with_different_options() {
 fn test_parallel_type_commands() {
     let harness = Arc::new(TestHarness::new());
 
-    // Run 4 type commands in parallel
+    // Run 4 key --type commands in parallel
     let texts = vec!["Hello", "World", "Test", "Data"];
 
     let handles: Vec<_> = texts
         .into_iter()
         .map(|text| {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["type", text]).success())
+            thread::spawn(move || harness.run(&["key", "--type", text]).success())
         })
         .collect();
 
@@ -134,7 +134,7 @@ fn test_concurrent_spawns() {
         .into_iter()
         .map(|cmd| {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["spawn", cmd]).success())
+            thread::spawn(move || harness.run(&["run", cmd]).success())
         })
         .collect();
 
@@ -158,7 +158,7 @@ fn test_rapid_connect_disconnect() {
     let handles: Vec<_> = (0..20)
         .map(|_| {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["health"]))
+            thread::spawn(move || harness.run(&["status"]))
         })
         .collect();
 
@@ -185,15 +185,15 @@ fn test_mixed_commands_parallel() {
     let handles = vec![
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["health"]))
+            thread::spawn(move || h.run(&["status"]))
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["sessions"]))
+            thread::spawn(move || h.run(&["ls"]))
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["snapshot"]))
+            thread::spawn(move || h.run(&["snap"]))
         },
         {
             let h = Arc::clone(&harness);
@@ -227,7 +227,7 @@ fn test_concurrent_errors_isolated() {
     let handles = vec![
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["health"]).success())
+            thread::spawn(move || h.run(&["status"]).success())
         },
         {
             let h = Arc::clone(&harness);
@@ -235,7 +235,7 @@ fn test_concurrent_errors_isolated() {
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["health"]).success())
+            thread::spawn(move || h.run(&["status"]).success())
         },
         {
             let h = Arc::clone(&harness);
@@ -280,15 +280,15 @@ fn test_concurrent_with_delays() {
         let handles = vec![
             {
                 let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["health"]).success())
+                thread::spawn(move || h.run(&["status"]).success())
             },
             {
                 let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["sessions"]).success())
+                thread::spawn(move || h.run(&["ls"]).success())
             },
             {
                 let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["snapshot"]).success())
+                thread::spawn(move || h.run(&["snap"]).success())
             },
         ];
 
@@ -314,7 +314,7 @@ fn test_many_parallel_health_checks() {
     let handles: Vec<_> = (0..50)
         .map(|_| {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["health"]))
+            thread::spawn(move || h.run(&["status"]))
         })
         .collect();
 
@@ -365,9 +365,9 @@ fn test_concurrent_pty_read_write_no_deadlock() {
                 thread::spawn(move || {
                     // Simulate interleaved reads and writes
                     if i % 2 == 0 {
-                        h.run(&["health"]) // Simulates read path
+                        h.run(&["status"]) // Simulates read path
                     } else {
-                        h.run(&["type", "test"]) // Simulates write path
+                        h.run(&["key", "--type", "test"]) // Simulates write path
                     }
                 })
             })
@@ -405,7 +405,7 @@ fn test_parallel_dbl_click_same_session() {
     let handles: Vec<_> = (0..4)
         .map(|_| {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["dblclick", "@btn1"]).success())
+            thread::spawn(move || h.run(&["click", "-2", "@btn1"]).success())
         })
         .collect();
 

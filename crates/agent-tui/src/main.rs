@@ -5,8 +5,8 @@ use clap_complete::generate;
 use agent_tui::attach::AttachError;
 use agent_tui::commands::Cli;
 use agent_tui::commands::Commands;
-use agent_tui::commands::GetCommand;
-use agent_tui::commands::IsCommand;
+use agent_tui::commands::DebugCommand;
+use agent_tui::commands::RecordAction;
 use agent_tui::handlers;
 use agent_tui::handlers::HandlerContext;
 use agent_tui_common::Colors;
@@ -117,7 +117,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::Daemon | Commands::Completions { .. } => unreachable!(),
 
-        Commands::Spawn {
+        Commands::Run {
             command,
             args,
             cwd,
@@ -125,7 +125,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             rows,
         } => handlers::handle_spawn(&mut ctx, command, args, cwd, cols, rows)?,
 
-        Commands::Snapshot {
+        Commands::Snap {
             elements,
             accessibility,
             interactive_only,
@@ -140,22 +140,44 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        Commands::Click { element_ref } => handlers::handle_click(&mut ctx, element_ref)?,
-        Commands::DblClick { element_ref } => handlers::handle_dbl_click(&mut ctx, element_ref)?,
+        Commands::Click {
+            element_ref,
+            double,
+        } => {
+            if double {
+                handlers::handle_dbl_click(&mut ctx, element_ref)?
+            } else {
+                handlers::handle_click(&mut ctx, element_ref)?
+            }
+        }
         Commands::Fill { element_ref, value } => {
             handlers::handle_fill(&mut ctx, element_ref, value)?
         }
 
-        Commands::Press { key } => handlers::handle_press(&mut ctx, key)?,
-        Commands::Type { text } => handlers::handle_type(&mut ctx, text)?,
-        Commands::KeyDown { key } => handlers::handle_keydown(&mut ctx, key)?,
-        Commands::KeyUp { key } => handlers::handle_keyup(&mut ctx, key)?,
+        Commands::Key {
+            key,
+            text,
+            hold,
+            release,
+        } => {
+            if let Some(text) = text {
+                handlers::handle_type(&mut ctx, text)?
+            } else if let Some(key) = key {
+                if hold {
+                    handlers::handle_keydown(&mut ctx, key)?
+                } else if release {
+                    handlers::handle_keyup(&mut ctx, key)?
+                } else {
+                    handlers::handle_press(&mut ctx, key)?
+                }
+            }
+        }
 
         Commands::Wait { params } => handlers::handle_wait(&mut ctx, params)?,
         Commands::Kill => handlers::handle_kill(&mut ctx)?,
         Commands::Restart => handlers::handle_restart(&mut ctx)?,
-        Commands::Sessions => handlers::handle_sessions(&mut ctx)?,
-        Commands::Health { verbose } => handlers::handle_health(&mut ctx, verbose)?,
+        Commands::Ls => handlers::handle_sessions(&mut ctx)?,
+        Commands::Status { verbose } => handlers::handle_health(&mut ctx, verbose)?,
 
         Commands::Select {
             element_ref,
@@ -170,44 +192,35 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             direction,
             amount,
             element: _,
-        } => handlers::handle_scroll(&mut ctx, direction, amount)?,
-        Commands::ScrollIntoView { element_ref } => {
-            handlers::handle_scroll_into_view(&mut ctx, element_ref)?
+            to_ref,
+        } => {
+            if let Some(element_ref) = to_ref {
+                handlers::handle_scroll_into_view(&mut ctx, element_ref)?
+            } else if let Some(dir) = direction {
+                handlers::handle_scroll(&mut ctx, dir, amount)?
+            }
         }
 
         Commands::Focus { element_ref } => handlers::handle_focus(&mut ctx, element_ref)?,
         Commands::Clear { element_ref } => handlers::handle_clear(&mut ctx, element_ref)?,
         Commands::SelectAll { element_ref } => handlers::handle_select_all(&mut ctx, element_ref)?,
 
-        Commands::Get(GetCommand::Text { element_ref }) => {
-            handlers::handle_get_text(&mut ctx, element_ref)?
-        }
-        Commands::Get(GetCommand::Value { element_ref }) => {
-            handlers::handle_get_value(&mut ctx, element_ref)?
-        }
-        Commands::Get(GetCommand::Focused) => handlers::handle_get_focused(&mut ctx)?,
-        Commands::Get(GetCommand::Title) => handlers::handle_get_title(&mut ctx)?,
-
-        Commands::Is(IsCommand::Visible { element_ref }) => {
-            handlers::handle_is_visible(&mut ctx, element_ref)?
-        }
-        Commands::Is(IsCommand::Focused { element_ref }) => {
-            handlers::handle_is_focused(&mut ctx, element_ref)?
-        }
-        Commands::Is(IsCommand::Enabled { element_ref }) => {
-            handlers::handle_is_enabled(&mut ctx, element_ref)?
-        }
-        Commands::Is(IsCommand::Checked { element_ref }) => {
-            handlers::handle_is_checked(&mut ctx, element_ref)?
-        }
-
         Commands::Count { role, name, text } => handlers::handle_count(&mut ctx, role, name, text)?,
 
-        Commands::Toggle { element_ref, state } => {
+        Commands::Toggle {
+            element_ref,
+            on,
+            off,
+        } => {
+            let state = if on {
+                Some(true)
+            } else if off {
+                Some(false)
+            } else {
+                None
+            };
             handlers::handle_toggle(&mut ctx, element_ref, state)?
         }
-        Commands::Check { element_ref } => handlers::handle_check(&mut ctx, element_ref)?,
-        Commands::Uncheck { element_ref } => handlers::handle_uncheck(&mut ctx, element_ref)?,
 
         Commands::RecordStart => handlers::handle_record_start(&mut ctx)?,
         Commands::RecordStop {
@@ -233,6 +246,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Assert { condition } => handlers::handle_assert(&mut ctx, condition)?,
         Commands::Cleanup { all } => handlers::handle_cleanup(&mut ctx, all)?,
         Commands::Find { params } => handlers::handle_find(&mut ctx, params)?,
+
+        Commands::Debug(debug_cmd) => match debug_cmd {
+            DebugCommand::Record(action) => match action {
+                RecordAction::Start => handlers::handle_record_start(&mut ctx)?,
+                RecordAction::Stop { output, format } => {
+                    handlers::handle_record_stop(&mut ctx, output, format)?
+                }
+                RecordAction::Status => handlers::handle_record_status(&mut ctx)?,
+            },
+            DebugCommand::Trace { count, start, stop } => {
+                handlers::handle_trace(&mut ctx, count, start, stop)?
+            }
+            DebugCommand::Console { lines, clear } => {
+                handlers::handle_console(&mut ctx, lines, clear)?
+            }
+            DebugCommand::Errors { count, clear } => {
+                handlers::handle_errors(&mut ctx, count, clear)?
+            }
+            DebugCommand::Env => handlers::handle_env(&ctx)?,
+        },
     }
 
     Ok(())

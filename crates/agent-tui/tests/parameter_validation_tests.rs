@@ -124,21 +124,21 @@ fn test_scroll_with_amount() {
 }
 
 // =============================================================================
-// Keystroke/Press Command Validation
+// Key Command Validation
 // =============================================================================
 
 #[test]
-fn test_press_requires_key() {
+fn test_key_requires_key_or_type() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["press"])
+        .run(&["key"])
         .failure()
         .stderr(predicate::str::contains("required"));
 }
 
 #[test]
-fn test_press_valid_keys() {
+fn test_key_valid_keys() {
     let harness = TestHarness::new();
 
     let valid_keys = vec![
@@ -161,7 +161,7 @@ fn test_press_valid_keys() {
 
     for key in valid_keys {
         harness.clear_requests();
-        harness.run(&["press", key]).success();
+        harness.run(&["key", key]).success();
 
         let req = harness.last_request_for("keystroke").unwrap();
         assert!(req.params.is_some());
@@ -169,10 +169,10 @@ fn test_press_valid_keys() {
 }
 
 #[test]
-fn test_press_with_modifiers() {
+fn test_key_with_modifiers() {
     let harness = TestHarness::new();
 
-    harness.run(&["press", "Ctrl+c"]).success();
+    harness.run(&["key", "Ctrl+c"]).success();
 
     let req = harness.last_request_for("keystroke").unwrap();
     let params = req.params.as_ref().unwrap();
@@ -324,7 +324,7 @@ fn test_spawn_requires_command() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["spawn"])
+        .run(&["run"])
         .failure()
         .stderr(predicate::str::contains("required"));
 }
@@ -334,7 +334,7 @@ fn test_spawn_with_size_options() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["spawn", "--cols", "100", "--rows", "30", "bash"])
+        .run(&["run", "--cols", "100", "--rows", "30", "bash"])
         .success();
 
     let req = harness.last_request_for("spawn").unwrap();
@@ -347,7 +347,7 @@ fn test_spawn_with_size_options() {
 fn test_spawn_with_cwd_option() {
     let harness = TestHarness::new();
 
-    harness.run(&["spawn", "--cwd", "/tmp", "bash"]).success();
+    harness.run(&["run", "--cwd", "/tmp", "bash"]).success();
 
     let req = harness.last_request_for("spawn").unwrap();
     let params = req.params.as_ref().unwrap();
@@ -443,24 +443,25 @@ fn test_find_with_name_filter() {
 }
 
 // =============================================================================
-// Type Command Validation
+// Key --type Command Validation
 // =============================================================================
 
 #[test]
-fn test_type_requires_text() {
+fn test_key_type_requires_text() {
     let harness = TestHarness::new();
 
+    // key without any args should fail
     harness
-        .run(&["type"])
+        .run(&["key"])
         .failure()
         .stderr(predicate::str::contains("required"));
 }
 
 #[test]
-fn test_type_with_text() {
+fn test_key_type_with_text() {
     let harness = TestHarness::new();
 
-    harness.run(&["type", "Hello World"]).success();
+    harness.run(&["key", "--type", "Hello World"]).success();
 
     let req = harness.last_request_for("type").unwrap();
     let params = req.params.as_ref().unwrap();
@@ -476,7 +477,7 @@ fn test_format_json_option() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["-f", "json", "health"])
+        .run(&["-f", "json", "status"])
         .success()
         .stdout(predicate::str::contains("{"));
 }
@@ -486,7 +487,7 @@ fn test_format_text_option() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["-f", "text", "health"])
+        .run(&["-f", "text", "status"])
         .success()
         .stdout(predicate::str::contains("Daemon"));
 }
@@ -495,7 +496,7 @@ fn test_format_text_option() {
 fn test_session_option_with_command() {
     let harness = TestHarness::new();
 
-    harness.run(&["-s", "my-session", "snapshot"]).success();
+    harness.run(&["-s", "my-session", "snap"]).success();
 
     let req = harness.last_request_for("snapshot").unwrap();
     let params = req.params.as_ref().unwrap();

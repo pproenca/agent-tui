@@ -19,7 +19,7 @@ fn test_daemon_socket_not_exists() {
     cmd.env("XDG_RUNTIME_DIR", "/nonexistent/path/that/does/not/exist");
     cmd.env("TMPDIR", "/nonexistent/path/that/does/not/exist");
 
-    cmd.args(["health"])
+    cmd.args(["status"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("not running").or(predicate::str::contains("connect")));
@@ -31,7 +31,7 @@ fn test_spawn_fails_when_daemon_not_running() {
     cmd.env("XDG_RUNTIME_DIR", "/nonexistent/path/that/does/not/exist");
     cmd.env("TMPDIR", "/nonexistent/path/that/does/not/exist");
 
-    cmd.args(["spawn", "bash"])
+    cmd.args(["run", "bash"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("not running").or(predicate::str::contains("connect")));
@@ -49,7 +49,7 @@ fn test_daemon_disconnect_during_request() {
     harness.set_response("health", MockResponse::Disconnect);
 
     harness
-        .run(&["health"])
+        .run(&["status"])
         .failure()
         .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
 }
@@ -61,7 +61,7 @@ fn test_daemon_disconnect_on_spawn() {
     harness.set_response("spawn", MockResponse::Disconnect);
 
     harness
-        .run(&["spawn", "bash"])
+        .run(&["run", "bash"])
         .failure()
         .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
 }
@@ -73,7 +73,7 @@ fn test_daemon_disconnect_on_snapshot() {
     harness.set_response("snapshot", MockResponse::Disconnect);
 
     harness
-        .run(&["snapshot"])
+        .run(&["snap"])
         .failure()
         .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
 }
@@ -93,7 +93,7 @@ fn test_malformed_response_handling() {
     );
 
     harness
-        .run(&["health"])
+        .run(&["status"])
         .failure()
         .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
 }
@@ -109,7 +109,7 @@ fn test_malformed_json_rpc_missing_result() {
     );
 
     harness
-        .run(&["health"])
+        .run(&["status"])
         .failure()
         .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
 }
@@ -126,7 +126,7 @@ fn test_malformed_json_rpc_wrong_version() {
 
     // This might succeed because we may not validate version strictly
     // The test verifies we don't crash on unexpected data
-    let _ = harness.run(&["health"]);
+    let _ = harness.run(&["status"]);
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn test_empty_response() {
     harness.set_response("health", MockResponse::Malformed(String::new()));
 
     harness
-        .run(&["health"])
+        .run(&["status"])
         .failure()
         .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
 }
@@ -153,7 +153,7 @@ fn test_partial_json_response() {
     );
 
     harness
-        .run(&["health"])
+        .run(&["status"])
         .failure()
         .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
 }
@@ -168,7 +168,7 @@ fn test_connection_recovers_after_failure() {
 
     // First request fails
     harness.set_response("health", MockResponse::Disconnect);
-    let _ = harness.run(&["health"]);
+    let _ = harness.run(&["status"]);
 
     // Restore normal response
     harness.set_success_response(
@@ -184,7 +184,7 @@ fn test_connection_recovers_after_failure() {
 
     // Second request should succeed
     harness
-        .run(&["health"])
+        .run(&["status"])
         .success()
         .stdout(predicate::str::contains("healthy"));
 }
@@ -195,11 +195,11 @@ fn test_different_commands_independent_failure() {
 
     // health fails
     harness.set_response("health", MockResponse::Disconnect);
-    harness.run(&["health"]).failure();
+    harness.run(&["status"]).failure();
 
     // sessions should still work (different connection)
     harness
-        .run(&["sessions"])
+        .run(&["ls"])
         .success()
         .stdout(predicate::str::contains("No active sessions"));
 }

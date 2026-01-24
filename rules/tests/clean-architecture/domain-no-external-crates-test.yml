@@ -1,0 +1,17 @@
+id: clean-arch-domain-no-external-crates
+valid:
+  - "use std::collections::HashMap;"
+  - "use std::fmt::Display;"
+  - "use core::str::FromStr;"
+  - "use alloc::vec::Vec;"
+invalid:
+  - "use anyhow::Result;"
+  - "use anyhow::Context;"
+  - "use anyhow;"
+  - "use thiserror::Error;"
+  - "use thiserror;"
+  - "use log::info;"
+  - "use log;"
+  - "use env_logger::Builder;"
+  - "use regex::Regex;"
+  - "use regex;"

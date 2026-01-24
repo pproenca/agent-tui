@@ -1,0 +1,18 @@
+id: clean-arch-handlers-no-serde-json
+language: rust
+severity: hint
+message: "Handlers should work with domain types. Move JSON handling to adapters."
+note: |
+  Serialization is an adapter concern:
+  - Handlers receive parsed domain inputs
+  - Handlers return domain outputs
+  - Adapters (adapters/rpc.rs) handle JSON conversion
+
+  Exception: Building JSON responses for RPC is acceptable if done consistently.
+files:
+  - "crates/agent-tui-daemon/src/handlers/**/*.rs"
+rule:
+  kind: use_declaration
+  any:
+    - pattern: use serde_json::$$$ITEMS
+    - pattern: use serde_json

@@ -1,0 +1,32 @@
+id: own-accept-str-slice-not-string
+snapshots:
+  'fn greet(msg: &String) {}':
+    labels:
+    - source: '&String'
+      style: primary
+      start: 14
+      end: 21
+    - source: 'msg: &String'
+      style: secondary
+      start: 9
+      end: 21
+  'fn process(name: &String) {}':
+    labels:
+    - source: '&String'
+      style: primary
+      start: 17
+      end: 24
+    - source: 'name: &String'
+      style: secondary
+      start: 11
+      end: 24
+  'pub fn validate(input: &String) -> bool { true }':
+    labels:
+    - source: '&String'
+      style: primary
+      start: 23
+      end: 30
+    - source: 'input: &String'
+      style: secondary
+      start: 16
+      end: 30

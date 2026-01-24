@@ -1,0 +1,62 @@
+id: clean-arch-domain-no-external-crates
+snapshots:
+  use anyhow::Context;:
+    labels:
+    - source: use anyhow::Context;
+      style: primary
+      start: 0
+      end: 20
+  use anyhow::Result;:
+    labels:
+    - source: use anyhow::Result;
+      style: primary
+      start: 0
+      end: 19
+  use anyhow;:
+    labels:
+    - source: use anyhow;
+      style: primary
+      start: 0
+      end: 11
+  use env_logger::Builder;:
+    labels:
+    - source: use env_logger::Builder;
+      style: primary
+      start: 0
+      end: 24
+  use log::info;:
+    labels:
+    - source: use log::info;
+      style: primary
+      start: 0
+      end: 14
+  use log;:
+    labels:
+    - source: use log;
+      style: primary
+      start: 0
+      end: 8
+  use regex::Regex;:
+    labels:
+    - source: use regex::Regex;
+      style: primary
+      start: 0
+      end: 17
+  use regex;:
+    labels:
+    - source: use regex;
+      style: primary
+      start: 0
+      end: 10
+  use thiserror::Error;:
+    labels:
+    - source: use thiserror::Error;
+      style: primary
+      start: 0
+      end: 21
+  use thiserror;:
+    labels:
+    - source: use thiserror;
+      style: primary
+      start: 0
+      end: 14

@@ -1,0 +1,28 @@
+id: clean-arch-domain-no-async
+valid:
+  - |
+    fn get_session_id(&self) -> SessionId {
+        self.id
+    }
+  - |
+    fn validate_input(input: &str) -> bool {
+        !input.is_empty()
+    }
+  - |
+    pub fn new(id: SessionId) -> Self {
+        Self { id }
+    }
+invalid:
+  - |
+    async fn fetch_data(&self) -> Result<Data, Error> {
+        self.client.get().await
+    }
+  - |
+    pub async fn process(&mut self) {
+        self.inner.run().await;
+    }
+  - |
+    async fn validate_async(input: &str) -> bool {
+        tokio::time::sleep(Duration::from_millis(1)).await;
+        true
+    }

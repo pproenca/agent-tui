@@ -1,0 +1,12 @@
+id: clean-arch-usecases-no-infrastructure
+valid:
+  - "use crate::domain::types::SessionId;"
+  - "use crate::domain::session_types::SessionInfo;"
+  - "use crate::repository::SessionRepository;"
+  - "use std::sync::Arc;"
+invalid:
+  - "use crate::server::DaemonServer;"
+  - "use crate::server;"
+  - "use crate::transport::UnixSocket;"
+  - "use crate::handlers::spawn_handler;"
+  - "use crate::adapters::rpc::RpcRequest;"

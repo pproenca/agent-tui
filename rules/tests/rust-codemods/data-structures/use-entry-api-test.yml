@@ -1,0 +1,8 @@
+id: ds-use-entry-api
+valid:
+  - "map.entry(key).or_insert(value);"
+  - "map.entry(key).or_insert_with(|| default());"
+  - "if map.get(&key).is_none() { map.insert(key, value); }"
+invalid:
+  - "if !map.contains_key(&key) { map.insert(key, value); }"
+  - "if !self.cache.contains_key(&id) { self.cache.insert(id, data); }"

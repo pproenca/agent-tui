@@ -1,0 +1,10 @@
+id: iter-use-cloned
+language: rust
+severity: hint
+message: "Use cloned() instead of map(|x| x.clone()) for cleaner code"
+note: |
+  cloned() is more idiomatic and concise than map(|x| x.clone()).
+  It's specifically designed for iterators over references when you want to clone each element.
+rule:
+  pattern: $ITER.map(|$X| $X.clone())
+fix: $ITER.cloned()

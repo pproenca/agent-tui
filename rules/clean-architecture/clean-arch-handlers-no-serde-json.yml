@@ -10,7 +10,7 @@ note: |
 
   Exception: Building JSON responses for RPC is acceptable if done consistently.
 files:
-  - "crates/agent-tui-daemon/src/handlers/**/*.rs"
+  - "crates/agent-tui/src/daemon/handlers/**/*.rs"
 rule:
   kind: use_declaration
   any:

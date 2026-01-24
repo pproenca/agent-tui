@@ -326,31 +326,6 @@ pub fn ensure_daemon() -> Result<UnixSocketClient, ClientError> {
     UnixSocketClient::connect()
 }
 
-/// Clean up daemon socket and lock files, returning any warnings.
-fn cleanup_daemon_files(socket: &std::path::Path) -> Vec<String> {
-    let mut warnings = Vec::new();
-    if let Err(e) = std::fs::remove_file(socket) {
-        if e.kind() != std::io::ErrorKind::NotFound {
-            warnings.push(format!(
-                "Failed to remove socket {}: {}",
-                socket.display(),
-                e
-            ));
-        }
-    }
-    let lock = socket.with_extension("lock");
-    if let Err(e) = std::fs::remove_file(&lock) {
-        if e.kind() != std::io::ErrorKind::NotFound {
-            warnings.push(format!(
-                "Failed to remove lock file {}: {}",
-                lock.display(),
-                e
-            ));
-        }
-    }
-    warnings
-}
-
 /// Result of PID lookup from lock file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PidLookupResult {
@@ -384,92 +359,6 @@ pub fn get_daemon_pid() -> PidLookupResult {
             )),
         },
     }
-}
-
-/// Result of stopping the daemon.
-pub struct StopDaemonResult {
-    /// PID of the stopped daemon.
-    pub pid: u32,
-    /// Warnings encountered during cleanup (non-fatal).
-    pub warnings: Vec<String>,
-}
-
-/// Stop the running daemon.
-///
-/// If `force` is true, sends SIGKILL for immediate termination.
-/// Otherwise, sends SIGTERM for graceful shutdown.
-///
-/// Returns the PID of the stopped daemon and any warnings from cleanup.
-pub fn stop_daemon(force: bool) -> Result<StopDaemonResult, ClientError> {
-    use std::time::{Duration, Instant};
-
-    let pid = match get_daemon_pid() {
-        PidLookupResult::Found(pid) => pid,
-        PidLookupResult::NotRunning => return Err(ClientError::DaemonNotRunning),
-        PidLookupResult::Error(msg) => {
-            return Err(ClientError::SignalFailed {
-                pid: 0,
-                message: msg,
-            });
-        }
-    };
-    let socket = socket_path();
-    let mut warnings = Vec::new();
-
-    // Convert PID to libc::pid_t, validating it fits
-    let pid_t: libc::pid_t = pid.try_into().map_err(|_| ClientError::SignalFailed {
-        pid,
-        message: format!("PID {} is out of range for this system", pid),
-    })?;
-
-    // Verify daemon is actually running with this PID
-    // SAFETY: kill(pid, 0) checks if process exists without sending a signal.
-    // The pid is read from our lock file and validated above.
-    let result = unsafe { libc::kill(pid_t, 0) };
-    let proc_exists = if result == 0 {
-        true
-    } else {
-        let err = std::io::Error::last_os_error();
-        match err.raw_os_error() {
-            Some(libc::ESRCH) => false, // No such process
-            Some(libc::EPERM) => true,  // Process exists but no permission
-            _ => return Err(ClientError::ConnectionFailed(err)),
-        }
-    };
-
-    if !proc_exists {
-        // PID doesn't exist, clean up stale files
-        warnings.extend(cleanup_daemon_files(&socket));
-        return Err(ClientError::DaemonNotRunning);
-    }
-
-    // Send signal
-    let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
-    // SAFETY: We verified the PID exists above. Sending SIGTERM/SIGKILL to our
-    // own daemon process is safe.
-    let result = unsafe { libc::kill(pid_t, signal) };
-
-    if result != 0 {
-        return Err(ClientError::SignalFailed {
-            pid,
-            message: std::io::Error::last_os_error().to_string(),
-        });
-    }
-
-    // Wait for socket to be removed (with timeout)
-    let timeout = Duration::from_secs(10);
-    let start = Instant::now();
-
-    while socket.exists() && start.elapsed() < timeout {
-        std::thread::sleep(Duration::from_millis(100));
-    }
-
-    if socket.exists() {
-        // Force cleanup if still present
-        warnings.extend(cleanup_daemon_files(&socket));
-    }
-
-    Ok(StopDaemonResult { pid, warnings })
 }
 
 #[cfg(test)]

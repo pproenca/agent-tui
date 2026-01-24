@@ -1,0 +1,32 @@
+id: own-accept-slice-not-vec
+snapshots:
+  'fn process(items: &Vec<i32>) {}':
+    labels:
+    - source: '&Vec<i32>'
+      style: primary
+      start: 18
+      end: 27
+    - source: 'items: &Vec<i32>'
+      style: secondary
+      start: 11
+      end: 27
+  'fn sum_all(numbers: &Vec<u64>) -> u64 { 0 }':
+    labels:
+    - source: '&Vec<u64>'
+      style: primary
+      start: 20
+      end: 29
+    - source: 'numbers: &Vec<u64>'
+      style: secondary
+      start: 11
+      end: 29
+  'pub fn validate(data: &Vec<String>) -> bool { true }':
+    labels:
+    - source: '&Vec<String>'
+      style: primary
+      start: 22
+      end: 34
+    - source: 'data: &Vec<String>'
+      style: secondary
+      start: 16
+      end: 34

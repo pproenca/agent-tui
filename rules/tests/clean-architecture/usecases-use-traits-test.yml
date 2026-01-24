@@ -1,0 +1,8 @@
+id: clean-arch-usecases-use-traits
+valid:
+  - "use crate::repository::SessionRepository;"
+  - "use crate::domain::types::SessionId;"
+  - "use crate::session::SessionHandle;"
+invalid:
+  - "use crate::session::Session;"
+  - "use crate::session::SessionManager;"

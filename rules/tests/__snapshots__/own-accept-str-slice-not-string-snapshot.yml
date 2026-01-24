@@ -1,0 +1,28 @@
+id: own-accept-str-slice-not-string
+snapshots:
+  ? |
+    fn greet(message: &String) {
+        println!("Hello, {}", message);
+    }
+  : labels:
+    - source: '&String'
+      style: primary
+      start: 18
+      end: 25
+    - source: 'message: &String'
+      style: secondary
+      start: 9
+      end: 25
+  ? |
+    fn process_name(name: &String) {
+        println!("{}", name);
+    }
+  : labels:
+    - source: '&String'
+      style: primary
+      start: 22
+      end: 29
+    - source: 'name: &String'
+      style: secondary
+      start: 16
+      end: 29

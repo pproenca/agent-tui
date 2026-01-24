@@ -1,0 +1,22 @@
+id: comp-avoid-regex-in-fn
+valid:
+  - |
+    static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\d+").unwrap());
+    fn use_regex(text: &str) -> bool {
+        RE.is_match(text)
+    }
+  - |
+    fn create_regex() -> Regex {
+        LOCK.get_or_init(|| Regex::new(r"\d+").unwrap()).clone()
+    }
+invalid:
+  - |
+    fn match_pattern(text: &str) -> bool {
+        let re = Regex::new(r"\d+").unwrap();
+        re.is_match(text)
+    }
+  - |
+    fn extract_numbers(text: &str) -> Vec<&str> {
+        let regex = Regex::new(r"[0-9]+").unwrap();
+        regex.find_iter(text).map(|m| m.as_str()).collect()
+    }

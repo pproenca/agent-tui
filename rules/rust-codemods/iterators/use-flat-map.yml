@@ -1,0 +1,10 @@
+id: iter-use-flat-map
+language: rust
+severity: hint
+message: "Use flat_map() instead of map().flatten() for cleaner code"
+note: |
+  flat_map(f) is equivalent to map(f).flatten() but more idiomatic and slightly more efficient.
+  It combines mapping and flattening into a single operation.
+rule:
+  pattern: $ITER.map($FN).flatten()
+fix: $ITER.flat_map($FN)

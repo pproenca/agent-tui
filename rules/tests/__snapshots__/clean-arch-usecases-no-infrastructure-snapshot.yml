@@ -1,0 +1,32 @@
+id: clean-arch-usecases-no-infrastructure
+snapshots:
+  use crate::adapters::rpc::RpcRequest;:
+    labels:
+    - source: use crate::adapters::rpc::RpcRequest;
+      style: primary
+      start: 0
+      end: 37
+  use crate::handlers::spawn_handler;:
+    labels:
+    - source: use crate::handlers::spawn_handler;
+      style: primary
+      start: 0
+      end: 35
+  use crate::server::DaemonServer;:
+    labels:
+    - source: use crate::server::DaemonServer;
+      style: primary
+      start: 0
+      end: 32
+  use crate::server;:
+    labels:
+    - source: use crate::server;
+      style: primary
+      start: 0
+      end: 18
+  use crate::transport::UnixSocket;:
+    labels:
+    - source: use crate::transport::UnixSocket;
+      style: primary
+      start: 0
+      end: 33

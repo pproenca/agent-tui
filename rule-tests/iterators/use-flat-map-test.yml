@@ -1,0 +1,10 @@
+id: iter-use-flat-map
+valid:
+  - "iter.flat_map(|x| x.items());"
+  - "iter.map(f).filter(g);"
+  - "iter.filter(g).flatten();"
+  - "iter.map(f).collect();"
+invalid:
+  - "iter.map(|x| x.items()).flatten();"
+  - "vec.iter().map(process).flatten();"
+  - "self.data.map(|x| x).flatten();"

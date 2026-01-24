@@ -115,3 +115,13 @@ release version:
 # Install git hooks (pre-push checks)
 setup-hooks:
     ./scripts/setup-hooks.sh
+
+# Run ast-grep rule tests
+ast-grep-test:
+    ast-grep test
+
+# Scan codebase with ast-grep rules
+ast-grep-scan:
+    @for rule in rules/rust-codemods/**/*.yml rules/clean-architecture/*.yml; do \
+        ast-grep scan --rule "$$rule"; \
+    done

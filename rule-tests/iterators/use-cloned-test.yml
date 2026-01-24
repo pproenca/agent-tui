@@ -1,0 +1,11 @@
+id: iter-use-cloned
+valid:
+  - "iter.cloned();"
+  - "iter.map(|x| x.to_owned());"
+  - "iter.map(|x| transform(x).clone());"
+  - "iter.map(|x| x.deep_clone());"
+  - "iter.map(clone);"
+invalid:
+  - "iter.map(|x| x.clone());"
+  - "vec.iter().map(|item| item.clone());"
+  - "self.data.iter().map(|x| x.clone());"

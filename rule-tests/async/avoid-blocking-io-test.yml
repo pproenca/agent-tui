@@ -1,0 +1,19 @@
+id: async-avoid-blocking-io
+valid:
+  - |
+    fn sync_read() {
+        std::fs::read("file.txt");
+    }
+  - |
+    async fn async_read() {
+        tokio::fs::read("file.txt").await;
+    }
+invalid:
+  - |
+    async fn bad_read() {
+        std::fs::read("file.txt");
+    }
+  - |
+    async fn bad_write() {
+        std::fs::write("file.txt", data);
+    }

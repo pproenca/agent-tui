@@ -1,0 +1,11 @@
+id: clean-arch-common-no-higher-crates
+valid:
+  - "use std::collections::HashMap;"
+  - "use std::sync::Arc;"
+  - "use core::fmt::Display;"
+invalid:
+  - "use agent_tui_core::session::Session;"
+  - "use agent_tui_daemon::server::DaemonServer;"
+  - "use agent_tui_terminal::Terminal;"
+  - "use agent_tui_ipc::client::DaemonClient;"
+  - "use agent_tui::commands::Cli;"

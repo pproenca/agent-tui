@@ -1,0 +1,9 @@
+id: iter-use-flat-map
+valid:
+  - "iter.flat_map(|x| x.children());"
+  - "items.flat_map(process);"
+  - "vec.iter().flat_map(|v| v.iter());"
+invalid:
+  - "iter.map(|x| x.children()).flatten();"
+  - "items.map(process).flatten();"
+  - "vec.iter().map(|v| v.iter()).flatten();"

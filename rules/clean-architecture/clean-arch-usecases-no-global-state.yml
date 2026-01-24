@@ -1,0 +1,16 @@
+id: clean-arch-usecases-no-global-state
+language: rust
+severity: error
+message: "Use cases should not access global state. Pass dependencies via constructor."
+note: |
+  Dependency Injection: Use cases should receive all dependencies through their constructor.
+  Global state makes testing difficult and hides dependencies.
+  - Replace lazy_static with constructor injection
+  - Pass configuration as parameters
+files:
+  - "crates/agent-tui-daemon/src/usecases/**/*.rs"
+rule:
+  kind: use_declaration
+  any:
+    - regex: "^use lazy_static"
+    - regex: "^use once_cell::"

@@ -1,0 +1,20 @@
+id: ds-avoid-vec-remove-0
+snapshots:
+  data.remove(0);:
+    labels:
+    - source: data.remove(0)
+      style: primary
+      start: 0
+      end: 14
+  self.items.remove(0);:
+    labels:
+    - source: self.items.remove(0)
+      style: primary
+      start: 0
+      end: 20
+  vec.remove(0);:
+    labels:
+    - source: vec.remove(0)
+      style: primary
+      start: 0
+      end: 13

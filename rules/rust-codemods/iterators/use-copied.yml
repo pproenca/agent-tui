@@ -1,0 +1,10 @@
+id: iter-use-copied
+language: rust
+severity: hint
+message: "Use copied() instead of map(|x| *x) for cleaner code"
+note: |
+  copied() is more idiomatic and concise than map(|x| *x).
+  It's specifically designed for iterators over references to Copy types.
+rule:
+  pattern: $ITER.map(|$X| *$X)
+fix: $ITER.copied()

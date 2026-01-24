@@ -1,0 +1,10 @@
+id: algo-use-sort-by-key
+language: rust
+severity: hint
+message: "Use sort_by_key() instead of sort_by() with simple field comparison"
+note: |
+  sort_by_key(|x| x.field) is cleaner than sort_by(|a, b| a.field.cmp(&b.field)).
+  It extracts the key once per element and handles the comparison internally.
+rule:
+  pattern: $VEC.sort_by(|$A, $B| $A.$FIELD.cmp(&$B.$FIELD))
+fix: $VEC.sort_by_key(|x| x.$FIELD)

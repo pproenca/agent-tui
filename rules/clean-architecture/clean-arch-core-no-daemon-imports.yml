@@ -1,0 +1,18 @@
+id: clean-arch-core-no-daemon-imports
+language: rust
+severity: error
+message: "Core crate must not depend on daemon crate. Dependencies flow inward only."
+note: |
+  Workspace dependency direction:
+  daemon -> core (allowed)
+  core -> daemon (VIOLATION)
+
+  Core is a lower-level crate that daemon depends on.
+  If core needs daemon functionality, refactor to extract shared code.
+files:
+  - "crates/agent-tui-core/src/**/*.rs"
+rule:
+  kind: use_declaration
+  any:
+    - pattern: use agent_tui_daemon::$$$ITEMS
+    - pattern: use agent_tui_daemon

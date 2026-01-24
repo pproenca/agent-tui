@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use crate::domain::{
     AttachInput, AttachOutput, CleanupFailure, CleanupInput, CleanupOutput, KillOutput,
-    ResizeInput, ResizeOutput, SessionInput, SessionsOutput, SpawnInput, SpawnOutput,
+    ResizeInput, ResizeOutput, RestartOutput, SessionInput, SessionsOutput, SpawnInput,
+    SpawnOutput,
 };
 use crate::error::{DomainError, SessionError};
 use crate::repository::SessionRepository;
@@ -122,14 +123,6 @@ impl<R: SessionRepository> SessionsUseCase for SessionsUseCaseImpl<R> {
 
 pub trait RestartUseCase: Send + Sync {
     fn execute(&self, input: SessionInput) -> Result<RestartOutput, SessionError>;
-}
-
-#[derive(Debug, Clone)]
-pub struct RestartOutput {
-    pub old_session_id: SessionId,
-    pub new_session_id: SessionId,
-    pub command: String,
-    pub pid: u32,
 }
 
 pub struct RestartUseCaseImpl<R: SessionRepository> {

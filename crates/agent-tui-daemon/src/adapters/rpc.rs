@@ -10,14 +10,13 @@ use crate::domain::{
     GetValueOutput, HealthOutput, IsCheckedOutput, IsEnabledOutput, KeydownInput, KeystrokeInput,
     KeyupInput, KillOutput, MetricsOutput, MultiselectInput, MultiselectOutput, PtyReadInput,
     PtyReadOutput, PtyWriteInput, PtyWriteOutput, RecordStartInput, RecordStartOutput,
-    RecordStatusInput, RecordStatusOutput, RecordStopInput, ResizeInput, ResizeOutput, ScrollInput,
-    ScrollIntoViewInput, ScrollIntoViewOutput, ScrollOutput, SelectAllInput, SelectInput,
-    SessionId, SessionInput, SessionsOutput, SnapshotInput, SnapshotOutput, SpawnInput,
-    SpawnOutput, ToggleInput, ToggleOutput, TraceInput, TraceOutput, TypeInput, VisibilityOutput,
-    WaitInput, WaitOutput,
+    RecordStatusInput, RecordStatusOutput, RecordStopInput, ResizeInput, ResizeOutput,
+    RestartOutput, ScrollInput, ScrollIntoViewInput, ScrollIntoViewOutput, ScrollOutput,
+    SelectAllInput, SelectInput, SessionId, SessionInput, SessionsOutput, SnapshotInput,
+    SnapshotOutput, SpawnInput, SpawnOutput, ToggleInput, ToggleOutput, TraceInput, TraceOutput,
+    TypeInput, VisibilityOutput, WaitInput, WaitOutput,
 };
 use crate::error::{DomainError, SessionError};
-use crate::usecases::RestartOutput;
 
 /// Convert an optional string session ID to an optional SessionId.
 ///

@@ -7,38 +7,38 @@ const LONG_ABOUT: &str = r#"agent-tui enables AI agents to interact with TUI (Te
 
 WORKFLOW:
     1. Run a TUI application
-    2. Take snapshots to see the screen and detect elements
-    3. Interact using fill, click, key commands
+    2. View the screen and detect elements
+    3. Interact using action and input commands
     4. Wait for UI changes
     5. Kill the session when done
 
 ELEMENT REFS:
     Element refs are simple sequential identifiers like @e1, @e2, @e3 that
-    you can use to interact with detected UI elements. Run 'agent-tui snap -e'
+    you can use to interact with detected UI elements. Run 'agent-tui screen -e'
     to see available elements and their refs.
 
     @e1, @e2, @e3, ...  - Elements in document order (top-to-bottom, left-to-right)
 
-    Refs reset on each snapshot. Always use the latest snapshot's refs.
+    Refs reset on each screen view. Always use the latest screen's refs.
 
 EXAMPLES:
     # Start a new Next.js project wizard
     agent-tui run "npx create-next-app"
-    agent-tui snap -e
-    agent-tui fill @e1 "my-project"
-    agent-tui key Enter
+    agent-tui screen -e
+    agent-tui action @e1 fill "my-project"
+    agent-tui input Enter
     agent-tui wait "success"
     agent-tui kill
 
     # Interactive menu navigation
     agent-tui run htop
-    agent-tui key F10
-    agent-tui snap -e
-    agent-tui click @e1
+    agent-tui input F10
+    agent-tui screen -e
+    agent-tui action @e1 click
     agent-tui kill
 
     # Check daemon status
-    agent-tui status -v"#;
+    agent-tui daemon status"#;
 
 #[derive(Parser)]
 #[command(name = "agent-tui")]
@@ -117,9 +117,9 @@ EXAMPLES:
         rows: u16,
     },
 
-    /// Take a snapshot of the current screen state
-    #[command(name = "snap")]
-    #[command(long_about = r#"Take a snapshot of the current screen state.
+    /// View the current screen state
+    #[command(name = "screen")]
+    #[command(long_about = r#"View the current screen state.
 
 Returns the current terminal screen content and optionally detects
 interactive UI elements like buttons, inputs, and menus.
@@ -134,12 +134,12 @@ ACCESSIBILITY TREE FORMAT (-a):
     - textbox "Search" [ref=e2]
 
 EXAMPLES:
-    agent-tui snap              # Just the screen
-    agent-tui snap -e           # Screen + detected elements
-    agent-tui snap -a           # Accessibility tree format
-    agent-tui snap -a --interactive-only  # Only interactive elements
-    agent-tui snap --strip-ansi # Plain text without colors"#)]
-    Snap {
+    agent-tui screen              # Just the screen
+    agent-tui screen -e           # Screen + detected elements
+    agent-tui screen -a           # Accessibility tree format
+    agent-tui screen -a --interactive-only  # Only interactive elements
+    agent-tui screen --strip-ansi # Plain text without colors"#)]
+    Screen {
         /// Include detected UI elements in output
         #[arg(short = 'i', long)]
         elements: bool,
@@ -165,32 +165,51 @@ EXAMPLES:
         include_cursor: bool,
     },
 
-    /// Click an element by reference
-    Click {
-        /// Element reference (e.g., @btn1, @e3)
+    /// Perform an action on an element
+    #[command(long_about = r#"Perform an action on an element by reference.
+
+All element interactions are done through this command. Specify the element
+reference and the operation to perform.
+
+OPERATIONS:
+    click           Click the element
+    dblclick        Double-click the element
+    fill <value>    Set the input value
+    select <opt>    Select an option (multiple for multiselect)
+    toggle [on|off] Toggle checkbox/radio (optionally force state)
+    focus           Set focus to the element
+    clear           Clear the input value
+    selectall       Select all text in input
+    scroll <dir> [n] Scroll viewport (up/down/left/right, default 5)
+
+EXAMPLES:
+    agent-tui action @e1 click
+    agent-tui action @e1 dblclick
+    agent-tui action @e1 fill "my-project"
+    agent-tui action @sel1 select "Option 2"
+    agent-tui action @list1 select "red" "blue"   # multiselect
+    agent-tui action @cb1 toggle
+    agent-tui action @cb1 toggle on               # force checked
+    agent-tui action @inp1 focus
+    agent-tui action @inp1 clear
+    agent-tui action @inp1 selectall
+    agent-tui action @e1 scroll up 10"#)]
+    Action {
+        /// Element reference (e.g., @e1, @btn1)
         #[arg(name = "ref")]
         element_ref: String,
 
-        /// Double-click instead of single click
-        #[arg(short = '2', long)]
-        double: bool,
+        /// Operation to perform
+        #[command(subcommand)]
+        operation: ActionOperation,
     },
 
-    /// Set the value of an input element
-    Fill {
-        /// Element reference (e.g., @inp1)
-        #[arg(name = "ref")]
-        element_ref: String,
+    /// Send keyboard input (keys or text)
+    #[command(name = "input")]
+    #[command(long_about = r#"Send keyboard input - keys or text.
 
-        /// Value to set in the input
-        value: String,
-    },
-
-    /// Send keystrokes or type text
-    #[command(long_about = r#"Send keystrokes or type text.
-
-Unified command for all keyboard input. Can press a single key, type text,
-or hold/release modifier keys.
+Unified command for all keyboard input. Automatically detects whether
+the input is a key name or text to type.
 
 SUPPORTED KEYS:
     Enter, Tab, Escape, Backspace, Delete
@@ -203,28 +222,29 @@ MODIFIERS:
     Alt+<key>    - Alt modifier (e.g., Alt+F4)
     Shift+<key>  - Shift modifier
 
+AUTO-DETECTION:
+    If the input matches a known key name, it's sent as a key press.
+    Otherwise, it's typed as text character by character.
+    Use quotes for text that might be mistaken for a key name.
+
 EXAMPLES:
-    agent-tui key Enter              # Press Enter
-    agent-tui key Ctrl+C             # Press Ctrl+C
-    agent-tui key --type "hello"     # Type text char-by-char
-    agent-tui key -t "hello"         # Short form for typing
-    agent-tui key Shift --hold       # Hold Shift down
-    agent-tui key Shift --release    # Release Shift"#)]
-    Key {
-        /// Key name or combination (e.g., Enter, Ctrl+C) - not required if --type is used
-        #[arg(required_unless_present = "text")]
-        key: Option<String>,
+    agent-tui input Enter              # Press Enter
+    agent-tui input Ctrl+C             # Press Ctrl+C
+    agent-tui input "hello"            # Type text char-by-char
+    agent-tui input "Enter"            # Type literal "Enter" text
+    agent-tui input Shift --hold       # Hold Shift down
+    agent-tui input Shift --release    # Release Shift"#)]
+    Input {
+        /// Key name, combination, or text to type
+        #[arg(required_unless_present_any = ["hold", "release"])]
+        value: Option<String>,
 
-        /// Type text character by character
-        #[arg(short = 't', long = "type", conflicts_with = "key")]
-        text: Option<String>,
-
-        /// Hold key down for modifier sequences
-        #[arg(long, conflicts_with_all = ["text", "release"])]
+        /// Hold key down for modifier sequences (requires key name)
+        #[arg(long, conflicts_with = "release")]
         hold: bool,
 
-        /// Release a held key
-        #[arg(long, conflicts_with_all = ["text", "hold"])]
+        /// Release a held key (requires key name)
+        #[arg(long, conflicts_with = "hold")]
         release: bool,
     },
 
@@ -242,6 +262,10 @@ WAIT CONDITIONS:
     --value <ref>=<val> Wait for input to have specific value
     -g, --gone          Modifier: wait for element/text to disappear
 
+ASSERT MODE:
+    --assert            Exit with code 0 if condition met, 1 if timeout
+                        Useful for scripting/testing without error messages
+
 EXAMPLES:
     agent-tui wait "Continue"           # Wait for text
     agent-tui wait -e @btn1             # Wait for element
@@ -249,7 +273,8 @@ EXAMPLES:
     agent-tui wait "Loading" --gone     # Wait for text to disappear
     agent-tui wait --stable             # Wait for screen stability
     agent-tui wait --focused @inp1      # Wait for focus
-    agent-tui wait -t 5000 "Done"       # 5 second timeout"#)]
+    agent-tui wait -t 5000 "Done"       # 5 second timeout
+    agent-tui wait --assert "Success"   # Exit 0 if found, 1 if not"#)]
     Wait {
         #[command(flatten)]
         params: WaitParams,
@@ -258,155 +283,48 @@ EXAMPLES:
     /// Terminate the current session
     Kill,
 
-    /// Restart the TUI application
-    #[command(long_about = r#"Restart the TUI application.
+    /// Manage sessions
+    #[command(name = "sessions")]
+    #[command(
+        long_about = r#"Manage sessions - list, cleanup, attach, or show details.
 
-Kills the current session and restarts it with the same command.
-Equivalent to running 'kill' followed by 'run' with the original command.
+By default, lists all active sessions. Use flags for other operations.
 
-This is the TUI equivalent of browser's 'reload' command.
-
-EXAMPLES:
-    agent-tui restart                 # Restart current session
-    agent-tui restart -s htop-abc123  # Restart specific session"#)]
-    Restart,
-
-    /// List all active sessions
-    #[command(name = "ls")]
-    Ls,
-
-    /// Check daemon status
-    #[command(name = "status")]
-    Status {
-        /// Show connection details
-        #[arg(short, long)]
-        verbose: bool,
-    },
-
-    /// Select an option from a dropdown or list
-    Select {
-        /// Element reference (e.g., @sel1)
-        #[arg(name = "ref")]
-        element_ref: String,
-
-        /// Option to select
-        option: String,
-    },
-
-    /// Select multiple options in a multi-select list
-    #[command(long_about = r#"Select multiple options in a multi-select list.
-
-This is the TUI equivalent of browser's multi-select functionality.
-Use this for lists where multiple items can be selected simultaneously.
-
-Typical multi-select interaction in TUI:
-1. Focus the list element
-2. Navigate with arrow keys
-3. Press Space to toggle selection for each option
+OPERATIONS:
+    sessions              List all active sessions
+    sessions <id>         Show details for a specific session
+    sessions --cleanup    Remove dead/orphaned sessions
+    sessions --cleanup --all  Remove all sessions
+    sessions --attach <id>    Attach to a session (interactive mode)
+    sessions --status     Include daemon health in output
 
 EXAMPLES:
-    agent-tui multiselect @e3 "Option 1" "Option 3"
-    agent-tui multiselect @list1 red blue green"#)]
-    #[command(name = "multiselect")]
-    MultiSelect {
-        /// Element reference (e.g., @list1)
-        #[arg(name = "ref")]
-        element_ref: String,
+    agent-tui sessions                    # List sessions
+    agent-tui sessions abc123             # Show session details
+    agent-tui sessions --cleanup          # Remove dead sessions
+    agent-tui sessions --attach abc123    # Attach interactively"#
+    )]
+    Sessions {
+        /// Session ID to show details for
+        #[arg(name = "id")]
+        session_id: Option<String>,
 
-        /// Options to select
-        #[arg(required = true)]
-        options: Vec<String>,
-    },
-
-    /// Scroll the terminal viewport
-    Scroll {
-        /// Scroll direction (up, down, left, right) - not required if --to is used
-        #[arg(value_enum, required_unless_present = "to_ref")]
-        direction: Option<ScrollDirection>,
-
-        /// Number of lines/columns to scroll
-        #[arg(short, long, default_value = "5")]
-        amount: u16,
-
-        /// Target element for scoped scrolling (not yet implemented)
-        #[arg(short, long)]
-        element: Option<String>,
-
-        /// Scroll until this element is visible
-        #[arg(long = "to")]
-        to_ref: Option<String>,
-    },
-
-    /// Set focus to an element
-    Focus {
-        /// Element reference (e.g., @inp1)
-        #[arg(name = "ref")]
-        element_ref: String,
-    },
-
-    /// Clear an input element's value
-    Clear {
-        /// Element reference (e.g., @inp1)
-        #[arg(name = "ref")]
-        element_ref: String,
-    },
-
-    /// Select all text in an input element
-    #[command(name = "selectall")]
-    SelectAll {
-        /// Element reference (e.g., @inp1)
-        #[arg(name = "ref")]
-        element_ref: String,
-    },
-
-    /// Count elements matching criteria
-    #[command(long_about = r#"Count elements matching criteria.
-
-This is the TUI equivalent of browser's count command.
-Returns the number of elements matching the specified role, name, or text.
-
-EXAMPLES:
-    agent-tui count --role button
-    agent-tui count --text "Submit"
-    agent-tui count --role input --name "Email""#)]
-    Count {
-        /// Element role to match (button, input, etc.)
+        /// Remove dead/orphaned sessions
         #[arg(long)]
-        role: Option<String>,
+        cleanup: bool,
 
-        /// Element name/label to match
+        /// With --cleanup: remove all sessions (not just dead ones)
+        #[arg(long, requires = "cleanup")]
+        all: bool,
+
+        /// Attach to a session interactively
+        #[arg(long, value_name = "ID", conflicts_with_all = ["cleanup", "id"])]
+        attach: Option<String>,
+
+        /// Include daemon status information
         #[arg(long)]
-        name: Option<String>,
-
-        /// Text content to match
-        #[arg(long)]
-        text: Option<String>,
+        status: bool,
     },
-
-    /// Toggle a checkbox or radio button
-    #[command(long_about = r#"Toggle a checkbox or radio button.
-
-Use this to toggle the checked state of a checkbox or radio button.
-By default, it inverts the current state. Use --on or --off to force a specific state.
-
-EXAMPLES:
-    agent-tui toggle @e5        # Toggle current state
-    agent-tui toggle @e5 --on   # Force checked (idempotent)
-    agent-tui toggle @e5 --off  # Force unchecked (idempotent)"#)]
-    Toggle {
-        /// Element reference (e.g., @cb1)
-        #[arg(name = "ref")]
-        element_ref: String,
-
-        /// Force checked state (idempotent)
-        #[arg(long, conflicts_with = "off")]
-        on: bool,
-
-        /// Force unchecked state (idempotent)
-        #[arg(long, conflicts_with = "on")]
-        off: bool,
-    },
-
     /// Debugging subcommands for development and troubleshooting
     #[command(subcommand)]
     Debug(DebugCommand),
@@ -474,47 +392,6 @@ EXAMPLES:
         clear: bool,
     },
 
-    /// Resize the terminal window
-    #[command(long_about = r#"Resize the terminal window dimensions.
-
-Changes the number of columns and rows for the PTY. This affects how
-TUI applications render and can be useful for testing responsive layouts.
-
-EXAMPLES:
-    agent-tui resize --cols 120 --rows 40
-    agent-tui resize --cols 80 --rows 24"#)]
-    Resize {
-        /// Number of columns
-        #[arg(long, default_value = "120")]
-        cols: u16,
-
-        /// Number of rows
-        #[arg(long, default_value = "40")]
-        rows: u16,
-    },
-
-    /// Attach to an existing session
-    #[command(long_about = r#"Attach to an existing session by ID.
-
-By default, makes the specified session the active session for subsequent commands.
-
-With --interactive (-i), attaches your terminal directly to the session
-for a native terminal experience. Your keystrokes go directly to the app,
-and you see its output in real-time. Press Ctrl+\ to detach.
-
-EXAMPLES:
-    agent-tui attach abc123          # Set as active session
-    agent-tui attach -i abc123       # Interactive mode (native terminal)
-    agent-tui ls                     # List session IDs first"#)]
-    Attach {
-        /// Session ID to attach to
-        session_id: String,
-
-        /// Interactive mode: attach terminal directly to the session
-        #[arg(short, long)]
-        interactive: bool,
-    },
-
     /// Daemon lifecycle management
     #[command(subcommand)]
     Daemon(DaemonCommand),
@@ -540,72 +417,6 @@ EXAMPLES:
     agent-tui env
     agent-tui env -f json"#)]
     Env,
-
-    /// Assert a condition for testing/scripting
-    #[command(long_about = r#"Assert a condition and exit with status code.
-
-Useful for automated testing and scripting. Exits with code 0 if
-the condition passes, or code 1 if it fails.
-
-CONDITIONS:
-    text:<pattern>        Assert text is visible on screen
-    element:<ref>         Assert element exists
-    session:<id>          Assert session exists and is running
-    exit_code:<expected>  Assert last process exit code (if applicable)
-
-EXAMPLES:
-    agent-tui assert text:Success
-    agent-tui assert element:@btn1
-    agent-tui assert session:main"#)]
-    Assert {
-        /// Condition to assert (text:pattern, element:ref, session:id)
-        condition: String,
-    },
-
-    /// Clean up stale sessions
-    #[command(long_about = r#"Clean up stale sessions.
-
-Removes sessions that are no longer running or have been idle
-for too long. Useful for freeing resources.
-
-EXAMPLES:
-    agent-tui cleanup           # Remove dead sessions
-    agent-tui cleanup --all     # Remove all sessions"#)]
-    Cleanup {
-        /// Remove all sessions (not just dead ones)
-        #[arg(long)]
-        all: bool,
-    },
-
-    /// Find elements by semantic properties (role, name, text)
-    #[command(long_about = r#"Find elements by semantic properties.
-
-This is a semantic locator that allows finding elements without relying
-on refs that may change. Returns matching element refs.
-
-Find modes:
-  - By role and name: agent-tui find --role button --name "Submit"
-  - By text content: agent-tui find --text "Continue"
-  - By focus state: agent-tui find --focused
-  - By placeholder: agent-tui find --placeholder "Enter email"
-  - Select nth result: agent-tui find --role button --nth 1
-
-MATCHING:
-  By default, text matching is case-insensitive and matches substrings.
-  Use --exact for exact string matching.
-
-EXAMPLES:
-    agent-tui find --role button --name "Submit"
-    agent-tui find --text "Continue"
-    agent-tui find --focused
-    agent-tui find --role input
-    agent-tui find --placeholder "Search..."     # Find by placeholder text
-    agent-tui find --role button --nth 1        # Get second button (0-indexed)
-    agent-tui find --text "Log" --exact         # Exact match only"#)]
-    Find {
-        #[command(flatten)]
-        params: FindParams,
-    },
 
     /// Generate shell completion scripts
     #[command(
@@ -690,6 +501,65 @@ All active sessions will be terminated during restart.
 EXAMPLES:
     agent-tui daemon restart"#)]
     Restart,
+}
+
+/// Action operations for element interactions
+#[derive(Debug, Subcommand, Clone)]
+pub enum ActionOperation {
+    /// Click the element
+    Click,
+
+    /// Double-click the element
+    #[command(name = "dblclick")]
+    DblClick,
+
+    /// Set the input value
+    Fill {
+        /// Value to set
+        value: String,
+    },
+
+    /// Select option(s) from a list or dropdown
+    Select {
+        /// Option(s) to select (multiple for multiselect)
+        #[arg(required = true)]
+        options: Vec<String>,
+    },
+
+    /// Toggle checkbox or radio button
+    Toggle {
+        /// Force state: on (checked) or off (unchecked)
+        #[arg(value_enum)]
+        state: Option<ToggleState>,
+    },
+
+    /// Set focus to the element
+    Focus,
+
+    /// Clear the input value
+    Clear,
+
+    /// Select all text in the input
+    #[command(name = "selectall")]
+    SelectAll,
+
+    /// Scroll the viewport
+    Scroll {
+        /// Scroll direction
+        #[arg(value_enum)]
+        direction: ScrollDirection,
+
+        /// Number of lines/columns to scroll
+        #[arg(default_value = "5")]
+        amount: u16,
+    },
+}
+
+/// Toggle state for checkbox/radio operations
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum ToggleState {
+    On,
+    Off,
 }
 
 /// Debugging subcommands
@@ -826,6 +696,10 @@ pub struct WaitParams {
     /// Wait for element/text to disappear (use with -e or text argument)
     #[arg(short = 'g', long)]
     pub gone: bool,
+
+    /// Exit with code 0/1 instead of success/error (for scripting)
+    #[arg(long)]
+    pub assert: bool,
 }
 
 impl WaitParams {
@@ -908,7 +782,7 @@ mod tests {
     /// Test that the CLI can be constructed with default values
     #[test]
     fn test_cli_defaults() {
-        let cli = Cli::parse_from(["agent-tui", "status"]);
+        let cli = Cli::parse_from(["agent-tui", "sessions"]);
         assert!(cli.session.is_none());
         assert_eq!(cli.format, OutputFormat::Text);
         assert!(!cli.no_color);
@@ -926,7 +800,7 @@ mod tests {
             "json",
             "--no-color",
             "--verbose",
-            "status",
+            "sessions",
         ]);
         assert_eq!(cli.session, Some("my-session".to_string()));
         assert_eq!(cli.format, OutputFormat::Json);
@@ -985,11 +859,11 @@ mod tests {
         assert_eq!(args, vec!["file.txt".to_string(), "-n".to_string()]);
     }
 
-    /// Test snap command flags
+    /// Test screen command flags
     #[test]
-    fn test_snap_flags() {
-        let cli = Cli::parse_from(["agent-tui", "snap", "-i"]);
-        let Commands::Snap {
+    fn test_screen_flags() {
+        let cli = Cli::parse_from(["agent-tui", "screen", "-i"]);
+        let Commands::Screen {
             elements,
             region,
             strip_ansi,
@@ -997,7 +871,7 @@ mod tests {
             ..
         } = cli.command
         else {
-            panic!("Expected Snap command, got {:?}", cli.command);
+            panic!("Expected Screen command, got {:?}", cli.command);
         };
         assert!(elements, "-i should enable elements");
         assert!(region.is_none());
@@ -1005,19 +879,19 @@ mod tests {
         assert!(!include_cursor);
     }
 
-    /// Test snap with all flags
+    /// Test screen with all flags
     #[test]
-    fn test_snap_all_flags() {
+    fn test_screen_all_flags() {
         let cli = Cli::parse_from([
             "agent-tui",
-            "snap",
+            "screen",
             "-i",
             "--region",
             "modal",
             "--strip-ansi",
             "--include-cursor",
         ]);
-        let Commands::Snap {
+        let Commands::Screen {
             elements,
             region,
             strip_ansi,
@@ -1025,7 +899,7 @@ mod tests {
             ..
         } = cli.command
         else {
-            panic!("Expected Snap command, got {:?}", cli.command);
+            panic!("Expected Screen command, got {:?}", cli.command);
         };
         assert!(elements);
         assert_eq!(region, Some("modal".to_string()));
@@ -1033,33 +907,33 @@ mod tests {
         assert!(include_cursor);
     }
 
-    /// Test snap accessibility tree format flag
+    /// Test screen accessibility tree format flag
     #[test]
-    fn test_snap_accessibility_flag() {
-        let cli = Cli::parse_from(["agent-tui", "snap", "-a"]);
-        let Commands::Snap {
+    fn test_screen_accessibility_flag() {
+        let cli = Cli::parse_from(["agent-tui", "screen", "-a"]);
+        let Commands::Screen {
             accessibility,
             elements,
             ..
         } = cli.command
         else {
-            panic!("Expected Snap command, got {:?}", cli.command);
+            panic!("Expected Screen command, got {:?}", cli.command);
         };
         assert!(accessibility, "-a should enable accessibility tree format");
         assert!(!elements, "elements should be false by default");
     }
 
-    /// Test snap accessibility with interactive-only filter
+    /// Test screen accessibility with interactive-only filter
     #[test]
-    fn test_snap_accessibility_interactive_only() {
-        let cli = Cli::parse_from(["agent-tui", "snap", "-a", "--interactive-only"]);
-        let Commands::Snap {
+    fn test_screen_accessibility_interactive_only() {
+        let cli = Cli::parse_from(["agent-tui", "screen", "-a", "--interactive-only"]);
+        let Commands::Screen {
             accessibility,
             interactive_only,
             ..
         } = cli.command
         else {
-            panic!("Expected Snap command, got {:?}", cli.command);
+            panic!("Expected Screen command, got {:?}", cli.command);
         };
         assert!(accessibility, "--accessibility should be set");
         assert!(
@@ -1068,57 +942,215 @@ mod tests {
         );
     }
 
-    /// Test click command requires element ref
+    /// Test action click command
     #[test]
-    fn test_click_command() {
-        let cli = Cli::parse_from(["agent-tui", "click", "@btn1"]);
-        let Commands::Click {
+    fn test_action_click() {
+        let cli = Cli::parse_from(["agent-tui", "action", "@btn1", "click"]);
+        let Commands::Action {
             element_ref,
-            double,
+            operation,
         } = cli.command
         else {
-            panic!("Expected Click command, got {:?}", cli.command);
+            panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@btn1");
-        assert!(!double);
+        assert!(matches!(operation, ActionOperation::Click));
     }
 
-    /// Test click command with --double flag
+    /// Test action dblclick command
     #[test]
-    fn test_click_double_flag() {
-        let cli = Cli::parse_from(["agent-tui", "click", "@btn1", "--double"]);
-        let Commands::Click {
+    fn test_action_dblclick() {
+        let cli = Cli::parse_from(["agent-tui", "action", "@btn1", "dblclick"]);
+        let Commands::Action {
             element_ref,
-            double,
+            operation,
         } = cli.command
         else {
-            panic!("Expected Click command, got {:?}", cli.command);
+            panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@btn1");
-        assert!(double);
-
-        // Test short flag
-        let cli = Cli::parse_from(["agent-tui", "click", "-2", "@btn1"]);
-        let Commands::Click { double, .. } = cli.command else {
-            panic!("Expected Click command, got {:?}", cli.command);
-        };
-        assert!(double);
+        assert!(matches!(operation, ActionOperation::DblClick));
     }
 
-    /// Test fill command requires element ref and value
+    /// Test action fill command
     #[test]
-    fn test_fill_command() {
-        let cli = Cli::parse_from(["agent-tui", "fill", "@inp1", "test value"]);
-        let Commands::Fill { element_ref, value } = cli.command else {
-            panic!("Expected Fill command, got {:?}", cli.command);
+    fn test_action_fill() {
+        let cli = Cli::parse_from(["agent-tui", "action", "@inp1", "fill", "test value"]);
+        let Commands::Action {
+            element_ref,
+            operation,
+        } = cli.command
+        else {
+            panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@inp1");
+        let ActionOperation::Fill { value } = operation else {
+            panic!("Expected Fill operation, got {:?}", operation);
+        };
         assert_eq!(value, "test value");
     }
 
-    /// Test key command
+    /// Test action select command (single option)
     #[test]
-    fn test_key_command() {
+    fn test_action_select_single() {
+        let cli = Cli::parse_from(["agent-tui", "action", "@sel1", "select", "Option 1"]);
+        let Commands::Action {
+            element_ref,
+            operation,
+        } = cli.command
+        else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@sel1");
+        let ActionOperation::Select { options } = operation else {
+            panic!("Expected Select operation, got {:?}", operation);
+        };
+        assert_eq!(options, vec!["Option 1"]);
+    }
+
+    /// Test action select command (multiple options for multiselect)
+    #[test]
+    fn test_action_select_multiple() {
+        let cli = Cli::parse_from([
+            "agent-tui",
+            "action",
+            "@list1",
+            "select",
+            "red",
+            "blue",
+            "green",
+        ]);
+        let Commands::Action {
+            element_ref,
+            operation,
+        } = cli.command
+        else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@list1");
+        let ActionOperation::Select { options } = operation else {
+            panic!("Expected Select operation, got {:?}", operation);
+        };
+        assert_eq!(options, vec!["red", "blue", "green"]);
+    }
+
+    /// Test action toggle command
+    #[test]
+    fn test_action_toggle() {
+        // Toggle without state (invert)
+        let cli = Cli::parse_from(["agent-tui", "action", "@cb1", "toggle"]);
+        let Commands::Action {
+            element_ref,
+            operation,
+        } = cli.command
+        else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@cb1");
+        let ActionOperation::Toggle { state } = operation else {
+            panic!("Expected Toggle operation, got {:?}", operation);
+        };
+        assert!(state.is_none());
+
+        // Toggle with on state
+        let cli = Cli::parse_from(["agent-tui", "action", "@cb1", "toggle", "on"]);
+        let Commands::Action { operation, .. } = cli.command else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        let ActionOperation::Toggle { state } = operation else {
+            panic!("Expected Toggle operation, got {:?}", operation);
+        };
+        assert!(matches!(state, Some(ToggleState::On)));
+
+        // Toggle with off state
+        let cli = Cli::parse_from(["agent-tui", "action", "@cb1", "toggle", "off"]);
+        let Commands::Action { operation, .. } = cli.command else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        let ActionOperation::Toggle { state } = operation else {
+            panic!("Expected Toggle operation, got {:?}", operation);
+        };
+        assert!(matches!(state, Some(ToggleState::Off)));
+    }
+
+    /// Test action focus command
+    #[test]
+    fn test_action_focus() {
+        let cli = Cli::parse_from(["agent-tui", "action", "@inp1", "focus"]);
+        let Commands::Action {
+            element_ref,
+            operation,
+        } = cli.command
+        else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@inp1");
+        assert!(matches!(operation, ActionOperation::Focus));
+    }
+
+    /// Test action clear command
+    #[test]
+    fn test_action_clear() {
+        let cli = Cli::parse_from(["agent-tui", "action", "@inp1", "clear"]);
+        let Commands::Action {
+            element_ref,
+            operation,
+        } = cli.command
+        else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@inp1");
+        assert!(matches!(operation, ActionOperation::Clear));
+    }
+
+    /// Test action selectall command
+    #[test]
+    fn test_action_selectall() {
+        let cli = Cli::parse_from(["agent-tui", "action", "@inp1", "selectall"]);
+        let Commands::Action {
+            element_ref,
+            operation,
+        } = cli.command
+        else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@inp1");
+        assert!(matches!(operation, ActionOperation::SelectAll));
+    }
+
+    /// Test action scroll command
+    #[test]
+    fn test_action_scroll() {
+        let cli = Cli::parse_from(["agent-tui", "action", "@e1", "scroll", "up"]);
+        let Commands::Action {
+            element_ref,
+            operation,
+        } = cli.command
+        else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@e1");
+        let ActionOperation::Scroll { direction, amount } = operation else {
+            panic!("Expected Scroll operation, got {:?}", operation);
+        };
+        assert!(matches!(direction, ScrollDirection::Up));
+        assert_eq!(amount, 5); // default
+
+        // With custom amount
+        let cli = Cli::parse_from(["agent-tui", "action", "@e1", "scroll", "down", "10"]);
+        let Commands::Action { operation, .. } = cli.command else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        let ActionOperation::Scroll { direction, amount } = operation else {
+            panic!("Expected Scroll operation, got {:?}", operation);
+        };
+        assert!(matches!(direction, ScrollDirection::Down));
+        assert_eq!(amount, 10);
+    }
+
+    /// Test input command with keys
+    #[test]
+    fn test_input_command_keys() {
         let test_cases = vec![
             "Enter",
             "Tab",
@@ -1142,83 +1174,79 @@ mod tests {
         ];
 
         for k in test_cases {
-            let cli = Cli::parse_from(["agent-tui", "key", k]);
-            let Commands::Key {
-                key,
-                text,
+            let cli = Cli::parse_from(["agent-tui", "input", k]);
+            let Commands::Input {
+                value,
                 hold,
                 release,
             } = cli.command
             else {
-                panic!("Expected Key command for key: {k}, got {:?}", cli.command);
+                panic!("Expected Input command for: {k}, got {:?}", cli.command);
             };
-            assert_eq!(key, Some(k.to_string()));
-            assert!(text.is_none());
+            assert_eq!(value, Some(k.to_string()));
             assert!(!hold);
             assert!(!release);
         }
     }
 
-    /// Test key --type command
+    /// Test input command with text (auto-detected)
     #[test]
-    fn test_key_type_command() {
-        let cli = Cli::parse_from(["agent-tui", "key", "--type", "Hello, World!"]);
-        let Commands::Key { key, text, .. } = cli.command else {
-            panic!("Expected Key command, got {:?}", cli.command);
+    fn test_input_command_text() {
+        let cli = Cli::parse_from(["agent-tui", "input", "Hello, World!"]);
+        let Commands::Input { value, .. } = cli.command else {
+            panic!("Expected Input command, got {:?}", cli.command);
         };
-        assert!(key.is_none());
-        assert_eq!(text, Some("Hello, World!".to_string()));
+        assert_eq!(value, Some("Hello, World!".to_string()));
 
-        // Short form
-        let cli = Cli::parse_from(["agent-tui", "key", "-t", "hello"]);
-        let Commands::Key { key, text, .. } = cli.command else {
-            panic!("Expected Key command, got {:?}", cli.command);
+        // Text that could be mistaken for a key name should be quoted
+        let cli = Cli::parse_from(["agent-tui", "input", "hello"]);
+        let Commands::Input { value, .. } = cli.command else {
+            panic!("Expected Input command, got {:?}", cli.command);
         };
-        assert!(key.is_none());
-        assert_eq!(text, Some("hello".to_string()));
+        assert_eq!(value, Some("hello".to_string()));
     }
 
-    /// Test key --hold command
+    /// Test input --hold command
     #[test]
-    fn test_key_hold_command() {
-        let cli = Cli::parse_from(["agent-tui", "key", "Shift", "--hold"]);
-        let Commands::Key {
-            key, hold, release, ..
+    fn test_input_hold_command() {
+        let cli = Cli::parse_from(["agent-tui", "input", "Shift", "--hold"]);
+        let Commands::Input {
+            value,
+            hold,
+            release,
         } = cli.command
         else {
-            panic!("Expected Key command, got {:?}", cli.command);
+            panic!("Expected Input command, got {:?}", cli.command);
         };
-        assert_eq!(key, Some("Shift".to_string()));
+        assert_eq!(value, Some("Shift".to_string()));
         assert!(hold);
         assert!(!release);
     }
 
-    /// Test key --release command
+    /// Test input --release command
     #[test]
-    fn test_key_release_command() {
-        let cli = Cli::parse_from(["agent-tui", "key", "Shift", "--release"]);
-        let Commands::Key {
-            key, hold, release, ..
+    fn test_input_release_command() {
+        let cli = Cli::parse_from(["agent-tui", "input", "Shift", "--release"]);
+        let Commands::Input {
+            value,
+            hold,
+            release,
         } = cli.command
         else {
-            panic!("Expected Key command, got {:?}", cli.command);
+            panic!("Expected Input command, got {:?}", cli.command);
         };
-        assert_eq!(key, Some("Shift".to_string()));
+        assert_eq!(value, Some("Shift".to_string()));
         assert!(!hold);
         assert!(release);
     }
 
-    /// Test key command flag conflicts
+    /// Test input command flag conflicts
     #[test]
-    fn test_key_flag_conflicts() {
+    fn test_input_flag_conflicts() {
         // --hold and --release conflict
-        assert!(Cli::try_parse_from(["agent-tui", "key", "Shift", "--hold", "--release"]).is_err());
-
-        // --type and --hold conflict
-        assert!(Cli::try_parse_from(["agent-tui", "key", "--type", "hello", "--hold"]).is_err());
-
-        // --type and --release conflict
-        assert!(Cli::try_parse_from(["agent-tui", "key", "--type", "hello", "--release"]).is_err());
+        assert!(
+            Cli::try_parse_from(["agent-tui", "input", "Shift", "--hold", "--release"]).is_err()
+        );
     }
 
     /// Test wait command defaults
@@ -1331,69 +1359,6 @@ mod tests {
         assert_eq!(params.value, Some("@inp1=hello".to_string()));
     }
 
-    /// Test scroll direction enum values
-    #[test]
-    fn test_scroll_directions() {
-        for (arg, expected) in [
-            ("up", ScrollDirection::Up),
-            ("down", ScrollDirection::Down),
-            ("left", ScrollDirection::Left),
-            ("right", ScrollDirection::Right),
-        ] {
-            let cli = Cli::parse_from(["agent-tui", "scroll", arg]);
-            let Commands::Scroll {
-                direction,
-                amount,
-                element,
-                to_ref,
-            } = cli.command
-            else {
-                panic!("Expected Scroll command for {arg}, got {:?}", cli.command);
-            };
-            assert_eq!(direction.unwrap() as u8, expected as u8);
-
-            assert_eq!(amount, 5, "Default scroll amount should be 5");
-            assert!(element.is_none());
-            assert!(to_ref.is_none());
-        }
-    }
-
-    /// Test scroll --to flag
-    #[test]
-    fn test_scroll_to_flag() {
-        let cli = Cli::parse_from(["agent-tui", "scroll", "--to", "@e5"]);
-        let Commands::Scroll {
-            direction, to_ref, ..
-        } = cli.command
-        else {
-            panic!("Expected Scroll command, got {:?}", cli.command);
-        };
-        assert!(direction.is_none());
-        assert_eq!(to_ref, Some("@e5".to_string()));
-    }
-
-    /// Test scroll with custom amount
-    #[test]
-    fn test_scroll_custom_amount() {
-        let cli = Cli::parse_from(["agent-tui", "scroll", "down", "-a", "10"]);
-        let Commands::Scroll { amount, .. } = cli.command else {
-            panic!("Expected Scroll command, got {:?}", cli.command);
-        };
-        assert_eq!(amount, 10);
-    }
-
-    /// Test resize defaults
-    #[test]
-    fn test_resize_defaults() {
-        let cli = Cli::parse_from(["agent-tui", "resize"]);
-        let Commands::Resize { cols, rows } = cli.command else {
-            panic!("Expected Resize command, got {:?}", cli.command);
-        };
-
-        assert_eq!(cols, 120, "Default cols should be 120");
-        assert_eq!(rows, 40, "Default rows should be 40");
-    }
-
     /// Test trace defaults
     #[test]
     fn test_trace_defaults() {
@@ -1419,100 +1384,44 @@ mod tests {
         assert!(!clear, "Default clear should be false");
     }
 
-    /// Test assert command parsing
+    /// Test wait --assert flag
     #[test]
-    fn test_assert_command() {
-        let test_cases = vec!["text:Success", "element:@btn1", "session:main"];
-
-        for condition in test_cases {
-            let cli = Cli::parse_from(["agent-tui", "assert", condition]);
-            let Commands::Assert { condition: parsed } = cli.command else {
-                panic!(
-                    "Expected Assert command for {condition}, got {:?}",
-                    cli.command
-                );
-            };
-            assert_eq!(parsed, condition);
-        }
-    }
-
-    /// Test find command combinations
-    #[test]
-    fn test_find_command() {
-        let cli = Cli::parse_from(["agent-tui", "find", "--role", "button"]);
-        let Commands::Find { params } = cli.command else {
-            panic!("Expected Find command, got {:?}", cli.command);
+    fn test_wait_assert_flag() {
+        let cli = Cli::parse_from(["agent-tui", "wait", "--assert", "Success"]);
+        let Commands::Wait { params } = cli.command else {
+            panic!("Expected Wait command, got {:?}", cli.command);
         };
-        assert_eq!(params.role, Some("button".to_string()));
-        assert!(params.name.is_none());
-        assert!(params.text.is_none());
-        assert!(params.placeholder.is_none());
-        assert!(!params.focused);
-        assert!(params.nth.is_none());
-        assert!(!params.exact);
-
-        let cli = Cli::parse_from(["agent-tui", "find", "--role", "button", "--name", "Submit"]);
-        let Commands::Find { params } = cli.command else {
-            panic!("Expected Find command, got {:?}", cli.command);
-        };
-        assert_eq!(params.role, Some("button".to_string()));
-        assert_eq!(params.name, Some("Submit".to_string()));
-
-        let cli = Cli::parse_from(["agent-tui", "find", "--focused"]);
-        let Commands::Find { params } = cli.command else {
-            panic!("Expected Find command, got {:?}", cli.command);
-        };
-        assert!(params.focused);
-
-        let cli = Cli::parse_from(["agent-tui", "find", "--role", "button", "--nth", "2"]);
-        let Commands::Find { params } = cli.command else {
-            panic!("Expected Find command, got {:?}", cli.command);
-        };
-        assert_eq!(params.nth, Some(2));
-
-        let cli = Cli::parse_from(["agent-tui", "find", "--text", "Submit", "--exact"]);
-        let Commands::Find { params } = cli.command else {
-            panic!("Expected Find command, got {:?}", cli.command);
-        };
-        assert_eq!(params.text, Some("Submit".to_string()));
-        assert!(params.exact);
-
-        let cli = Cli::parse_from(["agent-tui", "find", "--placeholder", "Search..."]);
-        let Commands::Find { params } = cli.command else {
-            panic!("Expected Find command, got {:?}", cli.command);
-        };
-        assert_eq!(params.placeholder, Some("Search...".to_string()));
+        assert!(params.assert);
+        assert_eq!(params.text, Some("Success".to_string()));
     }
 
     /// Test that missing required arguments fail
     #[test]
     fn test_missing_required_args() {
-        assert!(Cli::try_parse_from(["agent-tui", "click"]).is_err());
+        // action requires both element_ref and operation
+        assert!(Cli::try_parse_from(["agent-tui", "action"]).is_err());
+        assert!(Cli::try_parse_from(["agent-tui", "action", "@e1"]).is_err());
 
-        assert!(Cli::try_parse_from(["agent-tui", "fill"]).is_err());
-        assert!(Cli::try_parse_from(["agent-tui", "fill", "@inp1"]).is_err());
-
+        // run requires command
         assert!(Cli::try_parse_from(["agent-tui", "run"]).is_err());
-
-        assert!(Cli::try_parse_from(["agent-tui", "scroll"]).is_err());
     }
 
     /// Test output format enum values
     #[test]
     fn test_output_format_values() {
-        let cli = Cli::parse_from(["agent-tui", "-f", "text", "status"]);
+        let cli = Cli::parse_from(["agent-tui", "-f", "text", "sessions"]);
         assert_eq!(cli.format, OutputFormat::Text);
 
-        let cli = Cli::parse_from(["agent-tui", "-f", "json", "status"]);
+        let cli = Cli::parse_from(["agent-tui", "-f", "json", "sessions"]);
         assert_eq!(cli.format, OutputFormat::Json);
 
-        assert!(Cli::try_parse_from(["agent-tui", "-f", "xml", "status"]).is_err());
+        assert!(Cli::try_parse_from(["agent-tui", "-f", "xml", "sessions"]).is_err());
     }
 
     /// Test --json shorthand flag
     #[test]
     fn test_json_shorthand_flag() {
-        let cli = Cli::parse_from(["agent-tui", "--json", "status"]);
+        let cli = Cli::parse_from(["agent-tui", "--json", "sessions"]);
         assert!(cli.json);
     }
 
@@ -1525,64 +1434,6 @@ mod tests {
         };
         assert_eq!(command, "bash");
         assert_eq!(cwd, Some("/tmp".to_string()));
-    }
-
-    /// Test toggle command
-    #[test]
-    fn test_toggle_command() {
-        let cli = Cli::parse_from(["agent-tui", "toggle", "@cb1"]);
-        let Commands::Toggle {
-            element_ref,
-            on,
-            off,
-        } = cli.command
-        else {
-            panic!("Expected Toggle command, got {:?}", cli.command);
-        };
-        assert_eq!(element_ref, "@cb1");
-        assert!(!on);
-        assert!(!off);
-    }
-
-    /// Test toggle with --on flag
-    #[test]
-    fn test_toggle_with_on_flag() {
-        let cli = Cli::parse_from(["agent-tui", "toggle", "@cb1", "--on"]);
-        let Commands::Toggle {
-            element_ref,
-            on,
-            off,
-        } = cli.command
-        else {
-            panic!("Expected Toggle command, got {:?}", cli.command);
-        };
-        assert_eq!(element_ref, "@cb1");
-        assert!(on);
-        assert!(!off);
-    }
-
-    /// Test toggle with --off flag
-    #[test]
-    fn test_toggle_with_off_flag() {
-        let cli = Cli::parse_from(["agent-tui", "toggle", "@cb1", "--off"]);
-        let Commands::Toggle {
-            element_ref,
-            on,
-            off,
-        } = cli.command
-        else {
-            panic!("Expected Toggle command, got {:?}", cli.command);
-        };
-        assert_eq!(element_ref, "@cb1");
-        assert!(!on);
-        assert!(off);
-    }
-
-    /// Test toggle --on and --off are mutually exclusive
-    #[test]
-    fn test_toggle_on_off_mutually_exclusive() {
-        let result = Cli::try_parse_from(["agent-tui", "toggle", "@cb1", "--on", "--off"]);
-        assert!(result.is_err());
     }
 
     /// Test errors command with count
@@ -1606,34 +1457,77 @@ mod tests {
         assert!(clear);
     }
 
-    /// Test attach command
+    /// Test sessions command - list sessions
     #[test]
-    fn test_attach_command() {
-        let cli = Cli::parse_from(["agent-tui", "attach", "my-session"]);
-        let Commands::Attach {
+    fn test_sessions_list() {
+        let cli = Cli::parse_from(["agent-tui", "sessions"]);
+        let Commands::Sessions {
             session_id,
-            interactive,
+            cleanup,
+            all,
+            attach,
+            status,
         } = cli.command
         else {
-            panic!("Expected Attach command, got {:?}", cli.command);
+            panic!("Expected Sessions command, got {:?}", cli.command);
         };
-        assert_eq!(session_id, "my-session");
-        assert!(!interactive);
+        assert!(session_id.is_none());
+        assert!(!cleanup);
+        assert!(!all);
+        assert!(attach.is_none());
+        assert!(!status);
     }
 
-    /// Test attach command with interactive flag
+    /// Test sessions --attach flag
     #[test]
-    fn test_attach_command_interactive() {
-        let cli = Cli::parse_from(["agent-tui", "attach", "-i", "my-session"]);
-        let Commands::Attach {
-            session_id,
-            interactive,
-        } = cli.command
-        else {
-            panic!("Expected Attach command, got {:?}", cli.command);
+    fn test_sessions_attach() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "--attach", "my-session"]);
+        let Commands::Sessions { attach, .. } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
         };
-        assert_eq!(session_id, "my-session");
-        assert!(interactive);
+        assert_eq!(attach, Some("my-session".to_string()));
+    }
+
+    /// Test sessions --cleanup flag
+    #[test]
+    fn test_sessions_cleanup() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "--cleanup"]);
+        let Commands::Sessions { cleanup, all, .. } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
+        };
+        assert!(cleanup);
+        assert!(!all);
+    }
+
+    /// Test sessions --cleanup --all flags
+    #[test]
+    fn test_sessions_cleanup_all() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "--cleanup", "--all"]);
+        let Commands::Sessions { cleanup, all, .. } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
+        };
+        assert!(cleanup);
+        assert!(all);
+    }
+
+    /// Test sessions --status flag
+    #[test]
+    fn test_sessions_status() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "--status"]);
+        let Commands::Sessions { status, .. } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
+        };
+        assert!(status);
+    }
+
+    /// Test sessions with session ID
+    #[test]
+    fn test_sessions_with_id() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "abc123"]);
+        let Commands::Sessions { session_id, .. } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
+        };
+        assert_eq!(session_id, Some("abc123".to_string()));
     }
 
     /// Test record-start command
@@ -1685,96 +1579,6 @@ mod tests {
         assert!(matches!(cli.command, Commands::RecordStatus));
     }
 
-    /// Test dblclick command
-    /// Test restart command
-    #[test]
-    fn test_restart_command() {
-        let cli = Cli::parse_from(["agent-tui", "restart"]);
-        assert!(matches!(cli.command, Commands::Restart));
-    }
-
-    /// Test selectall command
-    #[test]
-    fn test_selectall_command() {
-        let cli = Cli::parse_from(["agent-tui", "selectall", "@inp1"]);
-        let Commands::SelectAll { element_ref } = cli.command else {
-            panic!("Expected SelectAll command, got {:?}", cli.command);
-        };
-        assert_eq!(element_ref, "@inp1");
-    }
-
-    /// Test multiselect command
-    #[test]
-    fn test_multiselect_command() {
-        let cli = Cli::parse_from(["agent-tui", "multiselect", "@sel1", "opt1", "opt2", "opt3"]);
-        let Commands::MultiSelect {
-            element_ref,
-            options,
-        } = cli.command
-        else {
-            panic!("Expected MultiSelect command, got {:?}", cli.command);
-        };
-        assert_eq!(element_ref, "@sel1");
-        assert_eq!(options, vec!["opt1", "opt2", "opt3"]);
-    }
-
-    /// Test cleanup command
-    #[test]
-    fn test_cleanup_command() {
-        let cli = Cli::parse_from(["agent-tui", "cleanup"]);
-        let Commands::Cleanup { all } = cli.command else {
-            panic!("Expected Cleanup command, got {:?}", cli.command);
-        };
-        assert!(!all);
-    }
-
-    /// Test cleanup command with --all
-    #[test]
-    fn test_cleanup_command_all() {
-        let cli = Cli::parse_from(["agent-tui", "cleanup", "--all"]);
-        let Commands::Cleanup { all } = cli.command else {
-            panic!("Expected Cleanup command, got {:?}", cli.command);
-        };
-        assert!(all);
-    }
-
-    /// Test select command
-    #[test]
-    fn test_select_command() {
-        let cli = Cli::parse_from(["agent-tui", "select", "@sel1", "option1"]);
-        let Commands::Select {
-            element_ref,
-            option,
-        } = cli.command
-        else {
-            panic!("Expected Select command, got {:?}", cli.command);
-        };
-        assert_eq!(element_ref, "@sel1");
-        assert_eq!(option, "option1");
-    }
-
-    /// Test scroll with element target
-    #[test]
-    fn test_scroll_with_element() {
-        let cli = Cli::parse_from(["agent-tui", "scroll", "down", "-e", "@list1"]);
-        let Commands::Scroll { element, .. } = cli.command else {
-            panic!("Expected Scroll command, got {:?}", cli.command);
-        };
-        assert_eq!(element, Some("@list1".to_string()));
-    }
-
-    /// Test count command with role and name
-    #[test]
-    fn test_count_command_role_and_name() {
-        let cli = Cli::parse_from(["agent-tui", "count", "--role", "button", "--name", "Submit"]);
-        let Commands::Count { role, name, text } = cli.command else {
-            panic!("Expected Count command, got {:?}", cli.command);
-        };
-        assert_eq!(role, Some("button".to_string()));
-        assert_eq!(name, Some("Submit".to_string()));
-        assert!(text.is_none());
-    }
-
     /// Test version command
     #[test]
     fn test_version_command() {
@@ -1789,28 +1593,11 @@ mod tests {
         assert!(matches!(cli.command, Commands::Env));
     }
 
-    /// Test ls command
-    #[test]
-    fn test_ls_command() {
-        let cli = Cli::parse_from(["agent-tui", "ls"]);
-        assert!(matches!(cli.command, Commands::Ls));
-    }
-
     /// Test kill command
     #[test]
     fn test_kill_command() {
         let cli = Cli::parse_from(["agent-tui", "kill"]);
         assert!(matches!(cli.command, Commands::Kill));
-    }
-
-    /// Test status command verbose flag
-    #[test]
-    fn test_status_verbose() {
-        let cli = Cli::parse_from(["agent-tui", "status", "-v"]);
-        let Commands::Status { verbose } = cli.command else {
-            panic!("Expected Status command, got {:?}", cli.command);
-        };
-        assert!(verbose);
     }
 
     /// Test completions command
@@ -1891,5 +1678,50 @@ mod tests {
             cli.command,
             Commands::Daemon(DaemonCommand::Restart)
         ));
+    }
+
+    // ==========================================================================
+    // Tests for removed commands - verify they are NOT recognized
+    // These tests implement the CLI consolidation plan (28 → 8 commands)
+    // ==========================================================================
+
+    /// Test that standalone 'count' command is NOT recognized
+    /// Use `screen -e` filtering or `find --count` instead
+    #[test]
+    fn test_count_command_removed() {
+        assert!(
+            Cli::try_parse_from(["agent-tui", "count", "--role", "button"]).is_err(),
+            "The 'count' command should be removed. Use 'screen -e' filtering instead."
+        );
+    }
+
+    /// Test that standalone 'find' command is NOT recognized
+    /// Use `screen -e` with filtering options instead
+    #[test]
+    fn test_find_command_removed() {
+        assert!(
+            Cli::try_parse_from(["agent-tui", "find", "--role", "button"]).is_err(),
+            "The 'find' command should be removed. Use 'screen -e' filtering instead."
+        );
+    }
+
+    /// Test that standalone 'restart' command (for sessions) is NOT recognized
+    /// Use `kill` followed by `run` instead
+    #[test]
+    fn test_restart_command_removed() {
+        assert!(
+            Cli::try_parse_from(["agent-tui", "restart"]).is_err(),
+            "The 'restart' command should be removed. Use 'kill' + 'run' instead."
+        );
+    }
+
+    /// Test that standalone 'resize' command is NOT recognized
+    /// Terminal dimensions can be set via `run --cols --rows`
+    #[test]
+    fn test_resize_command_removed() {
+        assert!(
+            Cli::try_parse_from(["agent-tui", "resize", "--cols", "80"]).is_err(),
+            "The 'resize' command should be removed. Use 'run --cols --rows' instead."
+        );
     }
 }

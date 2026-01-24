@@ -1,0 +1,15 @@
+id: remove-comments
+valid:
+  # We want to match (and remove) ALL comments, so nothing is "valid" (should not match)
+  - "fn main() {}"  # No comments - should not match
+  - "let x = 5;"    # No comments - should not match
+
+invalid:
+  # All these should match (be detected for removal)
+  - "// line comment"
+  - "/* block comment */"
+  - "/// doc comment"
+  - "//! inner doc"
+  - "/** outer doc */"
+  - "/*! inner doc */"
+  - "let x = 5; // inline"

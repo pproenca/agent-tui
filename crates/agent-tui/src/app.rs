@@ -23,6 +23,62 @@ mod exit_codes {
     pub const TEMPFAIL: i32 = 75; // EX_TEMPFAIL: temporary failure
 }
 
+/// Check if input is a recognized key name (case-insensitive).
+/// Returns true for key names like Enter, Tab, Ctrl+C, F1, etc.
+/// Returns false for text that should be typed character by character.
+fn is_key_name(input: &str) -> bool {
+    let lower = input.to_ascii_lowercase();
+
+    // Check for modifier combinations first (e.g., Ctrl+C, Alt+F4)
+    if lower.contains('+') {
+        if let Some(modifier) = lower.split('+').next() {
+            return matches!(modifier, "ctrl" | "alt" | "shift" | "meta" | "control");
+        }
+    }
+
+    // Single key names (case-insensitive)
+    matches!(
+        lower.as_str(),
+        "enter"
+            | "tab"
+            | "escape"
+            | "esc"
+            | "backspace"
+            | "delete"
+            | "arrowup"
+            | "arrowdown"
+            | "arrowleft"
+            | "arrowright"
+            | "up"
+            | "down"
+            | "left"
+            | "right"
+            | "home"
+            | "end"
+            | "pageup"
+            | "pagedown"
+            | "insert"
+            | "space"
+            | "f1"
+            | "f2"
+            | "f3"
+            | "f4"
+            | "f5"
+            | "f6"
+            | "f7"
+            | "f8"
+            | "f9"
+            | "f10"
+            | "f11"
+            | "f12"
+            | "shift"
+            | "control"
+            | "ctrl"
+            | "alt"
+            | "meta"
+    )
+}
+
 /// Application encapsulates the CLI runtime behavior.
 pub struct Application;
 
@@ -130,7 +186,7 @@ impl Application {
                 *rows,
             )?,
 
-            Commands::Snap {
+            Commands::Screen {
                 elements,
                 accessibility,
                 interactive_only,
@@ -151,90 +207,83 @@ impl Application {
                 }
             }
 
-            Commands::Click {
+            Commands::Action {
                 element_ref,
-                double,
+                operation,
             } => {
-                if *double {
-                    handlers::handle_dbl_click(ctx, element_ref.clone())?
-                } else {
-                    handlers::handle_click(ctx, element_ref.clone())?
+                use crate::commands::{ActionOperation, ToggleState};
+                match operation {
+                    ActionOperation::Click => handlers::handle_click(ctx, element_ref.clone())?,
+                    ActionOperation::DblClick => {
+                        handlers::handle_dbl_click(ctx, element_ref.clone())?
+                    }
+                    ActionOperation::Fill { value } => {
+                        handlers::handle_fill(ctx, element_ref.clone(), value.clone())?
+                    }
+                    ActionOperation::Select { options } => {
+                        handlers::handle_select(ctx, element_ref.clone(), options.clone())?
+                    }
+                    ActionOperation::Toggle { state } => {
+                        let state_bool = match state {
+                            Some(ToggleState::On) => Some(true),
+                            Some(ToggleState::Off) => Some(false),
+                            None => None,
+                        };
+                        handlers::handle_toggle(ctx, element_ref.clone(), state_bool)?
+                    }
+                    ActionOperation::Focus => handlers::handle_focus(ctx, element_ref.clone())?,
+                    ActionOperation::Clear => handlers::handle_clear(ctx, element_ref.clone())?,
+                    ActionOperation::SelectAll => {
+                        handlers::handle_select_all(ctx, element_ref.clone())?
+                    }
+                    ActionOperation::Scroll { direction, amount } => {
+                        handlers::handle_scroll(ctx, *direction, *amount)?
+                    }
                 }
             }
-            Commands::Fill { element_ref, value } => {
-                handlers::handle_fill(ctx, element_ref.clone(), value.clone())?
-            }
 
-            Commands::Key {
-                key,
-                text,
+            Commands::Input {
+                value,
                 hold,
                 release,
             } => {
-                if let Some(text) = text {
-                    handlers::handle_type(ctx, text.clone())?
-                } else if let Some(key) = key {
+                if let Some(input) = value {
                     if *hold {
-                        handlers::handle_keydown(ctx, key.clone())?
+                        handlers::handle_keydown(ctx, input.clone())?
                     } else if *release {
-                        handlers::handle_keyup(ctx, key.clone())?
+                        handlers::handle_keyup(ctx, input.clone())?
+                    } else if is_key_name(input) {
+                        handlers::handle_press(ctx, input.clone())?
                     } else {
-                        handlers::handle_press(ctx, key.clone())?
+                        handlers::handle_type(ctx, input.clone())?
                     }
+                } else if *hold || *release {
+                    return Err("--hold and --release require a key name".into());
                 }
             }
 
             Commands::Wait { params } => handlers::handle_wait(ctx, params.clone())?,
             Commands::Kill => handlers::handle_kill(ctx)?,
-            Commands::Restart => handlers::handle_restart(ctx)?,
-            Commands::Ls => handlers::handle_sessions(ctx)?,
-            Commands::Status { verbose } => handlers::handle_health(ctx, *verbose)?,
 
-            Commands::Select {
-                element_ref,
-                option,
-            } => handlers::handle_select(ctx, element_ref.clone(), option.clone())?,
-            Commands::MultiSelect {
-                element_ref,
-                options,
-            } => handlers::handle_multiselect(ctx, element_ref.clone(), options.clone())?,
-
-            Commands::Scroll {
-                direction,
-                amount,
-                element: _,
-                to_ref,
+            Commands::Sessions {
+                session_id,
+                cleanup,
+                all,
+                attach,
+                status,
             } => {
-                if let Some(element_ref) = to_ref {
-                    handlers::handle_scroll_into_view(ctx, element_ref.clone())?
-                } else if let Some(dir) = direction {
-                    handlers::handle_scroll(ctx, *dir, *amount)?
-                }
-            }
-
-            Commands::Focus { element_ref } => handlers::handle_focus(ctx, element_ref.clone())?,
-            Commands::Clear { element_ref } => handlers::handle_clear(ctx, element_ref.clone())?,
-            Commands::SelectAll { element_ref } => {
-                handlers::handle_select_all(ctx, element_ref.clone())?
-            }
-
-            Commands::Count { role, name, text } => {
-                handlers::handle_count(ctx, role.clone(), name.clone(), text.clone())?
-            }
-
-            Commands::Toggle {
-                element_ref,
-                on,
-                off,
-            } => {
-                let state = if *on {
-                    Some(true)
-                } else if *off {
-                    Some(false)
+                if let Some(attach_id) = attach {
+                    handlers::handle_attach(ctx, attach_id.clone(), true)?
+                } else if *cleanup {
+                    handlers::handle_cleanup(ctx, *all)?
+                } else if let Some(_id) = session_id {
+                    // Show details for specific session - currently just lists all
+                    handlers::handle_sessions(ctx)?
+                } else if *status {
+                    handlers::handle_health(ctx, true)?
                 } else {
-                    None
-                };
-                handlers::handle_toggle(ctx, element_ref.clone(), state)?
+                    handlers::handle_sessions(ctx)?
+                }
             }
 
             Commands::RecordStart => handlers::handle_record_start(ctx)?,
@@ -250,17 +299,8 @@ impl Application {
             Commands::Console { lines, clear } => handlers::handle_console(ctx, *lines, *clear)?,
             Commands::Errors { count, clear } => handlers::handle_errors(ctx, *count, *clear)?,
 
-            Commands::Resize { cols, rows } => handlers::handle_resize(ctx, *cols, *rows)?,
-            Commands::Attach {
-                session_id,
-                interactive,
-            } => handlers::handle_attach(ctx, session_id.clone(), *interactive)?,
-
             Commands::Version => handlers::handle_version(ctx)?,
             Commands::Env => handlers::handle_env(ctx)?,
-            Commands::Assert { condition } => handlers::handle_assert(ctx, condition.clone())?,
-            Commands::Cleanup { all } => handlers::handle_cleanup(ctx, *all)?,
-            Commands::Find { params } => handlers::handle_find(ctx, params.clone())?,
 
             Commands::Debug(debug_cmd) => match debug_cmd {
                 DebugCommand::Record(action) => match action {
@@ -380,5 +420,64 @@ fn exit_code_for_client_error(error: &ClientError) -> i32 {
         Some(ErrorCategory::Internal) => exit_codes::IOERR,
         Some(ErrorCategory::Timeout) => exit_codes::TEMPFAIL,
         None => exit_codes::GENERAL_ERROR,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_key_name_case_insensitive() {
+        // Standard casing
+        assert!(is_key_name("Enter"));
+        assert!(is_key_name("Tab"));
+        assert!(is_key_name("Escape"));
+        assert!(is_key_name("F1"));
+
+        // Lowercase
+        assert!(is_key_name("enter"));
+        assert!(is_key_name("tab"));
+        assert!(is_key_name("escape"));
+        assert!(is_key_name("f1"));
+
+        // Uppercase
+        assert!(is_key_name("ENTER"));
+        assert!(is_key_name("TAB"));
+        assert!(is_key_name("ESCAPE"));
+        assert!(is_key_name("F1"));
+
+        // Mixed case
+        assert!(is_key_name("EnTeR"));
+        assert!(is_key_name("ArrowUp"));
+        assert!(is_key_name("arrowup"));
+        assert!(is_key_name("ARROWUP"));
+    }
+
+    #[test]
+    fn test_is_key_name_modifier_combos_case_insensitive() {
+        // Standard casing
+        assert!(is_key_name("Ctrl+c"));
+        assert!(is_key_name("Alt+F4"));
+        assert!(is_key_name("Shift+Tab"));
+
+        // Lowercase modifiers
+        assert!(is_key_name("ctrl+c"));
+        assert!(is_key_name("alt+f4"));
+        assert!(is_key_name("shift+tab"));
+
+        // Uppercase modifiers
+        assert!(is_key_name("CTRL+C"));
+        assert!(is_key_name("ALT+F4"));
+        assert!(is_key_name("SHIFT+TAB"));
+    }
+
+    #[test]
+    fn test_is_key_name_text_not_detected() {
+        // Regular text should not be detected as key names
+        assert!(!is_key_name("hello"));
+        assert!(!is_key_name("Hello World"));
+        assert!(!is_key_name("test123"));
+        assert!(!is_key_name("a")); // Single character is text, not a key
     }
 }

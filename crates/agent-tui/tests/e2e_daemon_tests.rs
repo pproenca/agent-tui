@@ -27,7 +27,7 @@ fn test_health_returns_daemon_status() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["status"])
+        .run(&["sessions", "--status"])
         .success()
         .stdout(predicate::str::contains("Daemon status:"))
         .stdout(predicate::str::contains("healthy"))
@@ -56,7 +56,7 @@ fn test_health_with_custom_response() {
     );
 
     harness
-        .run(&["status"])
+        .run(&["sessions", "--status"])
         .success()
         .stdout(predicate::str::contains("degraded"))
         .stdout(predicate::str::contains("99999"));
@@ -67,7 +67,7 @@ fn test_health_verbose_shows_connection_details() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["status", "-v"])
+        .run(&["sessions", "--status", "-v"])
         .success()
         .stdout(predicate::str::contains("Connection:"))
         .stdout(predicate::str::contains("Socket:"))
@@ -83,7 +83,7 @@ fn test_sessions_empty_list() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["ls"])
+        .run(&["sessions"])
         .success()
         .stdout(predicate::str::contains("No active sessions"));
 }
@@ -118,7 +118,7 @@ fn test_sessions_with_active_sessions() {
     );
 
     harness
-        .run(&["ls"])
+        .run(&["sessions"])
         .success()
         .stdout(predicate::str::contains("Active sessions:"))
         .stdout(predicate::str::contains("session-1"))
@@ -150,7 +150,7 @@ fn test_snap_returns_screen_content() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["snap"])
+        .run(&["screen"])
         .success()
         .stdout(predicate::str::contains("Screen:"))
         .stdout(predicate::str::contains("Test screen content"));
@@ -192,7 +192,7 @@ fn test_snap_with_elements() {
     );
 
     harness
-        .run(&["snap", "-i"])
+        .run(&["screen", "-i"])
         .success()
         .stdout(predicate::str::contains("Elements:"))
         .stdout(predicate::str::contains("@btn1"))
@@ -205,7 +205,7 @@ fn test_snap_json_format() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["-f", "json", "snap"])
+        .run(&["-f", "json", "screen"])
         .success()
         .stdout(predicate::str::contains("\"session_id\":"))
         .stdout(predicate::str::contains("\"screen\":"))
@@ -227,7 +227,7 @@ fn test_snap_include_cursor() {
     );
 
     harness
-        .run(&["snap", "--include-cursor"])
+        .run(&["screen", "--include-cursor"])
         .success()
         .stdout(predicate::str::contains("Cursor: row=5, col=10"));
 }
@@ -247,7 +247,7 @@ fn test_snap_include_cursor_hidden() {
     );
 
     harness
-        .run(&["snap", "--include-cursor"])
+        .run(&["screen", "--include-cursor"])
         .success()
         .stdout(predicate::str::contains("(hidden)"));
 }
@@ -283,7 +283,7 @@ fn test_snap_with_vom_metadata() {
     );
 
     harness
-        .run(&["snap", "-i"])
+        .run(&["screen", "-i"])
         .success()
         .stdout(predicate::str::contains("@e1"))
         .stdout(predicate::str::contains("button"));
@@ -311,7 +311,7 @@ fn test_accessibility_snapshot_returns_tree_format() {
     );
 
     harness
-        .run(&["snap", "-a"])
+        .run(&["screen", "-a"])
         .success()
         .stdout(predicate::str::contains("button \"Submit\" [ref=e1]"))
         .stdout(predicate::str::contains("textbox \"Search\" [ref=e2]"))
@@ -341,7 +341,7 @@ fn test_accessibility_snapshot_json_format() {
     );
 
     harness
-        .run(&["-f", "json", "snap", "-a"])
+        .run(&["-f", "json", "screen", "-a"])
         .success()
         .stdout(predicate::str::contains("\"tree\":"))
         .stdout(predicate::str::contains("\"refs\":"))
@@ -369,7 +369,7 @@ fn test_accessibility_snapshot_interactive_only() {
     );
 
     harness
-        .run(&["snap", "-a", "--interactive-only"])
+        .run(&["screen", "-a", "--interactive-only"])
         .success()
         .stdout(predicate::str::contains("button \"Submit\""));
 
@@ -393,7 +393,7 @@ fn test_click_with_accessibility_ref() {
     );
 
     harness
-        .run(&["click", "e1"])
+        .run(&["action", "e1", "click"])
         .success()
         .stdout(predicate::str::contains("Clicked successfully"));
 
@@ -413,7 +413,7 @@ fn test_click_with_at_prefix_ref() {
     );
 
     harness
-        .run(&["click", "@e2"])
+        .run(&["action", "@e2", "click"])
         .success()
         .stdout(predicate::str::contains("Clicked successfully"));
 
@@ -437,7 +437,7 @@ fn test_click_error_handling() {
     );
 
     harness
-        .run(&["click", "@invalid"])
+        .run(&["action", "@invalid", "click"])
         .failure()
         .stderr(predicate::str::contains("Click failed"))
         .stderr(predicate::str::contains("Element not found"));
@@ -458,7 +458,7 @@ fn test_fill_warning_for_non_input() {
     );
 
     harness
-        .run(&["fill", "@btn1", "value"])
+        .run(&["action", "@btn1", "fill", "value"])
         .success()
         .stdout(predicate::str::contains("Filled successfully"))
         .stderr(predicate::str::contains("not an input"));
@@ -471,7 +471,7 @@ fn test_fill_element_not_found() {
     harness.set_error_response("fill", -32000, "Element not found: '@nonexistent'");
 
     harness
-        .run(&["fill", "@nonexistent", "value"])
+        .run(&["action", "@nonexistent", "fill", "value"])
         .failure()
         .stderr(predicate::str::contains("Element not found"));
 }
@@ -483,7 +483,7 @@ fn test_daemon_rpc_error() {
     harness.set_error_response("health", -32603, "Internal daemon error");
 
     harness
-        .run(&["status"])
+        .run(&["sessions", "--status"])
         .failure()
         .stderr(predicate::str::contains("Error"))
         .stderr(predicate::str::contains("Internal daemon error"));
@@ -496,46 +496,14 @@ fn test_unknown_method_error() {
     harness.set_error_response("health", -32601, "Method not found");
 
     harness
-        .run(&["status"])
+        .run(&["sessions", "--status"])
         .failure()
         .stderr(predicate::str::contains("Method not found"));
 }
 
-#[test]
-fn test_scroll_to_element_not_found() {
-    let harness = TestHarness::new();
-
-    harness.set_success_response(
-        "scroll_into_view",
-        json!({
-            "success": false,
-            "message": "Element not found: @missing"
-        }),
-    );
-
-    harness
-        .run(&["scroll", "--to", "@missing"])
-        .failure()
-        .stderr(predicate::str::contains("Element not found"));
-}
-
-#[test]
-fn test_multiselect_element_not_a_select() {
-    let harness = TestHarness::new();
-
-    harness.set_success_response(
-        "multiselect",
-        json!({
-            "success": false,
-            "message": "Element is not a select: @btn1"
-        }),
-    );
-
-    harness
-        .run(&["multiselect", "@btn1", "option1"])
-        .failure()
-        .stderr(predicate::str::contains("not a select"));
-}
+// Note: scroll --to and multiselect commands were removed as part of CLI consolidation.
+// scroll_into_view is internal, accessed via action @ref scroll.
+// multiselect is accessed via action @ref select opt1 opt2.
 
 // =============================================================================
 // Multi-Command Sequence Tests
@@ -545,9 +513,9 @@ fn test_multiselect_element_not_a_select() {
 fn test_keydown_keyup_sequence() {
     let harness = TestHarness::new();
 
-    harness.run(&["key", "Ctrl", "--hold"]).success();
-    harness.run(&["key", "c"]).success();
-    harness.run(&["key", "Ctrl", "--release"]).success();
+    harness.run(&["input", "Ctrl", "--hold"]).success();
+    harness.run(&["input", "Ctrl+c"]).success();
+    harness.run(&["input", "Ctrl", "--release"]).success();
 
     harness.assert_method_called("keydown");
     harness.assert_method_called("keystroke");
@@ -558,9 +526,9 @@ fn test_keydown_keyup_sequence() {
 fn test_multiple_requests_recorded() {
     let harness = TestHarness::new();
 
-    harness.run(&["status"]).success();
-    harness.run(&["ls"]).success();
-    harness.run(&["status"]).success();
+    harness.run(&["sessions", "--status"]).success();
+    harness.run(&["sessions"]).success();
+    harness.run(&["sessions", "--status"]).success();
 
     let requests = harness.get_requests();
     assert!(requests.len() >= 3);
@@ -579,13 +547,13 @@ fn test_clear_requests_works() {
     let harness = TestHarness::new();
 
     // status = 1 version check + 1 health = 2 health calls
-    harness.run(&["status"]).success();
+    harness.run(&["sessions", "--status"]).success();
     assert_eq!(harness.call_count("health"), 2);
 
     harness.clear_requests();
     assert_eq!(harness.call_count("health"), 0);
 
-    harness.run(&["status"]).success();
+    harness.run(&["sessions", "--status"]).success();
     assert_eq!(harness.call_count("health"), 2);
 }
 
@@ -617,76 +585,9 @@ fn test_env_shows_configuration() {
         .stdout(predicate::str::contains("Socket:"));
 }
 
-// =============================================================================
-// Assert Command Tests
-// =============================================================================
-
-#[test]
-fn test_assert_text_condition() {
-    let harness = TestHarness::new();
-
-    harness
-        .run(&["assert", "text:Test screen"])
-        .success()
-        .stdout(predicate::str::contains("Assertion passed"));
-
-    let request = harness.last_request_for("snapshot").unwrap();
-    let params = request.params.unwrap();
-    assert_eq!(
-        params["strip_ansi"], true,
-        "assert text should strip ANSI codes"
-    );
-}
-
-// =============================================================================
-// Find Command Response Tests
-// =============================================================================
-
-#[test]
-fn test_find_returns_matching_elements() {
-    let harness = TestHarness::new();
-
-    harness.set_success_response(
-        "find",
-        json!({
-            "elements": [
-                {
-                    "ref": "@btn1",
-                    "type": "button",
-                    "label": "Submit",
-                    "position": { "row": 5, "col": 10 },
-                    "focused": false,
-                    "selected": false
-                }
-            ],
-            "count": 1
-        }),
-    );
-
-    harness
-        .run(&["find", "--role", "button"])
-        .success()
-        .stdout(predicate::str::contains("Found 1 element"))
-        .stdout(predicate::str::contains("@btn1"));
-}
-
-#[test]
-fn test_find_no_results() {
-    let harness = TestHarness::new();
-
-    harness.set_success_response(
-        "find",
-        json!({
-            "elements": [],
-            "count": 0
-        }),
-    );
-
-    harness
-        .run(&["find", "--role", "nonexistent"])
-        .success()
-        .stdout(predicate::str::contains("No elements found"));
-}
+// Note: assert and find commands were removed as part of CLI consolidation.
+// Use wait --assert for assertion-style waiting.
+// Element finding can be done via screen -e filtering.
 
 // =============================================================================
 // Recording Command Response Tests

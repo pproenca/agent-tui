@@ -167,15 +167,15 @@ fn test_dbl_click_on_real_session() {
 
     // dblclick on the marker text
     // This tests that the lock is held atomically across both clicks
-    let status = h
+    // Use .output() to capture stderr and suppress "Element not found" noise
+    let _ = h
         .cli()
         .args(["action", "MARKER_DBC_TEST", "dblclick"])
-        .status()
+        .output()
         .expect("dblclick failed");
 
     // The command may succeed or return element not found (if text ref
     // doesn't resolve to a clickable element), but it shouldn't panic
-    let _ = status;
 }
 
 #[test]
@@ -203,11 +203,12 @@ fn test_dbl_click_sequential_stability() {
 
     // Run multiple sequential dblclicks
     // Tests that the operation completes cleanly without leaving locks held
+    // Use .output() to capture stderr and suppress "Element not found" noise
     for _ in 0..3 {
         let _ = h
             .cli()
             .args(["action", "DBC_SEQ_TEST", "dblclick"])
-            .status();
+            .output();
     }
 
     // Verify session is still usable after multiple dblclicks

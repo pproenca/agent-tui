@@ -3,17 +3,18 @@ use serde_json::{Value, json};
 
 use super::snapshot_adapters::session_info_to_json;
 use crate::domain::{
-    AccessibilitySnapshotInput, AttachInput, AttachOutput, ClearInput, ClickInput, ConsoleInput,
-    ConsoleOutput, CountInput, CountOutput, DomainElement, DoubleClickInput, ElementStateInput,
-    ErrorsInput, ErrorsOutput, FillInput, FindInput, FindOutput, FocusCheckOutput, FocusInput,
-    GetFocusedOutput, GetTextOutput, GetTitleOutput, GetValueOutput, HealthOutput, IsCheckedOutput,
-    IsEnabledOutput, KeydownInput, KeystrokeInput, KeyupInput, KillOutput, MetricsOutput,
-    MultiselectInput, MultiselectOutput, PtyReadInput, PtyReadOutput, PtyWriteInput,
-    PtyWriteOutput, RecordStartInput, RecordStartOutput, RecordStatusInput, RecordStatusOutput,
-    RecordStopInput, ResizeInput, ResizeOutput, ScrollInput, ScrollIntoViewInput,
-    ScrollIntoViewOutput, ScrollOutput, SelectAllInput, SelectInput, SessionId, SessionInput,
-    SessionsOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, ToggleInput,
-    ToggleOutput, TraceInput, TraceOutput, TypeInput, VisibilityOutput, WaitInput, WaitOutput,
+    AccessibilitySnapshotInput, AttachInput, AttachOutput, CleanupInput, CleanupOutput, ClearInput,
+    ClickInput, ConsoleInput, ConsoleOutput, CountInput, CountOutput, DomainElement,
+    DoubleClickInput, ElementStateInput, ErrorsInput, ErrorsOutput, FillInput, FindInput,
+    FindOutput, FocusCheckOutput, FocusInput, GetFocusedOutput, GetTextOutput, GetTitleOutput,
+    GetValueOutput, HealthOutput, IsCheckedOutput, IsEnabledOutput, KeydownInput, KeystrokeInput,
+    KeyupInput, KillOutput, MetricsOutput, MultiselectInput, MultiselectOutput, PtyReadInput,
+    PtyReadOutput, PtyWriteInput, PtyWriteOutput, RecordStartInput, RecordStartOutput,
+    RecordStatusInput, RecordStatusOutput, RecordStopInput, ResizeInput, ResizeOutput, ScrollInput,
+    ScrollIntoViewInput, ScrollIntoViewOutput, ScrollOutput, SelectAllInput, SelectInput,
+    SessionId, SessionInput, SessionsOutput, SnapshotInput, SnapshotOutput, SpawnInput,
+    SpawnOutput, ToggleInput, ToggleOutput, TraceInput, TraceOutput, TypeInput, VisibilityOutput,
+    WaitInput, WaitOutput,
 };
 use crate::error::{DomainError, SessionError};
 use crate::usecases::RestartOutput;
@@ -412,6 +413,81 @@ pub fn attach_output_to_response(id: u64, output: AttachOutput) -> RpcResponse {
             "success": output.success,
             "session_id": output.session_id.as_str(),
             "message": output.message
+        }),
+    )
+}
+
+/// Parse CleanupInput from RpcRequest.
+pub fn parse_cleanup_input(request: &RpcRequest) -> CleanupInput {
+    let all = request.param_bool("all", false);
+    CleanupInput { all }
+}
+
+/// Convert CleanupOutput to RpcResponse.
+pub fn cleanup_output_to_response(id: u64, output: CleanupOutput) -> RpcResponse {
+    let failures_json: Vec<Value> = output
+        .failures
+        .iter()
+        .map(|f| {
+            json!({
+                "session": f.session_id.as_str(),
+                "error": f.error
+            })
+        })
+        .collect();
+
+    RpcResponse::success(
+        id,
+        json!({
+            "sessions_cleaned": output.cleaned,
+            "sessions_failed": output.failures.len(),
+            "failures": failures_json
+        }),
+    )
+}
+
+use crate::domain::{AssertConditionType, AssertInput, AssertOutput};
+
+/// Parse AssertInput from RpcRequest.
+///
+/// The assert endpoint expects a condition string in the format "type:value".
+#[allow(clippy::result_large_err)]
+pub fn parse_assert_input(request: &RpcRequest) -> Result<AssertInput, RpcResponse> {
+    let condition = request.param_str("condition").unwrap_or("");
+    let session = request.param_str("session").map(String::from);
+
+    let parts: Vec<&str> = condition.splitn(2, ':').collect();
+    if parts.len() != 2 {
+        return Err(RpcResponse::error(
+            request.id,
+            -32602,
+            "Invalid condition format. Use: text:pattern, element:ref, or session:id",
+        ));
+    }
+
+    let (cond_type_str, value) = (parts[0], parts[1]);
+
+    let condition_type = match AssertConditionType::parse(cond_type_str) {
+        Ok(ct) => ct,
+        Err(msg) => {
+            return Err(RpcResponse::error(request.id, -32602, &msg));
+        }
+    };
+
+    Ok(AssertInput {
+        session_id: parse_session_id(session),
+        condition_type,
+        value: value.to_string(),
+    })
+}
+
+/// Convert AssertOutput to RpcResponse.
+pub fn assert_output_to_response(id: u64, output: AssertOutput) -> RpcResponse {
+    RpcResponse::success(
+        id,
+        json!({
+            "condition": output.condition,
+            "passed": output.passed
         }),
     )
 }

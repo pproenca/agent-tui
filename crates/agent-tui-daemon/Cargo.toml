@@ -24,3 +24,4 @@ libc.workspace = true
 signal-hook.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true

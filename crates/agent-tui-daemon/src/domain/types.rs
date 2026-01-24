@@ -1006,6 +1006,86 @@ pub struct MetricsOutput {
     pub session_count: usize,
 }
 
+/// Input for cleanup operation.
+#[derive(Debug, Clone)]
+pub struct CleanupInput {
+    /// If true, clean all sessions. If false, only clean non-running sessions.
+    pub all: bool,
+}
+
+/// A failed cleanup attempt for a single session.
+#[derive(Debug, Clone)]
+pub struct CleanupFailure {
+    /// The session ID that failed to clean up.
+    pub session_id: SessionId,
+    /// The error message describing why cleanup failed.
+    pub error: String,
+}
+
+/// Output for cleanup operation.
+#[derive(Debug, Clone)]
+pub struct CleanupOutput {
+    /// Number of sessions successfully cleaned.
+    pub cleaned: usize,
+    /// Sessions that failed to clean up.
+    pub failures: Vec<CleanupFailure>,
+}
+
+/// The type of assertion to perform.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssertConditionType {
+    /// Assert that text is visible on screen.
+    Text,
+    /// Assert that an element exists and is visible.
+    Element,
+    /// Assert that a session exists and is running.
+    Session,
+}
+
+impl AssertConditionType {
+    /// Parse a condition type string.
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s.to_lowercase().as_str() {
+            "text" => Ok(Self::Text),
+            "element" => Ok(Self::Element),
+            "session" => Ok(Self::Session),
+            _ => Err(format!(
+                "Unknown condition type: {}. Use: text, element, or session",
+                s
+            )),
+        }
+    }
+
+    /// Get the string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Element => "element",
+            Self::Session => "session",
+        }
+    }
+}
+
+/// Input for assert operation.
+#[derive(Debug, Clone)]
+pub struct AssertInput {
+    /// Session to use for text/element checks (not needed for session condition).
+    pub session_id: Option<SessionId>,
+    /// The type of condition to assert.
+    pub condition_type: AssertConditionType,
+    /// The value to check (text pattern, element ref, or session id).
+    pub value: String,
+}
+
+/// Output for assert operation.
+#[derive(Debug, Clone)]
+pub struct AssertOutput {
+    /// Whether the assertion passed.
+    pub passed: bool,
+    /// The full condition string (e.g., "text:Hello").
+    pub condition: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

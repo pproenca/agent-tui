@@ -1,15 +1,18 @@
 use agent_tui_ipc::{RpcRequest, RpcResponse};
 
 use crate::adapters::{
-    attach_output_to_response, domain_error_response, kill_output_to_response, parse_attach_input,
-    parse_resize_input, parse_session_input, parse_spawn_input, restart_output_to_response,
-    session_error_response, sessions_output_to_response, spawn_output_to_response,
+    assert_output_to_response, attach_output_to_response, cleanup_output_to_response,
+    domain_error_response, kill_output_to_response, parse_assert_input, parse_attach_input,
+    parse_cleanup_input, parse_resize_input, parse_session_input, parse_spawn_input,
+    restart_output_to_response, session_error_response, sessions_output_to_response,
+    spawn_output_to_response,
 };
 use crate::domain::ResizeOutput;
 use crate::error::DomainError;
 use crate::session::SessionError;
 use crate::usecases::{
-    AttachUseCase, KillUseCase, ResizeUseCase, RestartUseCase, SessionsUseCase, SpawnUseCase,
+    AssertUseCase, AttachUseCase, CleanupUseCase, KillUseCase, ResizeUseCase, RestartUseCase,
+    SessionsUseCase, SpawnUseCase,
 };
 
 /// Handle spawn requests using the use case pattern.
@@ -95,6 +98,27 @@ pub fn handle_attach<U: AttachUseCase>(usecase: &U, request: RpcRequest) -> RpcR
 
     match usecase.execute(input) {
         Ok(output) => attach_output_to_response(req_id, output),
+        Err(e) => session_error_response(req_id, e),
+    }
+}
+
+/// Handle cleanup requests using the use case pattern.
+pub fn handle_cleanup<U: CleanupUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let input = parse_cleanup_input(&request);
+    let output = usecase.execute(input);
+    cleanup_output_to_response(request.id, output)
+}
+
+/// Handle assert requests using the use case pattern.
+pub fn handle_assert<U: AssertUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let req_id = request.id;
+    let input = match parse_assert_input(&request) {
+        Ok(i) => i,
+        Err(resp) => return resp,
+    };
+
+    match usecase.execute(input) {
+        Ok(output) => assert_output_to_response(req_id, output),
         Err(e) => session_error_response(req_id, e),
     }
 }

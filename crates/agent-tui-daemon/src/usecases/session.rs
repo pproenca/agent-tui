@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::domain::{
-    AttachInput, AttachOutput, KillOutput, ResizeInput, ResizeOutput, SessionInput, SessionsOutput,
-    SpawnInput, SpawnOutput,
+    AttachInput, AttachOutput, CleanupFailure, CleanupInput, CleanupOutput, KillOutput,
+    ResizeInput, ResizeOutput, SessionInput, SessionsOutput, SpawnInput, SpawnOutput,
 };
 use crate::error::{DomainError, SessionError};
 use crate::repository::SessionRepository;
@@ -238,6 +238,106 @@ impl<R: SessionRepository> ResizeUseCase for ResizeUseCaseImpl<R> {
             session_id: SessionId::from(guard.id.as_str()),
             success: true,
         })
+    }
+}
+
+/// Use case for cleaning up sessions.
+///
+/// Cleans up sessions based on the `all` flag:
+/// - If `all` is true, terminates all sessions
+/// - If `all` is false, terminates only non-running sessions
+pub trait CleanupUseCase: Send + Sync {
+    fn execute(&self, input: CleanupInput) -> CleanupOutput;
+}
+
+pub struct CleanupUseCaseImpl<R: SessionRepository> {
+    repository: Arc<R>,
+}
+
+impl<R: SessionRepository> CleanupUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
+    }
+}
+
+impl<R: SessionRepository> CleanupUseCase for CleanupUseCaseImpl<R> {
+    fn execute(&self, input: CleanupInput) -> CleanupOutput {
+        let sessions = self.repository.list();
+        let mut cleaned = 0;
+        let mut failures = Vec::new();
+
+        for info in sessions {
+            // If not cleaning all, skip running sessions
+            let should_cleanup = input.all || !info.is_active();
+
+            if should_cleanup {
+                match self.repository.kill(info.id.as_str()) {
+                    Ok(_) => cleaned += 1,
+                    Err(e) => failures.push(CleanupFailure {
+                        session_id: info.id.clone(),
+                        error: e.to_string(),
+                    }),
+                }
+            }
+        }
+
+        CleanupOutput { cleaned, failures }
+    }
+}
+
+use crate::domain::{AssertConditionType, AssertInput, AssertOutput};
+
+/// Use case for asserting conditions.
+///
+/// Performs condition checks based on condition type:
+/// - Text: checks if text is visible on screen
+/// - Element: checks if element exists and is visible
+/// - Session: checks if session exists and is running
+pub trait AssertUseCase: Send + Sync {
+    fn execute(&self, input: AssertInput) -> Result<AssertOutput, SessionError>;
+}
+
+pub struct AssertUseCaseImpl<R: SessionRepository> {
+    repository: Arc<R>,
+}
+
+impl<R: SessionRepository> AssertUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
+    }
+}
+
+impl<R: SessionRepository> AssertUseCase for AssertUseCaseImpl<R> {
+    fn execute(&self, input: AssertInput) -> Result<AssertOutput, SessionError> {
+        let condition = format!("{}:{}", input.condition_type.as_str(), input.value);
+
+        let passed = match input.condition_type {
+            AssertConditionType::Text => {
+                // Resolve session and check if text is visible
+                let session = self.repository.resolve(input.session_id.as_deref())?;
+                let mut guard = session.lock().unwrap();
+                guard.update()?;
+                let screen = guard.screen_text();
+                screen.contains(&input.value)
+            }
+            AssertConditionType::Element => {
+                // Resolve session and check if element exists
+                let session = self.repository.resolve(input.session_id.as_deref())?;
+                let mut guard = session.lock().unwrap();
+                guard.update()?;
+                guard.detect_elements();
+                guard.find_element(&input.value).is_some()
+            }
+            AssertConditionType::Session => {
+                // Check if session exists and is running
+                let sessions = self.repository.list();
+                sessions
+                    .iter()
+                    .any(|s| s.id.as_str() == input.value && s.is_active())
+            }
+        };
+
+        Ok(AssertOutput { passed, condition })
     }
 }
 

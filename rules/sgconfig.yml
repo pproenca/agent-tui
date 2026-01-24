@@ -1,0 +1,5 @@
+ruleDirs:
+  - clean-architecture
+  - rust-codemods
+testConfigs:
+  - testDir: tests

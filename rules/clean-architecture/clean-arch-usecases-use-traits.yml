@@ -1,0 +1,14 @@
+id: clean-arch-usecases-use-traits
+language: rust
+severity: warning
+message: "Use cases should depend on SessionRepository trait, not concrete Session/SessionManager."
+note: |
+  Dependency Inversion Principle: Use cases should depend on abstractions (traits),
+  not concrete implementations. Import SessionRepository from crate::repository instead.
+files:
+  - "crates/agent-tui-daemon/src/usecases/**/*.rs"
+rule:
+  kind: use_declaration
+  any:
+    - pattern: use crate::session::Session
+    - pattern: use crate::session::SessionManager

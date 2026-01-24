@@ -1,0 +1,19 @@
+id: async-avoid-blocking-io
+language: rust
+severity: warning
+message: "Avoid blocking std::fs calls in async functions, use tokio::fs or spawn_blocking"
+note: |
+  Blocking I/O operations like std::fs::read/write will block the async runtime thread.
+  Use tokio::fs for async file operations, or spawn_blocking for CPU-intensive work.
+rule:
+  any:
+    - pattern: std::fs::read($$$)
+    - pattern: std::fs::write($$$)
+    - pattern: std::fs::read_to_string($$$)
+    - pattern: std::fs::read_dir($$$)
+  inside:
+    kind: function_item
+    has:
+      kind: function_modifiers
+      regex: "async"
+    stopBy: end

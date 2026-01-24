@@ -1,0 +1,23 @@
+id: iter-use-find
+snapshots:
+  items.filter(|item| item.is_valid()).next();:
+    fixed: items.find(|item| item.is_valid());
+    labels:
+    - source: items.filter(|item| item.is_valid()).next()
+      style: primary
+      start: 0
+      end: 43
+  iter.filter(|x| x > 0).next();:
+    fixed: iter.find(|x| x > 0);
+    labels:
+    - source: iter.filter(|x| x > 0).next()
+      style: primary
+      start: 0
+      end: 29
+  vec.iter().filter(predicate).next();:
+    fixed: vec.iter().find(predicate);
+    labels:
+    - source: vec.iter().filter(predicate).next()
+      style: primary
+      start: 0
+      end: 35

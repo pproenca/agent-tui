@@ -1,0 +1,30 @@
+id: algo-use-sort-unstable
+snapshots:
+  items.collect::<Vec<_>>().sort();:
+    fixed: items.collect::<Vec<_>>().sort_unstable();
+    labels:
+    - source: items.collect::<Vec<_>>().sort()
+      style: primary
+      start: 0
+      end: 32
+  my_vec.sort();:
+    fixed: my_vec.sort_unstable();
+    labels:
+    - source: my_vec.sort()
+      style: primary
+      start: 0
+      end: 13
+  self.data.sort();:
+    fixed: self.data.sort_unstable();
+    labels:
+    - source: self.data.sort()
+      style: primary
+      start: 0
+      end: 16
+  vec.sort();:
+    fixed: vec.sort_unstable();
+    labels:
+    - source: vec.sort()
+      style: primary
+      start: 0
+      end: 10

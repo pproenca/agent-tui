@@ -1,0 +1,32 @@
+id: clean-arch-common-no-higher-crates
+snapshots:
+  use agent_tui::commands::Cli;:
+    labels:
+    - source: use agent_tui::commands::Cli;
+      style: primary
+      start: 0
+      end: 29
+  use agent_tui_core::session::Session;:
+    labels:
+    - source: use agent_tui_core::session::Session;
+      style: primary
+      start: 0
+      end: 37
+  use agent_tui_daemon::server::DaemonServer;:
+    labels:
+    - source: use agent_tui_daemon::server::DaemonServer;
+      style: primary
+      start: 0
+      end: 43
+  use agent_tui_ipc::client::DaemonClient;:
+    labels:
+    - source: use agent_tui_ipc::client::DaemonClient;
+      style: primary
+      start: 0
+      end: 40
+  use agent_tui_terminal::Terminal;:
+    labels:
+    - source: use agent_tui_terminal::Terminal;
+      style: primary
+      start: 0
+      end: 33

@@ -1,0 +1,23 @@
+id: iter-use-copied
+snapshots:
+  iter.map(|x| *x);:
+    fixed: iter.copied();
+    labels:
+    - source: iter.map(|x| *x)
+      style: primary
+      start: 0
+      end: 16
+  self.data.iter().map(|x| *x);:
+    fixed: self.data.iter().copied();
+    labels:
+    - source: self.data.iter().map(|x| *x)
+      style: primary
+      start: 0
+      end: 28
+  vec.iter().map(|item| *item);:
+    fixed: vec.iter().copied();
+    labels:
+    - source: vec.iter().map(|item| *item)
+      style: primary
+      start: 0
+      end: 28

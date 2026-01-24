@@ -1,0 +1,23 @@
+id: algo-use-sort-by-key
+snapshots:
+  items.sort_by(|x, y| x.priority.cmp(&y.priority));:
+    fixed: items.sort_by_key(|x| x.priority);
+    labels:
+    - source: items.sort_by(|x, y| x.priority.cmp(&y.priority))
+      style: primary
+      start: 0
+      end: 49
+  self.entries.sort_by(|a, b| a.id.cmp(&b.id));:
+    fixed: self.entries.sort_by_key(|x| x.id);
+    labels:
+    - source: self.entries.sort_by(|a, b| a.id.cmp(&b.id))
+      style: primary
+      start: 0
+      end: 44
+  vec.sort_by(|a, b| a.name.cmp(&b.name));:
+    fixed: vec.sort_by_key(|x| x.name);
+    labels:
+    - source: vec.sort_by(|a, b| a.name.cmp(&b.name))
+      style: primary
+      start: 0
+      end: 39

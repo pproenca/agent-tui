@@ -1,0 +1,9 @@
+id: iter-use-find
+valid:
+  - "iter.find(|x| x > 0);"
+  - "items.find(|item| item.is_valid());"
+  - "vec.iter().find(predicate);"
+invalid:
+  - "iter.filter(|x| x > 0).next();"
+  - "items.filter(|item| item.is_valid()).next();"
+  - "vec.iter().filter(predicate).next();"

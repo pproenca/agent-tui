@@ -1,0 +1,26 @@
+id: clean-arch-usecases-no-global-state
+snapshots:
+  use lazy_static::lazy_static;:
+    labels:
+    - source: use lazy_static::lazy_static;
+      style: primary
+      start: 0
+      end: 29
+  use lazy_static;:
+    labels:
+    - source: use lazy_static;
+      style: primary
+      start: 0
+      end: 16
+  use once_cell::sync::Lazy;:
+    labels:
+    - source: use once_cell::sync::Lazy;
+      style: primary
+      start: 0
+      end: 26
+  use once_cell::sync::OnceCell;:
+    labels:
+    - source: use once_cell::sync::OnceCell;
+      style: primary
+      start: 0
+      end: 30

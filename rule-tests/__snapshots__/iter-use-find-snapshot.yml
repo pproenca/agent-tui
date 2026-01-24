@@ -1,0 +1,23 @@
+id: iter-use-find
+snapshots:
+  iter.filter(|x| x > 5).next();:
+    fixed: iter.find(|x| x > 5);
+    labels:
+    - source: iter.filter(|x| x > 5).next()
+      style: primary
+      start: 0
+      end: 29
+  self.data.filter(|x| x.is_valid()).next();:
+    fixed: self.data.find(|x| x.is_valid());
+    labels:
+    - source: self.data.filter(|x| x.is_valid()).next()
+      style: primary
+      start: 0
+      end: 41
+  vec.iter().filter(predicate).next();:
+    fixed: vec.iter().find(predicate);
+    labels:
+    - source: vec.iter().filter(predicate).next()
+      style: primary
+      start: 0
+      end: 35

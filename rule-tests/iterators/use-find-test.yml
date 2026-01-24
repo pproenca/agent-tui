@@ -1,0 +1,10 @@
+id: iter-use-find
+valid:
+  - "iter.find(|x| x > 5);"
+  - "iter.filter(|x| x > 5).count();"
+  - "iter.filter(|x| x > 5).collect();"
+  - "iter.filter(pred).last();"
+invalid:
+  - "iter.filter(|x| x > 5).next();"
+  - "vec.iter().filter(predicate).next();"
+  - "self.data.filter(|x| x.is_valid()).next();"

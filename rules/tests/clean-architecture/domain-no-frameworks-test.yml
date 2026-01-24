@@ -1,0 +1,16 @@
+id: clean-arch-domain-no-frameworks
+valid:
+  - "use std::collections::HashMap;"
+  - "use std::time::Duration;"
+  - "use core::fmt::Display;"
+invalid:
+  - "use serde::Serialize;"
+  - "use serde;"
+  - "use uuid::Uuid;"
+  - "use uuid;"
+  - "use chrono::DateTime;"
+  - "use chrono;"
+  - "use tokio::sync::Mutex;"
+  - "use tokio;"
+  - "use tracing::info;"
+  - "use tracing;"

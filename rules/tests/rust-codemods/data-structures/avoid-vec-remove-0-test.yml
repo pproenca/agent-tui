@@ -1,0 +1,10 @@
+id: ds-avoid-vec-remove-0
+valid:
+  - "vec.remove(1);"
+  - "vec.remove(idx);"
+  - "vec.pop();"
+  - "deque.pop_front();"
+invalid:
+  - "vec.remove(0);"
+  - "items.remove(0);"
+  - "self.queue.remove(0);"

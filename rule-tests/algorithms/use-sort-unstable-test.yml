@@ -1,0 +1,12 @@
+id: algo-use-sort-unstable
+valid:
+  - "vec.sort_unstable();"
+  - "vec.sort_by(|a, b| a.cmp(b));"
+  - "vec.sort_by_key(|x| x.key);"
+  - "let sort = 42;"
+  - "fn sort() {}"
+invalid:
+  - "vec.sort();"
+  - "self.data.sort();"
+  - "items.collect::<Vec<_>>().sort();"
+  - "my_vec.sort();"

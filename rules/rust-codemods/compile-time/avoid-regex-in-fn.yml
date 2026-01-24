@@ -1,0 +1,25 @@
+id: comp-avoid-regex-in-fn
+language: rust
+severity: warning
+message: "Regex::new() in function body recompiles on every call, use lazy_static or once_cell"
+note: |
+  Regex compilation is expensive. Creating a Regex inside a function means it gets recompiled
+  on every call. Use lazy_static!, once_cell::Lazy, or std::sync::LazyLock to compile once.
+
+  Example with once_cell:
+    static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"pattern").unwrap());
+rule:
+  pattern: Regex::new($PATTERN)
+  inside:
+    kind: function_item
+    stopBy: end
+  not:
+    any:
+      - inside:
+          kind: macro_invocation
+      - inside:
+          pattern: $LOCK.get_or_init($$$)
+          stopBy: end
+      - inside:
+          pattern: Lazy::new($$$)
+          stopBy: end

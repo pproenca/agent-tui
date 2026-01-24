@@ -1,6 +1,7 @@
 use agent_tui_ipc::{RpcRequest, RpcResponse, params};
 use serde_json::{Value, json};
 
+use super::recording_adapters::{build_asciicast, build_raw_frames};
 use super::snapshot_adapters::session_info_to_json;
 use crate::domain::{
     AccessibilitySnapshotInput, AttachInput, AttachOutput, CleanupInput, CleanupOutput, ClearInput,
@@ -10,14 +11,13 @@ use crate::domain::{
     GetValueOutput, HealthOutput, IsCheckedOutput, IsEnabledOutput, KeydownInput, KeystrokeInput,
     KeyupInput, KillOutput, MetricsOutput, MultiselectInput, MultiselectOutput, PtyReadInput,
     PtyReadOutput, PtyWriteInput, PtyWriteOutput, RecordStartInput, RecordStartOutput,
-    RecordStatusInput, RecordStatusOutput, RecordStopInput, ResizeInput, ResizeOutput, ScrollInput,
-    ScrollIntoViewInput, ScrollIntoViewOutput, ScrollOutput, SelectAllInput, SelectInput,
-    SessionId, SessionInput, SessionsOutput, SnapshotInput, SnapshotOutput, SpawnInput,
-    SpawnOutput, ToggleInput, ToggleOutput, TraceInput, TraceOutput, TypeInput, VisibilityOutput,
-    WaitInput, WaitOutput,
+    RecordStatusInput, RecordStatusOutput, RecordStopInput, RecordStopOutput, ResizeInput,
+    ResizeOutput, RestartOutput, ScrollInput, ScrollIntoViewInput, ScrollIntoViewOutput,
+    ScrollOutput, SelectAllInput, SelectInput, SessionId, SessionInput, SessionsOutput,
+    SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, ToggleInput, ToggleOutput, TraceInput,
+    TraceOutput, TypeInput, VisibilityOutput, WaitInput, WaitOutput,
 };
 use crate::error::{DomainError, SessionError};
-use crate::usecases::RestartOutput;
 
 /// Convert an optional string session ID to an optional SessionId.
 ///
@@ -372,12 +372,18 @@ pub fn parse_resize_input(request: &RpcRequest) -> ResizeInput {
 }
 
 /// Convert ResizeOutput to RpcResponse.
-pub fn resize_output_to_response(id: u64, output: ResizeOutput) -> RpcResponse {
+pub fn resize_output_to_response(
+    id: u64,
+    output: ResizeOutput,
+    cols: u16,
+    rows: u16,
+) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
             "success": output.success,
-            "session_id": output.session_id.as_str()
+            "session_id": output.session_id.as_str(),
+            "size": { "cols": cols, "rows": rows }
         }),
     )
 }
@@ -672,6 +678,30 @@ pub fn record_status_output_to_response(id: u64, output: RecordStatusOutput) -> 
             "recording": output.is_recording,
             "frame_count": output.frame_count,
             "duration_ms": output.duration_ms
+        }),
+    )
+}
+
+/// Convert RecordStopOutput to RpcResponse.
+pub fn record_stop_output_to_response(id: u64, output: RecordStopOutput) -> RpcResponse {
+    let recording_data = if output.format == "asciicast" {
+        build_asciicast(
+            output.session_id.as_ref(),
+            output.cols,
+            output.rows,
+            &output.frames,
+        )
+    } else {
+        build_raw_frames(&output.frames)
+    };
+
+    RpcResponse::success(
+        id,
+        json!({
+            "success": true,
+            "session_id": output.session_id.as_str(),
+            "frame_count": output.frame_count,
+            "recording": recording_data
         }),
     )
 }

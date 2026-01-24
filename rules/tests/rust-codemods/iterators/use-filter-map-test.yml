@@ -1,0 +1,8 @@
+id: iter-use-filter-map
+valid:
+  - "iter.filter_map(|x| x.ok());"
+  - "items.iter().filter_map(Result::ok);"
+  - "vec.iter().filter(|x| x.is_ok()).cloned();"
+invalid:
+  - "iter.filter(|x| x.is_ok()).map(|x| x.unwrap());"
+  - "items.filter(|x| x.is_some()).map(|x| x.unwrap());"

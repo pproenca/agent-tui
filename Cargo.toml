@@ -17,11 +17,11 @@ repository = "https://github.com/pproenca/agent-tui"
 
 [workspace.dependencies]
 # Internal (version inherited from workspace.package.version)
-agent-tui-core = { path = "crates/agent-tui-core" }
-agent-tui-terminal = { path = "crates/agent-tui-terminal" }
-agent-tui-daemon = { path = "crates/agent-tui-daemon" }
-agent-tui-ipc = { path = "crates/agent-tui-ipc" }
-agent-tui-common = { path = "crates/agent-tui-common" }
+agent-tui-core = { path = "crates/agent-tui-core", version = "0.3.7" }
+agent-tui-terminal = { path = "crates/agent-tui-terminal", version = "0.3.7" }
+agent-tui-daemon = { path = "crates/agent-tui-daemon", version = "0.3.7" }
+agent-tui-ipc = { path = "crates/agent-tui-ipc", version = "0.3.7" }
+agent-tui-common = { path = "crates/agent-tui-common", version = "0.3.7" }
 
 # External (pinned)
 async-trait = "0.1"

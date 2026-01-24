@@ -13,3 +13,4 @@ rule:
   has:
     kind: function_modifiers
     regex: "async"
+    stopBy: end

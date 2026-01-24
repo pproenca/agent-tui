@@ -10,7 +10,7 @@ note: |
   - tokio: Async runtime is infrastructure concern
   - tracing: Logging is infrastructure concern
 files:
-  - "crates/agent-tui-daemon/src/domain/**/*.rs"
+  - "crates/agent-tui/src/daemon/domain/**/*.rs"
 rule:
   kind: use_declaration
   any:

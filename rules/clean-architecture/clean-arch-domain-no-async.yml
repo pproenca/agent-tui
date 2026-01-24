@@ -7,7 +7,7 @@ note: |
   Domain logic should be pure and synchronous.
   If you need async, the caller in the infrastructure layer should handle it.
 files:
-  - "crates/agent-tui-daemon/src/domain/**/*.rs"
+  - "crates/agent-tui/src/daemon/domain/**/*.rs"
 rule:
   kind: function_item
   has:

@@ -8,7 +8,7 @@ note: |
   - Replace lazy_static with constructor injection
   - Pass configuration as parameters
 files:
-  - "crates/agent-tui-daemon/src/usecases/**/*.rs"
+  - "crates/agent-tui/src/daemon/usecases/**/*.rs"
 rule:
   kind: use_declaration
   any:

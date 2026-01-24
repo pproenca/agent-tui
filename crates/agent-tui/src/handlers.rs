@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use serde_json::Value;
 use serde_json::json;
 
-use agent_tui_common::Colors;
-use agent_tui_common::ValueExt;
-use agent_tui_ipc::ClientError;
-use agent_tui_ipc::DaemonClient;
-use agent_tui_ipc::UnixProcessController;
-use agent_tui_ipc::params;
-use agent_tui_ipc::socket_path;
+use crate::common::Colors;
+use crate::common::ValueExt;
+use crate::ipc::ClientError;
+use crate::ipc::DaemonClient;
+use crate::ipc::UnixProcessController;
+use crate::ipc::params;
+use crate::ipc::socket_path;
 
 use crate::commands::FindParams;
 use crate::commands::OutputFormat;
@@ -1098,7 +1098,7 @@ pub fn handle_assert<C: DaemonClient>(
 // ============================================================================
 
 pub fn handle_daemon_stop<C: DaemonClient>(ctx: &HandlerContext<C>, force: bool) -> HandlerResult {
-    use agent_tui_ipc::{PidLookupResult, daemon_lifecycle, get_daemon_pid};
+    use crate::ipc::{PidLookupResult, daemon_lifecycle, get_daemon_pid};
 
     let pid = match get_daemon_pid() {
         PidLookupResult::Found(pid) => pid,
@@ -1204,9 +1204,7 @@ pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Han
 }
 
 pub fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
-    use agent_tui_ipc::{
-        PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background,
-    };
+    use crate::ipc::{PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background};
 
     if let OutputFormat::Text = ctx.format {
         ctx.presenter().present_info("Restarting daemon...");
@@ -1288,7 +1286,7 @@ mod tests {
             self.output.borrow_mut().push(format!("value: {}", value));
         }
 
-        fn present_client_error(&self, error: &agent_tui_ipc::ClientError) {
+        fn present_client_error(&self, error: &crate::ipc::ClientError) {
             self.output
                 .borrow_mut()
                 .push(format!("client_error: {}", error));

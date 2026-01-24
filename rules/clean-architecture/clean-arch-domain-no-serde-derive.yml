@@ -6,7 +6,7 @@ note: |
   Clean Architecture: Domain types should be persistence-ignorant.
   Create separate DTO types in the adapter layer for serialization.
 files:
-  - "crates/agent-tui-daemon/src/domain/**/*.rs"
+  - "crates/agent-tui/src/daemon/domain/**/*.rs"
 rule:
   kind: attribute_item
   any:

@@ -1,31 +1,33 @@
 #!/bin/sh
+set -e
 
 printf '%s\n' "Running pre-push checks..."
 
 printf '\n→ Checking formatting...\n'
-cargo fmt --all --check || exit 1
+cargo fmt --all --check
 
 printf '\n→ Building workspace...\n'
-cargo build --workspace || exit 1
+cargo build --workspace
 
 printf '\n→ Running clippy...\n'
-cargo clippy --workspace --all-targets -- -D warnings || exit 1
+cargo clippy --workspace --all-targets -- -D warnings
 
 printf '\n→ Running ast-grep Clean Architecture checks...\n'
 if command -v ast-grep >/dev/null 2>&1; then
-    if ast-grep scan --config sgconfig.yml 2>&1 | grep -q "^error\["; then
-        ast-grep scan --config sgconfig.yml
-        printf '\nERROR: ast-grep found Clean Architecture violations!\n'
-        exit 1
-    fi
+  ast_output=$(ast-grep scan --config sgconfig.yml 2>&1) || true
+  if printf '%s' "${ast_output}" | grep -q "^error\["; then
+    printf '%s\n' "${ast_output}"
+    printf '\nERROR: ast-grep found Clean Architecture violations!\n'
+    exit 1
+  fi
 else
-    printf 'ast-grep not installed, skipping...\n'
+  printf 'ast-grep not installed, skipping...\n'
 fi
 
 printf '\n→ Running tests...\n'
-cargo test --workspace || exit 1
+cargo test --workspace
 
 printf '\n→ Checking for unused dependencies...\n'
-cargo machete || exit 1
+cargo machete
 
 printf '\nAll pre-push checks passed!\n'

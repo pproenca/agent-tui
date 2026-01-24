@@ -5,17 +5,17 @@ use std::time::Instant;
 use crate::metrics::DaemonMetrics;
 use crate::repository::SessionRepository;
 use crate::usecases::{
-    AccessibilitySnapshotUseCaseImpl, AttachUseCaseImpl, ClearUseCaseImpl, ClickUseCaseImpl,
-    ConsoleUseCaseImpl, CountUseCaseImpl, DoubleClickUseCaseImpl, ErrorsUseCaseImpl,
-    FillUseCaseImpl, FindUseCaseImpl, FocusUseCaseImpl, GetFocusedUseCaseImpl, GetTextUseCaseImpl,
-    GetTitleUseCaseImpl, GetValueUseCaseImpl, HealthUseCaseImpl, IsCheckedUseCaseImpl,
-    IsEnabledUseCaseImpl, IsFocusedUseCaseImpl, IsVisibleUseCaseImpl, KeydownUseCaseImpl,
-    KeystrokeUseCaseImpl, KeyupUseCaseImpl, KillUseCaseImpl, MetricsUseCaseImpl,
-    MultiselectUseCaseImpl, PtyReadUseCaseImpl, PtyWriteUseCaseImpl, RecordStartUseCaseImpl,
-    RecordStatusUseCaseImpl, RecordStopUseCaseImpl, ResizeUseCaseImpl, RestartUseCaseImpl,
-    ScrollIntoViewUseCaseImpl, ScrollUseCaseImpl, SelectAllUseCaseImpl, SelectUseCaseImpl,
-    SessionsUseCaseImpl, SnapshotUseCaseImpl, SpawnUseCaseImpl, ToggleUseCaseImpl,
-    TraceUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
+    AccessibilitySnapshotUseCaseImpl, AssertUseCaseImpl, AttachUseCaseImpl, CleanupUseCaseImpl,
+    ClearUseCaseImpl, ClickUseCaseImpl, ConsoleUseCaseImpl, CountUseCaseImpl,
+    DoubleClickUseCaseImpl, ErrorsUseCaseImpl, FillUseCaseImpl, FindUseCaseImpl, FocusUseCaseImpl,
+    GetFocusedUseCaseImpl, GetTextUseCaseImpl, GetTitleUseCaseImpl, GetValueUseCaseImpl,
+    HealthUseCaseImpl, IsCheckedUseCaseImpl, IsEnabledUseCaseImpl, IsFocusedUseCaseImpl,
+    IsVisibleUseCaseImpl, KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl,
+    KillUseCaseImpl, MetricsUseCaseImpl, MultiselectUseCaseImpl, PtyReadUseCaseImpl,
+    PtyWriteUseCaseImpl, RecordStartUseCaseImpl, RecordStatusUseCaseImpl, RecordStopUseCaseImpl,
+    ResizeUseCaseImpl, RestartUseCaseImpl, ScrollIntoViewUseCaseImpl, ScrollUseCaseImpl,
+    SelectAllUseCaseImpl, SelectUseCaseImpl, SessionsUseCaseImpl, SnapshotUseCaseImpl,
+    SpawnUseCaseImpl, ToggleUseCaseImpl, TraceUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
 };
 
 /// Container holding all use case implementations.
@@ -39,6 +39,8 @@ pub struct SessionUseCases<R: SessionRepository + 'static> {
     pub restart: RestartUseCaseImpl<R>,
     pub attach: AttachUseCaseImpl<R>,
     pub resize: ResizeUseCaseImpl<R>,
+    pub cleanup: CleanupUseCaseImpl<R>,
+    pub assert: AssertUseCaseImpl<R>,
 }
 
 /// Element-related use cases.
@@ -111,6 +113,8 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 restart: RestartUseCaseImpl::new(Arc::clone(&repository)),
                 attach: AttachUseCaseImpl::new(Arc::clone(&repository)),
                 resize: ResizeUseCaseImpl::new(Arc::clone(&repository)),
+                cleanup: CleanupUseCaseImpl::new(Arc::clone(&repository)),
+                assert: AssertUseCaseImpl::new(Arc::clone(&repository)),
             },
             elements: ElementUseCases {
                 snapshot: SnapshotUseCaseImpl::new(Arc::clone(&repository)),

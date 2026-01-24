@@ -499,3 +499,12 @@ This separation allows:
 - CLI to be thin wrapper around library
 - Independent versioning if needed
 - Clear documentation boundary
+
+---
+
+## Related Patterns
+
+- [Naming & Style](naming-and-style.md) - Module naming conventions and file organization
+- [CLI Patterns](cli-patterns.md) - Command-line application structure
+- [Type Design](type-design.md) - API surface type patterns
+- [Traits & Generics](traits-and-generics.md) - Public trait design

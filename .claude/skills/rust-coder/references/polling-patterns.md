@@ -734,3 +734,12 @@ pub enum OperationError {
     Other(String),
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Concurrency](concurrency.md) - Thread coordination and channels
+- [Daemon Patterns](daemon-rpc-patterns.md) - Service wait conditions
+- [Error Handling](error-handling.md) - Timeout error types
+- [Performance](performance.md) - Backoff and throttling

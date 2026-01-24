@@ -391,3 +391,12 @@ fn process_entries(logger: &Logger, entries: &[Entry]) -> Result<Vec<Output>> {
     Ok(results)
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Parsing](parsing.md) - Parsing helper macros
+- [Testing](testing.md) - Test assertion macros
+- [Traits & Generics](traits-and-generics.md) - Derive macro patterns
+- [Logging](logging.md) - Timed operation macros

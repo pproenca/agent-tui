@@ -1,3 +1,15 @@
+//! PTY session wrapper - intentional partial boundary.
+//!
+//! This module is an intentional partial boundary that wraps `PtyHandle` from
+//! `agent_tui_terminal`. It exists at the root level because:
+//!
+//! 1. It's a thin wrapper with no business logic - just delegation and error mapping
+//! 2. It adapts the terminal crate's PTY interface to the daemon's error types
+//! 3. It provides a clean separation between PTY lifecycle and terminal emulation
+//!
+//! This follows Clean Architecture's guidance on partial boundaries: when the
+//! cost of a full boundary isn't justified, a simpler separation can be used.
+
 use agent_tui_terminal::PtyHandle;
 
 use crate::error::SessionError;

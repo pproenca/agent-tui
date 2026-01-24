@@ -61,16 +61,6 @@ impl DaemonMetrics {
     pub fn uptime_ms(&self) -> u64 {
         self.start_time.elapsed().as_millis() as u64
     }
-
-    pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "requests_total": self.requests(),
-            "errors_total": self.errors(),
-            "lock_timeouts": self.lock_timeouts(),
-            "poison_recoveries": self.poison_recoveries(),
-            "uptime_ms": self.uptime_ms()
-        })
-    }
 }
 
 #[cfg(test)]
@@ -94,16 +84,6 @@ mod tests {
         metrics.record_error();
         assert_eq!(metrics.requests(), 2);
         assert_eq!(metrics.errors(), 1);
-    }
-
-    #[test]
-    fn test_metrics_to_json() {
-        let metrics = DaemonMetrics::new();
-        metrics.record_request();
-        metrics.record_lock_timeout();
-        let json = metrics.to_json();
-        assert_eq!(json["requests_total"], 1);
-        assert_eq!(json["lock_timeouts"], 1);
     }
 
     #[test]

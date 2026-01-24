@@ -17,6 +17,7 @@ mod codes {
     pub const RESET: &str = "\x1b[0m";
     pub const GREEN: &str = "\x1b[32m";
     pub const RED: &str = "\x1b[31m";
+    pub const YELLOW: &str = "\x1b[33m";
     pub const CYAN: &str = "\x1b[36m";
     pub const DIM: &str = "\x1b[90m";
     pub const BOLD: &str = "\x1b[1m";
@@ -46,6 +47,14 @@ impl Colors {
             text.to_string()
         } else {
             format!("{}{}{}", codes::CYAN, text, codes::RESET)
+        }
+    }
+
+    pub fn warning(text: &str) -> String {
+        if is_disabled() {
+            text.to_string()
+        } else {
+            format!("{}{}{}", codes::YELLOW, text, codes::RESET)
         }
     }
 

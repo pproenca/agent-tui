@@ -38,13 +38,13 @@ fn test_sequence_returns_different_responses() {
 
     // First call should fail
     harness
-        .run(&["health"])
+        .run(&["status"])
         .failure()
         .stderr(predicate::str::contains("Temporary error"));
 
     // Second call should succeed
     harness
-        .run(&["health"])
+        .run(&["status"])
         .success()
         .stdout(predicate::str::contains("healthy"));
 
@@ -85,11 +85,11 @@ fn test_sequence_cycles_through_responses() {
     );
 
     // Should cycle back to first response after exhausting sequence
-    harness.run(&["health"]).success(); // pid=1
-    harness.run(&["health"]).success(); // pid=2
-    harness.run(&["health"]).success(); // pid=3
+    harness.run(&["status"]).success(); // pid=1
+    harness.run(&["status"]).success(); // pid=2
+    harness.run(&["status"]).success(); // pid=3
     harness
-        .run(&["health"])
+        .run(&["status"])
         .success()
         .stdout(predicate::str::contains("PID: 1")); // cycles back
 
@@ -116,10 +116,10 @@ fn test_sequence_with_disconnect() {
     );
 
     // First call fails due to disconnect
-    harness.run(&["health"]).failure();
+    harness.run(&["status"]).failure();
 
     // Second call succeeds
-    harness.run(&["health"]).success();
+    harness.run(&["status"]).success();
 }
 
 #[test]
@@ -139,11 +139,11 @@ fn test_sequence_with_malformed() {
     );
 
     // First call fails
-    harness.run(&["sessions"]).failure();
+    harness.run(&["ls"]).failure();
 
     // Second call succeeds
     harness
-        .run(&["sessions"])
+        .run(&["ls"])
         .success()
         .stdout(predicate::str::contains("No active sessions"));
 }
@@ -171,7 +171,7 @@ fn test_delayed_response_adds_latency() {
         ),
     );
 
-    let (result, duration) = timed(|| harness.run(&["health"]));
+    let (result, duration) = timed(|| harness.run(&["status"]));
 
     result.success();
 
@@ -199,7 +199,7 @@ fn test_delayed_error_response() {
         ),
     );
 
-    let (result, duration) = timed(|| harness.run(&["health"]));
+    let (result, duration) = timed(|| harness.run(&["status"]));
 
     result
         .failure()
@@ -279,10 +279,10 @@ fn test_permanent_failure_pattern() {
 fn test_call_count_for_method() {
     let harness = TestHarness::new();
 
-    harness.run(&["health"]).success();
-    harness.run(&["sessions"]).success();
-    harness.run(&["health"]).success();
-    harness.run(&["health"]).success();
+    harness.run(&["status"]).success();
+    harness.run(&["ls"]).success();
+    harness.run(&["status"]).success();
+    harness.run(&["status"]).success();
 
     assert_eq!(harness.call_count("health"), 3);
     assert_eq!(harness.call_count("sessions"), 1);
@@ -311,13 +311,13 @@ fn test_nth_call_params_tracking() {
 fn test_clear_requests_resets_tracking() {
     let harness = TestHarness::new();
 
-    harness.run(&["health"]).success();
-    harness.run(&["health"]).success();
+    harness.run(&["status"]).success();
+    harness.run(&["status"]).success();
     assert_eq!(harness.call_count("health"), 2);
 
     harness.clear_requests();
     assert_eq!(harness.call_count("health"), 0);
 
-    harness.run(&["health"]).success();
+    harness.run(&["status"]).success();
     assert_eq!(harness.call_count("health"), 1);
 }

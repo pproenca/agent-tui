@@ -23,7 +23,7 @@ fn test_killed_session_returns_not_found_on_snapshot() {
     harness.set_error_response("snapshot", -32001, "Session not found");
 
     harness
-        .run(&["snapshot"])
+        .run(&["snap"])
         .failure()
         .stderr(predicate::str::contains("not found"));
 }
@@ -47,7 +47,7 @@ fn test_killed_session_returns_not_found_on_type() {
     harness.set_error_response("type", -32001, "Session not found");
 
     harness
-        .run(&["type", "hello"])
+        .run(&["key", "--type", "hello"])
         .failure()
         .stderr(predicate::str::contains("not found"));
 }
@@ -57,13 +57,13 @@ fn test_killed_session_returns_not_found_on_type() {
 // =============================================================================
 
 #[test]
-fn test_snapshot_without_active_session() {
+fn test_snap_without_active_session() {
     let harness = TestHarness::new();
 
     harness.set_error_response("snapshot", -32002, "No active session");
 
     harness
-        .run(&["snapshot"])
+        .run(&["snap"])
         .failure()
         .stderr(predicate::str::contains("No active session"));
 }
@@ -104,7 +104,7 @@ fn test_session_limit_reached() {
     );
 
     harness
-        .run(&["spawn", "bash"])
+        .run(&["run", "bash"])
         .failure()
         .stderr(predicate::str::contains("limit"));
 }
@@ -143,7 +143,7 @@ fn test_sessions_shows_active_marker() {
     );
 
     harness
-        .run(&["sessions"])
+        .run(&["ls"])
         .success()
         .stdout(predicate::str::contains("session-1"))
         .stdout(predicate::str::contains("(active)"));
@@ -195,7 +195,7 @@ fn test_sessions_empty_shows_no_sessions() {
     );
 
     harness
-        .run(&["sessions"])
+        .run(&["ls"])
         .success()
         .stdout(predicate::str::contains("No active sessions"));
 }
@@ -238,7 +238,7 @@ fn test_sessions_shows_multiple_sessions() {
     );
 
     harness
-        .run(&["sessions"])
+        .run(&["ls"])
         .success()
         .stdout(predicate::str::contains("session-1"))
         .stdout(predicate::str::contains("session-2"))
@@ -338,12 +338,10 @@ fn test_restart_nonexistent_session_fails() {
 // =============================================================================
 
 #[test]
-fn test_snapshot_with_session_option() {
+fn test_snap_with_session_option() {
     let harness = TestHarness::new();
 
-    harness
-        .run(&["-s", "specific-session", "snapshot"])
-        .success();
+    harness.run(&["-s", "specific-session", "snap"]).success();
     harness.assert_method_called("snapshot");
 }
 
@@ -392,7 +390,7 @@ fn test_sessions_shows_running_state() {
     );
 
     harness
-        .run(&["sessions"])
+        .run(&["ls"])
         .success()
         .stdout(predicate::str::contains("running-session"))
         .stdout(predicate::str::contains("exited-session"));

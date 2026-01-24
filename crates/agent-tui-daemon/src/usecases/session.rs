@@ -1,14 +1,21 @@
 use std::sync::Arc;
 
 use crate::domain::{
-    KillOutput, ResizeInput, ResizeOutput, SessionsOutput, SpawnInput, SpawnOutput,
+    AttachInput, AttachOutput, CleanupFailure, CleanupInput, CleanupOutput, KillOutput,
+    ResizeInput, ResizeOutput, SessionInput, SessionsOutput, SpawnInput, SpawnOutput,
 };
-use crate::error::SessionError;
+use crate::error::{DomainError, SessionError};
 use crate::repository::SessionRepository;
 use crate::session::SessionId;
 
+/// Use case for creating new terminal sessions.
+///
+/// Single responsibility: create a new session. The terminal dimensions (cols/rows)
+/// are essential parameters for PTY creation - you cannot create a terminal without
+/// specifying its initial size. This is distinct from ResizeUseCase which changes
+/// dimensions of an existing session.
 pub trait SpawnUseCase: Send + Sync {
-    fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SessionError>;
+    fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, DomainError>;
 }
 
 pub struct SpawnUseCaseImpl<R: SessionRepository> {
@@ -22,23 +29,42 @@ impl<R: SessionRepository> SpawnUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
-    fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SessionError> {
-        let (session_id, pid) = self.repository.spawn(
+    fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, DomainError> {
+        // Convert domain SessionId to infrastructure String at the boundary
+        let session_id_str = input.session_id.map(|id| id.to_string());
+        let command = input.command.clone();
+
+        match self.repository.spawn(
             &input.command,
             &input.args,
             input.cwd.as_deref(),
             input.env.as_ref(),
-            input.session_id,
+            session_id_str,
             input.cols,
             input.rows,
-        )?;
-
-        Ok(SpawnOutput { session_id, pid })
+        ) {
+            Ok((session_id, pid)) => Ok(SpawnOutput { session_id, pid }),
+            Err(SessionError::LimitReached(max)) => Err(DomainError::SessionLimitReached { max }),
+            Err(e) => {
+                // Classify spawn errors into specific domain errors
+                let err_str = e.to_string();
+                if err_str.contains("No such file") || err_str.contains("not found") {
+                    Err(DomainError::CommandNotFound { command })
+                } else if err_str.contains("Permission denied") {
+                    Err(DomainError::PermissionDenied { command })
+                } else {
+                    Err(DomainError::PtyError {
+                        operation: "spawn".to_string(),
+                        reason: err_str,
+                    })
+                }
+            }
+        }
     }
 }
 
 pub trait KillUseCase: Send + Sync {
-    fn execute(&self, session_id: Option<String>) -> Result<KillOutput, SessionError>;
+    fn execute(&self, input: SessionInput) -> Result<KillOutput, SessionError>;
 }
 
 pub struct KillUseCaseImpl<R: SessionRepository> {
@@ -52,8 +78,8 @@ impl<R: SessionRepository> KillUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> KillUseCase for KillUseCaseImpl<R> {
-    fn execute(&self, session_id: Option<String>) -> Result<KillOutput, SessionError> {
-        let session = self.repository.resolve(session_id.as_deref())?;
+    fn execute(&self, input: SessionInput) -> Result<KillOutput, SessionError> {
+        let session = self.repository.resolve(input.session_id.as_deref())?;
         let id = {
             let guard = session.lock().unwrap();
             SessionId::from(guard.id.as_str())
@@ -95,7 +121,7 @@ impl<R: SessionRepository> SessionsUseCase for SessionsUseCaseImpl<R> {
 }
 
 pub trait RestartUseCase: Send + Sync {
-    fn execute(&self, session_id: Option<String>) -> Result<RestartOutput, SessionError>;
+    fn execute(&self, input: SessionInput) -> Result<RestartOutput, SessionError>;
 }
 
 #[derive(Debug, Clone)]
@@ -117,8 +143,8 @@ impl<R: SessionRepository> RestartUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> RestartUseCase for RestartUseCaseImpl<R> {
-    fn execute(&self, session_id: Option<String>) -> Result<RestartOutput, SessionError> {
-        let session = self.repository.resolve(session_id.as_deref())?;
+    fn execute(&self, input: SessionInput) -> Result<RestartOutput, SessionError> {
+        let session = self.repository.resolve(input.session_id.as_deref())?;
 
         let (old_id, command, cols, rows) = {
             let guard = session.lock().unwrap();
@@ -147,14 +173,7 @@ impl<R: SessionRepository> RestartUseCase for RestartUseCaseImpl<R> {
 }
 
 pub trait AttachUseCase: Send + Sync {
-    fn execute(&self, session_id: &str) -> Result<AttachOutput, SessionError>;
-}
-
-#[derive(Debug, Clone)]
-pub struct AttachOutput {
-    pub session_id: SessionId,
-    pub success: bool,
-    pub message: String,
+    fn execute(&self, input: AttachInput) -> Result<AttachOutput, SessionError>;
 }
 
 pub struct AttachUseCaseImpl<R: SessionRepository> {
@@ -168,8 +187,9 @@ impl<R: SessionRepository> AttachUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> AttachUseCase for AttachUseCaseImpl<R> {
-    fn execute(&self, session_id: &str) -> Result<AttachOutput, SessionError> {
-        let session = self.repository.resolve(Some(session_id))?;
+    fn execute(&self, input: AttachInput) -> Result<AttachOutput, SessionError> {
+        let session_id_str = input.session_id.to_string();
+        let session = self.repository.resolve(Some(&session_id_str))?;
 
         let is_running = {
             let mut guard = session.lock().unwrap();
@@ -179,16 +199,16 @@ impl<R: SessionRepository> AttachUseCase for AttachUseCaseImpl<R> {
         if !is_running {
             return Err(SessionError::NotFound(format!(
                 "{} (session not running)",
-                session_id
+                session_id_str
             )));
         }
 
-        self.repository.set_active(session_id)?;
+        self.repository.set_active(&session_id_str)?;
 
         Ok(AttachOutput {
-            session_id: SessionId::from(session_id),
+            session_id: input.session_id,
             success: true,
-            message: format!("Now attached to session {}", session_id),
+            message: format!("Now attached to session {}", session_id_str),
         })
     }
 }
@@ -221,9 +241,110 @@ impl<R: SessionRepository> ResizeUseCase for ResizeUseCaseImpl<R> {
     }
 }
 
+/// Use case for cleaning up sessions.
+///
+/// Cleans up sessions based on the `all` flag:
+/// - If `all` is true, terminates all sessions
+/// - If `all` is false, terminates only non-running sessions
+pub trait CleanupUseCase: Send + Sync {
+    fn execute(&self, input: CleanupInput) -> CleanupOutput;
+}
+
+pub struct CleanupUseCaseImpl<R: SessionRepository> {
+    repository: Arc<R>,
+}
+
+impl<R: SessionRepository> CleanupUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
+    }
+}
+
+impl<R: SessionRepository> CleanupUseCase for CleanupUseCaseImpl<R> {
+    fn execute(&self, input: CleanupInput) -> CleanupOutput {
+        let sessions = self.repository.list();
+        let mut cleaned = 0;
+        let mut failures = Vec::new();
+
+        for info in sessions {
+            // If not cleaning all, skip running sessions
+            let should_cleanup = input.all || !info.is_active();
+
+            if should_cleanup {
+                match self.repository.kill(info.id.as_str()) {
+                    Ok(_) => cleaned += 1,
+                    Err(e) => failures.push(CleanupFailure {
+                        session_id: info.id.clone(),
+                        error: e.to_string(),
+                    }),
+                }
+            }
+        }
+
+        CleanupOutput { cleaned, failures }
+    }
+}
+
+use crate::domain::{AssertConditionType, AssertInput, AssertOutput};
+
+/// Use case for asserting conditions.
+///
+/// Performs condition checks based on condition type:
+/// - Text: checks if text is visible on screen
+/// - Element: checks if element exists and is visible
+/// - Session: checks if session exists and is running
+pub trait AssertUseCase: Send + Sync {
+    fn execute(&self, input: AssertInput) -> Result<AssertOutput, SessionError>;
+}
+
+pub struct AssertUseCaseImpl<R: SessionRepository> {
+    repository: Arc<R>,
+}
+
+impl<R: SessionRepository> AssertUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
+    }
+}
+
+impl<R: SessionRepository> AssertUseCase for AssertUseCaseImpl<R> {
+    fn execute(&self, input: AssertInput) -> Result<AssertOutput, SessionError> {
+        let condition = format!("{}:{}", input.condition_type.as_str(), input.value);
+
+        let passed = match input.condition_type {
+            AssertConditionType::Text => {
+                // Resolve session and check if text is visible
+                let session = self.repository.resolve(input.session_id.as_deref())?;
+                let mut guard = session.lock().unwrap();
+                guard.update()?;
+                let screen = guard.screen_text();
+                screen.contains(&input.value)
+            }
+            AssertConditionType::Element => {
+                // Resolve session and check if element exists
+                let session = self.repository.resolve(input.session_id.as_deref())?;
+                let mut guard = session.lock().unwrap();
+                guard.update()?;
+                guard.detect_elements();
+                guard.find_element(&input.value).is_some()
+            }
+            AssertConditionType::Session => {
+                // Check if session exists and is running
+                let sessions = self.repository.list();
+                sessions
+                    .iter()
+                    .any(|s| s.id.as_str() == input.value && s.is_active())
+            }
+        };
+
+        Ok(AssertOutput { passed, condition })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::SessionId;
     use crate::session::SessionInfo;
     use crate::test_support::{MockError, MockSessionRepository};
     use std::collections::HashMap;
@@ -249,7 +370,7 @@ mod tests {
             args: vec!["-c".to_string(), "echo hello".to_string()],
             cwd: Some("/tmp".to_string()),
             env: Some(env.clone()),
-            session_id: Some("custom-id".to_string()),
+            session_id: Some(SessionId::new("custom-id")),
             cols: 120,
             rows: 40,
         };
@@ -338,7 +459,10 @@ mod tests {
         };
 
         let result = usecase.execute(input);
-        assert!(matches!(result, Err(SessionError::LimitReached(16))));
+        assert!(matches!(
+            result,
+            Err(DomainError::SessionLimitReached { max: 16 })
+        ));
     }
 
     #[test]
@@ -355,7 +479,7 @@ mod tests {
             args: vec![],
             cwd: None,
             env: None,
-            session_id: Some("my-custom-session".to_string()),
+            session_id: Some(SessionId::new("my-custom-session")),
             cols: 80,
             rows: 24,
         };
@@ -365,6 +489,117 @@ mod tests {
 
         let params = repo.spawn_params();
         assert_eq!(params[0].session_id, Some("my-custom-session".to_string()));
+    }
+
+    // ========================================================================
+    // SpawnUseCase Error Classification Tests
+    // ========================================================================
+
+    #[test]
+    fn test_spawn_usecase_classifies_command_not_found_error() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_spawn_error(MockError::Pty("No such file or directory".to_string()))
+                .build(),
+        );
+        let usecase = SpawnUseCaseImpl::new(repo);
+
+        let input = SpawnInput {
+            command: "nonexistent-command".to_string(),
+            args: vec![],
+            cwd: None,
+            env: None,
+            session_id: None,
+            cols: 80,
+            rows: 24,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(
+            result,
+            Err(DomainError::CommandNotFound { command }) if command == "nonexistent-command"
+        ));
+    }
+
+    #[test]
+    fn test_spawn_usecase_classifies_not_found_variant_error() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_spawn_error(MockError::Pty("command not found".to_string()))
+                .build(),
+        );
+        let usecase = SpawnUseCaseImpl::new(repo);
+
+        let input = SpawnInput {
+            command: "missing-cmd".to_string(),
+            args: vec![],
+            cwd: None,
+            env: None,
+            session_id: None,
+            cols: 80,
+            rows: 24,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(
+            result,
+            Err(DomainError::CommandNotFound { command }) if command == "missing-cmd"
+        ));
+    }
+
+    #[test]
+    fn test_spawn_usecase_classifies_permission_denied_error() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_spawn_error(MockError::Pty("Permission denied".to_string()))
+                .build(),
+        );
+        let usecase = SpawnUseCaseImpl::new(repo);
+
+        let input = SpawnInput {
+            command: "/etc/shadow".to_string(),
+            args: vec![],
+            cwd: None,
+            env: None,
+            session_id: None,
+            cols: 80,
+            rows: 24,
+        };
+
+        let result = usecase.execute(input);
+        assert!(matches!(
+            result,
+            Err(DomainError::PermissionDenied { command }) if command == "/etc/shadow"
+        ));
+    }
+
+    #[test]
+    fn test_spawn_usecase_classifies_generic_pty_error() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_spawn_error(MockError::Pty("unknown error occurred".to_string()))
+                .build(),
+        );
+        let usecase = SpawnUseCaseImpl::new(repo);
+
+        let input = SpawnInput {
+            command: "some-command".to_string(),
+            args: vec![],
+            cwd: None,
+            env: None,
+            session_id: None,
+            cols: 80,
+            rows: 24,
+        };
+
+        let result = usecase.execute(input);
+        match result {
+            Err(DomainError::PtyError { operation, reason }) => {
+                assert_eq!(operation, "spawn");
+                assert!(reason.contains("unknown error"));
+            }
+            _ => panic!("Expected PtyError but got {:?}", result),
+        }
     }
 
     // ========================================================================
@@ -451,7 +686,8 @@ mod tests {
         let repo = Arc::new(MockSessionRepository::new());
         let usecase = KillUseCaseImpl::new(repo);
 
-        let result = usecase.execute(None);
+        let input = SessionInput { session_id: None };
+        let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
 
@@ -464,7 +700,10 @@ mod tests {
         );
         let usecase = KillUseCaseImpl::new(repo);
 
-        let result = usecase.execute(Some("nonexistent".to_string()));
+        let input = SessionInput {
+            session_id: Some(SessionId::new("nonexistent")),
+        };
+        let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
@@ -477,7 +716,8 @@ mod tests {
         let repo = Arc::new(MockSessionRepository::new());
         let usecase = RestartUseCaseImpl::new(repo);
 
-        let result = usecase.execute(None);
+        let input = SessionInput { session_id: None };
+        let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
 
@@ -490,7 +730,10 @@ mod tests {
         );
         let usecase = RestartUseCaseImpl::new(repo);
 
-        let result = usecase.execute(Some("missing".to_string()));
+        let input = SessionInput {
+            session_id: Some(SessionId::new("missing")),
+        };
+        let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(id)) if id == "missing"));
     }
 
@@ -503,7 +746,10 @@ mod tests {
         let repo = Arc::new(MockSessionRepository::new());
         let usecase = AttachUseCaseImpl::new(repo);
 
-        let result = usecase.execute("nonexistent");
+        let input = AttachInput {
+            session_id: SessionId::new("nonexistent"),
+        };
+        let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
@@ -516,7 +762,10 @@ mod tests {
         );
         let usecase = AttachUseCaseImpl::new(repo);
 
-        let result = usecase.execute("target-session");
+        let input = AttachInput {
+            session_id: SessionId::new("target-session"),
+        };
+        let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(id)) if id == "target-session"));
     }
 
@@ -549,7 +798,7 @@ mod tests {
         let usecase = ResizeUseCaseImpl::new(repo);
 
         let input = ResizeInput {
-            session_id: Some("unknown".to_string()),
+            session_id: Some(SessionId::new("unknown")),
             cols: 80,
             rows: 24,
         };

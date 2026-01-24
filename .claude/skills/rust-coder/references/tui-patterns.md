@@ -479,3 +479,12 @@ pub fn setup_event_refresh(siv: &mut Cursive) {
     siv.set_autorefresh(true);
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Daemon Patterns](daemon-rpc-patterns.md) - View state management in services
+- [Terminal Raw I/O](terminal-raw-io.md) - Low-level terminal handling
+- [Visual Processing](visual-processing.md) - Grid and cell-based rendering
+- [Concurrency](concurrency.md) - Background refresh and state sharing

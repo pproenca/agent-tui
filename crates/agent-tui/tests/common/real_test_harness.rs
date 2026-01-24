@@ -25,7 +25,7 @@ impl RealTestHarness {
             PathBuf::from(format!("/tmp/agent-tui-test-{}.sock", uuid::Uuid::new_v4()));
 
         let mut daemon_process = Command::new(env!("CARGO_BIN_EXE_agent-tui"))
-            .arg("daemon")
+            .args(["daemon", "start", "--foreground"])
             .env("AGENT_TUI_SOCKET", &daemon_socket)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
@@ -87,7 +87,7 @@ impl RealTestHarness {
     pub fn spawn_bash(&self) -> String {
         let output = self
             .cli_json()
-            .args(["spawn", "bash"])
+            .args(["run", "bash"])
             .output()
             .expect("spawn failed");
 
@@ -104,13 +104,13 @@ impl RealTestHarness {
             .expect("no session_id in response")
             .to_string();
 
-        let wait_status = self
+        let wait_output = self
             .cli()
             .args(["-s", &session_id, "wait", "-t", "1000", "$"])
-            .status()
+            .output()
             .expect("wait command failed");
 
-        assert!(wait_status.success(), "wait for bash prompt failed");
+        assert!(wait_output.status.success(), "wait for bash prompt failed");
 
         self.sessions.borrow_mut().push(session_id.clone());
         session_id
@@ -118,7 +118,12 @@ impl RealTestHarness {
 
     /// Kill a specific session with logging on failure.
     pub fn kill_session(&self, session_id: &str) {
-        match self.cli().args(["-s", session_id, "kill"]).status() {
+        match self
+            .cli()
+            .args(["-s", session_id, "kill"])
+            .output()
+            .map(|o| o.status)
+        {
             Ok(status) if status.success() => {}
             Ok(status) => {
                 eprintln!(

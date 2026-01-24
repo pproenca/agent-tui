@@ -62,9 +62,8 @@ impl<R: SessionRepository> ConsoleUseCase for ConsoleUseCaseImpl<R> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let mut session_guard = mutex_lock_or_recover(&session);
 
-        if let Err(e) = session_guard.update() {
-            eprintln!("Warning: Session update failed during console: {}", e);
-        }
+        // Best-effort update - ignore errors since we still want to return console content
+        let _ = session_guard.update();
 
         let screen_text = session_guard.screen_text();
         let lines: Vec<String> = screen_text.lines().map(String::from).collect();
@@ -260,6 +259,7 @@ impl<R: SessionRepository> MetricsUseCase for MetricsUseCaseImpl<R> {
 mod tests {
     use super::*;
 
+    use crate::domain::SessionId;
     use crate::test_support::{MockError, MockSessionRepository};
 
     #[test]
@@ -346,7 +346,7 @@ mod tests {
         let usecase = TraceUseCaseImpl::new(repo);
 
         let input = TraceInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             start: true,
             stop: false,
             count: 50,
@@ -385,7 +385,7 @@ mod tests {
         let usecase = ConsoleUseCaseImpl::new(repo);
 
         let input = ConsoleInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             count: 50,
             clear: true,
         };
@@ -423,7 +423,7 @@ mod tests {
         let usecase = ErrorsUseCaseImpl::new(repo);
 
         let input = ErrorsInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             count: 50,
             clear: false,
         };
@@ -460,7 +460,7 @@ mod tests {
         let usecase = PtyReadUseCaseImpl::new(repo);
 
         let input = PtyReadInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             max_bytes: 1024,
         };
 
@@ -496,7 +496,7 @@ mod tests {
         let usecase = PtyWriteUseCaseImpl::new(repo);
 
         let input = PtyWriteInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             data: "test data".to_string(),
         };
 

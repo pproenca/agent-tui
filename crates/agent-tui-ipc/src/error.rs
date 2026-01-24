@@ -26,6 +26,9 @@ pub enum ClientError {
 
     #[error("Invalid response from daemon")]
     InvalidResponse,
+
+    #[error("Failed to send signal to process {pid}: {message}")]
+    SignalFailed { pid: u32, message: String },
 }
 
 impl ClientError {
@@ -107,6 +110,13 @@ impl ClientError {
                 "message": format!("Serialization failed: {}", e),
                 "category": "internal",
                 "retryable": false,
+            }),
+            ClientError::SignalFailed { pid, message } => serde_json::json!({
+                "code": -32000,
+                "message": format!("Failed to send signal to process {}: {}", pid, message),
+                "category": "external",
+                "retryable": false,
+                "exit_code": 74,
             }),
         }
     }

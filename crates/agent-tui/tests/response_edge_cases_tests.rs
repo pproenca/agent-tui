@@ -19,7 +19,7 @@ fn test_empty_result_object() {
     harness.set_success_response("health", json!({}));
 
     // Should handle empty result gracefully
-    let _ = harness.run(&["health"]);
+    let _ = harness.run(&["status"]);
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn test_empty_sessions_array() {
     );
 
     harness
-        .run(&["sessions"])
+        .run(&["ls"])
         .success()
         .stdout(predicate::str::contains("No active sessions"));
 }
@@ -57,7 +57,7 @@ fn test_empty_elements_array() {
 
     // With empty elements, snapshot -i just shows the screen without element list
     harness
-        .run(&["snapshot", "-i"])
+        .run(&["snap", "-i"])
         .success()
         .stdout(predicate::str::contains("Empty screen"));
 }
@@ -77,7 +77,7 @@ fn test_empty_screen_content() {
         }),
     );
 
-    harness.run(&["snapshot"]).success();
+    harness.run(&["snap"]).success();
 }
 
 // =============================================================================
@@ -104,7 +104,7 @@ fn test_large_screen_response() {
         }),
     );
 
-    harness.run(&["snapshot"]).success();
+    harness.run(&["snap"]).success();
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn test_many_elements_response() {
     );
 
     harness
-        .run(&["snapshot", "-i"])
+        .run(&["snap", "-i"])
         .success()
         .stdout(predicate::str::contains("@el0"))
         .stdout(predicate::str::contains("@el99"));
@@ -163,7 +163,7 @@ fn test_unicode_in_screen_content() {
     );
 
     harness
-        .run(&["snapshot"])
+        .run(&["snap"])
         .success()
         .stdout(predicate::str::contains("世界"))
         .stdout(predicate::str::contains("こんにちは"));
@@ -202,7 +202,7 @@ fn test_unicode_in_element_labels() {
     );
 
     harness
-        .run(&["snapshot", "-i"])
+        .run(&["snap", "-i"])
         .success()
         .stdout(predicate::str::contains("送信"));
 }
@@ -309,7 +309,7 @@ fn test_null_active_session() {
 
     // Should show sessions without "(active)" marker
     harness
-        .run(&["sessions"])
+        .run(&["ls"])
         .success()
         .stdout(predicate::str::contains("session-1"));
 }
@@ -330,7 +330,7 @@ fn test_null_cursor_position() {
     );
 
     // Should handle null cursor gracefully
-    harness.run(&["snapshot"]).success();
+    harness.run(&["snap"]).success();
 }
 
 // =============================================================================
@@ -353,7 +353,7 @@ fn test_newlines_in_screen_preserved() {
     );
 
     harness
-        .run(&["snapshot"])
+        .run(&["snap"])
         .success()
         .stdout(predicate::str::contains("Line 1"))
         .stdout(predicate::str::contains("Line 2"))
@@ -376,7 +376,7 @@ fn test_tabs_in_screen_content() {
     );
 
     harness
-        .run(&["snapshot"])
+        .run(&["snap"])
         .success()
         .stdout(predicate::str::contains("Column1"));
 }
@@ -397,7 +397,7 @@ fn test_ansi_escape_sequences_stripped_when_requested() {
     );
 
     // Request with strip_ansi
-    harness.run(&["snapshot", "--strip-ansi"]).success();
+    harness.run(&["snap", "--strip-ansi"]).success();
 
     let req = harness.last_request_for("snapshot").unwrap();
     assert_eq!(req.params.as_ref().unwrap()["strip_ansi"], true);
@@ -426,7 +426,7 @@ fn test_unknown_fields_in_response_ignored() {
 
     // Should work despite unknown fields
     harness
-        .run(&["health"])
+        .run(&["status"])
         .success()
         .stdout(predicate::str::contains("healthy"));
 }
@@ -457,7 +457,7 @@ fn test_unknown_element_type_handled() {
 
     // Should display unknown type without crashing
     harness
-        .run(&["snapshot", "-i"])
+        .run(&["snap", "-i"])
         .success()
         .stdout(predicate::str::contains("@unknown1"));
 }
@@ -488,7 +488,7 @@ fn test_json_output_preserves_structure() {
     );
 
     harness
-        .run(&["-f", "json", "snapshot"])
+        .run(&["-f", "json", "snap"])
         .success()
         .stdout(predicate::str::contains("\"session_id\""))
         .stdout(predicate::str::contains("\"elements\""))
@@ -499,7 +499,7 @@ fn test_json_output_preserves_structure() {
 fn test_json_output_contains_valid_json() {
     let harness = TestHarness::new();
 
-    let output = harness.run(&["-f", "json", "health"]);
+    let output = harness.run(&["-f", "json", "status"]);
     let stdout = output.get_output().stdout.clone();
     let stdout_str = String::from_utf8_lossy(&stdout);
 

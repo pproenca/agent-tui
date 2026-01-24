@@ -8,16 +8,16 @@ use crate::domain::{
 
 pub fn bounds_to_dto(bounds: &DomainBounds) -> BoundsDto {
     BoundsDto {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
+        x: bounds.x(),
+        y: bounds.y(),
+        width: bounds.width(),
+        height: bounds.height(),
     }
 }
 
 pub fn element_ref_to_dto(element: &DomainElementRef) -> ElementRefDto {
     ElementRefDto {
-        role: element.role.clone(),
+        role: element.role.to_string(),
         name: element.name.clone(),
         bounds: bounds_to_dto(&element.bounds),
         visual_hash: element.visual_hash,
@@ -75,7 +75,7 @@ fn ref_map_into_dto(ref_map: DomainRefMap) -> RefMapDto {
 
 fn element_ref_into_dto(element: DomainElementRef) -> ElementRefDto {
     ElementRefDto {
-        role: element.role,
+        role: element.role.to_string(),
         name: element.name,
         bounds: bounds_to_dto(&element.bounds),
         visual_hash: element.visual_hash,
@@ -84,19 +84,32 @@ fn element_ref_into_dto(element: DomainElementRef) -> ElementRefDto {
     }
 }
 
+use crate::domain::session_types::SessionInfo;
+
+/// Convert SessionInfo to JSON representation.
+///
+/// This adapter function handles serialization at the boundary,
+/// keeping the domain SessionInfo free of framework dependencies.
+pub fn session_info_to_json(info: &SessionInfo) -> serde_json::Value {
+    serde_json::json!({
+        "id": info.id.as_str(),
+        "command": info.command,
+        "pid": info.pid,
+        "running": info.running,
+        "created_at": info.created_at,
+        "size": { "cols": info.size.0, "rows": info.size.1 }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::DomainRole;
     use std::collections::HashMap;
 
     #[test]
     fn test_bounds_to_dto_conversion() {
-        let bounds = DomainBounds {
-            x: 10,
-            y: 5,
-            width: 20,
-            height: 3,
-        };
+        let bounds = DomainBounds::new(10, 5, 20, 3).expect("valid bounds");
         let dto = bounds_to_dto(&bounds);
 
         assert_eq!(dto.x, 10);
@@ -108,14 +121,9 @@ mod tests {
     #[test]
     fn test_element_ref_to_dto_conversion() {
         let elem_ref = DomainElementRef {
-            role: "button".to_string(),
+            role: DomainRole::Button,
             name: Some("OK".to_string()),
-            bounds: DomainBounds {
-                x: 5,
-                y: 10,
-                width: 4,
-                height: 1,
-            },
+            bounds: DomainBounds::new(5, 10, 4, 1).expect("valid bounds"),
             visual_hash: 12345,
             nth: Some(2),
             selected: false,
@@ -132,14 +140,9 @@ mod tests {
     #[test]
     fn test_element_ref_to_dto_with_none_name() {
         let elem_ref = DomainElementRef {
-            role: "panel".to_string(),
+            role: DomainRole::Panel,
             name: None,
-            bounds: DomainBounds {
-                x: 0,
-                y: 0,
-                width: 10,
-                height: 5,
-            },
+            bounds: DomainBounds::new(0, 0, 10, 5).expect("valid bounds"),
             visual_hash: 99999,
             nth: None,
             selected: false,
@@ -157,14 +160,9 @@ mod tests {
         refs.insert(
             "e1".to_string(),
             DomainElementRef {
-                role: "input".to_string(),
+                role: DomainRole::Input,
                 name: None,
-                bounds: DomainBounds {
-                    x: 0,
-                    y: 0,
-                    width: 10,
-                    height: 1,
-                },
+                bounds: DomainBounds::new(0, 0, 10, 1).expect("valid bounds"),
                 visual_hash: 111,
                 nth: None,
                 selected: false,
@@ -183,14 +181,9 @@ mod tests {
         refs.insert(
             "e1".to_string(),
             DomainElementRef {
-                role: "button".to_string(),
+                role: DomainRole::Button,
                 name: Some("OK".to_string()),
-                bounds: DomainBounds {
-                    x: 0,
-                    y: 0,
-                    width: 2,
-                    height: 1,
-                },
+                bounds: DomainBounds::new(0, 0, 2, 1).expect("valid bounds"),
                 visual_hash: 111,
                 nth: None,
                 selected: false,
@@ -199,14 +192,9 @@ mod tests {
         refs.insert(
             "e2".to_string(),
             DomainElementRef {
-                role: "input".to_string(),
+                role: DomainRole::Input,
                 name: Some(">".to_string()),
-                bounds: DomainBounds {
-                    x: 5,
-                    y: 0,
-                    width: 10,
-                    height: 1,
-                },
+                bounds: DomainBounds::new(5, 0, 10, 1).expect("valid bounds"),
                 visual_hash: 222,
                 nth: None,
                 selected: false,
@@ -240,14 +228,9 @@ mod tests {
         refs.insert(
             "e1".to_string(),
             DomainElementRef {
-                role: "button".to_string(),
+                role: DomainRole::Button,
                 name: Some("Submit".to_string()),
-                bounds: DomainBounds {
-                    x: 0,
-                    y: 0,
-                    width: 6,
-                    height: 1,
-                },
+                bounds: DomainBounds::new(0, 0, 6, 1).expect("valid bounds"),
                 visual_hash: 12345,
                 nth: None,
                 selected: false,
@@ -275,14 +258,9 @@ mod tests {
         refs.insert(
             "e1".to_string(),
             DomainElementRef {
-                role: "checkbox".to_string(),
+                role: DomainRole::Checkbox,
                 name: Some("[x] Enabled".to_string()),
-                bounds: DomainBounds {
-                    x: 5,
-                    y: 10,
-                    width: 12,
-                    height: 1,
-                },
+                bounds: DomainBounds::new(5, 10, 12, 1).expect("valid bounds"),
                 visual_hash: 99999,
                 nth: None,
                 selected: false,
@@ -304,5 +282,26 @@ mod tests {
         assert!(json.contains("checkbox"));
         assert!(json.contains("\"e1\""));
         assert!(json.contains("\"visual_hash\":99999"));
+    }
+
+    #[test]
+    fn test_session_info_to_json() {
+        use crate::domain::session_types::{SessionId, SessionInfo};
+
+        let info = SessionInfo {
+            id: SessionId::new("test"),
+            command: "bash".to_string(),
+            pid: 1234,
+            running: true,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            size: (80, 24),
+        };
+        let json = session_info_to_json(&info);
+        assert_eq!(json["id"], "test");
+        assert_eq!(json["command"], "bash");
+        assert_eq!(json["pid"], 1234);
+        assert_eq!(json["running"], true);
+        assert_eq!(json["size"]["cols"], 80);
+        assert_eq!(json["size"]["rows"], 24);
     }
 }

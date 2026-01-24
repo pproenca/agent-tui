@@ -35,7 +35,7 @@ fn claude_code_available() -> bool {
 fn spawn_claude_code(h: &RealTestHarness) -> Option<String> {
     let output = h
         .cli_json()
-        .args(["spawn", &claude_code_path()])
+        .args(["run", &claude_code_path()])
         .output()
         .expect("spawn failed");
 
@@ -76,7 +76,7 @@ fn spawn_claude_code(h: &RealTestHarness) -> Option<String> {
 fn get_snapshot_elements(h: &RealTestHarness, session_id: &str) -> Value {
     let output = h
         .cli_json()
-        .args(["-s", session_id, "snapshot"])
+        .args(["-s", session_id, "snap"])
         .output()
         .expect("snapshot failed");
 
@@ -138,7 +138,7 @@ fn test_claude_code_interactive_elements_detected() {
     // Use interactive snapshot format to get elements
     let output = h
         .cli_json()
-        .args(["-s", &session_id, "snapshot", "-i"])
+        .args(["-s", &session_id, "snap", "-i"])
         .output()
         .expect("snapshot failed");
 
@@ -175,18 +175,18 @@ fn test_claude_code_status_spinner_during_thinking() {
     // Type a simple query to trigger thinking state
     let type_status = h
         .cli()
-        .args(["-s", &session_id, "type", "hello"])
+        .args(["-s", &session_id, "key", "--type", "hello"])
         .status()
-        .expect("type command failed");
-    assert!(type_status.success(), "type command should succeed");
+        .expect("key --type command failed");
+    assert!(type_status.success(), "key --type command should succeed");
 
     // Press Enter to submit
     let press_status = h
         .cli()
-        .args(["-s", &session_id, "press", "Enter"])
+        .args(["-s", &session_id, "key", "Enter"])
         .status()
-        .expect("press command failed");
-    assert!(press_status.success(), "press command should succeed");
+        .expect("key command failed");
+    assert!(press_status.success(), "key command should succeed");
 
     // Brief wait for thinking to start
     std::thread::sleep(std::time::Duration::from_millis(500));

@@ -449,3 +449,12 @@ pub fn option_to_string<T: std::fmt::Display>(opt: &Option<T>) -> String {
     }
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Type Design](type-design.md) - Serde derive and field attributes
+- [File I/O](file-io.md) - Reading/writing serialized data
+- [Daemon Patterns](daemon-rpc-patterns.md) - CBOR storage and persistence
+- [CLI Patterns](cli-patterns.md) - Config file parsing

@@ -708,3 +708,12 @@ impl Rect {
     }
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Data Structures](data-structures.md) - Grid and buffer data structures
+- [TUI Patterns](tui-patterns.md) - Screen rendering and layout
+- [Terminal Raw I/O](terminal-raw-io.md) - Cell-based terminal output
+- [Performance](performance.md) - Efficient grid traversal algorithms

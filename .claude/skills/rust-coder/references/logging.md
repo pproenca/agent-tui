@@ -303,3 +303,12 @@ fn process(logger: &Logger, data: &Data) -> Result<Output> {
     Ok(transformed)
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Error Handling](error-handling.md) - Structured error logging
+- [Daemon Patterns](daemon-rpc-patterns.md) - Logger setup in services
+- [Concurrency](concurrency.md) - Thread-safe logging patterns
+- [Performance](performance.md) - Async logging and log level filtering

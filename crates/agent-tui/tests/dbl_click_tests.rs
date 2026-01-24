@@ -29,7 +29,7 @@ fn test_dbl_click_succeeds_stable_element() {
     );
 
     harness
-        .run(&["dblclick", "@btn1"])
+        .run(&["click", "-2", "@btn1"])
         .success()
         .stdout(predicate::str::is_empty().not());
 
@@ -56,7 +56,7 @@ fn test_dbl_click_fails_nonexistent_element() {
     );
 
     harness
-        .run(&["dblclick", "@missing"])
+        .run(&["click", "-2", "@missing"])
         .failure()
         .stderr(predicate::str::contains("Element not found"));
 
@@ -86,7 +86,7 @@ fn test_dbl_click_returns_structured_error() {
 
     // Structured errors show suggestion in stderr
     harness
-        .run(&["dblclick", "@btn1"])
+        .run(&["click", "-2", "@btn1"])
         .failure()
         .stderr(predicate::str::contains("Element"))
         .stderr(predicate::str::contains("disappeared"));
@@ -105,7 +105,7 @@ fn test_dbl_click_with_explicit_session() {
     );
 
     harness
-        .run(&["-s", "my-session", "dblclick", "@btn1"])
+        .run(&["-s", "my-session", "click", "-2", "@btn1"])
         .success();
 
     harness.assert_method_called_with(
@@ -135,7 +135,7 @@ fn test_dbl_click_lock_timeout_is_retryable() {
 
     // Errors are printed to stderr with retryable hint
     harness
-        .run(&["dblclick", "@btn1"])
+        .run(&["click", "-2", "@btn1"])
         .failure()
         .stderr(predicate::str::contains("transient"));
 }
@@ -152,9 +152,9 @@ fn test_dbl_click_on_real_session() {
     // Type a marker to create a stable reference point
     let status = h
         .cli()
-        .args(["type", "echo MARKER_DBC_TEST"])
+        .args(["key", "--type", "echo MARKER_DBC_TEST"])
         .status()
-        .expect("type failed");
+        .expect("key --type failed");
     assert!(status.success());
 
     // Wait for the text to appear
@@ -169,7 +169,7 @@ fn test_dbl_click_on_real_session() {
     // This tests that the lock is held atomically across both clicks
     let status = h
         .cli()
-        .args(["dblclick", "MARKER_DBC_TEST"])
+        .args(["click", "-2", "MARKER_DBC_TEST"])
         .status()
         .expect("dblclick failed");
 
@@ -186,9 +186,9 @@ fn test_dbl_click_sequential_stability() {
     // Type a marker
     assert!(
         h.cli()
-            .args(["type", "echo DBC_SEQ_TEST"])
+            .args(["key", "--type", "echo DBC_SEQ_TEST"])
             .status()
-            .expect("type failed")
+            .expect("key --type failed")
             .success()
     );
 
@@ -204,15 +204,11 @@ fn test_dbl_click_sequential_stability() {
     // Run multiple sequential dblclicks
     // Tests that the operation completes cleanly without leaving locks held
     for _ in 0..3 {
-        let _ = h.cli().args(["dblclick", "DBC_SEQ_TEST"]).status();
+        let _ = h.cli().args(["click", "-2", "DBC_SEQ_TEST"]).status();
     }
 
     // Verify session is still usable after multiple dblclicks
-    let status = h
-        .cli()
-        .args(["snapshot"])
-        .status()
-        .expect("snapshot failed");
+    let status = h.cli().args(["snap"]).status().expect("snapshot failed");
     assert!(status.success(), "Session should still be usable");
 }
 
@@ -228,7 +224,7 @@ fn test_dbl_click_with_text_ref() {
         }),
     );
 
-    harness.run(&["dblclick", "Submit"]).success();
+    harness.run(&["click", "-2", "Submit"]).success();
 
     harness.assert_method_called_with("dbl_click", json!({"ref": "Submit"}));
 }
@@ -247,7 +243,7 @@ fn test_dbl_click_succeeds_without_warning() {
     );
 
     harness
-        .run(&["dblclick", "static-text"])
+        .run(&["click", "-2", "static-text"])
         .success()
         .stdout(predicate::str::contains("Double-clicked successfully"));
 }

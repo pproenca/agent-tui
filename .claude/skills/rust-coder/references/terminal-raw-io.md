@@ -621,3 +621,12 @@ impl<W: Write> Drop for TerminalSetup<W> {
     }
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Daemon Patterns](daemon-rpc-patterns.md) - PTY handling in services
+- [TUI Patterns](tui-patterns.md) - Terminal UI applications
+- [Visual Processing](visual-processing.md) - Grid-based screen rendering
+- [Concurrency](concurrency.md) - Async I/O and signal handling

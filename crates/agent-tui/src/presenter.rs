@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use agent_tui_common::Colors;
+use agent_tui_common::ValueExt;
 use agent_tui_ipc::ClientError;
 
 /// Trait for presenting output to the user.
@@ -43,6 +44,132 @@ pub trait Presenter {
 
     /// Present raw text without formatting.
     fn present_raw(&self, text: &str);
+
+    /// Present a wait result (found/timeout with elapsed time).
+    fn present_wait_result(&self, result: &WaitResult);
+
+    /// Present an assertion result (passed/failed with condition).
+    fn present_assert_result(&self, result: &AssertResult);
+
+    /// Present health check information.
+    fn present_health(&self, health: &HealthResult);
+
+    /// Present cleanup operation results.
+    fn present_cleanup(&self, result: &CleanupResult);
+
+    /// Present find operation results.
+    fn present_find(&self, result: &FindResult);
+}
+
+/// Result of a wait operation.
+pub struct WaitResult {
+    pub found: bool,
+    pub elapsed_ms: u64,
+}
+
+impl WaitResult {
+    /// Parse a wait result from JSON response.
+    pub fn from_json(value: &Value) -> Self {
+        Self {
+            found: value.bool_or("found", false),
+            elapsed_ms: value.u64_or("elapsed_ms", 0),
+        }
+    }
+}
+
+/// Result of an assertion.
+pub struct AssertResult {
+    pub passed: bool,
+    pub condition: String,
+}
+
+/// Health check result.
+pub struct HealthResult {
+    pub status: String,
+    pub pid: u64,
+    pub uptime_ms: u64,
+    pub session_count: u64,
+    pub version: String,
+    pub socket_path: Option<String>,
+    pub pid_file_path: Option<String>,
+}
+
+impl HealthResult {
+    /// Parse a health result from JSON response.
+    /// The `socket_path` and `pid_file_path` are only included if `verbose` is true.
+    pub fn from_json(value: &Value, verbose: bool) -> Self {
+        use agent_tui_ipc::socket_path;
+
+        let (socket, pid_file) = if verbose {
+            let socket = socket_path();
+            let pid_file = socket.with_extension("pid");
+            (
+                Some(socket.display().to_string()),
+                Some(pid_file.display().to_string()),
+            )
+        } else {
+            (None, None)
+        };
+
+        Self {
+            status: value.str_or("status", "unknown").to_string(),
+            pid: value.u64_or("pid", 0),
+            uptime_ms: value.u64_or("uptime_ms", 0),
+            session_count: value.u64_or("session_count", 0),
+            version: value.str_or("version", "?").to_string(),
+            socket_path: socket,
+            pid_file_path: pid_file,
+        }
+    }
+}
+
+/// Result of a cleanup operation.
+pub struct CleanupResult {
+    pub cleaned: usize,
+    pub failures: Vec<CleanupFailure>,
+}
+
+/// A single cleanup failure.
+pub struct CleanupFailure {
+    pub session_id: String,
+    pub error: String,
+}
+
+/// Result of a find operation.
+pub struct FindResult {
+    pub count: u64,
+    pub elements: Vec<ElementInfo>,
+}
+
+impl FindResult {
+    /// Parse a find result from JSON response.
+    pub fn from_json(value: &Value) -> Self {
+        let count = value.u64_or("count", 0);
+        let elements = value
+            .get("elements")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .map(|el| ElementInfo {
+                        element_ref: el.str_or("ref", "").to_string(),
+                        element_type: el.str_or("type", "").to_string(),
+                        label: el.str_or("label", "").to_string(),
+                        focused: el.bool_or("focused", false),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Self { count, elements }
+    }
+}
+
+/// Information about a found element.
+pub struct ElementInfo {
+    pub element_ref: String,
+    pub element_type: String,
+    pub label: String,
+    pub focused: bool,
 }
 
 /// Text presenter for human-readable output.
@@ -126,6 +253,119 @@ impl Presenter for TextPresenter {
 
     fn present_raw(&self, text: &str) {
         println!("{}", text);
+    }
+
+    fn present_wait_result(&self, result: &WaitResult) {
+        if result.found {
+            println!("Found after {}ms", result.elapsed_ms);
+        } else {
+            eprintln!("Timeout after {}ms - not found", result.elapsed_ms);
+            std::process::exit(1);
+        }
+    }
+
+    fn present_assert_result(&self, result: &AssertResult) {
+        if result.passed {
+            println!(
+                "{} Assertion passed: {}",
+                Colors::success("✓"),
+                result.condition
+            );
+        } else {
+            eprintln!(
+                "{} Assertion failed: {}",
+                Colors::error("✗"),
+                result.condition
+            );
+            std::process::exit(1);
+        }
+    }
+
+    fn present_health(&self, health: &HealthResult) {
+        println!(
+            "{} {}",
+            Colors::bold("Daemon status:"),
+            Colors::success(&health.status)
+        );
+        println!("  PID: {}", health.pid);
+        println!("  Uptime: {}", format_uptime_ms(health.uptime_ms));
+        println!("  Sessions: {}", health.session_count);
+        println!("  Version: {}", Colors::dim(&health.version));
+
+        if let (Some(socket), Some(pid_file)) = (&health.socket_path, &health.pid_file_path) {
+            println!();
+            println!("{}", Colors::bold("Connection:"));
+            println!("  Socket: {}", socket);
+            println!("  PID file: {}", pid_file);
+        }
+    }
+
+    fn present_cleanup(&self, result: &CleanupResult) {
+        if result.cleaned > 0 {
+            println!(
+                "{} Cleaned up {} session(s)",
+                Colors::success("Done:"),
+                result.cleaned
+            );
+        } else if result.failures.is_empty() {
+            println!("{}", Colors::dim("No sessions to clean up"));
+        }
+
+        if !result.failures.is_empty() {
+            eprintln!();
+            eprintln!(
+                "{} Failed to clean up {} session(s):",
+                Colors::error("Error:"),
+                result.failures.len()
+            );
+            for failure in &result.failures {
+                eprintln!(
+                    "  {}: {}",
+                    Colors::session_id(&failure.session_id),
+                    failure.error
+                );
+            }
+        }
+    }
+
+    fn present_find(&self, result: &FindResult) {
+        if result.count == 0 {
+            println!("{}", Colors::dim("No elements found"));
+        } else {
+            println!(
+                "{} Found {} element(s):",
+                Colors::success("✓"),
+                result.count
+            );
+            for el in &result.elements {
+                let focused = if el.focused {
+                    Colors::success(" *focused*")
+                } else {
+                    String::new()
+                };
+                println!(
+                    "  {} [{}:{}]{}",
+                    Colors::element_ref(&el.element_ref),
+                    el.element_type,
+                    el.label,
+                    focused
+                );
+            }
+        }
+    }
+}
+
+/// Format milliseconds as human-readable duration.
+fn format_uptime_ms(uptime_ms: u64) -> String {
+    let secs = uptime_ms / 1000;
+    let mins = secs / 60;
+    let hours = mins / 60;
+    if hours > 0 {
+        format!("{}h {}m {}s", hours, mins % 60, secs % 60)
+    } else if mins > 0 {
+        format!("{}m {}s", mins, secs % 60)
+    } else {
+        format!("{}s", secs)
     }
 }
 
@@ -231,6 +471,93 @@ impl Presenter for JsonPresenter {
             serde_json::to_string_pretty(&output).unwrap_or_default()
         );
     }
+
+    fn present_wait_result(&self, result: &WaitResult) {
+        let output = serde_json::json!({
+            "found": result.found,
+            "elapsed_ms": result.elapsed_ms
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).unwrap_or_default()
+        );
+    }
+
+    fn present_assert_result(&self, result: &AssertResult) {
+        let output = serde_json::json!({
+            "condition": result.condition,
+            "passed": result.passed
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).unwrap_or_default()
+        );
+    }
+
+    fn present_health(&self, health: &HealthResult) {
+        let mut output = serde_json::json!({
+            "status": health.status,
+            "pid": health.pid,
+            "uptime_ms": health.uptime_ms,
+            "session_count": health.session_count,
+            "version": health.version
+        });
+        if let Some(socket) = &health.socket_path {
+            output["socket_path"] = serde_json::json!(socket);
+        }
+        if let Some(pid_file) = &health.pid_file_path {
+            output["pid_file_path"] = serde_json::json!(pid_file);
+        }
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).unwrap_or_default()
+        );
+    }
+
+    fn present_cleanup(&self, result: &CleanupResult) {
+        let failures: Vec<_> = result
+            .failures
+            .iter()
+            .map(|f| {
+                serde_json::json!({
+                    "session": f.session_id,
+                    "error": f.error
+                })
+            })
+            .collect();
+        let output = serde_json::json!({
+            "sessions_cleaned": result.cleaned,
+            "sessions_failed": result.failures.len(),
+            "failures": failures
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).unwrap_or_default()
+        );
+    }
+
+    fn present_find(&self, result: &FindResult) {
+        let elements: Vec<_> = result
+            .elements
+            .iter()
+            .map(|el| {
+                serde_json::json!({
+                    "ref": el.element_ref,
+                    "type": el.element_type,
+                    "label": el.label,
+                    "focused": el.focused
+                })
+            })
+            .collect();
+        let output = serde_json::json!({
+            "count": result.count,
+            "elements": elements
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).unwrap_or_default()
+        );
+    }
 }
 
 /// Create a presenter based on the output format.
@@ -310,6 +637,84 @@ impl SessionListResult {
     }
 }
 
+/// View wrapper for element JSON values.
+///
+/// Provides convenient access to element properties from JSON responses.
+pub struct ElementView<'a>(pub &'a Value);
+
+impl ElementView<'_> {
+    /// Get the element reference (e.g., "@btn1").
+    pub fn ref_str(&self) -> &str {
+        self.0.str_or("ref", "")
+    }
+
+    /// Get the element type (e.g., "button", "input").
+    pub fn el_type(&self) -> &str {
+        self.0.str_or("type", "")
+    }
+
+    /// Get the element label.
+    pub fn label(&self) -> &str {
+        self.0.str_or("label", "")
+    }
+
+    /// Check if the element is focused.
+    pub fn focused(&self) -> bool {
+        self.0.bool_or("focused", false)
+    }
+
+    /// Check if the element is selected.
+    pub fn selected(&self) -> bool {
+        self.0.bool_or("selected", false)
+    }
+
+    /// Get the element's value, if any.
+    pub fn value(&self) -> Option<&str> {
+        self.0.get("value").and_then(|v| v.as_str())
+    }
+
+    /// Get the element's position as (row, col).
+    pub fn position(&self) -> (u64, u64) {
+        let pos = self.0.get("position");
+        let row = pos
+            .and_then(|p| p.get("row"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let col = pos
+            .and_then(|p| p.get("col"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        (row, col)
+    }
+
+    /// Get the focused indicator string (colored for text output).
+    pub fn focused_indicator(&self) -> String {
+        if self.focused() {
+            Colors::success(" *focused*")
+        } else {
+            String::new()
+        }
+    }
+
+    /// Get the selected indicator string (colored for text output).
+    pub fn selected_indicator(&self) -> String {
+        if self.selected() {
+            Colors::info(" *selected*")
+        } else {
+            String::new()
+        }
+    }
+
+    /// Get the label suffix (e.g., ":Submit" or empty string if no label).
+    pub fn label_suffix(&self) -> String {
+        if self.label().is_empty() {
+            String::new()
+        } else {
+            format!(":{}", self.label())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,5 +756,162 @@ mod tests {
         let json = result.to_json();
         assert_eq!(json["session_id"], "abc123");
         assert_eq!(json["pid"], 1234);
+    }
+
+    #[test]
+    fn test_wait_result_struct() {
+        let result = WaitResult {
+            found: true,
+            elapsed_ms: 150,
+        };
+        assert!(result.found);
+        assert_eq!(result.elapsed_ms, 150);
+    }
+
+    #[test]
+    fn test_assert_result_struct() {
+        let result = AssertResult {
+            passed: true,
+            condition: "text:hello".to_string(),
+        };
+        assert!(result.passed);
+        assert_eq!(result.condition, "text:hello");
+    }
+
+    #[test]
+    fn test_health_result_struct() {
+        let result = HealthResult {
+            status: "healthy".to_string(),
+            pid: 1234,
+            uptime_ms: 60000,
+            session_count: 5,
+            version: "0.3.0".to_string(),
+            socket_path: Some("/tmp/agent-tui.sock".to_string()),
+            pid_file_path: None,
+        };
+        assert_eq!(result.status, "healthy");
+        assert_eq!(result.session_count, 5);
+    }
+
+    #[test]
+    fn test_cleanup_result_struct() {
+        let result = CleanupResult {
+            cleaned: 3,
+            failures: vec![CleanupFailure {
+                session_id: "sess1".to_string(),
+                error: "session not found".to_string(),
+            }],
+        };
+        assert_eq!(result.cleaned, 3);
+        assert_eq!(result.failures.len(), 1);
+    }
+
+    #[test]
+    fn test_find_result_struct() {
+        let result = FindResult {
+            count: 2,
+            elements: vec![
+                ElementInfo {
+                    element_ref: "@btn1".to_string(),
+                    element_type: "button".to_string(),
+                    label: "Submit".to_string(),
+                    focused: true,
+                },
+                ElementInfo {
+                    element_ref: "@btn2".to_string(),
+                    element_type: "button".to_string(),
+                    label: "Cancel".to_string(),
+                    focused: false,
+                },
+            ],
+        };
+        assert_eq!(result.count, 2);
+        assert_eq!(result.elements.len(), 2);
+        assert!(result.elements[0].focused);
+    }
+
+    #[test]
+    fn test_json_presenter_wait_result() {
+        let presenter = JsonPresenter;
+        let result = WaitResult {
+            found: true,
+            elapsed_ms: 100,
+        };
+        // Just verify it doesn't panic
+        presenter.present_wait_result(&result);
+    }
+
+    #[test]
+    fn test_json_presenter_assert_result() {
+        let presenter = JsonPresenter;
+        let result = AssertResult {
+            passed: true,
+            condition: "element:@btn1".to_string(),
+        };
+        // Just verify it doesn't panic
+        presenter.present_assert_result(&result);
+    }
+
+    #[test]
+    fn test_json_presenter_health() {
+        let presenter = JsonPresenter;
+        let health = HealthResult {
+            status: "healthy".to_string(),
+            pid: 1234,
+            uptime_ms: 60000,
+            session_count: 2,
+            version: "0.3.0".to_string(),
+            socket_path: None,
+            pid_file_path: None,
+        };
+        // Just verify it doesn't panic
+        presenter.present_health(&health);
+    }
+
+    #[test]
+    fn test_json_presenter_cleanup() {
+        let presenter = JsonPresenter;
+        let result = CleanupResult {
+            cleaned: 2,
+            failures: vec![],
+        };
+        // Just verify it doesn't panic
+        presenter.present_cleanup(&result);
+    }
+
+    #[test]
+    fn test_json_presenter_find() {
+        let presenter = JsonPresenter;
+        let result = FindResult {
+            count: 1,
+            elements: vec![ElementInfo {
+                element_ref: "@inp1".to_string(),
+                element_type: "input".to_string(),
+                label: "Email".to_string(),
+                focused: false,
+            }],
+        };
+        // Just verify it doesn't panic
+        presenter.present_find(&result);
+    }
+
+    #[test]
+    fn test_format_uptime_ms_seconds() {
+        assert_eq!(format_uptime_ms(5000), "5s");
+        assert_eq!(format_uptime_ms(45000), "45s");
+    }
+
+    #[test]
+    fn test_format_uptime_ms_minutes() {
+        assert_eq!(format_uptime_ms(60000), "1m 0s");
+        assert_eq!(format_uptime_ms(90000), "1m 30s");
+        assert_eq!(format_uptime_ms(300000), "5m 0s");
+    }
+
+    #[test]
+    fn test_format_uptime_ms_hours() {
+        assert_eq!(format_uptime_ms(3600000), "1h 0m 0s");
+        assert_eq!(format_uptime_ms(5400000), "1h 30m 0s");
+        assert_eq!(format_uptime_ms(7265000), "2h 1m 5s");
     }
 }

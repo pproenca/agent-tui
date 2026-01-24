@@ -314,3 +314,12 @@ where
     serde_json::to_string(value).map_err(Into::into)
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Traits & Generics](traits-and-generics.md) - Trait hierarchies and generic bounds
+- [Error Handling](error-handling.md) - Custom error type patterns
+- [Serialization](serialization.md) - Serde derive patterns
+- [Data Structures](data-structures.md) - Complex type compositions

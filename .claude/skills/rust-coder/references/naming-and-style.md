@@ -611,3 +611,12 @@ pub mod formats {
     pub const HUMAN: &str = "human";
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Architecture](architecture.md) - Module and crate organization
+- [Type Design](type-design.md) - Type naming conventions
+- [CLI Patterns](cli-patterns.md) - Command and flag naming
+- [Testing](testing.md) - Test naming conventions

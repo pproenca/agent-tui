@@ -114,6 +114,7 @@ impl<R: SessionRepository> AccessibilitySnapshotUseCase for AccessibilitySnapsho
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::SessionId;
     use crate::test_support::MockSessionRepository;
 
     #[test]
@@ -149,11 +150,11 @@ mod tests {
     #[test]
     fn test_enhanced_snapshot_input_with_options() {
         let input = AccessibilitySnapshotInput {
-            session_id: Some("test-session".to_string()),
+            session_id: Some(SessionId::new("test-session")),
             interactive_only: true,
         };
 
-        assert_eq!(input.session_id, Some("test-session".to_string()));
+        assert_eq!(input.session_id, Some(SessionId::new("test-session")));
         assert!(input.interactive_only);
     }
 }

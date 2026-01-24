@@ -97,6 +97,7 @@ impl<R: SessionRepository> RecordStatusUseCase for RecordStatusUseCaseImpl<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::SessionId;
     use crate::test_support::{MockError, MockSessionRepository};
 
     // ========================================================================
@@ -124,7 +125,7 @@ mod tests {
         let usecase = RecordStartUseCaseImpl::new(repo);
 
         let input = RecordStartInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
         };
 
         let result = usecase.execute(input);
@@ -159,7 +160,7 @@ mod tests {
         let usecase = RecordStopUseCaseImpl::new(repo);
 
         let input = RecordStopInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             format: Some("json".to_string()),
         };
 
@@ -192,7 +193,7 @@ mod tests {
         let usecase = RecordStatusUseCaseImpl::new(repo);
 
         let input = RecordStatusInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
         };
 
         let result = usecase.execute(input);

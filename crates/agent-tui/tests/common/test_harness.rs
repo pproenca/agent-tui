@@ -21,7 +21,7 @@ use tokio::runtime::Runtime;
 /// #[test]
 /// fn test_health_command() {
 ///     let harness = TestHarness::new();
-///     harness.run(&["health"])
+///     harness.run(&["status"])
 ///         .success()
 ///         .stdout(predicate::str::contains("healthy"));
 /// }
@@ -186,7 +186,7 @@ mod tests {
         let harness = TestHarness::new();
 
         // Run health command which should contact the daemon
-        let _ = harness.run(&["health"]);
+        let _ = harness.run(&["status"]);
 
         // Verify the health method was called
         let requests = harness.get_requests();
@@ -214,7 +214,7 @@ mod tests {
 
         // Run health command
         harness
-            .run(&["health"])
+            .run(&["status"])
             .success()
             .stdout(predicate::str::contains("degraded"));
     }

@@ -58,7 +58,7 @@ fn test_lock_timeout_has_correct_category() {
 
     // In JSON format, verify the category is present
     harness
-        .run(&["-f", "json", "snapshot"])
+        .run(&["-f", "json", "snap"])
         .failure()
         .stderr(predicate::str::contains("lock"));
 }
@@ -91,7 +91,7 @@ fn test_lock_timeout_different_operations() {
     let harness = TestHarness::new();
 
     // Test that lock timeout can occur on various operations
-    let operations = vec!["click", "type", "fill", "snapshot"];
+    let operations = vec!["click", "type", "fill", "snap"];
 
     for op in operations {
         harness.set_response(
@@ -113,9 +113,9 @@ fn test_lock_timeout_different_operations() {
         .failure()
         .stderr(predicate::str::contains("lock timeout"));
 
-    // Verify type lock timeout
+    // Verify type lock timeout (via key --type)
     harness
-        .run(&["type", "hello"])
+        .run(&["key", "--type", "hello"])
         .failure()
         .stderr(predicate::str::contains("lock timeout"));
 }
@@ -180,7 +180,7 @@ fn test_persistent_lock_timeout() {
     // Multiple calls should all fail with lock timeout
     for _ in 0..3 {
         harness
-            .run(&["snapshot"])
+            .run(&["snap"])
             .failure()
             .stderr(predicate::str::contains("lock timeout"));
     }

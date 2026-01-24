@@ -355,3 +355,12 @@ fn parse_with_unit(line: &str) -> Option<(String, u64, String)> {
     Some((key.to_string(), value, unit))
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Type Design](type-design.md) - FromStr implementations and newtype wrappers
+- [Error Handling](error-handling.md) - Parse error types and context
+- [File I/O](file-io.md) - Reading files for parsing
+- [Macros](macros.md) - Parsing helper macros

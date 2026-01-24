@@ -757,3 +757,12 @@ fn hot_path() {
     // ... actual work
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Concurrency](concurrency.md) - Threading and async performance
+- [Data Structures](data-structures.md) - Memory-efficient containers
+- [Polling Patterns](polling-patterns.md) - Backoff and throttling strategies
+- [File I/O](file-io.md) - Buffered I/O and memory mapping

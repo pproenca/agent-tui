@@ -7,6 +7,7 @@ use agent_tui_common::Colors;
 use agent_tui_common::ValueExt;
 use agent_tui_ipc::ClientError;
 use agent_tui_ipc::DaemonClient;
+use agent_tui_ipc::UnixProcessController;
 use agent_tui_ipc::params;
 use agent_tui_ipc::socket_path;
 
@@ -15,6 +16,7 @@ use crate::commands::OutputFormat;
 use crate::commands::RecordFormat;
 use crate::commands::ScrollDirection;
 use crate::commands::WaitParams;
+use crate::presenter::{ElementView, Presenter, create_presenter};
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -30,34 +32,6 @@ fn format_uptime_ms(uptime_ms: u64) -> String {
     } else {
         format!("{}s", secs)
     }
-}
-
-/// Macro to generate get_* handlers that follow the same pattern
-macro_rules! get_handler {
-    ($name:ident, $method:literal, $field:literal) => {
-        pub fn $name<C: DaemonClient>(
-            ctx: &mut HandlerContext<C>,
-            element_ref: String,
-        ) -> HandlerResult {
-            let params = ctx.ref_params(&element_ref);
-            let result = ctx.client.call($method, Some(params))?;
-            ctx.output_get_result(&result, &element_ref, $field)
-        }
-    };
-}
-
-/// Macro to generate is_* state check handlers that follow the same pattern
-macro_rules! state_check_handler {
-    ($name:ident, $method:literal, $field:literal, $pos:literal, $neg:literal) => {
-        pub fn $name<C: DaemonClient>(
-            ctx: &mut HandlerContext<C>,
-            element_ref: String,
-        ) -> HandlerResult {
-            let params = ctx.ref_params(&element_ref);
-            let result = ctx.client.call($method, Some(params))?;
-            ctx.output_state_check(&result, &element_ref, $field, $pos, $neg)
-        }
-    };
 }
 
 /// Macro to generate key handlers (press, keydown, keyup) that follow the same pattern
@@ -87,15 +61,23 @@ pub struct HandlerContext<'a, C: DaemonClient> {
     pub client: &'a mut C,
     pub session: Option<String>,
     pub format: OutputFormat,
+    presenter: Box<dyn Presenter>,
 }
 
 impl<'a, C: DaemonClient> HandlerContext<'a, C> {
     pub fn new(client: &'a mut C, session: Option<String>, format: OutputFormat) -> Self {
+        let presenter = create_presenter(&format);
         Self {
             client,
             session,
             format,
+            presenter,
         }
+    }
+
+    /// Get a reference to the presenter for output formatting
+    pub fn presenter(&self) -> &dyn Presenter {
+        self.presenter.as_ref()
     }
 
     pub fn output_success_result(
@@ -108,17 +90,16 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
 
         match self.format {
             OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(result)?);
+                self.presenter.present_value(result);
             }
             OutputFormat::Text => {
                 if success {
-                    println!("{}", success_msg);
-                    if let Some(warning) = result.get("warning").and_then(|w| w.as_str()) {
-                        eprintln!("{}", warning);
-                    }
+                    let warning = result.get("warning").and_then(|w| w.as_str());
+                    self.presenter.present_success(success_msg, warning);
                 } else {
                     let msg = result.str_or("message", "Unknown error");
-                    eprintln!("{}: {}", failure_prefix, msg);
+                    self.presenter
+                        .present_error(&format!("{}: {}", failure_prefix, msg));
                     std::process::exit(1);
                 }
             }
@@ -149,61 +130,6 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         Ok(())
     }
 
-    fn output_state_check(
-        &self,
-        result: &Value,
-        element_ref: &str,
-        field: &str,
-        state_name: &str,
-        negative_state_name: &str,
-    ) -> HandlerResult {
-        let found = result.bool_or("found", true);
-        let state = result.bool_or(field, false);
-
-        match self.format {
-            OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(result)?);
-            }
-            OutputFormat::Text => {
-                if !found {
-                    eprintln!("Element not found: {}", element_ref);
-                    std::process::exit(1);
-                } else if state {
-                    println!("{} {} is {}", Colors::success("✓"), element_ref, state_name);
-                } else {
-                    println!(
-                        "{} {} is {}",
-                        Colors::error("✗"),
-                        element_ref,
-                        negative_state_name
-                    );
-                    std::process::exit(1);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn output_get_result(&self, result: &Value, element_ref: &str, field: &str) -> HandlerResult {
-        let found = result.bool_or("found", false);
-
-        match self.format {
-            OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(result)?);
-            }
-            OutputFormat::Text => {
-                if found {
-                    let value = result.str_or(field, "");
-                    println!("{}", value);
-                } else {
-                    eprintln!("Element not found: {}", element_ref);
-                    std::process::exit(1);
-                }
-            }
-        }
-        Ok(())
-    }
-
     fn session_params(&self) -> Value {
         json!({ "session": self.session })
     }
@@ -214,7 +140,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
     {
         match self.format {
             OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(result)?);
+                self.presenter.present_value(result);
             }
             OutputFormat::Text => {
                 text_fn();
@@ -236,79 +162,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
 
     /// Display a ClientError with structured information.
     pub fn display_error(&self, error: &ClientError) {
-        match self.format {
-            OutputFormat::Json => {
-                eprintln!("{}", error.to_json());
-            }
-            OutputFormat::Text => {
-                eprintln!("{} {}", Colors::error("Error:"), error);
-                if let Some(suggestion) = error.suggestion() {
-                    eprintln!("{} {}", Colors::dim("Suggestion:"), suggestion);
-                }
-                if error.is_retryable() {
-                    eprintln!(
-                        "{}",
-                        Colors::dim("(This error may be transient - retry may succeed)")
-                    );
-                }
-            }
-        }
-    }
-}
-
-struct ElementView<'a>(&'a Value);
-
-impl ElementView<'_> {
-    fn ref_str(&self) -> &str {
-        self.0.str_or("ref", "")
-    }
-    fn el_type(&self) -> &str {
-        self.0.str_or("type", "")
-    }
-    fn label(&self) -> &str {
-        self.0.str_or("label", "")
-    }
-    fn focused(&self) -> bool {
-        self.0.bool_or("focused", false)
-    }
-    fn selected(&self) -> bool {
-        self.0.bool_or("selected", false)
-    }
-    fn value(&self) -> Option<&str> {
-        self.0.get("value").and_then(|v| v.as_str())
-    }
-    fn position(&self) -> (u64, u64) {
-        let pos = self.0.get("position");
-        let row = pos
-            .and_then(|p| p.get("row"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let col = pos
-            .and_then(|p| p.get("col"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        (row, col)
-    }
-    fn focused_indicator(&self) -> String {
-        if self.focused() {
-            Colors::success(" *focused*")
-        } else {
-            String::new()
-        }
-    }
-    fn selected_indicator(&self) -> String {
-        if self.selected() {
-            Colors::info(" *selected*")
-        } else {
-            String::new()
-        }
-    }
-    fn label_suffix(&self) -> String {
-        if self.label().is_empty() {
-            String::new()
-        } else {
-            format!(":{}", self.label())
-        }
+        self.presenter.present_client_error(error);
     }
 }
 
@@ -481,8 +335,9 @@ pub fn handle_wait<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     wait_params: WaitParams,
 ) -> HandlerResult {
-    let (cond, tgt) = wait_params.resolve_condition();
+    use crate::presenter::WaitResult;
 
+    let (cond, tgt) = wait_params.resolve_condition();
     let rpc_params = params::WaitParams {
         session: ctx.session.clone(),
         text: wait_params.text.clone(),
@@ -491,22 +346,13 @@ pub fn handle_wait<C: DaemonClient>(
         target: tgt,
     };
     let params_json = serde_json::to_value(rpc_params)?;
-
     let result = ctx.client.call("wait", Some(params_json))?;
-    let found = result.bool_or("found", false);
-    let elapsed_ms = result.u64_or("elapsed_ms", 0);
 
     match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
+        OutputFormat::Json => ctx.presenter().present_value(&result),
         OutputFormat::Text => {
-            if found {
-                println!("Found after {}ms", elapsed_ms);
-            } else {
-                eprintln!("Timeout after {}ms - not found", elapsed_ms);
-                std::process::exit(1);
-            }
+            let wait_result = WaitResult::from_json(&result);
+            ctx.presenter().present_wait_result(&wait_result);
         }
     }
     Ok(())
@@ -590,34 +436,18 @@ pub fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerR
 }
 
 pub fn handle_health<C: DaemonClient>(ctx: &mut HandlerContext<C>, verbose: bool) -> HandlerResult {
+    use crate::presenter::HealthResult;
+
     let result = ctx.client.call("health", None)?;
 
-    ctx.output_json_or(&result, || {
-        let status = result.str_or("status", "unknown");
-        let pid = result.u64_or("pid", 0);
-        let uptime_ms = result.u64_or("uptime_ms", 0);
-        let session_count = result.u64_or("session_count", 0);
-        let version = result.str_or("version", "?");
-
-        println!(
-            "{} {}",
-            Colors::bold("Daemon status:"),
-            Colors::success(status)
-        );
-        println!("  PID: {}", pid);
-        println!("  Uptime: {}", format_uptime_ms(uptime_ms));
-        println!("  Sessions: {}", session_count);
-        println!("  Version: {}", Colors::dim(version));
-
-        if verbose {
-            let socket = socket_path();
-            let pid_file = socket.with_extension("pid");
-            println!();
-            println!("{}", Colors::bold("Connection:"));
-            println!("  Socket: {}", socket.display());
-            println!("  PID file: {}", pid_file.display());
+    match ctx.format {
+        OutputFormat::Json => ctx.presenter().present_value(&result),
+        OutputFormat::Text => {
+            let health = HealthResult::from_json(&result, verbose);
+            ctx.presenter().present_health(&health);
         }
-    })
+    }
+    Ok(())
 }
 
 pub fn handle_resize<C: DaemonClient>(
@@ -689,10 +519,14 @@ pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerRe
 }
 
 pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -> HandlerResult {
+    use crate::presenter::{CleanupFailure, CleanupResult};
+
     let sessions_result = ctx.client.call("sessions", None)?;
     let sessions = sessions_result.get("sessions").and_then(|v| v.as_array());
 
     let mut cleaned = 0;
+    let mut failures: Vec<CleanupFailure> = Vec::new();
+
     if let Some(sessions) = sessions {
         for session in sessions {
             let id = session.get("id").and_then(|v| v.as_str());
@@ -700,32 +534,35 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
             if should_cleanup {
                 if let Some(id) = id {
                     let params = json!({ "session": id });
-                    if ctx.client.call("kill", Some(params)).is_ok() {
-                        cleaned += 1;
-                        if ctx.format == OutputFormat::Text {
-                            println!("Cleaned up session: {}", id);
-                        }
+                    match ctx.client.call("kill", Some(params)) {
+                        Ok(_) => cleaned += 1,
+                        Err(e) => failures.push(CleanupFailure {
+                            session_id: id.to_string(),
+                            error: e.to_string(),
+                        }),
                     }
                 }
             }
         }
     }
 
+    let result = CleanupResult { cleaned, failures };
+
     match ctx.format {
         OutputFormat::Json => {
-            println!("{}", json!({ "sessions_cleaned": cleaned }));
+            let failures_json: Vec<_> = result
+                .failures
+                .iter()
+                .map(|f| json!({"session": f.session_id, "error": f.error}))
+                .collect();
+            let output = json!({
+                "sessions_cleaned": result.cleaned,
+                "sessions_failed": result.failures.len(),
+                "failures": failures_json
+            });
+            ctx.presenter().present_value(&output);
         }
-        OutputFormat::Text => {
-            if cleaned > 0 {
-                println!(
-                    "{} Cleaned up {} session(s)",
-                    Colors::success("Done:"),
-                    cleaned
-                );
-            } else {
-                println!("{}", Colors::dim("No sessions to clean up"));
-            }
-        }
+        OutputFormat::Text => ctx.presenter().present_cleanup(&result),
     }
     Ok(())
 }
@@ -756,28 +593,10 @@ pub fn handle_find<C: DaemonClient>(
     let result = ctx.client.call("find", Some(params_json))?;
 
     match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
+        OutputFormat::Json => ctx.presenter().present_value(&result),
         OutputFormat::Text => {
-            let count = result.u64_or("count", 0);
-            if count == 0 {
-                println!("{}", Colors::dim("No elements found"));
-            } else {
-                println!("{} Found {} element(s):", Colors::success("✓"), count);
-                if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
-                    for el in elements {
-                        let ev = ElementView(el);
-                        println!(
-                            "  {} [{}:{}]{}",
-                            Colors::element_ref(ev.ref_str()),
-                            ev.el_type(),
-                            ev.label(),
-                            ev.focused_indicator()
-                        );
-                    }
-                }
-            }
+            let find_result = crate::presenter::FindResult::from_json(&result);
+            ctx.presenter().present_find(&find_result);
         }
     }
     Ok(())
@@ -885,74 +704,6 @@ ref_action_handler!(
     "Select all failed"
 );
 
-get_handler!(handle_get_text, "get_text", "text");
-get_handler!(handle_get_value, "get_value", "value");
-
-pub fn handle_get_focused<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let result = ctx.client.call("get_focused", Some(ctx.session_params()))?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text => {
-            if result.bool_or("found", false) {
-                println!(
-                    "- {} \"{}\" [ref={}] [focused]",
-                    result.str_or("type", ""),
-                    result.str_or("label", ""),
-                    result.str_or("ref", "")
-                );
-            } else {
-                eprintln!("No focused element found");
-                std::process::exit(1);
-            }
-        }
-    }
-    Ok(())
-}
-
-pub fn handle_get_title<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let result = ctx.client.call("get_title", Some(ctx.session_params()))?;
-
-    ctx.output_json_or(&result, || {
-        println!(
-            "Session: {} | Command: {}",
-            result.str_or("session_id", ""),
-            result.str_or("title", "")
-        );
-    })
-}
-
-state_check_handler!(
-    handle_is_visible,
-    "is_visible",
-    "visible",
-    "visible",
-    "not visible"
-);
-state_check_handler!(
-    handle_is_focused,
-    "is_focused",
-    "focused",
-    "focused",
-    "not focused"
-);
-state_check_handler!(
-    handle_is_enabled,
-    "is_enabled",
-    "enabled",
-    "enabled",
-    "disabled"
-);
-state_check_handler!(
-    handle_is_checked,
-    "is_checked",
-    "checked",
-    "checked",
-    "not checked"
-);
-
 pub fn handle_count<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     role: Option<String>,
@@ -1004,39 +755,6 @@ pub fn handle_toggle<C: DaemonClient>(
         }
     }
     Ok(())
-}
-
-fn handle_check_state<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-    checked: bool,
-) -> HandlerResult {
-    let params = json!({ "ref": element_ref, "session": ctx.session, "state": checked });
-    let result = ctx.client.call("toggle", Some(params))?;
-    let (state_str, fail_prefix) = if checked {
-        ("checked", "Check failed")
-    } else {
-        ("unchecked", "Uncheck failed")
-    };
-    ctx.output_success_and_ok(
-        &result,
-        &format!("{} is now {}", element_ref, state_str),
-        fail_prefix,
-    )
-}
-
-pub fn handle_check<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-) -> HandlerResult {
-    handle_check_state(ctx, element_ref, true)
-}
-
-pub fn handle_uncheck<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-) -> HandlerResult {
-    handle_check_state(ctx, element_ref, false)
 }
 
 pub fn handle_attach<C: DaemonClient>(
@@ -1357,31 +1075,322 @@ pub fn handle_assert<C: DaemonClient>(
         }
     };
 
+    let assert_result = crate::presenter::AssertResult {
+        passed,
+        condition: condition.clone(),
+    };
+
     match ctx.format {
         OutputFormat::Json => {
-            println!(
-                "{}",
-                json!({
-                    "condition": condition,
-                    "passed": passed
-                })
-            );
+            let output = json!({
+                "condition": condition,
+                "passed": passed
+            });
+            ctx.presenter().present_value(&output);
         }
-        OutputFormat::Text => {
-            if passed {
-                println!("{} Assertion passed: {}", Colors::success("✓"), condition);
-            } else {
-                eprintln!("{} Assertion failed: {}", Colors::error("✗"), condition);
-                std::process::exit(1);
+        OutputFormat::Text => ctx.presenter().present_assert_result(&assert_result),
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Daemon lifecycle handlers
+// ============================================================================
+
+pub fn handle_daemon_stop<C: DaemonClient>(ctx: &HandlerContext<C>, force: bool) -> HandlerResult {
+    use agent_tui_ipc::{PidLookupResult, daemon_lifecycle, get_daemon_pid};
+
+    let pid = match get_daemon_pid() {
+        PidLookupResult::Found(pid) => pid,
+        PidLookupResult::NotRunning => {
+            return Err(Box::new(ClientError::DaemonNotRunning));
+        }
+        PidLookupResult::Error(msg) => {
+            return Err(Box::new(ClientError::SignalFailed {
+                pid: 0,
+                message: msg,
+            }));
+        }
+    };
+
+    let controller = UnixProcessController;
+    let result = daemon_lifecycle::stop_daemon(&controller, pid, &socket_path(), force)?;
+
+    // Print warnings to stderr
+    for warning in &result.warnings {
+        eprintln!("{}", Colors::warning(warning));
+    }
+
+    ctx.presenter().present_success("Daemon stopped", None);
+    Ok(())
+}
+
+pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+    let cli_version = env!("CARGO_PKG_VERSION");
+
+    // Try to get daemon health
+    match ctx.client.call("health", None) {
+        Ok(result) => {
+            let daemon_version = result.str_or("version", "unknown");
+            let status = result.str_or("status", "unknown");
+            let pid = result.u64_or("pid", 0);
+            let uptime_ms = result.u64_or("uptime_ms", 0);
+            let session_count = result.u64_or("session_count", 0);
+
+            let version_mismatch = cli_version != daemon_version;
+
+            match ctx.format {
+                OutputFormat::Json => {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "running": true,
+                            "status": status,
+                            "pid": pid,
+                            "uptime_ms": uptime_ms,
+                            "session_count": session_count,
+                            "daemon_version": daemon_version,
+                            "cli_version": cli_version,
+                            "version_mismatch": version_mismatch
+                        })
+                    );
+                }
+                OutputFormat::Text => {
+                    println!(
+                        "{} {}",
+                        Colors::bold("Daemon status:"),
+                        Colors::success(status)
+                    );
+                    println!("  PID: {}", pid);
+                    println!("  Uptime: {}", format_uptime_ms(uptime_ms));
+                    println!("  Sessions: {}", session_count);
+                    println!("  Daemon version: {}", daemon_version);
+                    println!("  CLI version: {}", cli_version);
+
+                    if version_mismatch {
+                        eprintln!();
+                        eprintln!("{} Version mismatch detected!", Colors::warning("⚠"));
+                        eprintln!(
+                            "  Run '{}' to update the daemon.",
+                            Colors::info("agent-tui daemon restart")
+                        );
+                    }
+                }
             }
         }
+        Err(e) => match ctx.format {
+            OutputFormat::Json => {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "running": false,
+                        "cli_version": cli_version,
+                        "error": e.to_string()
+                    })
+                );
+            }
+            OutputFormat::Text => {
+                println!(
+                    "{} {} ({})",
+                    Colors::bold("Daemon status:"),
+                    Colors::error("not running"),
+                    Colors::dim(&e.to_string())
+                );
+                println!("  CLI version: {}", cli_version);
+            }
+        },
     }
+    Ok(())
+}
+
+pub fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
+    use agent_tui_ipc::{
+        PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background,
+    };
+
+    if let OutputFormat::Text = ctx.format {
+        ctx.presenter().present_info("Restarting daemon...");
+    }
+
+    let controller = UnixProcessController;
+
+    // Wrap get_daemon_pid to convert PidLookupResult to Option<u32>
+    // For restart, if we can't read the PID file, log warning and continue
+    let get_pid = || -> Option<u32> {
+        match get_daemon_pid() {
+            PidLookupResult::Found(pid) => Some(pid),
+            PidLookupResult::NotRunning => None,
+            PidLookupResult::Error(msg) => {
+                eprintln!(
+                    "{} Could not read daemon PID: {}",
+                    Colors::warning("Warning:"),
+                    msg
+                );
+                None
+            }
+        }
+    };
+
+    let warnings = daemon_lifecycle::restart_daemon(
+        &controller,
+        get_pid,
+        &socket_path(),
+        start_daemon_background,
+    )?;
+
+    for warning in &warnings {
+        eprintln!("{}", Colors::warning(warning));
+    }
+
+    ctx.presenter().present_success("Daemon restarted", None);
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::presenter::{Presenter, TextPresenter};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Mock presenter that captures output for testing
+    struct MockPresenter {
+        output: Rc<RefCell<Vec<String>>>,
+    }
+
+    impl MockPresenter {
+        fn new() -> (Self, Rc<RefCell<Vec<String>>>) {
+            let output = Rc::new(RefCell::new(Vec::new()));
+            (
+                Self {
+                    output: output.clone(),
+                },
+                output,
+            )
+        }
+    }
+
+    impl Presenter for MockPresenter {
+        fn present_success(&self, message: &str, warning: Option<&str>) {
+            self.output
+                .borrow_mut()
+                .push(format!("success: {}", message));
+            if let Some(w) = warning {
+                self.output.borrow_mut().push(format!("warning: {}", w));
+            }
+        }
+
+        fn present_error(&self, message: &str) {
+            self.output.borrow_mut().push(format!("error: {}", message));
+        }
+
+        fn present_value(&self, value: &Value) {
+            self.output.borrow_mut().push(format!("value: {}", value));
+        }
+
+        fn present_client_error(&self, error: &agent_tui_ipc::ClientError) {
+            self.output
+                .borrow_mut()
+                .push(format!("client_error: {}", error));
+        }
+
+        fn present_kv(&self, key: &str, value: &str) {
+            self.output
+                .borrow_mut()
+                .push(format!("kv: {}={}", key, value));
+        }
+
+        fn present_session_id(&self, session_id: &str, label: Option<&str>) {
+            self.output
+                .borrow_mut()
+                .push(format!("session: {} {:?}", session_id, label));
+        }
+
+        fn present_element_ref(&self, element_ref: &str, info: Option<&str>) {
+            self.output
+                .borrow_mut()
+                .push(format!("ref: {} {:?}", element_ref, info));
+        }
+
+        fn present_list_header(&self, title: &str) {
+            self.output.borrow_mut().push(format!("header: {}", title));
+        }
+
+        fn present_list_item(&self, item: &str) {
+            self.output.borrow_mut().push(format!("item: {}", item));
+        }
+
+        fn present_info(&self, message: &str) {
+            self.output.borrow_mut().push(format!("info: {}", message));
+        }
+
+        fn present_header(&self, text: &str) {
+            self.output.borrow_mut().push(format!("bold: {}", text));
+        }
+
+        fn present_raw(&self, text: &str) {
+            self.output.borrow_mut().push(format!("raw: {}", text));
+        }
+
+        fn present_wait_result(&self, result: &crate::presenter::WaitResult) {
+            self.output.borrow_mut().push(format!(
+                "wait: found={}, elapsed={}ms",
+                result.found, result.elapsed_ms
+            ));
+        }
+
+        fn present_assert_result(&self, result: &crate::presenter::AssertResult) {
+            self.output.borrow_mut().push(format!(
+                "assert: passed={}, condition={}",
+                result.passed, result.condition
+            ));
+        }
+
+        fn present_health(&self, health: &crate::presenter::HealthResult) {
+            self.output.borrow_mut().push(format!(
+                "health: status={}, pid={}, sessions={}",
+                health.status, health.pid, health.session_count
+            ));
+        }
+
+        fn present_cleanup(&self, result: &crate::presenter::CleanupResult) {
+            self.output.borrow_mut().push(format!(
+                "cleanup: cleaned={}, failed={}",
+                result.cleaned,
+                result.failures.len()
+            ));
+        }
+
+        fn present_find(&self, result: &crate::presenter::FindResult) {
+            self.output.borrow_mut().push(format!(
+                "find: count={}, elements={}",
+                result.count,
+                result.elements.len()
+            ));
+        }
+    }
+
+    #[test]
+    fn test_handler_context_has_presenter() {
+        // This test verifies that HandlerContext can hold and access a presenter
+        let presenter = TextPresenter;
+        // Just verify the type compiles - the presenter trait is available
+        let _: &dyn Presenter = &presenter;
+    }
+
+    #[test]
+    fn test_mock_presenter_captures_output() {
+        let (presenter, output) = MockPresenter::new();
+
+        presenter.present_success("Operation completed", None);
+        presenter.present_error("Something failed");
+        presenter.present_kv("key", "value");
+
+        let captured = output.borrow();
+        assert!(captured.iter().any(|s| s.contains("success:")));
+        assert!(captured.iter().any(|s| s.contains("error:")));
+        assert!(captured.iter().any(|s| s.contains("kv:")));
+    }
 
     fn make_element(json: Value) -> Value {
         json
@@ -1587,17 +1596,6 @@ mod tests {
     }
 
     #[test]
-    fn test_wait_condition_visible_alias() {
-        let params = WaitParams {
-            visible: Some("@inp1".to_string()),
-            ..Default::default()
-        };
-        let (cond, tgt) = params.resolve_condition();
-        assert_eq!(cond, Some("element".to_string()));
-        assert_eq!(tgt, Some("@inp1".to_string()));
-    }
-
-    #[test]
     fn test_wait_condition_focused() {
         let params = WaitParams {
             focused: Some("@inp1".to_string()),
@@ -1609,9 +1607,10 @@ mod tests {
     }
 
     #[test]
-    fn test_wait_condition_not_visible() {
+    fn test_wait_condition_element_gone() {
         let params = WaitParams {
-            not_visible: Some("@spinner".to_string()),
+            element: Some("@spinner".to_string()),
+            gone: true,
             ..Default::default()
         };
         let (cond, tgt) = params.resolve_condition();
@@ -1622,7 +1621,8 @@ mod tests {
     #[test]
     fn test_wait_condition_text_gone() {
         let params = WaitParams {
-            text_gone: Some("Loading...".to_string()),
+            text: Some("Loading...".to_string()),
+            gone: true,
             ..Default::default()
         };
         let (cond, tgt) = params.resolve_condition();

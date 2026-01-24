@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use agent_tui_terminal::PtyError;
+
 use crate::error::SessionError;
 use crate::repository::SessionRepository;
 use crate::session::{Session, SessionId, SessionInfo};
@@ -26,6 +28,8 @@ pub enum MockError {
         actual: String,
     },
     InvalidKey(String),
+    /// PTY error with custom message (for testing error classification)
+    Pty(String),
 }
 
 impl MockError {
@@ -45,6 +49,7 @@ impl MockError {
                 actual: actual.clone(),
             },
             MockError::InvalidKey(key) => SessionError::InvalidKey(key.clone()),
+            MockError::Pty(message) => SessionError::Pty(PtyError::Spawn(message.clone())),
         }
     }
 }

@@ -702,38 +702,7 @@ pub struct WaitParams {
     pub assert: bool,
 }
 
-impl WaitParams {
-    /// Resolve wait condition from WaitParams to (condition_type, target) tuple
-    pub fn resolve_condition(&self) -> (Option<String>, Option<String>) {
-        if self.stable {
-            return (Some("stable".to_string()), None);
-        }
-
-        // Handle element with optional --gone modifier
-        if let Some(ref elem) = self.element {
-            let condition = if self.gone { "not_visible" } else { "element" };
-            return (Some(condition.to_string()), Some(elem.clone()));
-        }
-
-        if let Some(ref elem) = self.focused {
-            return (Some("focused".to_string()), Some(elem.clone()));
-        }
-
-        if let Some(ref val) = self.value {
-            return (Some("value".to_string()), Some(val.clone()));
-        }
-
-        // Handle text with optional --gone modifier
-        if let Some(ref txt) = self.text {
-            if self.gone {
-                return (Some("text_gone".to_string()), Some(txt.clone()));
-            }
-            // Text without --gone is handled as default (text condition)
-        }
-
-        (None, None)
-    }
-}
+// Note: WaitParams condition resolution is in handlers::resolve_wait_condition
 
 /// Parameters for the find command
 #[derive(Debug, Clone, Default, Parser)]

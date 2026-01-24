@@ -14,8 +14,8 @@ use crate::daemon::domain::{
     RecordStatusInput, RecordStatusOutput, RecordStopInput, RecordStopOutput, ResizeInput,
     ResizeOutput, RestartOutput, ScrollInput, ScrollIntoViewInput, ScrollIntoViewOutput,
     ScrollOutput, SelectAllInput, SelectInput, SessionId, SessionInput, SessionsOutput,
-    SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, ToggleInput, ToggleOutput, TraceInput,
-    TraceOutput, TypeInput, VisibilityOutput, WaitInput, WaitOutput,
+    ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, ToggleInput,
+    ToggleOutput, TraceInput, TraceOutput, TypeInput, VisibilityOutput, WaitInput, WaitOutput,
 };
 use crate::daemon::error::{DomainError, SessionError};
 
@@ -569,10 +569,7 @@ pub fn metrics_output_to_response(id: u64, output: MetricsOutput) -> RpcResponse
 }
 
 /// Convert ShutdownOutput to RpcResponse.
-pub fn shutdown_output_to_response(
-    id: u64,
-    output: crate::daemon::domain::ShutdownOutput,
-) -> RpcResponse {
+pub fn shutdown_output_to_response(id: u64, output: ShutdownOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({

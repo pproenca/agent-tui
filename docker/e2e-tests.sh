@@ -63,6 +63,17 @@ log_fail() {
 }
 
 #######################################
+# Logs a warning message for soft failures or optional features.
+# Arguments:
+#   $@: Message to log
+# Outputs:
+#   Writes warning message to stdout
+#######################################
+log_warn() {
+    printf '%b[WARN]%b %s\n' "${YELLOW}" "${NC}" "$*"
+}
+
+#######################################
 # Logs a section header with decorative borders.
 # Arguments:
 #   $@: Section title
@@ -107,6 +118,71 @@ cleanup() {
     fi
 }
 trap cleanup EXIT INT TERM
+
+# =============================================================================
+# Test Session Helpers
+# =============================================================================
+
+# Current test session ID (set by spawn_bash_session, used by tests)
+_CURRENT_SESSION=""
+
+#######################################
+# Spawns a bash session and waits for it to stabilize.
+# Sets _CURRENT_SESSION on success for use by test body.
+# Globals:
+#   _CURRENT_SESSION: Set to spawned session ID
+# Arguments:
+#   $1: Test name for error messages
+# Returns:
+#   0 if session spawned successfully, 1 otherwise
+#######################################
+spawn_bash_session() {
+    local test_name="${1:-test}"
+
+    local output
+    output=$(agent-tui run bash 2>&1)
+    _CURRENT_SESSION=$(extract_session_id "$output")
+
+    if [[ -z "${_CURRENT_SESSION}" ]]; then
+        log_fail "$test_name: Failed to spawn bash session: $output"
+        return 1
+    fi
+    log_pass "$test_name: Bash session created: ${_CURRENT_SESSION}"
+
+    agent-tui wait --stable --session "$_CURRENT_SESSION" --timeout 5000 2>/dev/null || true
+    return 0
+}
+
+#######################################
+# Kills the current test session and clears _CURRENT_SESSION.
+# Safe to call even if no session exists.
+# Globals:
+#   _CURRENT_SESSION: Read and cleared
+#######################################
+kill_current_session() {
+    if [[ -n "${_CURRENT_SESSION:-}" ]]; then
+        agent-tui kill --session "$_CURRENT_SESSION" 2>/dev/null || true
+        _CURRENT_SESSION=""
+    fi
+}
+
+#######################################
+# Gets the current session ID, failing if not set.
+# Use this in tests that require a session.
+# Globals:
+#   _CURRENT_SESSION: Read
+# Outputs:
+#   Writes session ID to stdout
+# Returns:
+#   0 if session exists, 1 otherwise
+#######################################
+get_session() {
+    if [[ -z "${_CURRENT_SESSION:-}" ]]; then
+        log_fail "No active session"
+        return 1
+    fi
+    printf '%s' "$_CURRENT_SESSION"
+}
 
 #######################################
 # Test 1: Starts the daemon and verifies socket creation.
@@ -554,19 +630,9 @@ test_dead_session_operations() {
 test_click_nonexistent_element() {
     log_section "Test 9: Click Nonexistent Element"
 
-    # Spawn bash session
-    local output
-    output=$(agent-tui run bash 2>&1)
+    spawn_bash_session "Test 9" || return 1
     local sess
-    sess=$(extract_session_id "$output")
-
-    if [[ -z "${sess}" ]]; then
-        log_fail "Failed to spawn session"
-        return 1
-    fi
-
-    # Wait for stability
-    agent-tui wait --stable --session "$sess" --timeout 5000 2>/dev/null || true
+    sess=$(get_session)
 
     # Click on nonexistent element
     log_info "Clicking nonexistent element..."
@@ -578,8 +644,7 @@ test_click_nonexistent_element() {
         log_pass "Click on nonexistent element correctly failed"
     fi
 
-    # Cleanup
-    agent-tui kill --session "$sess" 2>/dev/null || true
+    kill_current_session
 }
 
 #######################################
@@ -591,19 +656,9 @@ test_click_nonexistent_element() {
 test_pty_roundtrip() {
     log_section "Test 10: PTY Round-Trip"
 
-    # Spawn bash session
-    local output
-    output=$(agent-tui run bash 2>&1)
+    spawn_bash_session "Test 10" || return 1
     local sess
-    sess=$(extract_session_id "$output")
-
-    if [[ -z "${sess}" ]]; then
-        log_fail "Failed to spawn session"
-        return 1
-    fi
-
-    # Wait for shell
-    agent-tui wait --stable --session "$sess" --timeout 5000 2>/dev/null || true
+    sess=$(get_session)
 
     # Type command
     local marker
@@ -611,7 +666,7 @@ test_pty_roundtrip() {
     log_info "Typing command: echo $marker"
     if ! agent-tui input "echo $marker" --session "$sess"; then
         log_fail "Failed to type command"
-        agent-tui kill --session "$sess" 2>/dev/null || true
+        kill_current_session
         return 1
     fi
 
@@ -619,7 +674,7 @@ test_pty_roundtrip() {
     log_info "Pressing Enter..."
     if ! agent-tui input Enter --session "$sess"; then
         log_fail "Failed to send Enter"
-        agent-tui kill --session "$sess" 2>/dev/null || true
+        kill_current_session
         return 1
     fi
 
@@ -627,7 +682,7 @@ test_pty_roundtrip() {
     log_info "Waiting for output..."
     if ! agent-tui wait --timeout 5000 "$marker" --session "$sess"; then
         log_fail "Output did not appear"
-        agent-tui kill --session "$sess" 2>/dev/null || true
+        kill_current_session
         return 1
     fi
 
@@ -642,12 +697,11 @@ test_pty_roundtrip() {
         log_pass "PTY round-trip verified: marker appears $count times"
     else
         log_fail "Expected at least 2 occurrences, got $count"
-        agent-tui kill --session "$sess" 2>/dev/null || true
+        kill_current_session
         return 1
     fi
 
-    # Cleanup
-    agent-tui kill --session "$sess" 2>/dev/null || true
+    kill_current_session
 }
 
 #######################################
@@ -659,19 +713,9 @@ test_pty_roundtrip() {
 test_double_click() {
     log_section "Test 11: Double-Click Action"
 
-    # Spawn bash session
-    local output
-    output=$(agent-tui run bash 2>&1)
+    spawn_bash_session "Test 11" || return 1
     local sess
-    sess=$(extract_session_id "$output")
-
-    if [[ -z "${sess}" ]]; then
-        log_fail "Failed to spawn session"
-        return 1
-    fi
-
-    # Wait for stability
-    agent-tui wait --stable --session "$sess" --timeout 5000 2>/dev/null || true
+    sess=$(get_session)
 
     # Try dblclick - may fail with "element not found" but should complete
     log_info "Testing dblclick action..."
@@ -682,7 +726,7 @@ test_double_click() {
 
     if (( exit_code == 124 )); then
         log_fail "dblclick timed out (hung)"
-        agent-tui kill --session "$sess" 2>/dev/null || true
+        kill_current_session
         return 1
     else
         log_pass "dblclick completed (exit code: $exit_code)"
@@ -695,12 +739,11 @@ test_double_click() {
         log_pass "Session usable after dblclick"
     else
         log_fail "Session not usable after dblclick"
-        agent-tui kill --session "$sess" 2>/dev/null || true
+        kill_current_session
         return 1
     fi
 
-    # Cleanup
-    agent-tui kill --session "$sess" 2>/dev/null || true
+    kill_current_session
 }
 
 #######################################
@@ -712,38 +755,28 @@ test_double_click() {
 test_accessibility_snapshot() {
     log_section "Test 12: Accessibility Snapshot"
 
-    # Spawn bash session
-    local output
-    output=$(agent-tui run bash 2>&1)
+    spawn_bash_session "Test 12" || return 1
     local sess
-    sess=$(extract_session_id "$output")
-
-    if [[ -z "${sess}" ]]; then
-        log_fail "Failed to spawn session"
-        return 1
-    fi
-
-    # Wait for stability
-    agent-tui wait --stable --session "$sess" --timeout 5000 2>/dev/null || true
+    sess=$(get_session)
 
     # Display button-like elements
     log_info "Displaying button-like elements..."
     if ! agent-tui input "printf '[Y] [N] [OK] [Cancel]\\n'" --session "$sess"; then
         log_fail "Failed to type printf"
-        agent-tui kill --session "$sess" 2>/dev/null || true
+        kill_current_session
         return 1
     fi
 
     if ! agent-tui input Enter --session "$sess"; then
         log_fail "Failed to send Enter"
-        agent-tui kill --session "$sess" 2>/dev/null || true
+        kill_current_session
         return 1
     fi
 
     # Wait for output
     if ! agent-tui wait --timeout 5000 "[Y]" --session "$sess"; then
         log_fail "Output did not appear"
-        agent-tui kill --session "$sess" 2>/dev/null || true
+        kill_current_session
         return 1
     fi
 
@@ -754,7 +787,7 @@ test_accessibility_snapshot() {
 
     if [[ -z "$acc_snapshot" ]]; then
         log_fail "Accessibility snapshot is empty"
-        agent-tui kill --session "$sess" 2>/dev/null || true
+        kill_current_session
         return 1
     fi
     log_pass "Accessibility snapshot captured (${#acc_snapshot} bytes)"
@@ -764,11 +797,10 @@ test_accessibility_snapshot() {
         log_pass "Button elements detected in accessibility tree"
     else
         # May not always detect buttons, so just warn
-        log_info "Note: No buttons detected (VOM may not recognize pattern)"
+        log_warn "No buttons detected (VOM may not recognize pattern)"
     fi
 
-    # Cleanup
-    agent-tui kill --session "$sess" 2>/dev/null || true
+    kill_current_session
 }
 
 #######################################
@@ -809,7 +841,7 @@ test_rapid_spawn_kill() {
         || ! grep -q '"id"' <<< "$sessions_list"; then
         log_pass "All sessions cleaned up"
     else
-        log_info "Note: Some sessions may remain from earlier tests"
+        log_warn "Some sessions may remain from earlier tests"
     fi
 }
 
@@ -855,7 +887,7 @@ test_screen_elements_flag() {
         log_pass "Screen -i shows elements section"
     else
         # Elements section may be empty if no elements detected
-        log_info "Note: No elements section (VOM may not detect elements)"
+        log_warn "No elements section (VOM may not detect elements)"
         log_pass "Screen -i command completed"
     fi
 
@@ -936,7 +968,7 @@ test_screen_include_cursor() {
         log_pass "Screen output includes cursor information"
     else
         # Command completed without error
-        log_info "Note: Cursor section format may vary"
+        log_warn "Cursor section format may vary"
         log_pass "Screen --include-cursor command completed"
     fi
 
@@ -1226,7 +1258,7 @@ test_wait_text_gone() {
     if agent-tui wait "LOADING" --gone --session "$sess" --timeout 5000 2>/dev/null; then
         log_pass "Wait --gone correctly detected text disappearance"
     else
-        log_info "Note: Wait --gone timed out (text may persist or disappear too fast)"
+        log_warn "Wait --gone timed out (text may persist or disappear too fast)"
         log_pass "Wait --gone command completed"
     fi
 
@@ -1445,7 +1477,7 @@ test_input_ctrl_c() {
     if agent-tui wait --stable --session "$sess" --timeout 5000 2>/dev/null; then
         log_pass "Session usable after Ctrl+C"
     else
-        log_info "Note: Session may need more time to stabilize"
+        log_warn "Session may need more time to stabilize"
     fi
 
     # Verify can still type
@@ -1457,7 +1489,7 @@ test_input_ctrl_c() {
     if agent-tui wait "$marker" --session "$sess" --timeout 3000 2>/dev/null; then
         log_pass "Session functional after Ctrl+C interrupt"
     else
-        log_info "Note: Session recovery may vary"
+        log_warn "Session recovery may vary"
     fi
 
     # Cleanup
@@ -1492,7 +1524,7 @@ test_input_hold_release() {
     if agent-tui input Shift --hold --session "$sess" 2>/dev/null; then
         log_pass "Input --hold completed"
     else
-        log_info "Note: --hold may not be implemented for all keys"
+        log_warn "--hold may not be implemented for all keys"
         log_pass "Input --hold command executed"
     fi
 
@@ -1501,7 +1533,7 @@ test_input_hold_release() {
     if agent-tui input Shift --release --session "$sess" 2>/dev/null; then
         log_pass "Input --release completed"
     else
-        log_info "Note: --release may not be implemented for all keys"
+        log_warn "--release may not be implemented for all keys"
         log_pass "Input --release command executed"
     fi
 
@@ -1585,7 +1617,7 @@ test_run_custom_dimensions() {
     if grep -q "COLS:100\|COLUMNS.*100" <<< "$screen"; then
         log_pass "Columns set correctly to 100"
     else
-        log_info "Note: Dimension check may depend on shell config"
+        log_warn "Dimension check may depend on shell config"
         log_pass "Custom dimensions command completed"
     fi
 
@@ -1626,7 +1658,7 @@ test_run_with_cwd() {
     if agent-tui wait "/tmp" --session "$sess" --timeout 3000 2>/dev/null; then
         log_pass "Working directory correctly set to /tmp"
     else
-        log_info "Note: cwd may not be applied in all environments"
+        log_warn "cwd may not be applied in all environments"
         log_pass "Run with --cwd completed"
     fi
 
@@ -1705,7 +1737,7 @@ test_sessions_cleanup() {
     if agent-tui sessions --cleanup 2>/dev/null; then
         log_pass "Sessions --cleanup completed"
     else
-        log_info "Note: --cleanup may report no sessions to clean"
+        log_warn "--cleanup may report no sessions to clean"
         log_pass "Sessions --cleanup command executed"
     fi
 }
@@ -1798,7 +1830,7 @@ test_json_output_format() {
     elif grep -q '"sessions"\|"error"\|"id"' <<< "$output"; then
         log_pass "Output contains JSON structure"
     else
-        log_info "Note: JSON format may vary"
+        log_warn "JSON format may vary"
         log_pass "-f json command completed"
     fi
 }
@@ -1949,7 +1981,7 @@ test_recording_lifecycle() {
     if agent-tui record-start --session "$sess" 2>/dev/null; then
         log_pass "Record-start succeeded"
     else
-        log_info "Note: record-start may not be implemented"
+        log_warn "record-start may not be implemented"
         agent-tui kill --session "$sess" 2>/dev/null || true
         return 0  # Not a failure if not implemented
     fi
@@ -1964,7 +1996,7 @@ test_recording_lifecycle() {
     if agent-tui record-status --session "$sess" 2>/dev/null; then
         log_pass "Record-status succeeded"
     else
-        log_info "Note: record-status may show no active recording"
+        log_warn "record-status may show no active recording"
     fi
 
     # Stop recording
@@ -1972,7 +2004,7 @@ test_recording_lifecycle() {
     if agent-tui record-stop --session "$sess" 2>/dev/null; then
         log_pass "Record-stop succeeded"
     else
-        log_info "Note: record-stop may fail if no recording active"
+        log_warn "record-stop may fail if no recording active"
     fi
 
     # Cleanup
@@ -2004,7 +2036,7 @@ test_recording_output_file() {
 
     # Start recording
     if ! agent-tui record-start --session "$sess" 2>/dev/null; then
-        log_info "Note: Recording may not be implemented"
+        log_warn "Recording may not be implemented"
         agent-tui kill --session "$sess" 2>/dev/null || true
         return 0
     fi
@@ -2022,10 +2054,10 @@ test_recording_output_file() {
             log_pass "Recording file created"
             rm -f "$recording_file"
         else
-            log_info "Note: Recording file not created"
+            log_warn "Recording file not created"
         fi
     else
-        log_info "Note: record-stop -o may not be implemented"
+        log_warn "record-stop -o may not be implemented"
     fi
 
     # Cleanup
@@ -2057,7 +2089,7 @@ test_recording_asciicast() {
 
     # Start recording
     if ! agent-tui record-start --session "$sess" 2>/dev/null; then
-        log_info "Note: Recording may not be implemented"
+        log_warn "Recording may not be implemented"
         agent-tui kill --session "$sess" 2>/dev/null || true
         return 0
     fi
@@ -2075,10 +2107,10 @@ test_recording_asciicast() {
             log_pass "Asciicast file created"
             rm -f "$recording_file"
         else
-            log_info "Note: Asciicast file not created"
+            log_warn "Asciicast file not created"
         fi
     else
-        log_info "Note: asciicast format may not be implemented"
+        log_warn "asciicast format may not be implemented"
     fi
 
     # Cleanup
@@ -2113,7 +2145,7 @@ test_trace_commands() {
     if agent-tui trace --start --session "$sess" 2>/dev/null; then
         log_pass "Trace start succeeded"
     else
-        log_info "Note: trace --start may not be implemented"
+        log_warn "trace --start may not be implemented"
         agent-tui kill --session "$sess" 2>/dev/null || true
         return 0
     fi
@@ -2126,7 +2158,7 @@ test_trace_commands() {
     if agent-tui trace -n 5 --session "$sess" 2>/dev/null; then
         log_pass "Trace view succeeded"
     else
-        log_info "Note: trace view may show empty"
+        log_warn "trace view may show empty"
     fi
 
     # Stop tracing
@@ -2134,7 +2166,7 @@ test_trace_commands() {
     if agent-tui trace --stop --session "$sess" 2>/dev/null; then
         log_pass "Trace stop succeeded"
     else
-        log_info "Note: trace --stop may not be implemented"
+        log_warn "trace --stop may not be implemented"
     fi
 
     # Cleanup
@@ -2169,7 +2201,7 @@ test_console_command() {
     if timeout 3 agent-tui console --session "$sess" 2>/dev/null; then
         log_pass "Console command completed"
     else
-        log_info "Note: console may timeout or not be implemented"
+        log_warn "console may timeout or not be implemented"
         log_pass "Console command executed"
     fi
 
@@ -2178,7 +2210,7 @@ test_console_command() {
     if agent-tui console --clear --session "$sess" 2>/dev/null; then
         log_pass "Console --clear succeeded"
     else
-        log_info "Note: console --clear may not be implemented"
+        log_warn "console --clear may not be implemented"
     fi
 
     # Cleanup
@@ -2213,7 +2245,7 @@ test_errors_command() {
     if agent-tui errors --session "$sess" 2>/dev/null; then
         log_pass "Errors command completed"
     else
-        log_info "Note: errors may not be implemented"
+        log_warn "errors may not be implemented"
         log_pass "Errors command executed"
     fi
 
@@ -2222,7 +2254,7 @@ test_errors_command() {
     if agent-tui errors --clear --session "$sess" 2>/dev/null; then
         log_pass "Errors --clear succeeded"
     else
-        log_info "Note: errors --clear may not be implemented"
+        log_warn "errors --clear may not be implemented"
     fi
 
     # Cleanup
@@ -2267,7 +2299,7 @@ test_session_id_prefix_matching() {
     if [[ -n "$screen_output" ]] && (( screen_exit == 0 )); then
         log_pass "Session ID prefix matching works"
     else
-        log_info "Note: Prefix matching may require longer prefix"
+        log_warn "Prefix matching may require longer prefix"
         log_pass "Prefix matching test completed"
     fi
 
@@ -2330,7 +2362,7 @@ test_unicode_input() {
     if agent-tui wait "世界" --session "$sess" --timeout 3000 2>/dev/null; then
         log_pass "Unicode text appeared on screen"
     else
-        log_info "Note: Unicode support may depend on terminal"
+        log_warn "Unicode support may depend on terminal"
         log_pass "Unicode input test completed"
     fi
 
@@ -2376,7 +2408,7 @@ test_long_command_output() {
         if grep -q "Line" <<< "$screen"; then
             log_pass "Partial output captured"
         else
-            log_info "Note: Large output may scroll off screen"
+            log_warn "Large output may scroll off screen"
             log_pass "Large output test completed"
         fi
     fi

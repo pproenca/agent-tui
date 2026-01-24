@@ -57,6 +57,48 @@ macro_rules! ref_action_handler {
     };
 }
 
+/// Resolve wait condition from WaitParams to (condition_type, target) tuple.
+///
+/// This function handles the mapping from CLI arguments to daemon wait conditions:
+/// - `--stable` -> ("stable", None)
+/// - `--element @e1` -> ("element", "@e1") or ("not_visible", "@e1") with --gone
+/// - `--focused @e1` -> ("focused", "@e1")
+/// - `--value X` -> ("value", "X")
+/// - `text` with --gone -> ("text_gone", "text")
+pub fn resolve_wait_condition(params: &WaitParams) -> (Option<String>, Option<String>) {
+    if params.stable {
+        return (Some("stable".to_string()), None);
+    }
+
+    // Handle element with optional --gone modifier
+    if let Some(ref elem) = params.element {
+        let condition = if params.gone {
+            "not_visible"
+        } else {
+            "element"
+        };
+        return (Some(condition.to_string()), Some(elem.clone()));
+    }
+
+    if let Some(ref elem) = params.focused {
+        return (Some("focused".to_string()), Some(elem.clone()));
+    }
+
+    if let Some(ref val) = params.value {
+        return (Some("value".to_string()), Some(val.clone()));
+    }
+
+    // Handle text with optional --gone modifier
+    if let Some(ref txt) = params.text {
+        if params.gone {
+            return (Some("text_gone".to_string()), Some(txt.clone()));
+        }
+        // Text without --gone is handled as default (text condition)
+    }
+
+    (None, None)
+}
+
 pub struct HandlerContext<'a, C: DaemonClient> {
     pub client: &'a mut C,
     pub session: Option<String>,
@@ -337,7 +379,7 @@ pub fn handle_wait<C: DaemonClient>(
 ) -> HandlerResult {
     use crate::presenter::WaitResult;
 
-    let (cond, tgt) = wait_params.resolve_condition();
+    let (cond, tgt) = resolve_wait_condition(&wait_params);
     let rpc_params = params::WaitParams {
         session: ctx.session.clone(),
         text: wait_params.text.clone(),
@@ -1615,7 +1657,7 @@ mod tests {
             stable: true,
             ..Default::default()
         };
-        let (cond, tgt) = params.resolve_condition();
+        let (cond, tgt) = resolve_wait_condition(&params);
         assert_eq!(cond, Some("stable".to_string()));
         assert_eq!(tgt, None);
     }
@@ -1626,7 +1668,7 @@ mod tests {
             element: Some("@btn1".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = params.resolve_condition();
+        let (cond, tgt) = resolve_wait_condition(&params);
         assert_eq!(cond, Some("element".to_string()));
         assert_eq!(tgt, Some("@btn1".to_string()));
     }
@@ -1637,7 +1679,7 @@ mod tests {
             focused: Some("@inp1".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = params.resolve_condition();
+        let (cond, tgt) = resolve_wait_condition(&params);
         assert_eq!(cond, Some("focused".to_string()));
         assert_eq!(tgt, Some("@inp1".to_string()));
     }
@@ -1649,7 +1691,7 @@ mod tests {
             gone: true,
             ..Default::default()
         };
-        let (cond, tgt) = params.resolve_condition();
+        let (cond, tgt) = resolve_wait_condition(&params);
         assert_eq!(cond, Some("not_visible".to_string()));
         assert_eq!(tgt, Some("@spinner".to_string()));
     }
@@ -1661,7 +1703,7 @@ mod tests {
             gone: true,
             ..Default::default()
         };
-        let (cond, tgt) = params.resolve_condition();
+        let (cond, tgt) = resolve_wait_condition(&params);
         assert_eq!(cond, Some("text_gone".to_string()));
         assert_eq!(tgt, Some("Loading...".to_string()));
     }
@@ -1672,7 +1714,7 @@ mod tests {
             value: Some("@inp1=hello".to_string()),
             ..Default::default()
         };
-        let (cond, tgt) = params.resolve_condition();
+        let (cond, tgt) = resolve_wait_condition(&params);
         assert_eq!(cond, Some("value".to_string()));
         assert_eq!(tgt, Some("@inp1=hello".to_string()));
     }
@@ -1680,7 +1722,7 @@ mod tests {
     #[test]
     fn test_wait_condition_none() {
         let params = WaitParams::default();
-        let (cond, tgt) = params.resolve_condition();
+        let (cond, tgt) = resolve_wait_condition(&params);
         assert_eq!(cond, None);
         assert_eq!(tgt, None);
     }

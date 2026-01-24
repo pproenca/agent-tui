@@ -1,0 +1,23 @@
+id: algo-use-sort-unstable-by-key
+snapshots:
+  items.sort_unstable_by(|x, y| x.priority.cmp(&y.priority));:
+    fixed: items.sort_unstable_by_key(|x| x.priority);
+    labels:
+    - source: items.sort_unstable_by(|x, y| x.priority.cmp(&y.priority))
+      style: primary
+      start: 0
+      end: 58
+  self.entries.sort_unstable_by(|a, b| a.id.cmp(&b.id));:
+    fixed: self.entries.sort_unstable_by_key(|x| x.id);
+    labels:
+    - source: self.entries.sort_unstable_by(|a, b| a.id.cmp(&b.id))
+      style: primary
+      start: 0
+      end: 53
+  vec.sort_unstable_by(|a, b| a.name.cmp(&b.name));:
+    fixed: vec.sort_unstable_by_key(|x| x.name);
+    labels:
+    - source: vec.sort_unstable_by(|a, b| a.name.cmp(&b.name))
+      style: primary
+      start: 0
+      end: 48

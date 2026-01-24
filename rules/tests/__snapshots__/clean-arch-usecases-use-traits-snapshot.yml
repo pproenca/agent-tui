@@ -1,0 +1,14 @@
+id: clean-arch-usecases-use-traits
+snapshots:
+  use crate::session::Session;:
+    labels:
+    - source: use crate::session::Session;
+      style: primary
+      start: 0
+      end: 28
+  use crate::session::SessionManager;:
+    labels:
+    - source: use crate::session::SessionManager;
+      style: primary
+      start: 0
+      end: 35

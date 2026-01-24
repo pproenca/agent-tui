@@ -10,14 +10,14 @@ files:
 rule:
   kind: use_declaration
   any:
-    - pattern: use crate::usecases::$$$ITEMS
-    - pattern: use crate::handlers::$$$ITEMS
-    - pattern: use crate::adapters::$$$ITEMS
-    - pattern: use crate::server::$$$ITEMS
-    - pattern: use crate::server
-    - pattern: use crate::session::$$$ITEMS
-    - pattern: use crate::transport::$$$ITEMS
-    - pattern: use super::super::usecases::$$$ITEMS
-    - pattern: use super::super::handlers::$$$ITEMS
-    - pattern: use super::super::adapters::$$$ITEMS
-    - pattern: use super::super::server::$$$ITEMS
+    - regex: "^use crate::usecases::"
+    - regex: "^use crate::handlers::"
+    - regex: "^use crate::adapters::"
+    - regex: "^use crate::server::"
+    - regex: "^use crate::server;$"
+    - regex: "^use crate::session::"
+    - regex: "^use crate::transport::"
+    - regex: "^use super::super::usecases::"
+    - regex: "^use super::super::handlers::"
+    - regex: "^use super::super::adapters::"
+    - regex: "^use super::super::server::"

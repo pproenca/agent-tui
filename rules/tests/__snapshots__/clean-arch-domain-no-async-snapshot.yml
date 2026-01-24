@@ -1,0 +1,52 @@
+id: clean-arch-domain-no-async
+snapshots:
+  ? |
+    async fn fetch_data(&self) -> Result<Data, Error> {
+        self.client.get().await
+    }
+  : labels:
+    - source: |-
+        async fn fetch_data(&self) -> Result<Data, Error> {
+            self.client.get().await
+        }
+      style: primary
+      start: 0
+      end: 81
+    - source: async
+      style: secondary
+      start: 0
+      end: 5
+  ? |
+    async fn validate_async(input: &str) -> bool {
+        tokio::time::sleep(Duration::from_millis(1)).await;
+        true
+    }
+  : labels:
+    - source: |-
+        async fn validate_async(input: &str) -> bool {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+            true
+        }
+      style: primary
+      start: 0
+      end: 113
+    - source: async
+      style: secondary
+      start: 0
+      end: 5
+  ? |
+    pub async fn process(&mut self) {
+        self.inner.run().await;
+    }
+  : labels:
+    - source: |-
+        pub async fn process(&mut self) {
+            self.inner.run().await;
+        }
+      style: primary
+      start: 0
+      end: 63
+    - source: async
+      style: secondary
+      start: 4
+      end: 9

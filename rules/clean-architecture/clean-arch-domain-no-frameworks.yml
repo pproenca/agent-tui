@@ -14,13 +14,8 @@ files:
 rule:
   kind: use_declaration
   any:
-    - pattern: use serde::$$$ITEMS
-    - pattern: use serde;
-    - pattern: use uuid::$$$ITEMS
-    - pattern: use uuid;
-    - pattern: use chrono::$$$ITEMS
-    - pattern: use chrono;
-    - pattern: use tokio::$$$ITEMS
-    - pattern: use tokio;
-    - pattern: use tracing::$$$ITEMS
-    - pattern: use tracing;
+    - regex: "^use serde(::|;)"
+    - regex: "^use uuid(::|;)"
+    - regex: "^use chrono(::|;)"
+    - regex: "^use tokio(::|;)"
+    - regex: "^use tracing(::|;)"

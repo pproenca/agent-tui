@@ -14,5 +14,5 @@ files:
 rule:
   kind: use_declaration
   any:
-    - pattern: use crate::usecases::$$$ITEMS
-    - pattern: use super::super::usecases::$$$ITEMS
+    - regex: "^use crate::usecases::"
+    - regex: "^use super::super::usecases::"

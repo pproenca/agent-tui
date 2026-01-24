@@ -13,6 +13,4 @@ files:
   - "crates/agent-tui-core/src/**/*.rs"
 rule:
   kind: use_declaration
-  any:
-    - pattern: use agent_tui_daemon::$$$ITEMS
-    - pattern: use agent_tui_daemon
+  regex: "^use agent_tui_daemon"

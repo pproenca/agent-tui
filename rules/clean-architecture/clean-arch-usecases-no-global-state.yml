@@ -12,7 +12,5 @@ files:
 rule:
   kind: use_declaration
   any:
-    - pattern: use lazy_static::$$$ITEMS
-    - pattern: use lazy_static
-    - pattern: use once_cell::sync::Lazy
-    - pattern: use once_cell::$$$ITEMS
+    - regex: "^use lazy_static"
+    - regex: "^use once_cell::"

@@ -1,0 +1,9 @@
+id: iter-use-any
+valid:
+  - "iter.any(|x| x > 0);"
+  - "items.any(|item| item.is_valid());"
+  - "vec.iter().any(predicate);"
+invalid:
+  - "iter.filter(|x| x > 0).next().is_some();"
+  - "items.filter(|item| item.is_valid()).next().is_some();"
+  - "vec.iter().filter(predicate).next().is_some();"

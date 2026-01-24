@@ -12,5 +12,8 @@ rule:
     - pattern: std::fs::read_to_string($$$)
     - pattern: std::fs::read_dir($$$)
   inside:
-    pattern: async fn $NAME($$$) $BODY
+    kind: function_item
+    has:
+      kind: function_modifiers
+      regex: "async"
     stopBy: end

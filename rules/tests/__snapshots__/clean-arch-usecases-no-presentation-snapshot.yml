@@ -1,0 +1,20 @@
+id: clean-arch-usecases-no-presentation
+snapshots:
+  use serde_json::Value;:
+    labels:
+    - source: use serde_json::Value;
+      style: primary
+      start: 0
+      end: 22
+  use serde_json::json;:
+    labels:
+    - source: use serde_json::json;
+      style: primary
+      start: 0
+      end: 21
+  use serde_json;:
+    labels:
+    - source: use serde_json;
+      style: primary
+      start: 0
+      end: 15

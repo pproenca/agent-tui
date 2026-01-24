@@ -10,4 +10,6 @@ files:
   - "crates/agent-tui-daemon/src/domain/**/*.rs"
 rule:
   kind: function_item
-  regex: "async "
+  has:
+    kind: function_modifiers
+    regex: "async"

@@ -13,8 +13,8 @@ files:
 rule:
   kind: use_declaration
   any:
-    - pattern: use agent_tui_core::$$$ITEMS
-    - pattern: use agent_tui_daemon::$$$ITEMS
-    - pattern: use agent_tui_terminal::$$$ITEMS
-    - pattern: use agent_tui_ipc::$$$ITEMS
-    - pattern: use agent_tui::$$$ITEMS
+    - regex: "^use agent_tui_core::"
+    - regex: "^use agent_tui_daemon::"
+    - regex: "^use agent_tui_terminal::"
+    - regex: "^use agent_tui_ipc::"
+    - regex: "^use agent_tui::"

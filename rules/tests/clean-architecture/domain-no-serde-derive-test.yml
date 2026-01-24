@@ -1,0 +1,14 @@
+id: clean-arch-domain-no-serde-derive
+valid:
+  - "#[derive(Debug, Clone)]"
+  - "#[derive(PartialEq, Eq, Hash)]"
+  - "#[derive(Default)]"
+  - "#[derive(Debug, Clone, PartialEq)]"
+invalid:
+  - "#[derive(Serialize)]"
+  - "#[derive(Deserialize)]"
+  - "#[derive(Serialize, Deserialize)]"
+  - "#[derive(Debug, Serialize, Clone)]"
+  - "#[derive(Clone, Deserialize, PartialEq)]"
+  - "#[serde(rename_all = \"camelCase\")]"
+  - "#[serde(skip_serializing_if = \"Option::is_none\")]"

@@ -372,18 +372,13 @@ pub fn parse_resize_input(request: &RpcRequest) -> ResizeInput {
 }
 
 /// Convert ResizeOutput to RpcResponse.
-pub fn resize_output_to_response(
-    id: u64,
-    output: ResizeOutput,
-    cols: u16,
-    rows: u16,
-) -> RpcResponse {
+pub fn resize_output_to_response(id: u64, output: ResizeOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
             "success": output.success,
             "session_id": output.session_id.as_str(),
-            "size": { "cols": cols, "rows": rows }
+            "size": { "cols": output.cols, "rows": output.rows }
         }),
     )
 }

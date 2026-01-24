@@ -1,0 +1,18 @@
+id: clean-arch-domain-no-serde-derive
+language: rust
+severity: error
+message: "Domain types must not use #[derive(Serialize, Deserialize)]. Serialization belongs in adapters."
+note: |
+  Clean Architecture: Domain types should be persistence-ignorant.
+  Create separate DTO types in the adapter layer for serialization.
+files:
+  - "crates/agent-tui-daemon/src/domain/**/*.rs"
+rule:
+  kind: attribute_item
+  any:
+    - pattern: "#[derive($$$BEFORE, Serialize, $$$AFTER)]"
+    - pattern: "#[derive($$$BEFORE, Deserialize, $$$AFTER)]"
+    - pattern: "#[derive(Serialize)]"
+    - pattern: "#[derive(Deserialize)]"
+    - pattern: "#[derive(Serialize, Deserialize)]"
+    - pattern: "#[serde($$$CONFIG)]"

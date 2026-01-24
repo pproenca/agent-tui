@@ -1,0 +1,21 @@
+id: clean-arch-usecases-no-infrastructure
+language: rust
+severity: error
+message: "Use case layer must not import from infrastructure (server, transport) or adapters."
+note: |
+  Clean Architecture: Use cases orchestrate domain logic via repository traits.
+  They should not depend on:
+  - server.rs (JSON-RPC server is infrastructure)
+  - transport/* (network I/O is infrastructure)
+  - handlers/* (request handling is adapter layer)
+  - adapters/rpc.rs (RPC serialization is adapter concern)
+files:
+  - "crates/agent-tui-daemon/src/usecases/**/*.rs"
+rule:
+  kind: use_declaration
+  any:
+    - pattern: use crate::server::$$$ITEMS
+    - pattern: use crate::server
+    - pattern: use crate::transport::$$$ITEMS
+    - pattern: use crate::handlers::$$$ITEMS
+    - pattern: use crate::adapters::rpc::$$$ITEMS

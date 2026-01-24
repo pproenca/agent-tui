@@ -325,6 +325,14 @@ pub struct SpawnOutput {
     pub pid: u32,
 }
 
+#[derive(Debug, Clone)]
+pub struct RestartOutput {
+    pub old_session_id: SessionId,
+    pub new_session_id: SessionId,
+    pub command: String,
+    pub pid: u32,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SnapshotInput {
     pub session_id: Option<SessionId>,

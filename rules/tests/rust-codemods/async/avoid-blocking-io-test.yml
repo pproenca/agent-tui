@@ -1,0 +1,33 @@
+id: async-avoid-blocking-io
+valid:
+  - |
+    fn sync_read_file(path: &str) -> String {
+        std::fs::read_to_string(path).unwrap()
+    }
+  - |
+    async fn async_read_file(path: &str) -> String {
+        tokio::fs::read_to_string(path).await.unwrap()
+    }
+  - |
+    fn process_file(path: &str) {
+        let content = std::fs::read(path).unwrap();
+    }
+invalid:
+  - |
+    async fn bad_read(path: &str) -> Vec<u8> {
+        std::fs::read(path).unwrap()
+    }
+  - |
+    async fn bad_write(path: &str, data: &[u8]) {
+        std::fs::write(path, data).unwrap();
+    }
+  - |
+    async fn bad_read_string(path: &str) -> String {
+        std::fs::read_to_string(path).unwrap()
+    }
+  - |
+    async fn bad_read_dir(path: &str) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            println!("{:?}", entry);
+        }
+    }

@@ -1,0 +1,23 @@
+id: iter-use-any
+snapshots:
+  iter.filter(|x| x > 5).next().is_some();:
+    fixed: iter.any(|x| x > 5);
+    labels:
+    - source: iter.filter(|x| x > 5).next().is_some()
+      style: primary
+      start: 0
+      end: 39
+  self.data.filter(|x| x.is_valid()).next().is_some();:
+    fixed: self.data.any(|x| x.is_valid());
+    labels:
+    - source: self.data.filter(|x| x.is_valid()).next().is_some()
+      style: primary
+      start: 0
+      end: 51
+  vec.iter().filter(predicate).next().is_some();:
+    fixed: vec.iter().any(predicate);
+    labels:
+    - source: vec.iter().filter(predicate).next().is_some()
+      style: primary
+      start: 0
+      end: 45

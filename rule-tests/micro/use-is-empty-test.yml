@@ -1,0 +1,10 @@
+id: micro-use-is-empty
+valid:
+  - "vec.is_empty();"
+  - "vec.len() == 1;"
+  - "vec.len() > 0;"
+  - "vec.len() >= 1;"
+invalid:
+  - "vec.len() == 0;"
+  - "s.len() == 0;"
+  - "self.items.len() == 0;"

@@ -1,0 +1,20 @@
+id: iter-use-filter-map
+snapshots:
+  iter.filter(|x| x.is_ok()).map(|x| x.unwrap());:
+    labels:
+    - source: iter.filter(|x| x.is_ok()).map(|x| x.unwrap())
+      style: primary
+      start: 0
+      end: 46
+  iter.filter(|x| x.is_some()).map(|x| x.unwrap());:
+    labels:
+    - source: iter.filter(|x| x.is_some()).map(|x| x.unwrap())
+      style: primary
+      start: 0
+      end: 48
+  results.filter(|r| r.is_ok()).map(|r| r.unwrap());:
+    labels:
+    - source: results.filter(|r| r.is_ok()).map(|r| r.unwrap())
+      style: primary
+      start: 0
+      end: 49

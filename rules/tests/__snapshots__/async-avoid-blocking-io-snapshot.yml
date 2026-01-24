@@ -1,0 +1,86 @@
+id: async-avoid-blocking-io
+snapshots:
+  ? |
+    async fn bad_read(path: &str) -> Vec<u8> {
+        std::fs::read(path).unwrap()
+    }
+  : labels:
+    - source: std::fs::read(path)
+      style: primary
+      start: 47
+      end: 66
+    - source: async
+      style: secondary
+      start: 0
+      end: 5
+    - source: |-
+        async fn bad_read(path: &str) -> Vec<u8> {
+            std::fs::read(path).unwrap()
+        }
+      style: secondary
+      start: 0
+      end: 77
+  ? |
+    async fn bad_read_dir(path: &str) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            println!("{:?}", entry);
+        }
+    }
+  : labels:
+    - source: std::fs::read_dir(path)
+      style: primary
+      start: 53
+      end: 76
+    - source: async
+      style: secondary
+      start: 0
+      end: 5
+    - source: |-
+        async fn bad_read_dir(path: &str) {
+            for entry in std::fs::read_dir(path).unwrap() {
+                println!("{:?}", entry);
+            }
+        }
+      style: secondary
+      start: 0
+      end: 128
+  ? |
+    async fn bad_read_string(path: &str) -> String {
+        std::fs::read_to_string(path).unwrap()
+    }
+  : labels:
+    - source: std::fs::read_to_string(path)
+      style: primary
+      start: 53
+      end: 82
+    - source: async
+      style: secondary
+      start: 0
+      end: 5
+    - source: |-
+        async fn bad_read_string(path: &str) -> String {
+            std::fs::read_to_string(path).unwrap()
+        }
+      style: secondary
+      start: 0
+      end: 93
+  ? |
+    async fn bad_write(path: &str, data: &[u8]) {
+        std::fs::write(path, data).unwrap();
+    }
+  : labels:
+    - source: std::fs::write(path, data)
+      style: primary
+      start: 50
+      end: 76
+    - source: async
+      style: secondary
+      start: 0
+      end: 5
+    - source: |-
+        async fn bad_write(path: &str, data: &[u8]) {
+            std::fs::write(path, data).unwrap();
+        }
+      style: secondary
+      start: 0
+      end: 88

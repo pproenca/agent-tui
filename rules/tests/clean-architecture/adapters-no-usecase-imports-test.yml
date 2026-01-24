@@ -1,0 +1,9 @@
+id: clean-arch-adapters-no-usecase-imports
+valid:
+  - "use crate::domain::types::SessionId;"
+  - "use crate::domain::session_types::SessionInfo;"
+  - "use serde_json::Value;"
+invalid:
+  - "use crate::usecases::spawn::SpawnInput;"
+  - "use crate::usecases::snapshot::SnapshotOutput;"
+  - "use super::super::usecases::kill::KillInput;"

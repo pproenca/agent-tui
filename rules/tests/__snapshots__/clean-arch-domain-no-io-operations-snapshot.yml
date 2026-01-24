@@ -1,0 +1,50 @@
+id: clean-arch-domain-no-io-operations
+snapshots:
+  use std::fs::File;:
+    labels:
+    - source: use std::fs::File;
+      style: primary
+      start: 0
+      end: 18
+  use std::fs;:
+    labels:
+    - source: use std::fs;
+      style: primary
+      start: 0
+      end: 12
+  use std::io::BufReader;:
+    labels:
+    - source: use std::io::BufReader;
+      style: primary
+      start: 0
+      end: 23
+  use std::io::BufWriter;:
+    labels:
+    - source: use std::io::BufWriter;
+      style: primary
+      start: 0
+      end: 23
+  use std::io::Read;:
+    labels:
+    - source: use std::io::Read;
+      style: primary
+      start: 0
+      end: 18
+  use std::io::Write;:
+    labels:
+    - source: use std::io::Write;
+      style: primary
+      start: 0
+      end: 19
+  use std::net::TcpStream;:
+    labels:
+    - source: use std::net::TcpStream;
+      style: primary
+      start: 0
+      end: 24
+  use std::net;:
+    labels:
+    - source: use std::net;
+      style: primary
+      start: 0
+      end: 13

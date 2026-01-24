@@ -1,0 +1,10 @@
+id: own-accept-str-slice-not-string
+valid:
+  - "fn process(name: &str) {}"
+  - "fn process(name: String) {}"
+  - "fn process(name: &mut String) {}"
+  - "let x: &String = &s;"
+invalid:
+  - "fn process(name: &String) {}"
+  - "fn greet(msg: &String) {}"
+  - "pub fn validate(input: &String) -> bool { true }"

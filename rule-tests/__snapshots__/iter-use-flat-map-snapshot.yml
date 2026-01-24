@@ -1,0 +1,23 @@
+id: iter-use-flat-map
+snapshots:
+  iter.map(|x| x.items()).flatten();:
+    fixed: iter.flat_map(|x| x.items());
+    labels:
+    - source: iter.map(|x| x.items()).flatten()
+      style: primary
+      start: 0
+      end: 33
+  self.data.map(|x| x).flatten();:
+    fixed: self.data.flat_map(|x| x);
+    labels:
+    - source: self.data.map(|x| x).flatten()
+      style: primary
+      start: 0
+      end: 30
+  vec.iter().map(process).flatten();:
+    fixed: vec.iter().flat_map(process);
+    labels:
+    - source: vec.iter().map(process).flatten()
+      style: primary
+      start: 0
+      end: 33

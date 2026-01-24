@@ -1,0 +1,14 @@
+id: iter-avoid-collect-iter
+snapshots:
+  items.map(f).collect::<Vec<String>>().iter();:
+    labels:
+    - source: items.map(f).collect::<Vec<String>>().iter()
+      style: primary
+      start: 0
+      end: 44
+  iter.collect::<Vec<_>>().iter();:
+    labels:
+    - source: iter.collect::<Vec<_>>().iter()
+      style: primary
+      start: 0
+      end: 31

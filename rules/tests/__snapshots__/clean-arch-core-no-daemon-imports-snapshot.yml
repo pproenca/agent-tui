@@ -1,0 +1,14 @@
+id: clean-arch-core-no-daemon-imports
+snapshots:
+  use agent_tui_daemon::server::DaemonServer;:
+    labels:
+    - source: use agent_tui_daemon::server::DaemonServer;
+      style: primary
+      start: 0
+      end: 43
+  use agent_tui_daemon;:
+    labels:
+    - source: use agent_tui_daemon;
+      style: primary
+      start: 0
+      end: 21

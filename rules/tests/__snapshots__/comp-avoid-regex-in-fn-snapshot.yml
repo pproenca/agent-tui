@@ -1,0 +1,38 @@
+id: comp-avoid-regex-in-fn
+snapshots:
+  ? |
+    fn extract_numbers(text: &str) -> Vec<&str> {
+        let regex = Regex::new(r"[0-9]+").unwrap();
+        regex.find_iter(text).map(|m| m.as_str()).collect()
+    }
+  : labels:
+    - source: Regex::new(r"[0-9]+")
+      style: primary
+      start: 62
+      end: 83
+    - source: |-
+        fn extract_numbers(text: &str) -> Vec<&str> {
+            let regex = Regex::new(r"[0-9]+").unwrap();
+            regex.find_iter(text).map(|m| m.as_str()).collect()
+        }
+      style: secondary
+      start: 0
+      end: 151
+  ? |
+    fn match_pattern(text: &str) -> bool {
+        let re = Regex::new(r"\d+").unwrap();
+        re.is_match(text)
+    }
+  : labels:
+    - source: Regex::new(r"\d+")
+      style: primary
+      start: 52
+      end: 70
+    - source: |-
+        fn match_pattern(text: &str) -> bool {
+            let re = Regex::new(r"\d+").unwrap();
+            re.is_match(text)
+        }
+      style: secondary
+      start: 0
+      end: 104

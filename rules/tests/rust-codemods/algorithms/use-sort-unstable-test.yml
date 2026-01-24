@@ -1,0 +1,9 @@
+id: algo-use-sort-unstable
+valid:
+  - "vec.sort_unstable();"
+  - "items.sort_by(|a, b| a.name.cmp(&b.name));"
+  - "vec.sort_by_key(|x| x.priority);"
+invalid:
+  - "vec.sort();"
+  - "items.sort();"
+  - "self.entries.sort();"

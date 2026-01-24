@@ -13,9 +13,9 @@ use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
 use serde_json::json;
 
-use agent_tui_common::Colors;
-use agent_tui_ipc::ClientError;
-use agent_tui_ipc::DaemonClient;
+use crate::common::Colors;
+use crate::ipc::ClientError;
+use crate::ipc::DaemonClient;
 
 pub use crate::error::AttachError;
 

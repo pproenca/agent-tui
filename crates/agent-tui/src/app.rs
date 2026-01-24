@@ -4,9 +4,9 @@ use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
 
-use agent_tui_common::{Colors, color_init};
-use agent_tui_daemon::{DaemonError, start_daemon};
-use agent_tui_ipc::{ClientError, DaemonClient, ensure_daemon};
+use crate::common::{Colors, color_init};
+use crate::daemon::{DaemonError, start_daemon};
+use crate::ipc::{ClientError, DaemonClient, ensure_daemon};
 
 use crate::attach::AttachError;
 use crate::commands::{Cli, Commands, DaemonCommand, DebugCommand, RecordAction};
@@ -72,7 +72,7 @@ impl Application {
                 Ok(true)
             }
             Commands::Daemon(DaemonCommand::Start { foreground: false }) => {
-                agent_tui_ipc::start_daemon_background()?;
+                crate::ipc::start_daemon_background()?;
                 println!("Daemon started in background");
                 Ok(true)
             }
@@ -341,7 +341,7 @@ impl Default for Application {
 
 /// Check for version mismatch between CLI and daemon, print warning if found.
 fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
-    use agent_tui_ipc::version::{VersionCheckResult, check_version};
+    use crate::ipc::version::{VersionCheckResult, check_version};
 
     match check_version(client, env!("CARGO_PKG_VERSION")) {
         VersionCheckResult::Match => {}
@@ -370,7 +370,7 @@ fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
 }
 
 fn exit_code_for_client_error(error: &ClientError) -> i32 {
-    use agent_tui_ipc::error_codes::ErrorCategory;
+    use crate::ipc::error_codes::ErrorCategory;
 
     match error.category() {
         Some(ErrorCategory::InvalidInput) => exit_codes::USAGE,

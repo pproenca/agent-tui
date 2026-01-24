@@ -12,3 +12,4 @@ rule:
   regex: "^&String$"
   inside:
     kind: parameter
+    stopBy: end

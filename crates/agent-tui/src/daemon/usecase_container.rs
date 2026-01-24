@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::time::Instant;
 
 use crate::daemon::metrics::DaemonMetrics;
@@ -14,8 +14,9 @@ use crate::daemon::usecases::{
     KillUseCaseImpl, MetricsUseCaseImpl, MultiselectUseCaseImpl, PtyReadUseCaseImpl,
     PtyWriteUseCaseImpl, RecordStartUseCaseImpl, RecordStatusUseCaseImpl, RecordStopUseCaseImpl,
     ResizeUseCaseImpl, RestartUseCaseImpl, ScrollIntoViewUseCaseImpl, ScrollUseCaseImpl,
-    SelectAllUseCaseImpl, SelectUseCaseImpl, SessionsUseCaseImpl, SnapshotUseCaseImpl,
-    SpawnUseCaseImpl, ToggleUseCaseImpl, TraceUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
+    SelectAllUseCaseImpl, SelectUseCaseImpl, SessionsUseCaseImpl, ShutdownUseCaseImpl,
+    SnapshotUseCaseImpl, SpawnUseCaseImpl, ToggleUseCaseImpl, TraceUseCaseImpl, TypeUseCaseImpl,
+    WaitUseCaseImpl,
 };
 
 /// Container holding all use case implementations.
@@ -95,6 +96,7 @@ pub struct DiagnosticsUseCases<R: SessionRepository + 'static> {
     pub pty_write: PtyWriteUseCaseImpl<R>,
     pub health: HealthUseCaseImpl<R>,
     pub metrics: MetricsUseCaseImpl<R>,
+    pub shutdown: ShutdownUseCaseImpl,
 }
 
 impl<R: SessionRepository + 'static> UseCaseContainer<R> {
@@ -104,6 +106,7 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
         metrics: Arc<DaemonMetrics>,
         start_time: Instant,
         active_connections: Arc<AtomicUsize>,
+        shutdown_flag: Arc<AtomicBool>,
     ) -> Self {
         Self {
             session: SessionUseCases {
@@ -172,6 +175,7 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                     start_time,
                     active_connections,
                 ),
+                shutdown: ShutdownUseCaseImpl::new(shutdown_flag),
             },
             wait: WaitUseCaseImpl::new(repository),
         }

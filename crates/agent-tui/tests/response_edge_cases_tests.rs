@@ -35,7 +35,7 @@ fn test_empty_sessions_array() {
     );
 
     harness
-        .run(&["ls"])
+        .run(&["sessions"])
         .success()
         .stdout(predicate::str::contains("No active sessions"));
 }
@@ -57,7 +57,7 @@ fn test_empty_elements_array() {
 
     // With empty elements, snapshot -i just shows the screen without element list
     harness
-        .run(&["snap", "-i"])
+        .run(&["screen", "-i"])
         .success()
         .stdout(predicate::str::contains("Empty screen"));
 }
@@ -77,7 +77,7 @@ fn test_empty_screen_content() {
         }),
     );
 
-    harness.run(&["snap"]).success();
+    harness.run(&["screen"]).success();
 }
 
 // =============================================================================
@@ -104,7 +104,7 @@ fn test_large_screen_response() {
         }),
     );
 
-    harness.run(&["snap"]).success();
+    harness.run(&["screen"]).success();
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn test_many_elements_response() {
     );
 
     harness
-        .run(&["snap", "-i"])
+        .run(&["screen", "-i"])
         .success()
         .stdout(predicate::str::contains("@el0"))
         .stdout(predicate::str::contains("@el99"));
@@ -163,7 +163,7 @@ fn test_unicode_in_screen_content() {
     );
 
     harness
-        .run(&["snap"])
+        .run(&["screen"])
         .success()
         .stdout(predicate::str::contains("世界"))
         .stdout(predicate::str::contains("こんにちは"));
@@ -202,7 +202,7 @@ fn test_unicode_in_element_labels() {
     );
 
     harness
-        .run(&["snap", "-i"])
+        .run(&["screen", "-i"])
         .success()
         .stdout(predicate::str::contains("送信"));
 }
@@ -211,7 +211,7 @@ fn test_unicode_in_element_labels() {
 fn test_unicode_in_fill_value() {
     let harness = TestHarness::new();
 
-    harness.run(&["fill", "@inp1", "Здравствуйте"]).success();
+    harness.run(&["action", "@inp1", "Здравствуйте"]).success();
 
     let req = harness.last_request_for("fill").unwrap();
     assert_eq!(
@@ -238,7 +238,7 @@ fn test_warning_field_in_click_response() {
     );
 
     harness
-        .run(&["click", "@btn1"])
+        .run(&["action", "@btn1"])
         .success()
         .stderr(predicate::str::contains("obscured"));
 }
@@ -258,7 +258,7 @@ fn test_warning_field_in_fill_response() {
     );
 
     harness
-        .run(&["fill", "@btn1", "test"])
+        .run(&["action", "@btn1", "test"])
         .success()
         .stderr(predicate::str::contains("button"));
 }
@@ -277,7 +277,7 @@ fn test_no_warning_when_field_absent() {
 
     // No warning in output
     harness
-        .run(&["click", "@btn1"])
+        .run(&["action", "@btn1"])
         .success()
         .stdout(predicate::str::contains("Clicked"));
 }
@@ -309,7 +309,7 @@ fn test_null_active_session() {
 
     // Should show sessions without "(active)" marker
     harness
-        .run(&["ls"])
+        .run(&["sessions"])
         .success()
         .stdout(predicate::str::contains("session-1"));
 }
@@ -330,7 +330,7 @@ fn test_null_cursor_position() {
     );
 
     // Should handle null cursor gracefully
-    harness.run(&["snap"]).success();
+    harness.run(&["screen"]).success();
 }
 
 // =============================================================================
@@ -353,7 +353,7 @@ fn test_newlines_in_screen_preserved() {
     );
 
     harness
-        .run(&["snap"])
+        .run(&["screen"])
         .success()
         .stdout(predicate::str::contains("Line 1"))
         .stdout(predicate::str::contains("Line 2"))
@@ -376,7 +376,7 @@ fn test_tabs_in_screen_content() {
     );
 
     harness
-        .run(&["snap"])
+        .run(&["screen"])
         .success()
         .stdout(predicate::str::contains("Column1"));
 }
@@ -397,7 +397,7 @@ fn test_ansi_escape_sequences_stripped_when_requested() {
     );
 
     // Request with strip_ansi
-    harness.run(&["snap", "--strip-ansi"]).success();
+    harness.run(&["screen", "--strip-ansi"]).success();
 
     let req = harness.last_request_for("snapshot").unwrap();
     assert_eq!(req.params.as_ref().unwrap()["strip_ansi"], true);
@@ -457,7 +457,7 @@ fn test_unknown_element_type_handled() {
 
     // Should display unknown type without crashing
     harness
-        .run(&["snap", "-i"])
+        .run(&["screen", "-i"])
         .success()
         .stdout(predicate::str::contains("@unknown1"));
 }
@@ -488,7 +488,7 @@ fn test_json_output_preserves_structure() {
     );
 
     harness
-        .run(&["-f", "json", "snap"])
+        .run(&["-f", "json", "screen"])
         .success()
         .stdout(predicate::str::contains("\"session_id\""))
         .stdout(predicate::str::contains("\"elements\""))

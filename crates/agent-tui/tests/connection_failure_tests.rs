@@ -73,7 +73,7 @@ fn test_daemon_disconnect_on_snapshot() {
     harness.set_response("snapshot", MockResponse::Disconnect);
 
     harness
-        .run(&["snap"])
+        .run(&["screen"])
         .failure()
         .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
 }
@@ -199,7 +199,7 @@ fn test_different_commands_independent_failure() {
 
     // sessions should still work (different connection)
     harness
-        .run(&["ls"])
+        .run(&["sessions"])
         .success()
         .stdout(predicate::str::contains("No active sessions"));
 }

@@ -1096,6 +1096,17 @@ pub struct AssertOutput {
     pub condition: String,
 }
 
+/// Input for shutdown operation.
+#[derive(Debug, Clone, Default)]
+pub struct ShutdownInput;
+
+/// Output for shutdown operation.
+#[derive(Debug, Clone)]
+pub struct ShutdownOutput {
+    /// Whether the shutdown was acknowledged.
+    pub acknowledged: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

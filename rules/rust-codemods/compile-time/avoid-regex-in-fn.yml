@@ -17,6 +17,7 @@ rule:
     any:
       - inside:
           kind: macro_invocation
+          stopBy: end
       - inside:
           pattern: $LOCK.get_or_init($$$)
           stopBy: end

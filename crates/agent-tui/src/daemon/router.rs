@@ -170,6 +170,10 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
                 &self.usecases.diagnostics.pty_write,
                 request,
             ),
+            "shutdown" => handlers::diagnostics::handle_shutdown_uc(
+                &self.usecases.diagnostics.shutdown,
+                request,
+            ),
 
             "screen" => RpcResponse::error(
                 request.id,
@@ -192,7 +196,7 @@ mod tests {
     use crate::daemon::metrics::DaemonMetrics;
     use crate::daemon::session::SessionManager;
     use std::sync::Arc;
-    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::{AtomicBool, AtomicUsize};
     use std::time::Instant;
 
     fn create_test_usecases() -> UseCaseContainer<SessionManager> {
@@ -200,7 +204,14 @@ mod tests {
         let metrics = Arc::new(DaemonMetrics::new());
         let start_time = Instant::now();
         let active_connections = Arc::new(AtomicUsize::new(0));
-        UseCaseContainer::new(session_manager, metrics, start_time, active_connections)
+        let shutdown_flag = Arc::new(AtomicBool::new(false));
+        UseCaseContainer::new(
+            session_manager,
+            metrics,
+            start_time,
+            active_connections,
+            shutdown_flag,
+        )
     }
 
     #[test]
@@ -354,5 +365,20 @@ mod tests {
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert_eq!(parsed["result"]["passed"], false);
         assert_eq!(parsed["result"]["condition"], "session:nonexistent");
+    }
+
+    #[test]
+    fn test_router_shutdown_returns_acknowledged() {
+        let usecases = create_test_usecases();
+        let router = Router::new(&usecases);
+
+        let request = RpcRequest::new(1, "shutdown".to_string(), None);
+        let response = router.route(request);
+
+        let json_str = serde_json::to_string(&response).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        assert!(parsed.get("error").is_none() || parsed["error"].is_null());
+        assert_eq!(parsed["result"]["acknowledged"], true);
     }
 }

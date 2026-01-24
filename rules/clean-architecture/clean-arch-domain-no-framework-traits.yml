@@ -1,0 +1,22 @@
+id: clean-arch-domain-no-framework-traits
+language: rust
+severity: error
+message: "Domain types should not implement framework traits directly. Use adapter layer for trait implementations."
+note: |
+  Clean Architecture: Domain types should be framework-agnostic.
+  - Serialize/Deserialize: Implement in adapter layer DTOs
+  - FromRequest/IntoResponse: Web framework concerns belong in adapters
+  - sqlx traits: Database concerns belong in infrastructure
+files:
+  - "crates/agent-tui/src/daemon/domain/**/*.rs"
+rule:
+  kind: impl_item
+  has:
+    kind: type_identifier
+    any:
+      - regex: "^Serialize$"
+      - regex: "^Deserialize$"
+      - regex: "^FromRequest$"
+      - regex: "^IntoResponse$"
+      - regex: "^FromRow$"
+    stopBy: end

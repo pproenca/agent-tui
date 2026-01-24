@@ -139,11 +139,11 @@ fn test_sequence_with_malformed() {
     );
 
     // First call fails
-    harness.run(&["ls"]).failure();
+    harness.run(&["sessions"]).failure();
 
     // Second call succeeds
     harness
-        .run(&["ls"])
+        .run(&["sessions"])
         .success()
         .stdout(predicate::str::contains("No active sessions"));
 }
@@ -240,10 +240,10 @@ fn test_transient_failure_then_success_pattern() {
     );
 
     // Without retry logic in CLI, each call is independent
-    harness.run(&["click", "@btn1"]).failure();
-    harness.run(&["click", "@btn1"]).failure();
+    harness.run(&["action", "@btn1"]).failure();
+    harness.run(&["action", "@btn1"]).failure();
     harness
-        .run(&["click", "@btn1"])
+        .run(&["action", "@btn1"])
         .success()
         .stdout(predicate::str::contains("Clicked"));
 
@@ -264,9 +264,9 @@ fn test_permanent_failure_pattern() {
     );
 
     // Should fail consistently
-    harness.run(&["click", "@missing"]).failure();
-    harness.run(&["click", "@missing"]).failure();
-    harness.run(&["click", "@missing"]).failure();
+    harness.run(&["action", "@missing"]).failure();
+    harness.run(&["action", "@missing"]).failure();
+    harness.run(&["action", "@missing"]).failure();
 
     assert_eq!(harness.call_count("click"), 3);
 }
@@ -280,7 +280,7 @@ fn test_call_count_for_method() {
     let harness = TestHarness::new();
 
     harness.run(&["status"]).success();
-    harness.run(&["ls"]).success();
+    harness.run(&["sessions"]).success();
     harness.run(&["status"]).success();
     harness.run(&["status"]).success();
 
@@ -293,9 +293,9 @@ fn test_call_count_for_method() {
 fn test_nth_call_params_tracking() {
     let harness = TestHarness::new();
 
-    harness.run(&["click", "@btn1"]).success();
-    harness.run(&["click", "@btn2"]).success();
-    harness.run(&["click", "@btn3"]).success();
+    harness.run(&["action", "@btn1"]).success();
+    harness.run(&["action", "@btn2"]).success();
+    harness.run(&["action", "@btn3"]).success();
 
     let first = harness.last_request_for("click").unwrap();
     // last_request_for returns the last call, not first

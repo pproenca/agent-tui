@@ -185,8 +185,8 @@ mod tests {
     fn test_harness_records_requests() {
         let harness = TestHarness::new();
 
-        // Run health command which should contact the daemon
-        let _ = harness.run(&["status"]);
+        // Run sessions --status command which should contact the daemon
+        let _ = harness.run(&["sessions", "--status"]);
 
         // Verify the health method was called
         let requests = harness.get_requests();
@@ -212,9 +212,9 @@ mod tests {
             }),
         );
 
-        // Run health command
+        // Run sessions --status command which calls health
         harness
-            .run(&["status"])
+            .run(&["sessions", "--status"])
             .success()
             .stdout(predicate::str::contains("degraded"));
     }

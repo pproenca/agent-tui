@@ -182,7 +182,7 @@ jobs:
           echo "DAEMON_PID=$DAEMON_PID" >> $GITHUB_ENV
           # Wait for daemon to be ready with health check polling
           for i in $(seq 1 30); do
-            if ./bin/agent-tui status 2>/dev/null; then
+            if ./bin/agent-tui daemon status 2>/dev/null; then
               echo "Daemon ready after $i attempts"
               break
             fi
@@ -194,22 +194,22 @@ jobs:
           done
 
       - name: Test status command
-        run: agent-tui status
+        run: agent-tui daemon status
 
       - name: Test run and kill
         run: |
           agent-tui run bash
           sleep 1
-          agent-tui ls
+          agent-tui sessions
           agent-tui kill
 
       - name: Test basic workflow
         run: |
           agent-tui run bash
-          agent-tui key -t "echo 'test'"
-          agent-tui key Enter
+          agent-tui input "echo 'test'"
+          agent-tui input Enter
           agent-tui wait "test"
-          agent-tui snap
+          agent-tui screen
           agent-tui kill
 
       - name: Cleanup daemon

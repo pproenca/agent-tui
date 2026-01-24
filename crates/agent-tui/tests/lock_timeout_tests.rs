@@ -34,7 +34,7 @@ fn test_lock_timeout_returns_retryable_error() {
 
     // Error should indicate it's retryable
     harness
-        .run(&["click", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .failure()
         .stderr(predicate::str::contains("transient"))
         .stderr(predicate::str::contains("retry"));
@@ -58,7 +58,7 @@ fn test_lock_timeout_has_correct_category() {
 
     // In JSON format, verify the category is present
     harness
-        .run(&["-f", "json", "snap"])
+        .run(&["-f", "json", "screen"])
         .failure()
         .stderr(predicate::str::contains("lock"));
 }
@@ -81,7 +81,7 @@ fn test_lock_timeout_includes_session_context() {
 
     // The error message or context should reference the session
     harness
-        .run(&["fill", "@inp1", "test"])
+        .run(&["action", "@inp1", "fill", "test"])
         .failure()
         .stderr(predicate::str::contains("lock timeout"));
 }
@@ -91,7 +91,7 @@ fn test_lock_timeout_different_operations() {
     let harness = TestHarness::new();
 
     // Test that lock timeout can occur on various operations
-    let operations = vec!["click", "type", "fill", "snap"];
+    let operations = vec!["click", "type", "fill", "screen"];
 
     for op in operations {
         harness.set_response(
@@ -109,13 +109,13 @@ fn test_lock_timeout_different_operations() {
 
     // Verify click lock timeout
     harness
-        .run(&["click", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .failure()
         .stderr(predicate::str::contains("lock timeout"));
 
-    // Verify type lock timeout (via key --type)
+    // Verify type lock timeout (via input)
     harness
-        .run(&["key", "--type", "hello"])
+        .run(&["input", "hello"])
         .failure()
         .stderr(predicate::str::contains("lock timeout"));
 }
@@ -149,12 +149,12 @@ fn test_client_retries_on_lock_timeout() {
 
     // First call fails with lock timeout
     harness
-        .run(&["click", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .failure()
         .stderr(predicate::str::contains("lock timeout"));
 
     // Second call succeeds
-    harness.run(&["click", "@btn1"]).success();
+    harness.run(&["action", "@btn1", "click"]).success();
 
     // Verify two calls were made
     assert_eq!(harness.call_count("click"), 2);
@@ -180,7 +180,7 @@ fn test_persistent_lock_timeout() {
     // Multiple calls should all fail with lock timeout
     for _ in 0..3 {
         harness
-            .run(&["snap"])
+            .run(&["screen"])
             .failure()
             .stderr(predicate::str::contains("lock timeout"));
     }
@@ -210,7 +210,7 @@ fn test_lock_timeout_shows_suggestion() {
     );
 
     harness
-        .run(&["click", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .failure()
         .stderr(predicate::str::contains("Wait and retry"));
 }
@@ -233,7 +233,7 @@ fn test_lock_timeout_json_format() {
 
     // JSON format should show structured error information
     harness
-        .run(&["-f", "json", "click", "@btn1"])
+        .run(&["-f", "json", "action", "@btn1", "click"])
         .failure()
         .stderr(predicate::str::contains("-32006"))
         .stderr(predicate::str::contains("lock timeout"));

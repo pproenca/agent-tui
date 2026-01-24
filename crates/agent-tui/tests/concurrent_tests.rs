@@ -24,7 +24,7 @@ fn test_parallel_snapshots_same_session() {
     let handles: Vec<_> = (0..4)
         .map(|_| {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["snap"]).success())
+            thread::spawn(move || harness.run(&["screen"]).success())
         })
         .collect();
 
@@ -44,7 +44,7 @@ fn test_parallel_snapshots_with_different_options() {
 
     // Configure snapshot response with elements
     harness.set_success_response(
-        "snap",
+        "screen",
         json!({
             "session_id": TEST_SESSION_ID,
             "screen": "Test screen content\n",
@@ -59,19 +59,19 @@ fn test_parallel_snapshots_with_different_options() {
     let handles = vec![
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["snap"]))
+            thread::spawn(move || harness.run(&["screen"]))
         },
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["snap", "-i"]))
+            thread::spawn(move || harness.run(&["screen", "-i"]))
         },
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["snap", "--include-cursor"]))
+            thread::spawn(move || harness.run(&["screen", "--include-cursor"]))
         },
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["-f", "json", "snap"]))
+            thread::spawn(move || harness.run(&["-f", "json", "screen"]))
         },
     ];
 
@@ -96,7 +96,7 @@ fn test_parallel_type_commands() {
         .into_iter()
         .map(|text| {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["key", "--type", text]).success())
+            thread::spawn(move || harness.run(&["input", text]).success())
         })
         .collect();
 
@@ -189,15 +189,15 @@ fn test_mixed_commands_parallel() {
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["ls"]))
+            thread::spawn(move || h.run(&["sessions"]))
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["snap"]))
+            thread::spawn(move || h.run(&["screen"]))
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["click", "@btn1"]))
+            thread::spawn(move || h.run(&["action", "@btn1"]))
         },
     ];
 
@@ -231,7 +231,7 @@ fn test_concurrent_errors_isolated() {
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["click", "@missing"]).failure())
+            thread::spawn(move || h.run(&["action", "@missing"]).failure())
         },
         {
             let h = Arc::clone(&harness);
@@ -239,7 +239,7 @@ fn test_concurrent_errors_isolated() {
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["click", "@missing"]).failure())
+            thread::spawn(move || h.run(&["action", "@missing"]).failure())
         },
     ];
 
@@ -284,11 +284,11 @@ fn test_concurrent_with_delays() {
             },
             {
                 let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["ls"]).success())
+                thread::spawn(move || h.run(&["sessions"]).success())
             },
             {
                 let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["snap"]).success())
+                thread::spawn(move || h.run(&["screen"]).success())
             },
         ];
 
@@ -367,7 +367,7 @@ fn test_concurrent_pty_read_write_no_deadlock() {
                     if i % 2 == 0 {
                         h.run(&["status"]) // Simulates read path
                     } else {
-                        h.run(&["key", "--type", "test"]) // Simulates write path
+                        h.run(&["input", "test"]) // Simulates write path
                     }
                 })
             })
@@ -405,7 +405,7 @@ fn test_parallel_dbl_click_same_session() {
     let handles: Vec<_> = (0..4)
         .map(|_| {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["click", "-2", "@btn1"]).success())
+            thread::spawn(move || h.run(&["action", "-2", "@btn1"]).success())
         })
         .collect();
 
@@ -458,7 +458,7 @@ fn test_high_contention_lock_recovery() {
     let handles: Vec<_> = (0..8)
         .map(|_| {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["click", "@btn1"]))
+            thread::spawn(move || h.run(&["action", "@btn1"]))
         })
         .collect();
 

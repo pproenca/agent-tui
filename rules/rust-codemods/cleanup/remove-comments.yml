@@ -1,7 +1,11 @@
 id: remove-comments
 language: rust
 severity: hint
-message: Remove comment from code
+message: "Remove comment (run rustfmt after applying)"
+note: |
+  Removes all comments (line and block) including doc comments.
+  The fix may produce formatting issues that require running rustfmt
+  to clean up indentation after applying.
 rule:
   any:
     - kind: line_comment

@@ -1,10 +1,6 @@
 use crate::core::{Component, Element, component_to_element, find_element_by_ref};
 use crate::terminal::{CursorPosition, ScreenBuffer, VirtualTerminal};
 
-/// Manages terminal emulation state and element detection.
-///
-/// Wraps VirtualTerminal and maintains a cache of detected UI elements,
-/// separate from PTY lifecycle concerns.
 pub struct TerminalState {
     terminal: VirtualTerminal,
     cached_elements: Vec<Element>,

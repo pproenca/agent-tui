@@ -9,13 +9,11 @@ use super::session_types::SessionId;
 use super::session_types::SessionInfo;
 use super::session_types::TraceEntry;
 
-/// Error returned when ScrollDirection parsing fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScrollDirectionError {
     pub invalid_value: String,
 }
 
-/// Error returned when WaitConditionType parsing fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WaitConditionTypeError {
     pub invalid_value: String,
@@ -33,30 +31,18 @@ impl fmt::Display for WaitConditionTypeError {
 
 impl std::error::Error for WaitConditionTypeError {}
 
-/// Type of wait condition for the wait use case.
-///
-/// This represents the kind of condition to wait for, without the associated data.
-/// The actual condition data is provided separately.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WaitConditionType {
-    /// Wait for specific text to appear on screen.
     Text,
-    /// Wait for an element to exist.
     Element,
-    /// Wait for an element to be focused.
     Focused,
-    /// Wait for an element to disappear.
     NotVisible,
-    /// Wait for screen to stabilize (no changes).
     Stable,
-    /// Wait for specific text to disappear.
     TextGone,
-    /// Wait for an element to have a specific value.
     Value,
 }
 
 impl WaitConditionType {
-    /// Parse a wait condition type from a string (case-insensitive).
     pub fn parse(s: &str) -> Result<Self, WaitConditionTypeError> {
         match s.to_lowercase().as_str() {
             "text" => Ok(Self::Text),
@@ -72,7 +58,6 @@ impl WaitConditionType {
         }
     }
 
-    /// Get the condition type as a lowercase string.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Text => "text",
@@ -85,7 +70,6 @@ impl WaitConditionType {
         }
     }
 
-    /// Returns true if this condition requires a target element reference.
     pub fn requires_target(&self) -> bool {
         matches!(
             self,
@@ -93,7 +77,6 @@ impl WaitConditionType {
         )
     }
 
-    /// Returns true if this condition requires text to match.
     pub fn requires_text(&self) -> bool {
         matches!(self, Self::Text | Self::TextGone | Self::Value)
     }
@@ -125,7 +108,6 @@ impl fmt::Display for ScrollDirectionError {
 
 impl std::error::Error for ScrollDirectionError {}
 
-/// Direction for scrolling operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScrollDirection {
     Up,
@@ -135,7 +117,6 @@ pub enum ScrollDirection {
 }
 
 impl ScrollDirection {
-    /// Parse a scroll direction from a string (case-insensitive).
     pub fn parse(s: &str) -> Result<Self, ScrollDirectionError> {
         match s.to_lowercase().as_str() {
             "up" => Ok(Self::Up),
@@ -148,7 +129,6 @@ impl ScrollDirection {
         }
     }
 
-    /// Get the direction as a lowercase string.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Up => "up",
@@ -218,7 +198,6 @@ impl DomainElementType {
         }
     }
 
-    /// Returns true if this element type represents an interactive element.
     pub fn is_interactive(&self) -> bool {
         matches!(
             self,
@@ -232,12 +211,10 @@ impl DomainElementType {
         )
     }
 
-    /// Returns true if this element type can receive text input.
     pub fn accepts_input(&self) -> bool {
         matches!(self, DomainElementType::Input)
     }
 
-    /// Returns true if this element type can be toggled.
     pub fn is_toggleable(&self) -> bool {
         matches!(self, DomainElementType::Checkbox | DomainElementType::Radio)
     }
@@ -258,51 +235,38 @@ pub struct DomainElement {
 }
 
 impl DomainElement {
-    /// Returns true if this element is interactive (can be clicked, typed into, etc.).
     pub fn is_interactive(&self) -> bool {
         self.element_type.is_interactive()
     }
 
-    /// Returns true if this element can be clicked.
-    ///
-    /// An element can be clicked if it's interactive and not disabled.
     pub fn can_click(&self) -> bool {
         self.is_interactive() && !self.is_disabled()
     }
 
-    /// Returns true if this element can receive text input.
     pub fn can_type(&self) -> bool {
         self.element_type.accepts_input() && !self.is_disabled()
     }
 
-    /// Returns true if this element is disabled.
     pub fn is_disabled(&self) -> bool {
         self.disabled.unwrap_or(false)
     }
 
-    /// Returns true if this element is enabled (not disabled).
     pub fn is_enabled(&self) -> bool {
         !self.is_disabled()
     }
 
-    /// Returns true if this element is currently focused.
     pub fn is_focused(&self) -> bool {
         self.focused
     }
 
-    /// Returns true if this element is currently selected.
     pub fn is_selected(&self) -> bool {
         self.selected
     }
 
-    /// Returns true if this element is checked (for checkboxes/radios).
-    ///
-    /// Returns None if the element doesn't support checked state.
     pub fn is_checked(&self) -> Option<bool> {
         self.checked
     }
 
-    /// Returns the display text for this element (label or value).
     pub fn display_text(&self) -> Option<&str> {
         self.label.as_deref().or(self.value.as_deref())
     }
@@ -356,7 +320,6 @@ pub struct AccessibilitySnapshotInput {
     pub interactive_only: bool,
 }
 
-/// Error returned when DomainBounds validation fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DomainBoundsError {
     pub message: String,
@@ -370,10 +333,6 @@ impl fmt::Display for DomainBoundsError {
 
 impl std::error::Error for DomainBoundsError {}
 
-/// Role of a UI element in the accessibility tree.
-///
-/// This mirrors the VOM Role enum in agent-tui-core but is defined
-/// independently to maintain domain layer isolation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DomainRole {
     Button,
@@ -394,7 +353,6 @@ pub enum DomainRole {
 }
 
 impl DomainRole {
-    /// Returns the role as a lowercase string for serialization.
     pub fn as_str(&self) -> &'static str {
         match self {
             DomainRole::Button => "button",
@@ -415,7 +373,6 @@ impl DomainRole {
         }
     }
 
-    /// Returns true if this role represents an interactive element.
     pub fn is_interactive(&self) -> bool {
         matches!(
             self,
@@ -436,11 +393,6 @@ impl fmt::Display for DomainRole {
     }
 }
 
-/// Bounding rectangle for UI elements with validation.
-///
-/// # Invariants
-/// - Width must be at least 1
-/// - Height must be at least 1
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DomainBounds {
     x: u16,
@@ -450,10 +402,6 @@ pub struct DomainBounds {
 }
 
 impl DomainBounds {
-    /// Create a new DomainBounds with validation.
-    ///
-    /// # Errors
-    /// Returns `DomainBoundsError` if width or height is zero.
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Result<Self, DomainBoundsError> {
         if width == 0 {
             return Err(DomainBoundsError {
@@ -473,10 +421,6 @@ impl DomainBounds {
         })
     }
 
-    /// Create DomainBounds without validation.
-    ///
-    /// # Safety
-    /// Use only when bounds are known to be valid (e.g., from trusted sources).
     pub fn new_unchecked(x: u16, y: u16, width: u16, height: u16) -> Self {
         Self {
             x,
@@ -486,27 +430,22 @@ impl DomainBounds {
         }
     }
 
-    /// Get the x coordinate.
     pub fn x(&self) -> u16 {
         self.x
     }
 
-    /// Get the y coordinate.
     pub fn y(&self) -> u16 {
         self.y
     }
 
-    /// Get the width.
     pub fn width(&self) -> u16 {
         self.width
     }
 
-    /// Get the height.
     pub fn height(&self) -> u16 {
         self.height
     }
 
-    /// Check if a point is contained within these bounds.
     pub fn contains(&self, x: u16, y: u16) -> bool {
         x >= self.x
             && x < self.x.saturating_add(self.width)
@@ -969,21 +908,15 @@ pub struct SessionInput {
     pub session_id: Option<SessionId>,
 }
 
-/// Input for attaching to a session.
 #[derive(Debug, Clone)]
 pub struct AttachInput {
-    /// Session ID to attach to (required).
     pub session_id: SessionId,
 }
 
-/// Output for attach operation.
 #[derive(Debug, Clone)]
 pub struct AttachOutput {
-    /// Session ID that was attached.
     pub session_id: SessionId,
-    /// Whether the attach was successful.
     pub success: bool,
-    /// Human-readable message about the result.
     pub message: String,
 }
 
@@ -1016,44 +949,31 @@ pub struct MetricsOutput {
     pub session_count: usize,
 }
 
-/// Input for cleanup operation.
 #[derive(Debug, Clone)]
 pub struct CleanupInput {
-    /// If true, clean all sessions. If false, only clean non-running sessions.
     pub all: bool,
 }
 
-/// A failed cleanup attempt for a single session.
 #[derive(Debug, Clone)]
 pub struct CleanupFailure {
-    /// The session ID that failed to clean up.
     pub session_id: SessionId,
-    /// The error message describing why cleanup failed.
     pub error: String,
 }
 
-/// Output for cleanup operation.
 #[derive(Debug, Clone)]
 pub struct CleanupOutput {
-    /// Number of sessions successfully cleaned.
     pub cleaned: usize,
-    /// Sessions that failed to clean up.
     pub failures: Vec<CleanupFailure>,
 }
 
-/// The type of assertion to perform.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssertConditionType {
-    /// Assert that text is visible on screen.
     Text,
-    /// Assert that an element exists and is visible.
     Element,
-    /// Assert that a session exists and is running.
     Session,
 }
 
 impl AssertConditionType {
-    /// Parse a condition type string.
     pub fn parse(s: &str) -> Result<Self, String> {
         match s.to_lowercase().as_str() {
             "text" => Ok(Self::Text),
@@ -1066,7 +986,6 @@ impl AssertConditionType {
         }
     }
 
-    /// Get the string representation.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Text => "text",
@@ -1076,45 +995,30 @@ impl AssertConditionType {
     }
 }
 
-/// Input for assert operation.
 #[derive(Debug, Clone)]
 pub struct AssertInput {
-    /// Session to use for text/element checks (not needed for session condition).
     pub session_id: Option<SessionId>,
-    /// The type of condition to assert.
     pub condition_type: AssertConditionType,
-    /// The value to check (text pattern, element ref, or session id).
     pub value: String,
 }
 
-/// Output for assert operation.
 #[derive(Debug, Clone)]
 pub struct AssertOutput {
-    /// Whether the assertion passed.
     pub passed: bool,
-    /// The full condition string (e.g., "text:Hello").
     pub condition: String,
 }
 
-/// Input for shutdown operation.
 #[derive(Debug, Clone, Default)]
 pub struct ShutdownInput;
 
-/// Output for shutdown operation.
 #[derive(Debug, Clone)]
 pub struct ShutdownOutput {
-    /// Whether the shutdown was acknowledged.
     pub acknowledged: bool,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ============================================================
-    // TDD RED PHASE: ScrollDirection Enum Tests
-    // These tests should FAIL until ScrollDirection is implemented.
-    // ============================================================
 
     mod scroll_direction_tests {
         use super::*;
@@ -1186,10 +1090,6 @@ mod tests {
             assert_eq!(format!("{}", ScrollDirection::Down), "down");
         }
     }
-
-    // ============================================================
-    // TDD GREEN PHASE: WaitConditionType Enum Tests
-    // ============================================================
 
     mod wait_condition_type_tests {
         use super::*;
@@ -1311,10 +1211,6 @@ mod tests {
         }
     }
 
-    // ============================================================
-    // TDD GREEN PHASE: DomainBounds Validation Tests
-    // ============================================================
-
     mod domain_bounds_tests {
         use super::*;
 
@@ -1358,18 +1254,17 @@ mod tests {
         #[test]
         fn test_domain_bounds_contains() {
             let bounds = DomainBounds::new(10, 10, 20, 10).expect("Valid bounds");
-            assert!(bounds.contains(10, 10)); // Top-left corner
-            assert!(bounds.contains(15, 15)); // Middle
-            assert!(bounds.contains(29, 19)); // Bottom-right inside
-            assert!(!bounds.contains(30, 10)); // Just outside right
-            assert!(!bounds.contains(10, 20)); // Just outside bottom
-            assert!(!bounds.contains(9, 10)); // Just outside left
-            assert!(!bounds.contains(10, 9)); // Just outside top
+            assert!(bounds.contains(10, 10));
+            assert!(bounds.contains(15, 15));
+            assert!(bounds.contains(29, 19));
+            assert!(!bounds.contains(30, 10));
+            assert!(!bounds.contains(10, 20));
+            assert!(!bounds.contains(9, 10));
+            assert!(!bounds.contains(10, 9));
         }
 
         #[test]
         fn test_domain_bounds_unchecked() {
-            // new_unchecked allows invalid bounds (for trusted sources)
             let bounds = DomainBounds::new_unchecked(0, 0, 0, 0);
             assert_eq!(bounds.width(), 0);
             assert_eq!(bounds.height(), 0);
@@ -1382,16 +1277,11 @@ mod tests {
         }
     }
 
-    // ============================================================
-    // DomainElementType Behavior Tests
-    // ============================================================
-
     mod domain_element_type_tests {
         use super::*;
 
         #[test]
         fn test_element_type_is_interactive() {
-            // Interactive types
             assert!(DomainElementType::Button.is_interactive());
             assert!(DomainElementType::Input.is_interactive());
             assert!(DomainElementType::Checkbox.is_interactive());
@@ -1400,7 +1290,6 @@ mod tests {
             assert!(DomainElementType::MenuItem.is_interactive());
             assert!(DomainElementType::Link.is_interactive());
 
-            // Non-interactive types
             assert!(!DomainElementType::ListItem.is_interactive());
             assert!(!DomainElementType::Spinner.is_interactive());
             assert!(!DomainElementType::Progress.is_interactive());
@@ -1421,10 +1310,6 @@ mod tests {
             assert!(!DomainElementType::Input.is_toggleable());
         }
     }
-
-    // ============================================================
-    // DomainElement Behavior Tests
-    // ============================================================
 
     mod domain_element_tests {
         use super::*;

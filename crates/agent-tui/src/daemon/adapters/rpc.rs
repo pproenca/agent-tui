@@ -19,12 +19,6 @@ use crate::daemon::domain::{
 };
 use crate::daemon::error::{DomainError, SessionError};
 
-/// Convert an optional string session ID to an optional SessionId.
-///
-/// This handles the conversion from IPC layer strings to domain SessionId:
-/// - None -> None (use active session)
-/// - Some("") or whitespace -> None (treat empty as unspecified)
-/// - Some(id) -> Some(SessionId::new(id))
 pub fn parse_session_id(session: Option<String>) -> Option<SessionId> {
     session.and_then(|s| {
         if s.trim().is_empty() {
@@ -35,9 +29,6 @@ pub fn parse_session_id(session: Option<String>) -> Option<SessionId> {
     })
 }
 
-/// Parse SessionInput from RpcRequest.
-///
-/// Extracts the optional session parameter and wraps it in a SessionInput.
 pub fn parse_session_input(request: &RpcRequest) -> SessionInput {
     let session_id = parse_session_id(request.param_str("session").map(String::from));
     SessionInput { session_id }
@@ -48,7 +39,6 @@ const MAX_TERMINAL_ROWS: u16 = 200;
 const MIN_TERMINAL_COLS: u16 = 10;
 const MIN_TERMINAL_ROWS: u16 = 5;
 
-/// Convert a DomainElement to JSON representation.
 pub fn element_to_json(el: &DomainElement) -> Value {
     json!({
         "ref": el.element_ref,
@@ -69,7 +59,6 @@ pub fn element_to_json(el: &DomainElement) -> Value {
     })
 }
 
-/// Convert a DomainError to an RpcResponse.
 pub fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
     RpcResponse::domain_error(
         id,
@@ -81,12 +70,10 @@ pub fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
     )
 }
 
-/// Convert a SessionError to an RpcResponse.
 pub fn session_error_response(id: u64, err: SessionError) -> RpcResponse {
     domain_error_response(id, &DomainError::from(err))
 }
 
-/// Create a lock timeout error response.
 pub fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
     let err = DomainError::LockTimeout {
         session_id: session_id.map(String::from),
@@ -94,7 +81,6 @@ pub fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
     domain_error_response(id, &err)
 }
 
-/// Parse SpawnInput from RpcRequest using shared params type.
 #[allow(clippy::result_large_err)]
 pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse> {
     let rpc_params: params::SpawnParams = request
@@ -107,7 +93,6 @@ pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse
             })
         })?;
 
-    // Use "bash" as default if command is empty
     let command = if rpc_params.command.is_empty() {
         "bash".to_string()
     } else {
@@ -125,7 +110,6 @@ pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse
     })
 }
 
-/// Convert SpawnOutput to RpcResponse.
 pub fn spawn_output_to_response(id: u64, output: SpawnOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -136,9 +120,7 @@ pub fn spawn_output_to_response(id: u64, output: SpawnOutput) -> RpcResponse {
     )
 }
 
-/// Parse SnapshotInput from RpcRequest using shared params type.
 pub fn parse_snapshot_input(request: &RpcRequest) -> SnapshotInput {
-    // Deserialize to shared params type, then convert to domain type
     let rpc_params: params::SnapshotParams = request
         .params
         .as_ref()
@@ -154,9 +136,6 @@ pub fn parse_snapshot_input(request: &RpcRequest) -> SnapshotInput {
     }
 }
 
-/// Convert SnapshotOutput to RpcResponse.
-///
-/// If `strip_ansi` is true, ANSI escape codes will be removed from the screen output.
 pub fn snapshot_output_to_response(
     id: u64,
     output: SnapshotOutput,
@@ -190,7 +169,6 @@ pub fn snapshot_output_to_response(
     RpcResponse::success(id, result)
 }
 
-/// Parse ClickInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_click_input(request: &RpcRequest) -> Result<ClickInput, RpcResponse> {
     let element_ref = request.require_str("ref")?.to_string();
@@ -201,7 +179,6 @@ pub fn parse_click_input(request: &RpcRequest) -> Result<ClickInput, RpcResponse
     })
 }
 
-/// Parse FillInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_fill_input(request: &RpcRequest) -> Result<FillInput, RpcResponse> {
     let element_ref = request.require_str("ref")?.to_string();
@@ -214,7 +191,6 @@ pub fn parse_fill_input(request: &RpcRequest) -> Result<FillInput, RpcResponse> 
     })
 }
 
-/// Parse FindInput from RpcRequest using shared params type.
 pub fn parse_find_input(request: &RpcRequest) -> FindInput {
     let rpc_params: params::FindParams = request
         .params
@@ -234,7 +210,6 @@ pub fn parse_find_input(request: &RpcRequest) -> FindInput {
     }
 }
 
-/// Parse KeystrokeInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_keystroke_input(request: &RpcRequest) -> Result<KeystrokeInput, RpcResponse> {
     let key = request.require_str("key")?.to_string();
@@ -245,7 +220,6 @@ pub fn parse_keystroke_input(request: &RpcRequest) -> Result<KeystrokeInput, Rpc
     })
 }
 
-/// Parse TypeInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_type_input(request: &RpcRequest) -> Result<TypeInput, RpcResponse> {
     let text = request.require_str("text")?.to_string();
@@ -256,7 +230,6 @@ pub fn parse_type_input(request: &RpcRequest) -> Result<TypeInput, RpcResponse> 
     })
 }
 
-/// Parse WaitInput from RpcRequest using shared params type.
 pub fn parse_wait_input(request: &RpcRequest) -> WaitInput {
     let rpc_params: params::WaitParams = request
         .params
@@ -273,7 +246,6 @@ pub fn parse_wait_input(request: &RpcRequest) -> WaitInput {
     }
 }
 
-/// Convert WaitOutput to RpcResponse.
 pub fn wait_output_to_response(id: u64, output: WaitOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -284,7 +256,6 @@ pub fn wait_output_to_response(id: u64, output: WaitOutput) -> RpcResponse {
     )
 }
 
-/// Parse ScrollInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_scroll_input(request: &RpcRequest) -> Result<ScrollInput, RpcResponse> {
     let direction = request.require_str("direction")?.to_string();
@@ -296,7 +267,6 @@ pub fn parse_scroll_input(request: &RpcRequest) -> Result<ScrollInput, RpcRespon
     })
 }
 
-/// Convert KillOutput to RpcResponse.
 pub fn kill_output_to_response(id: u64, output: KillOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -307,7 +277,6 @@ pub fn kill_output_to_response(id: u64, output: KillOutput) -> RpcResponse {
     )
 }
 
-/// Convert SessionsOutput to RpcResponse.
 pub fn sessions_output_to_response(id: u64, output: SessionsOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -318,7 +287,6 @@ pub fn sessions_output_to_response(id: u64, output: SessionsOutput) -> RpcRespon
     )
 }
 
-/// Create a simple success response.
 pub fn success_response(id: u64, message: &str) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -329,7 +297,6 @@ pub fn success_response(id: u64, message: &str) -> RpcResponse {
     )
 }
 
-/// Create a click success response.
 pub fn click_success_response(id: u64, element_ref: &str, warning: Option<&str>) -> RpcResponse {
     let mut result = json!({
         "success": true,
@@ -341,7 +308,6 @@ pub fn click_success_response(id: u64, element_ref: &str, warning: Option<&str>)
     RpcResponse::success(id, result)
 }
 
-/// Create a fill success response.
 pub fn fill_success_response(id: u64, element_ref: &str) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -352,7 +318,6 @@ pub fn fill_success_response(id: u64, element_ref: &str) -> RpcResponse {
     )
 }
 
-/// Parse ResizeInput from RpcRequest using shared params type.
 pub fn parse_resize_input(request: &RpcRequest) -> ResizeInput {
     let rpc_params: params::ResizeParams = request
         .params
@@ -371,7 +336,6 @@ pub fn parse_resize_input(request: &RpcRequest) -> ResizeInput {
     }
 }
 
-/// Convert ResizeOutput to RpcResponse.
 pub fn resize_output_to_response(id: u64, output: ResizeOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -383,7 +347,6 @@ pub fn resize_output_to_response(id: u64, output: ResizeOutput) -> RpcResponse {
     )
 }
 
-/// Convert RestartOutput to RpcResponse.
 pub fn restart_output_to_response(id: u64, output: RestartOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -397,7 +360,6 @@ pub fn restart_output_to_response(id: u64, output: RestartOutput) -> RpcResponse
     )
 }
 
-/// Parse an attach input from an RPC request.
 #[allow(clippy::result_large_err)]
 pub fn parse_attach_input(request: &RpcRequest) -> Result<AttachInput, RpcResponse> {
     let session_id = request.require_str("session")?;
@@ -406,7 +368,6 @@ pub fn parse_attach_input(request: &RpcRequest) -> Result<AttachInput, RpcRespon
     })
 }
 
-/// Convert AttachOutput to RpcResponse.
 pub fn attach_output_to_response(id: u64, output: AttachOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -418,13 +379,11 @@ pub fn attach_output_to_response(id: u64, output: AttachOutput) -> RpcResponse {
     )
 }
 
-/// Parse CleanupInput from RpcRequest.
 pub fn parse_cleanup_input(request: &RpcRequest) -> CleanupInput {
     let all = request.param_bool("all", false);
     CleanupInput { all }
 }
 
-/// Convert CleanupOutput to RpcResponse.
 pub fn cleanup_output_to_response(id: u64, output: CleanupOutput) -> RpcResponse {
     let failures_json: Vec<Value> = output
         .failures
@@ -449,9 +408,6 @@ pub fn cleanup_output_to_response(id: u64, output: CleanupOutput) -> RpcResponse
 
 use crate::daemon::domain::{AssertConditionType, AssertInput, AssertOutput};
 
-/// Parse AssertInput from RpcRequest.
-///
-/// The assert endpoint expects a condition string in the format "type:value".
 #[allow(clippy::result_large_err)]
 pub fn parse_assert_input(request: &RpcRequest) -> Result<AssertInput, RpcResponse> {
     let condition = request.param_str("condition").unwrap_or("");
@@ -482,7 +438,6 @@ pub fn parse_assert_input(request: &RpcRequest) -> Result<AssertInput, RpcRespon
     })
 }
 
-/// Convert AssertOutput to RpcResponse.
 pub fn assert_output_to_response(id: u64, output: AssertOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -493,7 +448,6 @@ pub fn assert_output_to_response(id: u64, output: AssertOutput) -> RpcResponse {
     )
 }
 
-/// Convert ScrollOutput to RpcResponse.
 pub fn scroll_output_to_response(
     id: u64,
     output: ScrollOutput,
@@ -510,7 +464,6 @@ pub fn scroll_output_to_response(
     )
 }
 
-/// Parse CountInput from RpcRequest using shared params type.
 pub fn parse_count_input(request: &RpcRequest) -> CountInput {
     let rpc_params: params::CountParams = request
         .params
@@ -526,16 +479,10 @@ pub fn parse_count_input(request: &RpcRequest) -> CountInput {
     }
 }
 
-/// Convert CountOutput to RpcResponse.
 pub fn count_output_to_response(id: u64, output: CountOutput) -> RpcResponse {
     RpcResponse::success(id, json!({ "count": output.count }))
 }
 
-// ============================================================
-// Diagnostics output adapters
-// ============================================================
-
-/// Convert HealthOutput to RpcResponse.
 pub fn health_output_to_response(id: u64, output: HealthOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -552,7 +499,6 @@ pub fn health_output_to_response(id: u64, output: HealthOutput) -> RpcResponse {
     )
 }
 
-/// Convert MetricsOutput to RpcResponse.
 pub fn metrics_output_to_response(id: u64, output: MetricsOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -568,7 +514,6 @@ pub fn metrics_output_to_response(id: u64, output: MetricsOutput) -> RpcResponse
     )
 }
 
-/// Convert ShutdownOutput to RpcResponse.
 pub fn shutdown_output_to_response(id: u64, output: ShutdownOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -578,7 +523,6 @@ pub fn shutdown_output_to_response(id: u64, output: ShutdownOutput) -> RpcRespon
     )
 }
 
-/// Convert TraceOutput to RpcResponse.
 pub fn trace_output_to_response(id: u64, output: TraceOutput) -> RpcResponse {
     let trace_json: Vec<_> = output
         .entries
@@ -601,7 +545,6 @@ pub fn trace_output_to_response(id: u64, output: TraceOutput) -> RpcResponse {
     )
 }
 
-/// Convert ConsoleOutput to RpcResponse.
 pub fn console_output_to_response(id: u64, output: ConsoleOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -612,7 +555,6 @@ pub fn console_output_to_response(id: u64, output: ConsoleOutput) -> RpcResponse
     )
 }
 
-/// Convert ErrorsOutput to RpcResponse.
 pub fn errors_output_to_response(id: u64, output: ErrorsOutput) -> RpcResponse {
     let errors_json: Vec<_> = output
         .errors
@@ -635,7 +577,6 @@ pub fn errors_output_to_response(id: u64, output: ErrorsOutput) -> RpcResponse {
     )
 }
 
-/// Convert PtyReadOutput to RpcResponse.
 pub fn pty_read_output_to_response(id: u64, output: PtyReadOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -647,7 +588,6 @@ pub fn pty_read_output_to_response(id: u64, output: PtyReadOutput) -> RpcRespons
     )
 }
 
-/// Convert PtyWriteOutput to RpcResponse.
 pub fn pty_write_output_to_response(id: u64, output: PtyWriteOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -659,11 +599,6 @@ pub fn pty_write_output_to_response(id: u64, output: PtyWriteOutput) -> RpcRespo
     )
 }
 
-// ============================================================
-// Recording output adapters
-// ============================================================
-
-/// Convert RecordStartOutput to RpcResponse.
 pub fn record_start_output_to_response(id: u64, output: RecordStartOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -675,7 +610,6 @@ pub fn record_start_output_to_response(id: u64, output: RecordStartOutput) -> Rp
     )
 }
 
-/// Convert RecordStatusOutput to RpcResponse.
 pub fn record_status_output_to_response(id: u64, output: RecordStatusOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -687,7 +621,6 @@ pub fn record_status_output_to_response(id: u64, output: RecordStatusOutput) -> 
     )
 }
 
-/// Convert RecordStopOutput to RpcResponse.
 pub fn record_stop_output_to_response(id: u64, output: RecordStopOutput) -> RpcResponse {
     let recording_data = if output.format == "asciicast" {
         build_asciicast(
@@ -711,11 +644,6 @@ pub fn record_stop_output_to_response(id: u64, output: RecordStopOutput) -> RpcR
     )
 }
 
-// ============================================================
-// Element query output adapters
-// ============================================================
-
-/// Convert FindOutput to RpcResponse.
 pub fn find_output_to_response(id: u64, output: FindOutput) -> RpcResponse {
     let elements_json: Vec<Value> = output.elements.iter().map(element_to_json).collect();
     RpcResponse::success(
@@ -727,7 +655,6 @@ pub fn find_output_to_response(id: u64, output: FindOutput) -> RpcResponse {
     )
 }
 
-/// Convert GetTextOutput to RpcResponse with element_ref.
 pub fn get_text_output_to_response(
     id: u64,
     element_ref: &str,
@@ -739,7 +666,6 @@ pub fn get_text_output_to_response(
     )
 }
 
-/// Convert GetValueOutput to RpcResponse with element_ref.
 pub fn get_value_output_to_response(
     id: u64,
     element_ref: &str,
@@ -751,7 +677,6 @@ pub fn get_value_output_to_response(
     )
 }
 
-/// Convert VisibilityOutput to RpcResponse with element_ref.
 pub fn visibility_output_to_response(
     id: u64,
     element_ref: &str,
@@ -760,7 +685,6 @@ pub fn visibility_output_to_response(
     RpcResponse::success(id, json!({ "ref": element_ref, "visible": output.visible }))
 }
 
-/// Convert FocusCheckOutput to RpcResponse with element_ref.
 pub fn focus_check_output_to_response(
     id: u64,
     element_ref: &str,
@@ -772,7 +696,6 @@ pub fn focus_check_output_to_response(
     )
 }
 
-/// Convert IsEnabledOutput to RpcResponse with element_ref.
 pub fn is_enabled_output_to_response(
     id: u64,
     element_ref: &str,
@@ -784,7 +707,6 @@ pub fn is_enabled_output_to_response(
     )
 }
 
-/// Convert IsCheckedOutput to RpcResponse with element_ref.
 pub fn is_checked_output_to_response(
     id: u64,
     element_ref: &str,
@@ -798,7 +720,6 @@ pub fn is_checked_output_to_response(
     RpcResponse::success(id, response)
 }
 
-/// Convert GetFocusedOutput to RpcResponse.
 pub fn get_focused_output_to_response(id: u64, output: GetFocusedOutput) -> RpcResponse {
     if let Some(el) = output.element {
         RpcResponse::success(
@@ -822,7 +743,6 @@ pub fn get_focused_output_to_response(id: u64, output: GetFocusedOutput) -> RpcR
     }
 }
 
-/// Convert GetTitleOutput to RpcResponse.
 pub fn get_title_output_to_response(id: u64, output: GetTitleOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -833,7 +753,6 @@ pub fn get_title_output_to_response(id: u64, output: GetTitleOutput) -> RpcRespo
     )
 }
 
-/// Convert ToggleOutput to RpcResponse with element_ref.
 pub fn toggle_output_to_response(id: u64, element_ref: &str, output: ToggleOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -841,7 +760,6 @@ pub fn toggle_output_to_response(id: u64, element_ref: &str, output: ToggleOutpu
     )
 }
 
-/// Convert SelectOutput to RpcResponse with element_ref.
 pub fn select_output_to_response(id: u64, element_ref: &str, option: &str) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -849,7 +767,6 @@ pub fn select_output_to_response(id: u64, element_ref: &str, option: &str) -> Rp
     )
 }
 
-/// Convert ScrollIntoViewOutput to RpcResponse with element_ref.
 pub fn scroll_into_view_output_to_response(
     id: u64,
     element_ref: &str,
@@ -875,7 +792,6 @@ pub fn scroll_into_view_output_to_response(
     }
 }
 
-/// Convert MultiselectOutput to RpcResponse with element_ref.
 pub fn multiselect_output_to_response(
     id: u64,
     element_ref: &str,
@@ -887,11 +803,6 @@ pub fn multiselect_output_to_response(
     )
 }
 
-// ============================================================
-// Element-ref based input parsers (require validation)
-// ============================================================
-
-/// Parse DoubleClickInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_double_click_input(request: &RpcRequest) -> Result<DoubleClickInput, RpcResponse> {
     let element_ref = request.require_str("ref")?.to_string();
@@ -902,7 +813,6 @@ pub fn parse_double_click_input(request: &RpcRequest) -> Result<DoubleClickInput
     })
 }
 
-/// Parse FocusInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_focus_input(request: &RpcRequest) -> Result<FocusInput, RpcResponse> {
     let element_ref = request.require_str("ref")?.to_string();
@@ -913,7 +823,6 @@ pub fn parse_focus_input(request: &RpcRequest) -> Result<FocusInput, RpcResponse
     })
 }
 
-/// Parse ClearInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_clear_input(request: &RpcRequest) -> Result<ClearInput, RpcResponse> {
     let element_ref = request.require_str("ref")?.to_string();
@@ -924,7 +833,6 @@ pub fn parse_clear_input(request: &RpcRequest) -> Result<ClearInput, RpcResponse
     })
 }
 
-/// Parse SelectAllInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_select_all_input(request: &RpcRequest) -> Result<SelectAllInput, RpcResponse> {
     let element_ref = request.require_str("ref")?.to_string();
@@ -935,7 +843,6 @@ pub fn parse_select_all_input(request: &RpcRequest) -> Result<SelectAllInput, Rp
     })
 }
 
-/// Parse ScrollIntoViewInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_scroll_into_view_input(
     request: &RpcRequest,
@@ -948,7 +855,6 @@ pub fn parse_scroll_into_view_input(
     })
 }
 
-/// Parse ElementStateInput from RpcRequest (for get_text, get_value, is_visible, etc.).
 #[allow(clippy::result_large_err)]
 pub fn parse_element_state_input(request: &RpcRequest) -> Result<ElementStateInput, RpcResponse> {
     let element_ref = request.require_str("ref")?.to_string();
@@ -959,7 +865,6 @@ pub fn parse_element_state_input(request: &RpcRequest) -> Result<ElementStateInp
     })
 }
 
-/// Parse ToggleInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_toggle_input(request: &RpcRequest) -> Result<ToggleInput, RpcResponse> {
     let element_ref = request.require_str("ref")?.to_string();
@@ -971,7 +876,6 @@ pub fn parse_toggle_input(request: &RpcRequest) -> Result<ToggleInput, RpcRespon
     })
 }
 
-/// Parse SelectInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_select_input(request: &RpcRequest) -> Result<SelectInput, RpcResponse> {
     let element_ref = request.require_str("ref")?.to_string();
@@ -984,7 +888,6 @@ pub fn parse_select_input(request: &RpcRequest) -> Result<SelectInput, RpcRespon
     })
 }
 
-/// Parse MultiselectInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_multiselect_input(request: &RpcRequest) -> Result<MultiselectInput, RpcResponse> {
     let options: Vec<String> = request
@@ -1010,11 +913,6 @@ pub fn parse_multiselect_input(request: &RpcRequest) -> Result<MultiselectInput,
     })
 }
 
-// ============================================================
-// Key input parsers
-// ============================================================
-
-/// Parse KeydownInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_keydown_input(request: &RpcRequest) -> Result<KeydownInput, RpcResponse> {
     let key = request.require_str("key")?.to_string();
@@ -1025,7 +923,6 @@ pub fn parse_keydown_input(request: &RpcRequest) -> Result<KeydownInput, RpcResp
     })
 }
 
-/// Parse KeyupInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_keyup_input(request: &RpcRequest) -> Result<KeyupInput, RpcResponse> {
     let key = request.require_str("key")?.to_string();
@@ -1036,18 +933,12 @@ pub fn parse_keyup_input(request: &RpcRequest) -> Result<KeyupInput, RpcResponse
     })
 }
 
-// ============================================================
-// Recording input parsers
-// ============================================================
-
-/// Parse RecordStartInput from RpcRequest.
 pub fn parse_record_start_input(request: &RpcRequest) -> RecordStartInput {
     RecordStartInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
     }
 }
 
-/// Parse RecordStopInput from RpcRequest.
 pub fn parse_record_stop_input(request: &RpcRequest) -> RecordStopInput {
     RecordStopInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
@@ -1055,18 +946,12 @@ pub fn parse_record_stop_input(request: &RpcRequest) -> RecordStopInput {
     }
 }
 
-/// Parse RecordStatusInput from RpcRequest.
 pub fn parse_record_status_input(request: &RpcRequest) -> RecordStatusInput {
     RecordStatusInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
     }
 }
 
-// ============================================================
-// Diagnostics input parsers
-// ============================================================
-
-/// Parse AccessibilitySnapshotInput from RpcRequest.
 pub fn parse_accessibility_snapshot_input(request: &RpcRequest) -> AccessibilitySnapshotInput {
     AccessibilitySnapshotInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
@@ -1074,7 +959,6 @@ pub fn parse_accessibility_snapshot_input(request: &RpcRequest) -> Accessibility
     }
 }
 
-/// Parse TraceInput from RpcRequest.
 pub fn parse_trace_input(request: &RpcRequest) -> TraceInput {
     TraceInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
@@ -1084,7 +968,6 @@ pub fn parse_trace_input(request: &RpcRequest) -> TraceInput {
     }
 }
 
-/// Parse ConsoleInput from RpcRequest.
 pub fn parse_console_input(request: &RpcRequest) -> ConsoleInput {
     ConsoleInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
@@ -1093,7 +976,6 @@ pub fn parse_console_input(request: &RpcRequest) -> ConsoleInput {
     }
 }
 
-/// Parse ErrorsInput from RpcRequest.
 pub fn parse_errors_input(request: &RpcRequest) -> ErrorsInput {
     ErrorsInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
@@ -1102,7 +984,6 @@ pub fn parse_errors_input(request: &RpcRequest) -> ErrorsInput {
     }
 }
 
-/// Parse PtyReadInput from RpcRequest.
 pub fn parse_pty_read_input(request: &RpcRequest) -> PtyReadInput {
     PtyReadInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
@@ -1110,7 +991,6 @@ pub fn parse_pty_read_input(request: &RpcRequest) -> PtyReadInput {
     }
 }
 
-/// Parse PtyWriteInput from RpcRequest.
 #[allow(clippy::result_large_err)]
 pub fn parse_pty_write_input(request: &RpcRequest) -> Result<PtyWriteInput, RpcResponse> {
     let data = request.require_str("data")?.to_string();
@@ -1207,10 +1087,6 @@ mod tests {
         assert_eq!(input.text, Some("Ready".to_string()));
         assert_eq!(input.timeout_ms, 5000);
     }
-
-    // ================================================================
-    // Element-ref based input parser tests
-    // ================================================================
 
     #[test]
     fn test_parse_double_click_input() {
@@ -1328,10 +1204,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // ================================================================
-    // Key input parser tests
-    // ================================================================
-
     #[test]
     fn test_parse_keydown_input() {
         let request = make_request(1, "keydown", Some(json!({ "key": "Shift" })));
@@ -1345,10 +1217,6 @@ mod tests {
         let input = parse_keyup_input(&request).unwrap();
         assert_eq!(input.key, "Control");
     }
-
-    // ================================================================
-    // Recording input parser tests
-    // ================================================================
 
     #[test]
     fn test_parse_record_start_input() {
@@ -1370,10 +1238,6 @@ mod tests {
         let input = parse_record_status_input(&request);
         assert!(input.session_id.is_none());
     }
-
-    // ================================================================
-    // Diagnostics input parser tests
-    // ================================================================
 
     #[test]
     fn test_parse_accessibility_snapshot_input() {
@@ -1442,10 +1306,6 @@ mod tests {
         let result = parse_pty_write_input(&request);
         assert!(result.is_err());
     }
-
-    // ================================================================
-    // Output to response adapter tests
-    // ================================================================
 
     fn extract_result(response: RpcResponse) -> serde_json::Value {
         let json_str = serde_json::to_string(&response).expect("serialize");

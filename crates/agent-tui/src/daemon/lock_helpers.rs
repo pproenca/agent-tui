@@ -124,37 +124,27 @@ mod tests {
 
     #[test]
     fn test_acquire_session_lock_succeeds_after_contention() {
-        // Uses Condvar to create deterministic sequence:
-        // 1. Worker acquires lock, signals main
-        // 2. Main tries (fails), signals worker
-        // 3. Worker releases lock
-        // 4. Main retries and succeeds
         let data = Arc::new(Mutex::new(42i32));
         let data_clone = Arc::clone(&data);
 
-        // Synchronization state: (worker_has_lock, main_tried)
         let sync = Arc::new((Mutex::new((false, false)), Condvar::new()));
         let sync_clone = Arc::clone(&sync);
 
         let handle = thread::spawn(move || {
             let _guard = data_clone.lock().unwrap();
 
-            // Signal: I have the lock
             {
                 let (lock, cvar) = &*sync_clone;
                 let mut state = lock.lock().unwrap();
                 state.0 = true;
                 cvar.notify_all();
 
-                // Wait until main has tried at least once
                 while !state.1 {
                     state = cvar.wait(state).unwrap();
                 }
             }
-            // Lock releases when _guard drops
         });
 
-        // Wait until worker has the lock
         {
             let (lock, cvar) = &*sync;
             let mut state = lock.lock().unwrap();
@@ -163,10 +153,8 @@ mod tests {
             }
         }
 
-        // Verify contention exists
         assert!(data.try_lock().is_err(), "Lock should be held by worker");
 
-        // Signal worker: main has tried
         {
             let (lock, cvar) = &*sync;
             let mut state = lock.lock().unwrap();
@@ -174,10 +162,9 @@ mod tests {
             cvar.notify_all();
         }
 
-        // Retry - worker will release, we should succeed
         let start = Instant::now();
         let mut backoff = Duration::from_micros(100);
-        let timeout = Duration::from_secs(5); // Generous timeout for CI
+        let timeout = Duration::from_secs(5);
         let mut acquired = false;
 
         while start.elapsed() < timeout {
@@ -197,25 +184,20 @@ mod tests {
 
     #[test]
     fn test_acquire_session_lock_timeout_returns_none_under_contention() {
-        // Tests that timeout is respected even under heavy contention
         let data = Arc::new(Mutex::new(42i32));
         let data_clone = Arc::clone(&data);
 
-        // Barrier ensures spawned thread signals it has the lock
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = Arc::clone(&barrier);
 
-        // Thread holds lock for longer than our timeout
         let handle = thread::spawn(move || {
             let _guard = data_clone.lock().unwrap();
-            barrier_clone.wait(); // Signal: lock acquired
+            barrier_clone.wait();
             thread::sleep(Duration::from_millis(200));
         });
 
-        // Wait until spawned thread has the lock
         barrier.wait();
 
-        // Try to acquire with short timeout - should fail
         let start = Instant::now();
         let mut backoff = Duration::from_micros(100);
         let timeout = Duration::from_millis(50);

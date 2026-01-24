@@ -1,15 +1,9 @@
-//! CLI errors with structured context for AI agents.
-//!
-//! These errors provide semantic codes, categories, and actionable suggestions
-//! to enable programmatic error handling and UNIX sysexits.h-compliant exit codes.
-
 use std::io;
 
 use crate::ipc::error_codes::{self, ErrorCategory};
 use serde_json::{Value, json};
 use thiserror::Error;
 
-/// Attach mode errors with structured context.
 #[derive(Error, Debug)]
 pub enum AttachError {
     #[error("Terminal error: {0}")]
@@ -26,7 +20,6 @@ pub enum AttachError {
 }
 
 impl AttachError {
-    /// Returns the JSON-RPC error code for this error.
     pub fn code(&self) -> i32 {
         match self {
             AttachError::Terminal(_) => error_codes::PTY_ERROR,
@@ -36,12 +29,10 @@ impl AttachError {
         }
     }
 
-    /// Returns the error category for programmatic handling.
     pub fn category(&self) -> ErrorCategory {
         ErrorCategory::External
     }
 
-    /// Returns structured context about the error for debugging.
     pub fn context(&self) -> Value {
         match self {
             AttachError::Terminal(e) => json!({
@@ -63,7 +54,6 @@ impl AttachError {
         }
     }
 
-    /// Returns a helpful suggestion for resolving the error.
     pub fn suggestion(&self) -> String {
         match self {
             AttachError::Terminal(_) => {
@@ -83,24 +73,21 @@ impl AttachError {
         }
     }
 
-    /// Returns whether this error is potentially transient and may succeed on retry.
     pub fn is_retryable(&self) -> bool {
         matches!(self, AttachError::PtyWrite(_) | AttachError::PtyRead(_))
     }
 
-    /// Converts to UNIX sysexits.h-compliant exit code.
     pub fn exit_code(&self) -> i32 {
         match self.category() {
-            ErrorCategory::InvalidInput => 64, // EX_USAGE
-            ErrorCategory::NotFound => 69,     // EX_UNAVAILABLE
-            ErrorCategory::Busy => 73,         // EX_CANTCREAT
-            ErrorCategory::External => 74,     // EX_IOERR
-            ErrorCategory::Internal => 74,     // EX_IOERR
-            ErrorCategory::Timeout => 75,      // EX_TEMPFAIL
+            ErrorCategory::InvalidInput => 64,
+            ErrorCategory::NotFound => 69,
+            ErrorCategory::Busy => 73,
+            ErrorCategory::External => 74,
+            ErrorCategory::Internal => 74,
+            ErrorCategory::Timeout => 75,
         }
     }
 
-    /// Returns structured JSON representation of this error.
     pub fn to_json(&self) -> Value {
         json!({
             "code": self.code(),
@@ -170,7 +157,7 @@ mod tests {
     #[test]
     fn test_attach_error_exit_code() {
         let err = AttachError::PtyWrite("x".into());
-        assert_eq!(err.exit_code(), 74); // EX_IOERR
+        assert_eq!(err.exit_code(), 74);
     }
 
     #[test]

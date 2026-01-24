@@ -8,7 +8,6 @@ use crate::daemon::adapters::{
 };
 use crate::daemon::usecases::{RecordStartUseCase, RecordStatusUseCase, RecordStopUseCase};
 
-/// Handle record_start requests using the use case pattern.
 pub fn handle_record_start_uc<U: RecordStartUseCase>(
     usecase: &U,
     request: RpcRequest,
@@ -22,7 +21,6 @@ pub fn handle_record_start_uc<U: RecordStartUseCase>(
     }
 }
 
-/// Handle record_stop requests using the use case pattern.
 pub fn handle_record_stop_uc<U: RecordStopUseCase>(
     usecase: &U,
     request: RpcRequest,
@@ -36,7 +34,6 @@ pub fn handle_record_stop_uc<U: RecordStopUseCase>(
     }
 }
 
-/// Handle record_status requests using the use case pattern.
 pub fn handle_record_status_uc<U: RecordStatusUseCase>(
     usecase: &U,
     request: RpcRequest,

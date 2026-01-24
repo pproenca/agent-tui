@@ -1,17 +1,5 @@
-//! Shared RPC parameter types for CLI and daemon.
-//!
-//! These types define the contract between CLI and daemon. Both sides use the same
-//! types, ensuring field names stay in sync and eliminating magic string mismatches.
-//!
-//! # Design
-//!
-//! - CLI serializes these types to JSON for RPC requests
-//! - Daemon deserializes JSON to these types, then converts to domain types
-//! - Field names are the single source of truth (enforced at compile time)
-
 use serde::{Deserialize, Serialize};
 
-/// Parameters for the `spawn` RPC method.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SpawnParams {
     #[serde(default)]
@@ -35,7 +23,6 @@ fn default_rows() -> u16 {
     24
 }
 
-/// Parameters for the `snapshot` RPC method.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SnapshotParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -50,7 +37,6 @@ pub struct SnapshotParams {
     pub include_cursor: bool,
 }
 
-/// Parameters for the `accessibility_snapshot` RPC method.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AccessibilitySnapshotParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -59,7 +45,6 @@ pub struct AccessibilitySnapshotParams {
     pub interactive: bool,
 }
 
-/// Parameters for element reference actions (click, focus, clear, etc.).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ElementRefParams {
     #[serde(rename = "ref")]
@@ -68,7 +53,6 @@ pub struct ElementRefParams {
     pub session: Option<String>,
 }
 
-/// Parameters for the `fill` RPC method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FillParams {
     #[serde(rename = "ref")]
@@ -78,7 +62,6 @@ pub struct FillParams {
     pub session: Option<String>,
 }
 
-/// Parameters for key-related RPC methods (keystroke, keydown, keyup).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyParams {
     pub key: String,
@@ -86,7 +69,6 @@ pub struct KeyParams {
     pub session: Option<String>,
 }
 
-/// Parameters for the `type` RPC method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeParams {
     pub text: String,
@@ -94,7 +76,6 @@ pub struct TypeParams {
     pub session: Option<String>,
 }
 
-/// Parameters for the `wait` RPC method.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WaitParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -113,7 +94,6 @@ fn default_timeout_ms() -> u64 {
     30000
 }
 
-/// Parameters for the `find` RPC method.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FindParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -134,7 +114,6 @@ pub struct FindParams {
     pub exact: bool,
 }
 
-/// Parameters for the `resize` RPC method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResizeParams {
     pub cols: u16,
@@ -143,14 +122,12 @@ pub struct ResizeParams {
     pub session: Option<String>,
 }
 
-/// Parameters for session-only RPC methods (kill, restart, sessions, etc.).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
 }
 
-/// Parameters for the `select` RPC method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectParams {
     #[serde(rename = "ref")]
@@ -160,7 +137,6 @@ pub struct SelectParams {
     pub session: Option<String>,
 }
 
-/// Parameters for the `multiselect` RPC method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiselectParams {
     #[serde(rename = "ref")]
@@ -170,7 +146,6 @@ pub struct MultiselectParams {
     pub session: Option<String>,
 }
 
-/// Parameters for the `scroll` RPC method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScrollParams {
     pub direction: String,
@@ -184,7 +159,6 @@ fn default_scroll_amount() -> u16 {
     1
 }
 
-/// Parameters for the `count` RPC method.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CountParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -197,7 +171,6 @@ pub struct CountParams {
     pub text: Option<String>,
 }
 
-/// Parameters for the `toggle` RPC method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToggleParams {
     #[serde(rename = "ref")]
@@ -208,7 +181,6 @@ pub struct ToggleParams {
     pub session: Option<String>,
 }
 
-/// Parameters for the `record_stop` RPC method.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RecordStopParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -217,7 +189,6 @@ pub struct RecordStopParams {
     pub format: Option<String>,
 }
 
-/// Parameters for the `trace` RPC method.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TraceParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -234,7 +205,6 @@ fn default_trace_count() -> usize {
     100
 }
 
-/// Parameters for the `console` RPC method.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConsoleParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -249,7 +219,6 @@ fn default_console_count() -> usize {
     50
 }
 
-/// Parameters for the `errors` RPC method.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ErrorsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -264,7 +233,6 @@ fn default_errors_count() -> usize {
     10
 }
 
-/// Parameters for PTY read operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PtyReadParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -277,7 +245,6 @@ fn default_max_bytes() -> usize {
     4096
 }
 
-/// Parameters for PTY write operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PtyWriteParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -338,7 +305,7 @@ mod tests {
         };
 
         let json = serde_json::to_value(&params).unwrap();
-        // Should serialize as "ref", not "element_ref"
+
         assert_eq!(json["ref"], "@btn1");
         assert!(json.get("element_ref").is_none());
     }

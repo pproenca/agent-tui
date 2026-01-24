@@ -62,7 +62,6 @@ impl<R: SessionRepository> ConsoleUseCase for ConsoleUseCaseImpl<R> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let mut session_guard = mutex_lock_or_recover(&session);
 
-        // Best-effort update - ignore errors since we still want to return console content
         let _ = session_guard.update();
 
         let screen_text = session_guard.screen_text();
@@ -316,10 +315,6 @@ mod tests {
         assert_eq!(output.session_count, 2);
     }
 
-    // ========================================================================
-    // TraceUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_trace_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -356,10 +351,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
-    // ========================================================================
-    // ConsoleUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_console_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -393,10 +384,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // ErrorsUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_errors_usecase_returns_error_when_no_active_session() {
@@ -432,10 +419,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
-    // ========================================================================
-    // PtyReadUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_pty_read_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -467,10 +450,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // PtyWriteUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_pty_write_usecase_returns_error_when_no_active_session() {

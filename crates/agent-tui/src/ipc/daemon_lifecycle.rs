@@ -1,10 +1,3 @@
-//! Daemon lifecycle management use cases.
-//!
-//! This module provides functions for managing daemon lifecycle:
-//! - `stop_daemon`: Stop the running daemon
-//! - `stop_daemon_via_rpc`: Stop daemon using RPC shutdown method
-//! - `restart_daemon`: Stop (if running) and start the daemon
-
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -12,21 +5,11 @@ use crate::ipc::client::{DaemonClient, DaemonClientConfig, polling};
 use crate::ipc::error::ClientError;
 use crate::ipc::process::{ProcessController, ProcessStatus, Signal};
 
-/// Result of stopping the daemon.
 pub struct StopResult {
-    /// PID of the stopped daemon.
     pub pid: u32,
-    /// Warnings encountered during cleanup (non-fatal).
     pub warnings: Vec<String>,
 }
 
-/// Stop the daemon process.
-///
-/// # Arguments
-/// * `controller` - Process controller for sending signals
-/// * `pid` - PID of the daemon to stop
-/// * `socket_path` - Path to the daemon socket file
-/// * `force` - If true, send SIGKILL; otherwise send SIGTERM
 pub fn stop_daemon<P: ProcessController>(
     controller: &P,
     pid: u32,
@@ -35,7 +18,6 @@ pub fn stop_daemon<P: ProcessController>(
 ) -> Result<StopResult, ClientError> {
     let mut warnings = Vec::new();
 
-    // 1. Verify process exists
     match controller
         .check_process(pid)
         .map_err(|e| ClientError::SignalFailed {
@@ -55,7 +37,6 @@ pub fn stop_daemon<P: ProcessController>(
         ProcessStatus::Running => {}
     }
 
-    // 2. Send signal
     let signal = if force { Signal::Kill } else { Signal::Term };
     controller
         .send_signal(pid, signal)
@@ -64,10 +45,8 @@ pub fn stop_daemon<P: ProcessController>(
             message: e.to_string(),
         })?;
 
-    // 3. Wait for socket removal with exponential backoff
     wait_for_socket_removal(socket_path);
 
-    // 4. Cleanup if socket still exists
     if socket_path.exists() {
         cleanup_daemon_files_with_warnings(socket_path, &mut warnings);
     }
@@ -75,35 +54,19 @@ pub fn stop_daemon<P: ProcessController>(
     Ok(StopResult { pid, warnings })
 }
 
-/// Stop the daemon process using the RPC shutdown method.
-///
-/// This is the preferred method for stopping the daemon as it allows for
-/// graceful shutdown. The daemon will receive the shutdown request and
-/// cleanly terminate its processes.
-///
-/// # Arguments
-/// * `client` - Daemon client for making RPC calls
-/// * `socket_path` - Path to the daemon socket file
-///
-/// # Returns
-/// * `Ok(())` if the daemon acknowledged the shutdown
-/// * `Err(ClientError)` if the RPC call failed
 pub fn stop_daemon_via_rpc(
     client: &mut impl DaemonClient,
     socket_path: &Path,
 ) -> Result<StopResult, ClientError> {
     let mut warnings = Vec::new();
 
-    // Use a short timeout config for the shutdown call
     let config = DaemonClientConfig::default()
         .with_read_timeout(Duration::from_secs(5))
         .with_write_timeout(Duration::from_secs(5))
-        .with_max_retries(0); // No retries for shutdown
+        .with_max_retries(0);
 
-    // Call the shutdown RPC method
     let result = client.call_with_config("shutdown", None, &config)?;
 
-    // Verify the response contains acknowledged: true
     let acknowledged = result
         .get("acknowledged")
         .and_then(|v| v.as_bool())
@@ -115,32 +78,15 @@ pub fn stop_daemon_via_rpc(
         });
     }
 
-    // Wait for socket removal (daemon shutting down)
     wait_for_socket_removal(socket_path);
 
-    // Cleanup if socket still exists
     if socket_path.exists() {
         cleanup_daemon_files_with_warnings(socket_path, &mut warnings);
     }
 
-    // We don't have the PID here, so we return 0
-    // The actual PID is tracked by the caller if needed
     Ok(StopResult { pid: 0, warnings })
 }
 
-/// Stop the daemon using RPC first, falling back to signals if RPC fails.
-///
-/// This is the recommended way to stop the daemon as it:
-/// 1. Tries graceful RPC shutdown first
-/// 2. Falls back to SIGTERM if RPC is unavailable
-/// 3. Uses SIGKILL only if `force` is true
-///
-/// # Arguments
-/// * `client_factory` - Function to create a daemon client (may be called multiple times)
-/// * `controller` - Process controller for sending signals
-/// * `pid` - PID of the daemon to stop
-/// * `socket_path` - Path to the daemon socket file
-/// * `force` - If true, skip RPC and go directly to SIGKILL
 pub fn stop_daemon_graceful<F, P, C>(
     client_factory: F,
     controller: &P,
@@ -153,37 +99,20 @@ where
     P: ProcessController,
     C: DaemonClient,
 {
-    // If force is requested, skip RPC and go directly to SIGKILL
     if force {
         return stop_daemon(controller, pid, socket_path, true);
     }
 
-    // Try RPC shutdown first
-    match client_factory() {
-        Ok(mut client) => {
-            match stop_daemon_via_rpc(&mut client, socket_path) {
-                Ok(mut result) => {
-                    // RPC succeeded, update PID in result
-                    result.pid = pid;
-                    return Ok(result);
-                }
-                Err(e) => {
-                    // RPC failed, log and fall back to signals
-                    // Note: We don't log here as the caller handles messaging
-                    let _ = e; // Suppress unused warning
-                }
-            }
-        }
-        Err(_) => {
-            // Could not connect to daemon, fall back to signals
+    if let Ok(mut client) = client_factory() {
+        if let Ok(mut result) = stop_daemon_via_rpc(&mut client, socket_path) {
+            result.pid = pid;
+            return Ok(result);
         }
     }
 
-    // Fall back to signal-based shutdown
     stop_daemon(controller, pid, socket_path, false)
 }
 
-/// Clean up daemon socket and lock files, collecting warnings.
 fn cleanup_daemon_files_with_warnings(socket: &Path, warnings: &mut Vec<String>) {
     if let Err(e) = std::fs::remove_file(socket) {
         if e.kind() != std::io::ErrorKind::NotFound {
@@ -198,7 +127,6 @@ fn cleanup_daemon_files_with_warnings(socket: &Path, warnings: &mut Vec<String>)
     }
 }
 
-/// Wait for socket file to be removed with exponential backoff.
 fn wait_for_socket_removal(socket: &Path) {
     let start = Instant::now();
     let mut delay = polling::INITIAL_POLL_INTERVAL;
@@ -209,13 +137,6 @@ fn wait_for_socket_removal(socket: &Path) {
     }
 }
 
-/// Restart daemon: stop (if running) + start.
-///
-/// # Arguments
-/// * `controller` - Process controller for sending signals
-/// * `get_pid` - Function to get the current daemon PID
-/// * `socket_path` - Path to the daemon socket file
-/// * `start_fn` - Function to start the daemon
 pub fn restart_daemon<P, F, S>(
     controller: &P,
     get_pid: F,
@@ -229,19 +150,16 @@ where
 {
     let mut all_warnings = Vec::new();
 
-    // Stop if running
     if let Some(pid) = get_pid() {
         match stop_daemon(controller, pid, socket_path, false) {
             Ok(result) => all_warnings.extend(result.warnings),
-            Err(ClientError::DaemonNotRunning) => {} // OK, continue
+            Err(ClientError::DaemonNotRunning) => {}
             Err(e) => return Err(e),
         }
     }
 
-    // Brief delay for cleanup
     std::thread::sleep(Duration::from_millis(500));
 
-    // Start
     start_fn()?;
 
     Ok(all_warnings)
@@ -311,13 +229,12 @@ mod tests {
         let socket = dir.path().join("test.sock");
         let lock = socket.with_extension("lock");
 
-        // Create stale files
         std::fs::write(&socket, "stale").unwrap();
         std::fs::write(&lock, "1234").unwrap();
 
         let result = stop_daemon(&mock, 1234, &socket, false);
         assert!(matches!(result, Err(ClientError::DaemonNotRunning)));
-        // Stale files should be cleaned up
+
         assert!(!socket.exists());
         assert!(!lock.exists());
     }
@@ -375,12 +292,11 @@ mod tests {
             &mock,
             || Some(1234),
             &socket,
-            || Err(ClientError::DaemonNotRunning), // Simulate start failure
+            || Err(ClientError::DaemonNotRunning),
         );
 
-        // Error should propagate from start_fn
         assert!(matches!(result, Err(ClientError::DaemonNotRunning)));
-        // Stop should have been called
+
         assert_eq!(mock.signals_sent(), vec![(1234, Signal::Term)]);
     }
 
@@ -392,7 +308,7 @@ mod tests {
 
         let result = restart_daemon(
             &mock,
-            || None, // Daemon not running
+            || None,
             &socket,
             || {
                 Err(ClientError::ConnectionFailed(std::io::Error::other(
@@ -401,20 +317,14 @@ mod tests {
             },
         );
 
-        // Error should propagate from start_fn
         assert!(matches!(result, Err(ClientError::ConnectionFailed(_))));
-        // No stop signal should have been sent (daemon wasn't running)
+
         assert!(mock.signals_sent().is_empty());
     }
-
-    // ========================================================================
-    // Tests for stop_daemon_via_rpc
-    // ========================================================================
 
     use serde_json::{Value, json};
     use std::sync::Mutex;
 
-    /// Mock daemon client for testing RPC-based shutdown
     struct MockDaemonClient {
         shutdown_response: Mutex<Option<Result<Value, ClientError>>>,
         calls: Mutex<Vec<String>>,

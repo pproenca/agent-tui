@@ -9,9 +9,6 @@ use crate::daemon::domain::{
     DomainSnapshotStats,
 };
 
-/// Convert a role string to DomainRole.
-///
-/// Falls back to StaticText for unknown roles to maintain robustness.
 pub fn string_to_domain_role(role: &str) -> DomainRole {
     match role {
         "button" => DomainRole::Button,
@@ -29,12 +26,11 @@ pub fn string_to_domain_role(role: &str) -> DomainRole {
         "error" => DomainRole::ErrorMessage,
         "diff" => DomainRole::DiffLine,
         "codeblock" => DomainRole::CodeBlock,
-        _ => DomainRole::StaticText, // Fallback for unknown roles
+        _ => DomainRole::StaticText,
     }
 }
 
 pub fn core_bounds_to_domain(bounds: &Bounds) -> DomainBounds {
-    // Safe to use unchecked: core Bounds come from validated/trusted source
     DomainBounds::new_unchecked(bounds.x, bounds.y, bounds.width, bounds.height)
 }
 
@@ -75,9 +71,6 @@ pub fn core_snapshot_to_domain(snapshot: &AccessibilitySnapshot) -> DomainAccess
     }
 }
 
-/// Converts a Core snapshot into a Domain snapshot, consuming the input.
-///
-/// Use this variant when ownership can be transferred to avoid cloning strings.
 pub fn core_snapshot_into_domain(snapshot: AccessibilitySnapshot) -> DomainAccessibilitySnapshot {
     DomainAccessibilitySnapshot {
         tree: snapshot.tree,

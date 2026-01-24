@@ -1,5 +1,3 @@
-//! Application entry point and command dispatch.
-
 use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
@@ -13,27 +11,23 @@ use crate::attach::AttachError;
 use crate::commands::{Cli, Commands, DaemonCommand, DebugCommand, RecordAction};
 use crate::handlers::{self, HandlerContext};
 
-/// Exit codes based on BSD sysexits.h
 mod exit_codes {
     pub const SUCCESS: i32 = 0;
     pub const GENERAL_ERROR: i32 = 1;
-    pub const USAGE: i32 = 64; // EX_USAGE: command line usage error
-    pub const UNAVAILABLE: i32 = 69; // EX_UNAVAILABLE: service unavailable
-    pub const CANTCREAT: i32 = 73; // EX_CANTCREAT: can't create output
-    pub const IOERR: i32 = 74; // EX_IOERR: input/output error
-    pub const TEMPFAIL: i32 = 75; // EX_TEMPFAIL: temporary failure
+    pub const USAGE: i32 = 64;
+    pub const UNAVAILABLE: i32 = 69;
+    pub const CANTCREAT: i32 = 73;
+    pub const IOERR: i32 = 74;
+    pub const TEMPFAIL: i32 = 75;
 }
 
-/// Application encapsulates the CLI runtime behavior.
 pub struct Application;
 
 impl Application {
-    /// Create a new Application instance.
     pub fn new() -> Self {
         Self
     }
 
-    /// Run the application, returning the exit code.
     pub fn run(&self) -> i32 {
         match self.execute() {
             Ok(()) => exit_codes::SUCCESS,
@@ -45,27 +39,21 @@ impl Application {
         let cli = Cli::parse();
         color_init(cli.no_color);
 
-        // Handle commands that don't need a daemon connection
         if self.handle_standalone_commands(&cli)? {
             return Ok(());
         }
 
-        // Connect to daemon
         let mut client = self.connect_to_daemon()?;
 
-        // Check for version mismatch (skip for daemon commands and version command)
         if !matches!(cli.command, Commands::Daemon(_) | Commands::Version) {
             check_version_mismatch(&mut client);
         }
 
-        // Execute command
         let format = cli.effective_format();
         let mut ctx = HandlerContext::new(&mut client, cli.session, format);
         self.dispatch_command(&mut ctx, &cli.command)
     }
 
-    /// Handle commands that don't require a daemon connection.
-    /// Returns true if the command was handled, false if it needs daemon.
     fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool, Box<dyn std::error::Error>> {
         match &cli.command {
             Commands::Daemon(DaemonCommand::Start { foreground: true }) => {
@@ -323,7 +311,6 @@ impl Default for Application {
     }
 }
 
-/// Check for version mismatch between CLI and daemon, print warning if found.
 fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
     use crate::ipc::version::{VersionCheckResult, check_version};
 
@@ -366,5 +353,3 @@ fn exit_code_for_client_error(error: &ClientError) -> i32 {
         None => exit_codes::GENERAL_ERROR,
     }
 }
-
-// Tests for is_key_name are in common/key_names.rs

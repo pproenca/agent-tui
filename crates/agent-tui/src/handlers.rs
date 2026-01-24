@@ -20,7 +20,6 @@ use crate::presenter::{ElementView, Presenter, create_presenter};
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
-/// Format milliseconds as human-readable duration (e.g., "1h 30m 45s").
 fn format_uptime_ms(uptime_ms: u64) -> String {
     let secs = uptime_ms / 1000;
     let mins = secs / 60;
@@ -34,7 +33,6 @@ fn format_uptime_ms(uptime_ms: u64) -> String {
     }
 }
 
-/// Macro to generate key handlers (press, keydown, keyup) that follow the same pattern
 macro_rules! key_handler {
     ($name:ident, $method:literal, $success:expr) => {
         pub fn $name<C: DaemonClient>(ctx: &mut HandlerContext<C>, key: String) -> HandlerResult {
@@ -45,7 +43,6 @@ macro_rules! key_handler {
     };
 }
 
-/// Macro to generate element ref action handlers (click, focus, clear, etc.)
 macro_rules! ref_action_handler {
     ($name:ident, $method:literal, $success:expr, $failure:literal) => {
         pub fn $name<C: DaemonClient>(
@@ -57,20 +54,11 @@ macro_rules! ref_action_handler {
     };
 }
 
-/// Resolve wait condition from WaitParams to (condition_type, target) tuple.
-///
-/// This function handles the mapping from CLI arguments to daemon wait conditions:
-/// - `--stable` -> ("stable", None)
-/// - `--element @e1` -> ("element", "@e1") or ("not_visible", "@e1") with --gone
-/// - `--focused @e1` -> ("focused", "@e1")
-/// - `--value X` -> ("value", "X")
-/// - `text` with --gone -> ("text_gone", "text")
 pub fn resolve_wait_condition(params: &WaitParams) -> (Option<String>, Option<String>) {
     if params.stable {
         return (Some("stable".to_string()), None);
     }
 
-    // Handle element with optional --gone modifier
     if let Some(ref elem) = params.element {
         let condition = if params.gone {
             "not_visible"
@@ -88,12 +76,10 @@ pub fn resolve_wait_condition(params: &WaitParams) -> (Option<String>, Option<St
         return (Some("value".to_string()), Some(val.clone()));
     }
 
-    // Handle text with optional --gone modifier
     if let Some(ref txt) = params.text {
         if params.gone {
             return (Some("text_gone".to_string()), Some(txt.clone()));
         }
-        // Text without --gone is handled as default (text condition)
     }
 
     (None, None)
@@ -117,7 +103,6 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         }
     }
 
-    /// Get a reference to the presenter for output formatting
     pub fn presenter(&self) -> &dyn Presenter {
         self.presenter.as_ref()
     }
@@ -191,7 +176,6 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         Ok(())
     }
 
-    /// Output success/failure result and return Ok(())
     pub fn output_success_and_ok(
         &self,
         result: &Value,
@@ -202,7 +186,6 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         Ok(())
     }
 
-    /// Display a ClientError with structured information.
     pub fn display_error(&self, error: &ClientError) {
         self.presenter.present_client_error(error);
     }
@@ -613,7 +596,6 @@ pub fn handle_find<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     find_params: FindParams,
 ) -> HandlerResult {
-    // Convert bool to Option<bool>: true -> Some(true), false -> None (don't filter)
     let focused_opt = if find_params.focused {
         Some(true)
     } else {
@@ -644,8 +626,6 @@ pub fn handle_find<C: DaemonClient>(
     Ok(())
 }
 
-/// Unified select handler that routes to single or multi-select based on option count.
-/// This keeps the business logic in the handler layer rather than the controller.
 pub fn handle_select<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     element_ref: String,
@@ -1149,10 +1129,6 @@ pub fn handle_assert<C: DaemonClient>(
     Ok(())
 }
 
-// ============================================================================
-// Daemon lifecycle handlers
-// ============================================================================
-
 pub fn handle_daemon_stop<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     force: bool,
@@ -1174,29 +1150,21 @@ pub fn handle_daemon_stop<C: DaemonClient>(
 
     let socket = socket_path();
 
-    // If not forcing, try RPC shutdown first (graceful)
     if !force {
-        match daemon_lifecycle::stop_daemon_via_rpc(ctx.client, &socket) {
-            Ok(mut result) => {
-                result.pid = pid;
-                // Print warnings to stderr
-                for warning in &result.warnings {
-                    eprintln!("{}", Colors::warning(warning));
-                }
-                ctx.presenter().present_success("Daemon stopped", None);
-                return Ok(());
+        if let Ok(mut result) = daemon_lifecycle::stop_daemon_via_rpc(ctx.client, &socket) {
+            result.pid = pid;
+
+            for warning in &result.warnings {
+                eprintln!("{}", Colors::warning(warning));
             }
-            Err(_) => {
-                // RPC failed, fall back to signal-based shutdown
-            }
+            ctx.presenter().present_success("Daemon stopped", None);
+            return Ok(());
         }
     }
 
-    // Fall back to signal-based shutdown (or force with SIGKILL)
     let controller = UnixProcessController;
     let result = daemon_lifecycle::stop_daemon(&controller, pid, &socket, force)?;
 
-    // Print warnings to stderr
     for warning in &result.warnings {
         eprintln!("{}", Colors::warning(warning));
     }
@@ -1208,7 +1176,6 @@ pub fn handle_daemon_stop<C: DaemonClient>(
 pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let cli_version = env!("CARGO_PKG_VERSION");
 
-    // Try to get daemon health
     match ctx.client.call("health", None) {
         Ok(result) => {
             let daemon_version = result.str_or("version", "unknown");
@@ -1292,8 +1259,6 @@ pub fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> Handle
 
     let controller = UnixProcessController;
 
-    // Wrap get_daemon_pid to convert PidLookupResult to Option<u32>
-    // For restart, if we can't read the PID file, log warning and continue
     let get_pid = || -> Option<u32> {
         match get_daemon_pid() {
             PidLookupResult::Found(pid) => Some(pid),
@@ -1331,7 +1296,6 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    /// Mock presenter that captures output for testing
     struct MockPresenter {
         output: Rc<RefCell<Vec<String>>>,
     }
@@ -1450,9 +1414,8 @@ mod tests {
 
     #[test]
     fn test_handler_context_has_presenter() {
-        // This test verifies that HandlerContext can hold and access a presenter
         let presenter = TextPresenter;
-        // Just verify the type compiles - the presenter trait is available
+
         let _: &dyn Presenter = &presenter;
     }
 

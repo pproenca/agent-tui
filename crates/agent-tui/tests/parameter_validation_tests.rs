@@ -1,24 +1,14 @@
-//! Parameter validation tests
-//!
-//! Tests for CLI parameter validation and error handling for invalid inputs.
-
 mod common;
 
 use common::TestHarness;
 use predicates::prelude::*;
 
-// =============================================================================
-// Action Command Validation
-// =============================================================================
-
 #[test]
 fn test_action_requires_ref_and_operation() {
     let harness = TestHarness::new();
 
-    // action without ref should fail
     harness.run(&["action"]).failure();
 
-    // action with ref but no operation should fail
     harness.run(&["action", "@btn1"]).failure();
 }
 
@@ -42,7 +32,6 @@ fn test_action_click_accepts_element_ref() {
 fn test_action_fill_requires_value() {
     let harness = TestHarness::new();
 
-    // fill without value should fail
     harness
         .run(&["action", "@inp1", "fill"])
         .failure()
@@ -68,7 +57,6 @@ fn test_action_fill_accepts_both_arguments() {
 fn test_action_fill_with_empty_value() {
     let harness = TestHarness::new();
 
-    // Empty string is valid
     harness.run(&["action", "@inp1", "fill", ""]).success();
 
     let req = harness.last_request_for("fill").unwrap();
@@ -157,15 +145,10 @@ fn test_action_toggle_with_state() {
     assert!(params["state"].as_bool().unwrap());
 }
 
-// =============================================================================
-// Input Command Validation
-// =============================================================================
-
 #[test]
 fn test_input_requires_value_or_modifier() {
     let harness = TestHarness::new();
 
-    // input without any args requires --hold or --release
     harness
         .run(&["input"])
         .failure()
@@ -206,21 +189,15 @@ fn test_input_hold_and_release() {
 fn test_input_hold_release_conflict() {
     let harness = TestHarness::new();
 
-    // --hold and --release conflict
     harness
         .run(&["input", "Shift", "--hold", "--release"])
         .failure();
 }
 
-// =============================================================================
-// Wait Command Validation
-// =============================================================================
-
 #[test]
 fn test_wait_with_no_args_waits_for_stable() {
     let harness = TestHarness::new();
 
-    // wait with no args should require some condition
     harness.run(&["wait", "--stable"]).success();
 
     let req = harness.last_request_for("wait").unwrap();
@@ -254,10 +231,6 @@ fn test_wait_with_element_option() {
     assert_eq!(params["condition"].as_str().unwrap(), "element");
     assert_eq!(params["target"].as_str().unwrap(), "@btn1");
 }
-
-// =============================================================================
-// Run Command Validation
-// =============================================================================
 
 #[test]
 fn test_run_requires_command() {
@@ -294,10 +267,6 @@ fn test_run_with_cwd_option() {
     assert_eq!(params["cwd"].as_str().unwrap(), "/tmp");
 }
 
-// =============================================================================
-// Sessions Command Validation
-// =============================================================================
-
 #[test]
 fn test_sessions_attach_requires_id() {
     let harness = TestHarness::new();
@@ -312,8 +281,6 @@ fn test_sessions_attach_requires_id() {
 fn test_sessions_attach_with_id() {
     let harness = TestHarness::new();
 
-    // attach starts interactive mode which may fail in test context
-    // but CLI should accept the command
     let _ = harness.run(&["sessions", "--attach", "test-session"]);
 }
 
@@ -321,30 +288,20 @@ fn test_sessions_attach_with_id() {
 fn test_sessions_cleanup_all_requires_cleanup() {
     let harness = TestHarness::new();
 
-    // --all requires --cleanup
     harness
         .run(&["sessions", "--all"])
         .failure()
         .stderr(predicate::str::contains("cleanup"));
 }
 
-// =============================================================================
-// Kill Command Validation
-// =============================================================================
-
 #[test]
 fn test_kill_without_session_uses_active() {
     let harness = TestHarness::new();
 
-    // kill without session uses the active session
     harness.run(&["kill"]).success();
 
     harness.assert_method_called("kill");
 }
-
-// =============================================================================
-// Format Options
-// =============================================================================
 
 #[test]
 fn test_format_json_option() {
@@ -369,6 +326,5 @@ fn test_session_option_with_command() {
 
     harness.run(&["-s", "my-session", "screen"]).success();
 
-    // The session_id is set at the RPC level, verify the command succeeded
     harness.assert_method_called("snapshot");
 }

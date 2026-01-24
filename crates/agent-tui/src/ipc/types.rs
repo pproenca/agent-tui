@@ -16,7 +16,6 @@ pub struct RpcRequest {
 }
 
 impl RpcRequest {
-    /// Create a new RpcRequest.
     pub fn new(id: u64, method: String, params: Option<Value>) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
@@ -100,23 +99,12 @@ pub struct RpcServerError {
     data: Option<Value>,
 }
 
-/// Structured error data for programmatic handling by AI agents.
-///
-/// This provides rich context about errors including:
-/// - Category for routing error handling logic
-/// - Retryable flag for automatic retry decisions
-/// - Context with error-specific details
-/// - Suggestion for how to resolve the error
 #[derive(Debug, Serialize)]
 pub struct ErrorData {
-    /// Error category (not_found, invalid_input, busy, internal, external, timeout)
     pub category: String,
-    /// Whether this error might succeed on retry
     pub retryable: bool,
-    /// Error-specific context (element_ref, session_id, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<Value>,
-    /// Human-readable suggestion for resolving the error
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
 }
@@ -158,10 +146,6 @@ impl RpcResponse {
         }
     }
 
-    /// Create an error response with structured ErrorData.
-    ///
-    /// This is the preferred method for domain errors as it provides
-    /// machine-readable context for AI agents.
     pub fn error_with_data(id: u64, code: i32, message: &str, error_data: ErrorData) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
@@ -175,12 +159,6 @@ impl RpcResponse {
         }
     }
 
-    /// Create an error response from a DomainError-like interface.
-    ///
-    /// This helper constructs a fully structured error response with:
-    /// - Semantic error code
-    /// - Human-readable message
-    /// - Category, retryable flag, context, and suggestion
     pub fn domain_error(
         id: u64,
         code: i32,
@@ -313,7 +291,7 @@ mod tests {
     fn test_domain_error_sets_retryable_for_lock_timeout() {
         let resp = RpcResponse::domain_error(
             1,
-            -32007, // LOCK_TIMEOUT
+            -32007,
             "Lock timeout",
             "busy",
             None,
@@ -329,7 +307,7 @@ mod tests {
     fn test_domain_error_not_retryable_for_element_not_found() {
         let resp = RpcResponse::domain_error(
             1,
-            -32003, // ELEMENT_NOT_FOUND
+            -32003,
             "Element not found",
             "not_found",
             Some(json!({"element_ref": "@btn1"})),

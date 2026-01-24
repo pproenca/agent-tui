@@ -1,12 +1,3 @@
-//! Shared test fixtures for agent-tui-core
-//!
-//! Provides reusable helper functions for creating test data:
-//! - `make_cell()` - Create a styled terminal cell
-//! - `make_buffer()` - Create a screen buffer from cells
-//! - `make_cluster()` - Create a VOM cluster
-//! - `make_component()` - Create a VOM component
-//! - `make_element()` - Create an Element for testing
-
 use uuid::Uuid;
 
 use super::screen::ScreenGrid;
@@ -72,7 +63,6 @@ impl ScreenGrid for MockScreenBuffer {
     }
 }
 
-/// Create a terminal cell with the given character and style attributes
 pub fn make_cell(char: char, bold: bool, bg: Option<Color>) -> Cell {
     Cell {
         char,
@@ -86,12 +76,10 @@ pub fn make_cell(char: char, bold: bool, bg: Option<Color>) -> Cell {
     }
 }
 
-/// Create a screen buffer from a 2D vector of cells
 pub fn make_buffer(cells: Vec<Vec<Cell>>) -> MockScreenBuffer {
     MockScreenBuffer { cells }
 }
 
-/// Create a VOM cluster with the given text, style, and position
 pub fn make_cluster(text: &str, style: CellStyle, x: u16, y: u16) -> Cluster {
     Cluster {
         rect: Rect::new(x, y, text.len() as u16, 1),
@@ -101,7 +89,6 @@ pub fn make_cluster(text: &str, style: CellStyle, x: u16, y: u16) -> Cluster {
     }
 }
 
-/// Create a VOM component with the given role, text, and position
 pub fn make_component(role: Role, text: &str, x: u16, y: u16, width: u16) -> Component {
     Component {
         id: Uuid::new_v4(),
@@ -113,7 +100,6 @@ pub fn make_component(role: Role, text: &str, x: u16, y: u16, width: u16) -> Com
     }
 }
 
-/// Create an Element with the given ref and type
 pub fn make_element(ref_str: &str, element_type: ElementType) -> Element {
     Element {
         element_ref: ref_str.to_string(),
@@ -134,7 +120,6 @@ pub fn make_element(ref_str: &str, element_type: ElementType) -> Element {
     }
 }
 
-/// ElementBuilder for fluent test element construction
 pub struct ElementBuilder {
     element_ref: String,
     element_type: ElementType,

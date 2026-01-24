@@ -1,19 +1,8 @@
-//! Double-click operation tests
-//!
-//! Tests for dbl_click command, verifying:
-//! - Successful double-click on stable elements
-//! - Element not found errors
-//! - Structured error responses
-
 mod common;
 
 use common::{MockResponse, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
-
-// =============================================================================
-// dbl_click Tests (MockDaemon)
-// =============================================================================
 
 #[test]
 fn test_dbl_click_succeeds_stable_element() {
@@ -83,7 +72,6 @@ fn test_dbl_click_returns_structured_error() {
         },
     );
 
-    // Structured errors show suggestion in stderr
     harness
         .run(&["action", "@btn1", "dblclick"])
         .failure()
@@ -132,19 +120,11 @@ fn test_dbl_click_lock_timeout_is_retryable() {
         },
     );
 
-    // Errors are printed to stderr with retryable hint
     harness
         .run(&["action", "@btn1", "dblclick"])
         .failure()
         .stderr(predicate::str::contains("transient"));
 }
-
-// =============================================================================
-// dbl_click E2E Tests
-// =============================================================================
-
-// Note: E2E tests for dbl_click are now in Docker (docker/e2e-tests.sh)
-// See test_double_click() in the Docker E2E test suite
 
 #[test]
 fn test_dbl_click_with_text_ref() {
@@ -167,8 +147,6 @@ fn test_dbl_click_with_text_ref() {
 fn test_dbl_click_succeeds_without_warning() {
     let harness = TestHarness::new();
 
-    // dbl_click uses action_success which only returns { "success": true }
-    // It doesn't support warnings like fill does
     harness.set_success_response(
         "dbl_click",
         json!({

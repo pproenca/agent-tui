@@ -4,71 +4,48 @@ use crate::common::Colors;
 use crate::common::ValueExt;
 use crate::ipc::ClientError;
 
-/// Trait for presenting output to the user.
-///
-/// This trait abstracts the output formatting, allowing the CLI to support
-/// multiple output formats (text, JSON) without duplicating logic in handlers.
 pub trait Presenter {
-    /// Present a success result with optional warning.
     fn present_success(&self, message: &str, warning: Option<&str>);
 
-    /// Present an error message.
     fn present_error(&self, message: &str);
 
-    /// Present a structured value (for JSON output, shows the raw value).
     fn present_value(&self, value: &Value);
 
-    /// Present a client error with suggestions.
     fn present_client_error(&self, error: &ClientError);
 
-    /// Present a simple key-value pair.
     fn present_kv(&self, key: &str, value: &str);
 
-    /// Present a session ID.
     fn present_session_id(&self, session_id: &str, label: Option<&str>);
 
-    /// Present an element reference.
     fn present_element_ref(&self, element_ref: &str, info: Option<&str>);
 
-    /// Present a list header.
     fn present_list_header(&self, title: &str);
 
-    /// Present a list item.
     fn present_list_item(&self, item: &str);
 
-    /// Present a dim/info message.
     fn present_info(&self, message: &str);
 
-    /// Present a bold header.
     fn present_header(&self, text: &str);
 
-    /// Present raw text without formatting.
     fn present_raw(&self, text: &str);
 
-    /// Present a wait result (found/timeout with elapsed time).
     fn present_wait_result(&self, result: &WaitResult);
 
-    /// Present an assertion result (passed/failed with condition).
     fn present_assert_result(&self, result: &AssertResult);
 
-    /// Present health check information.
     fn present_health(&self, health: &HealthResult);
 
-    /// Present cleanup operation results.
     fn present_cleanup(&self, result: &CleanupResult);
 
-    /// Present find operation results.
     fn present_find(&self, result: &FindResult);
 }
 
-/// Result of a wait operation.
 pub struct WaitResult {
     pub found: bool,
     pub elapsed_ms: u64,
 }
 
 impl WaitResult {
-    /// Parse a wait result from JSON response.
     pub fn from_json(value: &Value) -> Self {
         Self {
             found: value.bool_or("found", false),
@@ -77,13 +54,11 @@ impl WaitResult {
     }
 }
 
-/// Result of an assertion.
 pub struct AssertResult {
     pub passed: bool,
     pub condition: String,
 }
 
-/// Health check result.
 pub struct HealthResult {
     pub status: String,
     pub pid: u64,
@@ -95,8 +70,6 @@ pub struct HealthResult {
 }
 
 impl HealthResult {
-    /// Parse a health result from JSON response.
-    /// The `socket_path` and `pid_file_path` are only included if `verbose` is true.
     pub fn from_json(value: &Value, verbose: bool) -> Self {
         use crate::ipc::socket_path;
 
@@ -123,26 +96,22 @@ impl HealthResult {
     }
 }
 
-/// Result of a cleanup operation.
 pub struct CleanupResult {
     pub cleaned: usize,
     pub failures: Vec<CleanupFailure>,
 }
 
-/// A single cleanup failure.
 pub struct CleanupFailure {
     pub session_id: String,
     pub error: String,
 }
 
-/// Result of a find operation.
 pub struct FindResult {
     pub count: u64,
     pub elements: Vec<ElementInfo>,
 }
 
 impl FindResult {
-    /// Parse a find result from JSON response.
     pub fn from_json(value: &Value) -> Self {
         let count = value.u64_or("count", 0);
         let elements = value
@@ -164,7 +133,6 @@ impl FindResult {
     }
 }
 
-/// Information about a found element.
 pub struct ElementInfo {
     pub element_ref: String,
     pub element_type: String,
@@ -172,7 +140,6 @@ pub struct ElementInfo {
     pub focused: bool,
 }
 
-/// Text presenter for human-readable output.
 pub struct TextPresenter;
 
 impl Presenter for TextPresenter {
@@ -355,7 +322,6 @@ impl Presenter for TextPresenter {
     }
 }
 
-/// Format milliseconds as human-readable duration.
 fn format_uptime_ms(uptime_ms: u64) -> String {
     let secs = uptime_ms / 1000;
     let mins = secs / 60;
@@ -369,7 +335,6 @@ fn format_uptime_ms(uptime_ms: u64) -> String {
     }
 }
 
-/// JSON presenter for machine-readable output.
 pub struct JsonPresenter;
 
 impl Presenter for JsonPresenter {
@@ -441,13 +406,9 @@ impl Presenter for JsonPresenter {
         );
     }
 
-    fn present_list_header(&self, _title: &str) {
-        // No-op for JSON - the structure conveys the meaning
-    }
+    fn present_list_header(&self, _title: &str) {}
 
     fn present_list_item(&self, item: &str) {
-        // In JSON mode, we'd typically collect items and output as array
-        // For simple cases, output each item
         println!("\"{}\"", item);
     }
 
@@ -459,12 +420,9 @@ impl Presenter for JsonPresenter {
         );
     }
 
-    fn present_header(&self, _text: &str) {
-        // No-op for JSON
-    }
+    fn present_header(&self, _text: &str) {}
 
     fn present_raw(&self, text: &str) {
-        // For JSON, wrap in a structure
         let output = serde_json::json!({ "output": text });
         println!(
             "{}",
@@ -560,7 +518,6 @@ impl Presenter for JsonPresenter {
     }
 }
 
-/// Create a presenter based on the output format.
 pub fn create_presenter(format: &crate::commands::OutputFormat) -> Box<dyn Presenter> {
     match format {
         crate::commands::OutputFormat::Json => Box::new(JsonPresenter),
@@ -568,7 +525,6 @@ pub fn create_presenter(format: &crate::commands::OutputFormat) -> Box<dyn Prese
     }
 }
 
-/// Helper struct for presenting spawn results.
 pub struct SpawnResult {
     pub session_id: String,
     pub pid: u32,
@@ -588,7 +544,6 @@ impl SpawnResult {
     }
 }
 
-/// Helper struct for presenting session list results.
 pub struct SessionListResult {
     pub sessions: Vec<SessionListItem>,
     pub active_session: Option<String>,
@@ -637,43 +592,33 @@ impl SessionListResult {
     }
 }
 
-/// View wrapper for element JSON values.
-///
-/// Provides convenient access to element properties from JSON responses.
 pub struct ElementView<'a>(pub &'a Value);
 
 impl ElementView<'_> {
-    /// Get the element reference (e.g., "@btn1").
     pub fn ref_str(&self) -> &str {
         self.0.str_or("ref", "")
     }
 
-    /// Get the element type (e.g., "button", "input").
     pub fn el_type(&self) -> &str {
         self.0.str_or("type", "")
     }
 
-    /// Get the element label.
     pub fn label(&self) -> &str {
         self.0.str_or("label", "")
     }
 
-    /// Check if the element is focused.
     pub fn focused(&self) -> bool {
         self.0.bool_or("focused", false)
     }
 
-    /// Check if the element is selected.
     pub fn selected(&self) -> bool {
         self.0.bool_or("selected", false)
     }
 
-    /// Get the element's value, if any.
     pub fn value(&self) -> Option<&str> {
         self.0.get("value").and_then(|v| v.as_str())
     }
 
-    /// Get the element's position as (row, col).
     pub fn position(&self) -> (u64, u64) {
         let pos = self.0.get("position");
         let row = pos
@@ -687,7 +632,6 @@ impl ElementView<'_> {
         (row, col)
     }
 
-    /// Get the focused indicator string (colored for text output).
     pub fn focused_indicator(&self) -> String {
         if self.focused() {
             Colors::success(" *focused*")
@@ -696,7 +640,6 @@ impl ElementView<'_> {
         }
     }
 
-    /// Get the selected indicator string (colored for text output).
     pub fn selected_indicator(&self) -> String {
         if self.selected() {
             Colors::info(" *selected*")
@@ -705,7 +648,6 @@ impl ElementView<'_> {
         }
     }
 
-    /// Get the label suffix (e.g., ":Submit" or empty string if no label).
     pub fn label_suffix(&self) -> String {
         if self.label().is_empty() {
             String::new()
@@ -722,7 +664,7 @@ mod tests {
     #[test]
     fn test_text_presenter_success() {
         let presenter = TextPresenter;
-        // Just verify it doesn't panic
+
         presenter.present_success("Test message", None);
         presenter.present_success("Test with warning", Some("Warning text"));
     }
@@ -730,7 +672,7 @@ mod tests {
     #[test]
     fn test_json_presenter_success() {
         let presenter = JsonPresenter;
-        // Just verify it doesn't panic
+
         presenter.present_success("Test message", None);
         presenter.present_success("Test with warning", Some("Warning text"));
     }
@@ -837,7 +779,7 @@ mod tests {
             found: true,
             elapsed_ms: 100,
         };
-        // Just verify it doesn't panic
+
         presenter.present_wait_result(&result);
     }
 
@@ -848,7 +790,7 @@ mod tests {
             passed: true,
             condition: "element:@btn1".to_string(),
         };
-        // Just verify it doesn't panic
+
         presenter.present_assert_result(&result);
     }
 
@@ -864,7 +806,7 @@ mod tests {
             socket_path: None,
             pid_file_path: None,
         };
-        // Just verify it doesn't panic
+
         presenter.present_health(&health);
     }
 
@@ -875,7 +817,7 @@ mod tests {
             cleaned: 2,
             failures: vec![],
         };
-        // Just verify it doesn't panic
+
         presenter.present_cleanup(&result);
     }
 
@@ -891,7 +833,7 @@ mod tests {
                 focused: false,
             }],
         };
-        // Just verify it doesn't panic
+
         presenter.present_find(&result);
     }
 

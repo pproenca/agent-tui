@@ -100,10 +100,6 @@ mod tests {
     use crate::daemon::domain::SessionId;
     use crate::daemon::test_support::{MockError, MockSessionRepository};
 
-    // ========================================================================
-    // RecordStartUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_record_start_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -131,10 +127,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // RecordStopUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_record_stop_usecase_returns_error_when_no_active_session() {
@@ -167,10 +159,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // RecordStatusUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_record_status_usecase_returns_error_when_no_active_session() {

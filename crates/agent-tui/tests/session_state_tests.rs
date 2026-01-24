@@ -1,25 +1,15 @@
-//! Session state machine tests
-//!
-//! Tests for session lifecycle management and state transitions.
-
 mod common;
 
 use common::{MockResponse, TEST_SESSION_ID, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
 
-// =============================================================================
-// Session Not Found Tests
-// =============================================================================
-
 #[test]
 fn test_killed_session_returns_not_found_on_snapshot() {
     let harness = TestHarness::new();
 
-    // First kill returns success
     harness.run(&["kill"]).success();
 
-    // Configure subsequent snapshot to return session not found
     harness.set_error_response("snapshot", -32001, "Session not found");
 
     harness
@@ -52,10 +42,6 @@ fn test_killed_session_returns_not_found_on_type() {
         .stderr(predicate::str::contains("not found"));
 }
 
-// =============================================================================
-// No Active Session Tests
-// =============================================================================
-
 #[test]
 fn test_snap_without_active_session() {
     let harness = TestHarness::new();
@@ -79,10 +65,6 @@ fn test_click_without_active_session() {
         .failure()
         .stderr(predicate::str::contains("No active session"));
 }
-
-// =============================================================================
-// Session Limit Tests
-// =============================================================================
 
 #[test]
 fn test_session_limit_reached() {
@@ -108,10 +90,6 @@ fn test_session_limit_reached() {
         .failure()
         .stderr(predicate::str::contains("limit"));
 }
-
-// =============================================================================
-// Active Session Switching Tests
-// =============================================================================
 
 #[test]
 fn test_sessions_shows_active_marker() {
@@ -148,13 +126,6 @@ fn test_sessions_shows_active_marker() {
         .stdout(predicate::str::contains("session-1"))
         .stdout(predicate::str::contains("(active)"));
 }
-
-// Note: attach tests removed - sessions --attach is interactive terminal mode
-// and cannot be properly tested with mock daemon
-
-// =============================================================================
-// Session Info Tests
-// =============================================================================
 
 #[test]
 fn test_sessions_empty_shows_no_sessions() {
@@ -220,10 +191,6 @@ fn test_sessions_shows_multiple_sessions() {
         .stdout(predicate::str::contains("vim"));
 }
 
-// =============================================================================
-// Kill Session Tests
-// =============================================================================
-
 #[test]
 fn test_kill_active_session() {
     let harness = TestHarness::new();
@@ -270,10 +237,6 @@ fn test_kill_nonexistent_session_fails() {
         .stderr(predicate::str::contains("not found"));
 }
 
-// =============================================================================
-// Session-Specific Command Tests
-// =============================================================================
-
 #[test]
 fn test_snap_with_session_option() {
     let harness = TestHarness::new();
@@ -292,10 +255,6 @@ fn test_click_with_session_option() {
 
     harness.assert_method_called("click");
 }
-
-// =============================================================================
-// Session Running State Tests
-// =============================================================================
 
 #[test]
 fn test_sessions_shows_running_state() {

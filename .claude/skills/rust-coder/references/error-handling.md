@@ -209,3 +209,12 @@ fn dump_data(
     Ok(())
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Daemon Lifecycle](daemon-rpc-patterns.md) - Graceful shutdown and error handling in services
+- [Channel-Based Coordination](concurrency.md) - Thread synchronization and error propagation
+- [Logging](logging.md) - Structured error logging with slog
+- [Testing](testing.md) - Error case testing patterns

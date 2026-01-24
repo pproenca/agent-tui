@@ -453,3 +453,12 @@ mod tests {
     }
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Error Handling](error-handling.md) - Testing error cases and recovery
+- [File I/O](file-io.md) - Temp file fixtures and test directories
+- [Macros](macros.md) - Test helper macros
+- [Architecture](architecture.md) - Integration test organization

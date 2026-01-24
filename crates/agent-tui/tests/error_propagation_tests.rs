@@ -32,7 +32,7 @@ fn test_session_not_found_structured_error() {
     );
 
     harness
-        .run(&["snapshot"])
+        .run(&["snap"])
         .failure()
         .stderr(predicate::str::contains("Session not found"));
 }
@@ -54,7 +54,7 @@ fn test_no_active_session_error() {
     );
 
     harness
-        .run(&["snapshot"])
+        .run(&["snap"])
         .failure()
         .stderr(predicate::str::contains("No active session"));
 }
@@ -165,7 +165,7 @@ fn test_session_limit_reached() {
     );
 
     harness
-        .run(&["spawn", "bash"])
+        .run(&["run", "bash"])
         .failure()
         .stderr(predicate::str::contains("limit"));
 }
@@ -189,12 +189,12 @@ fn test_invalid_key_error() {
                 "key": "InvalidKey",
                 "valid_keys": ["Enter", "Tab", "Escape", "Backspace", "Delete", "Up", "Down", "Left", "Right"]
             })),
-            suggestion: Some("See 'agent-tui press --help' for valid key names".to_string()),
+            suggestion: Some("See 'agent-tui key --help' for valid key names".to_string()),
         },
     );
 
     harness
-        .run(&["press", "InvalidKey"])
+        .run(&["key", "InvalidKey"])
         .failure()
         .stderr(predicate::str::contains("Invalid"));
 }
@@ -222,7 +222,7 @@ fn test_command_not_found_error() {
     );
 
     harness
-        .run(&["spawn", "nonexistent-cmd"])
+        .run(&["run", "nonexistent-cmd"])
         .failure()
         .stderr(predicate::str::contains("not found"));
 }
@@ -247,7 +247,7 @@ fn test_permission_denied_error() {
     );
 
     harness
-        .run(&["spawn", "/restricted/script"])
+        .run(&["run", "/restricted/script"])
         .failure()
         .stderr(predicate::str::contains("Permission denied"));
 }
@@ -272,7 +272,7 @@ fn test_pty_error() {
     );
 
     harness
-        .run(&["spawn", "bash"])
+        .run(&["run", "bash"])
         .failure()
         .stderr(predicate::str::contains("PTY"));
 }
@@ -327,7 +327,7 @@ fn test_error_json_format_includes_code() {
         },
     );
 
-    let output = harness.run(&["-f", "json", "health"]);
+    let output = harness.run(&["-f", "json", "status"]);
 
     // The CLI may output error to stdout or stderr in JSON mode
     // Just verify it fails with the error
@@ -387,7 +387,7 @@ fn test_not_found_category_errors() {
             },
         );
 
-        harness.run(&["snapshot"]).failure();
+        harness.run(&["snap"]).failure();
     }
 }
 
@@ -405,7 +405,7 @@ fn test_simple_error_without_structured_data() {
     );
 
     harness
-        .run(&["health"])
+        .run(&["status"])
         .failure()
         .stderr(predicate::str::contains("Invalid request"));
 }

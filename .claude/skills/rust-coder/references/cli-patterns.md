@@ -395,3 +395,12 @@ fn cmd_completions(shell: Shell) -> Result<()> {
 // mytool completions zsh > ~/.zsh/completions/_mytool
 // mytool completions fish > ~/.config/fish/completions/mytool.fish
 ```
+
+---
+
+## Related Patterns
+
+- [Daemon Patterns](daemon-rpc-patterns.md) - CLI entry points for daemon services
+- [Error Handling](error-handling.md) - Error display and exit codes
+- [Architecture](architecture.md) - CLI vs library separation
+- [Serialization](serialization.md) - Config file parsing

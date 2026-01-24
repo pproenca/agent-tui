@@ -17,6 +17,20 @@ use crate::socket::socket_path;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Polling configuration for daemon startup/shutdown.
+pub mod polling {
+    use std::time::Duration;
+
+    /// Maximum number of polls during daemon startup.
+    pub const MAX_STARTUP_POLLS: u32 = 50;
+    /// Initial delay between polls.
+    pub const INITIAL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+    /// Maximum delay between polls (after exponential backoff).
+    pub const MAX_POLL_INTERVAL: Duration = Duration::from_millis(500);
+    /// Timeout for daemon shutdown.
+    pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+}
+
 #[derive(Debug, Clone)]
 pub struct DaemonClientConfig {
     pub read_timeout: Duration,
@@ -271,18 +285,22 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
     };
 
     Command::new(exe)
-        .arg("daemon")
+        .args(["daemon", "start", "--foreground"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(stderr)
         .spawn()?;
 
-    for i in 0..50 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
+    let mut delay = polling::INITIAL_POLL_INTERVAL;
+    for i in 0..polling::MAX_STARTUP_POLLS {
+        std::thread::sleep(delay);
         if UnixSocketClient::is_daemon_running() {
             return Ok(());
         }
-        if i == 49 {
+        // Exponential backoff with cap
+        delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
+
+        if i == polling::MAX_STARTUP_POLLS - 1 {
             if let Ok(log_content) = std::fs::read_to_string(&log_path) {
                 let last_lines: String = log_content
                     .lines()
@@ -306,6 +324,41 @@ pub fn ensure_daemon() -> Result<UnixSocketClient, ClientError> {
     }
 
     UnixSocketClient::connect()
+}
+
+/// Result of PID lookup from lock file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PidLookupResult {
+    /// Daemon is running with this PID.
+    Found(u32),
+    /// No lock file exists (daemon not running).
+    NotRunning,
+    /// Lock file exists but could not be read or parsed.
+    Error(String),
+}
+
+/// Get the daemon PID from the lock file.
+pub fn get_daemon_pid() -> PidLookupResult {
+    let lock_path = socket_path().with_extension("lock");
+    if !lock_path.exists() {
+        return PidLookupResult::NotRunning;
+    }
+
+    match std::fs::read_to_string(&lock_path) {
+        Err(e) => PidLookupResult::Error(format!(
+            "Failed to read lock file {}: {}",
+            lock_path.display(),
+            e
+        )),
+        Ok(content) => match content.trim().parse::<u32>() {
+            Ok(pid) => PidLookupResult::Found(pid),
+            Err(e) => PidLookupResult::Error(format!(
+                "Lock file contains invalid PID '{}': {}",
+                content.trim(),
+                e
+            )),
+        },
+    }
 }
 
 #[cfg(test)]

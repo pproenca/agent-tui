@@ -1,20 +1,36 @@
 ---
 name: clean-architecture
-description: Clean Architecture principles and best practices from Robert C. Martin's book. This skill should be used when designing software systems, reviewing code structure, or refactoring applications to achieve better separation of concerns. Triggers on tasks involving layers, boundaries, dependency direction, entities, use cases, or system architecture.
+description: Clean Architecture principles and best practices from Robert C. Martin's book. This skill should be used when: (1) reviewing code for architectural compliance, (2) designing software systems with proper layer separation, (3) refactoring to improve dependency direction, (4) evaluating boundary definitions between components. Triggers on: code reviews mentioning "architecture", "layers", "boundaries", "dependency direction", "entities", "use cases", "hexagonal", "ports and adapters", "onion architecture", or "domain-driven design".
 ---
 
 # Clean Architecture Best Practices
 
 Comprehensive guide to Clean Architecture principles for designing maintainable, testable software systems. Based on Robert C. Martin's "Clean Architecture: A Craftsman's Guide to Software Structure and Design." Contains 42 rules across 8 categories, prioritized by architectural impact.
 
-## When to Apply
+## Usage
 
-Reference these guidelines when:
-- Designing new software systems or modules
-- Structuring dependencies between layers
-- Defining boundaries between business logic and infrastructure
-- Reviewing code for architectural violations
-- Refactoring coupled systems toward cleaner structure
+When reviewing code for clean architecture:
+1. Identify what aspect is being reviewed (layer structure, dependency direction, boundaries, etc.)
+2. Load only the relevant category reference files using the table below
+3. Evaluate code against loaded rules
+4. Report violations with rule IDs (e.g., `dep-inward-only`) and specific fixes
+
+For quick reviews: Scan the Quick Reference section first to identify applicable rules.
+
+**Note:** Reference files include `tags` in frontmatter for filtering. Use tags like `dep`, `entity`, `usecase`, `bound`, `adapt`, `frame`, `test` to find related rules.
+
+## Which Rules to Check
+
+| If reviewing... | Check these categories |
+|-----------------|------------------------|
+| Layer dependencies, imports | Dependency Direction (1) |
+| Domain models, business logic | Entity Design (2) |
+| Application services, handlers | Use Case Isolation (3) |
+| Module/package organization | Component Cohesion (4) |
+| Service boundaries, APIs | Boundary Definition (5) |
+| Controllers, presenters, mappers | Interface Adapters (6) |
+| Framework coupling, DI | Framework Isolation (7) |
+| Test architecture, isolation | Testing Architecture (8) |
 
 ## Rule Categories by Priority
 
@@ -97,17 +113,3 @@ Reference these guidelines when:
 - [`test-layer-isolation`](references/test-layer-isolation.md) - Test each layer in isolation
 - [`test-boundary-verification`](references/test-boundary-verification.md) - Verify architectural boundaries with tests
 
-## How to Use
-
-Read individual reference files for detailed explanations and code examples:
-
-- [Section definitions](references/_sections.md) - Category structure and impact levels
-- [Rule template](assets/templates/_template.md) - Template for adding new rules
-
-## Reference Files
-
-| File | Description |
-|------|-------------|
-| [references/_sections.md](references/_sections.md) | Category definitions and ordering |
-| [assets/templates/_template.md](assets/templates/_template.md) | Template for new rules |
-| [metadata.json](metadata.json) | Version and reference information |

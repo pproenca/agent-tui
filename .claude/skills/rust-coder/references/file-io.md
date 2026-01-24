@@ -395,3 +395,12 @@ pub fn check_disk_space(path: &Path, min_bytes: u64) -> Result<bool> {
     Ok(available >= min_bytes)
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Error Handling](error-handling.md) - ENOENT handling and file error context
+- [Serialization](serialization.md) - Reading/writing structured data
+- [Daemon Patterns](daemon-rpc-patterns.md) - Store/persistence layer patterns
+- [Performance](performance.md) - Buffered I/O and memory mapping

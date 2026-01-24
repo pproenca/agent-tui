@@ -1,22 +1,19 @@
 use agent_tui_ipc::RpcResponse;
 use agent_tui_ipc::socket_path;
+use tracing::{error, info, warn};
 
 use crate::config::DaemonConfig;
 use crate::error::DaemonError;
-use crate::handlers;
+use crate::file_lock::{LockFile, remove_lock_file};
 use crate::metrics::DaemonMetrics;
+use crate::router::Router;
 use crate::session::SessionManager;
+use crate::signal_handler::SignalHandler;
 use crate::transport::{
     TransportConnection, TransportError, TransportListener, UnixSocketConnection,
     UnixSocketListener,
 };
 use crate::usecase_container::UseCaseContainer;
-use serde_json::json;
-use signal_hook::consts::{SIGINT, SIGTERM};
-use signal_hook::iterator::Signals;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender};
@@ -29,8 +26,6 @@ const CHANNEL_CAPACITY: usize = 128;
 pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
     usecases: UseCaseContainer<SessionManager>,
-    #[allow(dead_code)]
-    shutdown: Arc<AtomicBool>,
     active_connections: Arc<AtomicUsize>,
     metrics: Arc<DaemonMetrics>,
 }
@@ -75,7 +70,7 @@ impl ThreadPool {
                                 let lock = match receiver.lock() {
                                     Ok(l) => l,
                                     Err(e) => {
-                                        eprintln!("Worker {} receiver lock poisoned: {}", id, e);
+                                        error!(worker_id = id, error = %e, "Worker receiver lock poisoned");
                                         break;
                                     }
                                 };
@@ -93,7 +88,7 @@ impl ThreadPool {
                     }) {
                     Ok(h) => h,
                     Err(e) => {
-                        eprintln!("Failed to spawn worker {}: {}", id, e);
+                        error!(worker_id = id, error = %e, "Failed to spawn worker");
                         continue;
                     }
                 };
@@ -106,10 +101,10 @@ impl ThreadPool {
         }
 
         if workers.len() < size {
-            eprintln!(
-                "Warning: Only spawned {}/{} worker threads",
-                workers.len(),
-                size
+            warn!(
+                spawned = workers.len(),
+                requested = size,
+                "Only spawned partial worker threads"
             );
         }
 
@@ -149,27 +144,6 @@ impl DaemonServer {
         Self {
             session_manager,
             usecases,
-            shutdown: Arc::new(AtomicBool::new(false)),
-            active_connections,
-            metrics,
-        }
-    }
-
-    pub fn with_shutdown_and_config(shutdown: Arc<AtomicBool>, config: DaemonConfig) -> Self {
-        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
-        let metrics = Arc::new(DaemonMetrics::new());
-        let start_time = Instant::now();
-        let active_connections = Arc::new(AtomicUsize::new(0));
-        let usecases = UseCaseContainer::new(
-            Arc::clone(&session_manager),
-            Arc::clone(&metrics),
-            start_time,
-            Arc::clone(&active_connections),
-        );
-        Self {
-            session_manager,
-            usecases,
-            shutdown,
             active_connections,
             metrics,
         }
@@ -179,171 +153,26 @@ impl DaemonServer {
         let sessions = self.session_manager.list();
         for info in sessions {
             if let Err(e) = self.session_manager.kill(info.id.as_str()) {
-                eprintln!("Warning: Failed to kill session {}: {}", info.id, e);
+                warn!(session_id = %info.id, error = %e, "Failed to kill session during shutdown");
             }
         }
     }
 
     fn handle_request(&self, request: agent_tui_ipc::RpcRequest) -> RpcResponse {
-        match request.method.as_str() {
-            "ping" => RpcResponse::success(request.id, json!({ "pong": true })),
-
-            "health" => {
-                handlers::diagnostics::handle_health_uc(&self.usecases.diagnostics.health, request)
-            }
-
-            "metrics" => handlers::diagnostics::handle_metrics_uc(
-                &self.usecases.diagnostics.metrics,
-                request,
-            ),
-
-            // Session handlers using use cases
-            "spawn" => handlers::session::handle_spawn(&self.usecases.session.spawn, request),
-            "kill" => handlers::session::handle_kill(&self.usecases.session.kill, request),
-            "restart" => handlers::session::handle_restart(&self.usecases.session.restart, request),
-            "sessions" => {
-                handlers::session::handle_sessions(&self.usecases.session.sessions, request)
-            }
-            "resize" => handlers::session::handle_resize(&self.usecases.session.resize, request),
-            "attach" => handlers::session::handle_attach(&self.usecases.session.attach, request),
-
-            // Element handlers - using use cases
-            "snapshot" => {
-                handlers::elements::handle_snapshot_uc(&self.usecases.elements.snapshot, request)
-            }
-            "accessibility_snapshot" => handlers::elements::handle_accessibility_snapshot_uc(
-                &self.usecases.elements.accessibility_snapshot,
-                request,
-            ),
-            "click" => handlers::elements::handle_click_uc(&self.usecases.elements.click, request),
-            "dbl_click" => {
-                handlers::elements::handle_dbl_click_uc(&self.usecases.elements.dbl_click, request)
-            }
-            "fill" => handlers::elements::handle_fill_uc(&self.usecases.elements.fill, request),
-            "find" => handlers::elements::handle_find_uc(&self.usecases.elements.find, request),
-            "count" => handlers::elements::handle_count_uc(&self.usecases.elements.count, request),
-            "scroll" => {
-                handlers::elements::handle_scroll_uc(&self.usecases.elements.scroll, request)
-            }
-            "scroll_into_view" => handlers::elements::handle_scroll_into_view_uc(
-                &self.usecases.elements.scroll_into_view,
-                request,
-            ),
-            "get_text" => {
-                handlers::elements::handle_get_text_uc(&self.usecases.elements.get_text, request)
-            }
-            "get_value" => {
-                handlers::elements::handle_get_value_uc(&self.usecases.elements.get_value, request)
-            }
-            "is_visible" => handlers::elements::handle_is_visible_uc(
-                &self.usecases.elements.is_visible,
-                request,
-            ),
-            "is_focused" => handlers::elements::handle_is_focused_uc(
-                &self.usecases.elements.is_focused,
-                request,
-            ),
-            "is_enabled" => handlers::elements::handle_is_enabled_uc(
-                &self.usecases.elements.is_enabled,
-                request,
-            ),
-            "is_checked" => handlers::elements::handle_is_checked_uc(
-                &self.usecases.elements.is_checked,
-                request,
-            ),
-            "get_focused" => handlers::elements::handle_get_focused_uc(
-                &self.usecases.elements.get_focused,
-                request,
-            ),
-            "get_title" => {
-                handlers::elements::handle_get_title_uc(&self.usecases.elements.get_title, request)
-            }
-            "focus" => handlers::elements::handle_focus_uc(&self.usecases.elements.focus, request),
-            "clear" => handlers::elements::handle_clear_uc(&self.usecases.elements.clear, request),
-            "select_all" => handlers::elements::handle_select_all_uc(
-                &self.usecases.elements.select_all,
-                request,
-            ),
-            "toggle" => {
-                handlers::elements::handle_toggle_uc(&self.usecases.elements.toggle, request)
-            }
-            "select" => {
-                handlers::elements::handle_select_uc(&self.usecases.elements.select, request)
-            }
-            "multiselect" => handlers::elements::handle_multiselect_uc(
-                &self.usecases.elements.multiselect,
-                request,
-            ),
-
-            // Input handlers - keystroke and type use use cases
-            "keystroke" => {
-                handlers::input::handle_keystroke_uc(&self.usecases.input.keystroke, request)
-            }
-            "keydown" => handlers::input::handle_keydown_uc(&self.usecases.input.keydown, request),
-            "keyup" => handlers::input::handle_keyup_uc(&self.usecases.input.keyup, request),
-            "type" => handlers::input::handle_type_uc(&self.usecases.input.type_text, request),
-
-            // Wait handler using use case
-            "wait" => handlers::wait::handle_wait_uc(&self.usecases.wait, request),
-
-            // Recording handlers - using use cases
-            "record_start" => handlers::recording::handle_record_start_uc(
-                &self.usecases.recording.record_start,
-                request,
-            ),
-            "record_stop" => handlers::recording::handle_record_stop_uc(
-                &self.usecases.recording.record_stop,
-                request,
-            ),
-            "record_status" => handlers::recording::handle_record_status_uc(
-                &self.usecases.recording.record_status,
-                request,
-            ),
-
-            // Diagnostics handlers - using use cases
-            "trace" => {
-                handlers::diagnostics::handle_trace_uc(&self.usecases.diagnostics.trace, request)
-            }
-            "console" => handlers::diagnostics::handle_console_uc(
-                &self.usecases.diagnostics.console,
-                request,
-            ),
-            "errors" => {
-                handlers::diagnostics::handle_errors_uc(&self.usecases.diagnostics.errors, request)
-            }
-            "pty_read" => handlers::diagnostics::handle_pty_read_uc(
-                &self.usecases.diagnostics.pty_read,
-                request,
-            ),
-            "pty_write" => handlers::diagnostics::handle_pty_write_uc(
-                &self.usecases.diagnostics.pty_write,
-                request,
-            ),
-
-            "screen" => RpcResponse::error(
-                request.id,
-                -32601,
-                "Method 'screen' is deprecated. Use 'snapshot' with strip_ansi=true instead.",
-            ),
-
-            _ => RpcResponse::error(
-                request.id,
-                -32601,
-                &format!("Method not found: {}", request.method),
-            ),
-        }
+        let router = Router::new(&self.usecases);
+        router.route(request)
     }
 
     fn handle_client(&self, mut conn: impl TransportConnection) {
         let idle_timeout = DaemonConfig::from_env().idle_timeout;
 
         if let Err(e) = conn.set_read_timeout(Some(idle_timeout)) {
-            eprintln!("Failed to set read timeout: {}", e);
+            error!(error = %e, "Failed to set read timeout");
             return;
         }
 
         if let Err(e) = conn.set_write_timeout(Some(Duration::from_secs(30))) {
-            eprintln!("Failed to set write timeout: {}", e);
+            error!(error = %e, "Failed to set write timeout");
             return;
         }
 
@@ -372,7 +201,7 @@ impl DaemonServer {
                     continue;
                 }
                 Err(TransportError::Io(e)) => {
-                    eprintln!("Client connection error: {}", e);
+                    error!(error = %e, "Client connection error");
                     break;
                 }
             };
@@ -384,7 +213,7 @@ impl DaemonServer {
                 match e {
                     TransportError::ConnectionClosed => break,
                     _ => {
-                        eprintln!("Client write error: {}", e);
+                        error!(error = %e, "Client write error");
                         break;
                     }
                 }
@@ -393,74 +222,42 @@ impl DaemonServer {
     }
 }
 
-pub fn start_daemon() -> Result<(), DaemonError> {
-    let socket_path = socket_path();
-    let lock_path = socket_path.with_extension("lock");
+/// Initialize logging for the daemon.
+fn init_logging() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
+        .with_target(false)
+        .with_writer(std::io::stderr)
+        .init();
+}
 
-    let lock_file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&lock_path)
-        .map_err(|e| DaemonError::LockFailed(format!("failed to open lock file: {}", e)))?;
-
-    let fd = lock_file.as_raw_fd();
-
-    let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
-    if result != 0 {
-        return Err(DaemonError::AlreadyRunning);
-    }
-
-    lock_file
-        .set_len(0)
-        .map_err(|e| DaemonError::LockFailed(format!("failed to truncate lock file: {}", e)))?;
-    let mut lock_file = lock_file;
-    writeln!(lock_file, "{}", std::process::id())
-        .map_err(|e| DaemonError::LockFailed(format!("failed to write PID to lock file: {}", e)))?;
-
+/// Bind to the Unix socket, removing stale socket if needed.
+fn bind_socket(socket_path: &std::path::Path) -> Result<UnixSocketListener, DaemonError> {
     if socket_path.exists() {
-        std::fs::remove_file(&socket_path).map_err(|e| {
+        std::fs::remove_file(socket_path).map_err(|e| {
             DaemonError::SocketBind(format!("failed to remove stale socket: {}", e))
         })?;
     }
 
-    let listener = UnixSocketListener::bind(&socket_path)
+    let listener = UnixSocketListener::bind(socket_path)
         .map_err(|e| DaemonError::SocketBind(format!("failed to bind socket: {}", e)))?;
     listener
         .set_nonblocking(true)
         .map_err(|e| DaemonError::SocketBind(format!("failed to set non-blocking: {}", e)))?;
 
-    eprintln!("agent-tui daemon started on {}", socket_path.display());
-    eprintln!("PID: {}", std::process::id());
+    Ok(listener)
+}
 
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let config = DaemonConfig::from_env();
-    let server = Arc::new(DaemonServer::with_shutdown_and_config(
-        Arc::clone(&shutdown),
-        config,
-    ));
-
-    let mut signals =
-        Signals::new([SIGINT, SIGTERM]).map_err(|e| DaemonError::SignalSetup(e.to_string()))?;
-    let shutdown_signal = Arc::clone(&shutdown);
-    thread::Builder::new()
-        .name("signal-handler".to_string())
-        .spawn(move || {
-            if let Some(sig) = signals.forever().next() {
-                eprintln!("\nReceived signal {}, initiating graceful shutdown...", sig);
-                shutdown_signal.store(true, Ordering::SeqCst);
-            }
-        })
-        .map_err(|e| DaemonError::SignalSetup(format!("failed to spawn signal handler: {}", e)))?;
-
-    let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server), Arc::clone(&shutdown))
-        .map_err(|e| DaemonError::ThreadPool(e.to_string()))?;
-
+/// Run the main accept loop until shutdown is signaled.
+fn run_accept_loop(listener: &UnixSocketListener, pool: &ThreadPool, shutdown: &AtomicBool) {
     while !shutdown.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok(conn) => {
                 if let Err(conn) = pool.execute(conn) {
-                    eprintln!("Thread pool channel closed, dropping connection");
+                    warn!("Thread pool channel closed, dropping connection");
                     drop(conn);
                 }
             }
@@ -469,41 +266,86 @@ pub fn start_daemon() -> Result<(), DaemonError> {
             }
             Err(e) => {
                 if !shutdown.load(Ordering::Relaxed) {
-                    eprintln!("Error accepting connection: {}", e);
+                    error!(error = %e, "Error accepting connection");
                 }
             }
         }
     }
+}
 
-    eprintln!("Shutting down daemon...");
-
-    eprintln!(
-        "Waiting for {} active connections to complete...",
-        server.active_connections.load(Ordering::Relaxed)
+/// Wait for active connections to drain with timeout.
+fn wait_for_connections(server: &DaemonServer, timeout_secs: u64) {
+    info!(
+        active_connections = server.active_connections.load(Ordering::Relaxed),
+        "Waiting for active connections to complete"
     );
-    let shutdown_deadline = Instant::now() + Duration::from_secs(5);
+    let shutdown_deadline = Instant::now() + Duration::from_secs(timeout_secs);
     while server.active_connections.load(Ordering::Relaxed) > 0 {
         if Instant::now() > shutdown_deadline {
-            eprintln!("Shutdown timeout, forcing close");
+            warn!("Shutdown timeout, forcing close");
             break;
         }
         thread::sleep(Duration::from_millis(50));
     }
+}
 
-    eprintln!("Cleaning up sessions...");
+/// Clean up resources on shutdown.
+fn cleanup(
+    socket_path: &std::path::Path,
+    lock_path: &std::path::Path,
+    server: &DaemonServer,
+    pool: ThreadPool,
+) {
+    info!("Cleaning up sessions...");
     server.shutdown_all_sessions();
 
-    eprintln!("Stopping thread pool...");
+    info!("Stopping thread pool...");
     pool.shutdown();
 
     if socket_path.exists() {
-        let _ = std::fs::remove_file(&socket_path);
+        let _ = std::fs::remove_file(socket_path);
     }
 
-    if lock_path.exists() {
-        let _ = std::fs::remove_file(&lock_path);
-    }
+    remove_lock_file(lock_path);
 
-    eprintln!("Daemon shutdown complete.");
+    info!("Daemon shutdown complete");
+}
+
+/// Start the daemon server.
+///
+/// This is the main entry point that orchestrates:
+/// 1. Logging initialization
+/// 2. Lock file acquisition (singleton enforcement)
+/// 3. Socket binding
+/// 4. Signal handler setup
+/// 5. Accept loop
+/// 6. Graceful shutdown
+pub fn start_daemon() -> Result<(), DaemonError> {
+    init_logging();
+
+    let socket_path = socket_path();
+    let lock_path = socket_path.with_extension("lock");
+
+    // Acquire lock (holds until _lock is dropped)
+    let _lock = LockFile::acquire(&lock_path)?;
+
+    let listener = bind_socket(&socket_path)?;
+    info!(socket = %socket_path.display(), pid = std::process::id(), "Daemon started");
+
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let config = DaemonConfig::from_env();
+    let server = Arc::new(DaemonServer::with_config(config));
+
+    let _signal_handler = SignalHandler::setup(Arc::clone(&shutdown))?;
+
+    let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server), Arc::clone(&shutdown))
+        .map_err(|e| DaemonError::ThreadPool(e.to_string()))?;
+
+    run_accept_loop(&listener, &pool, &shutdown);
+
+    info!("Shutting down daemon...");
+    wait_for_connections(&server, 5);
+    cleanup(&socket_path, &lock_path, &server, pool);
+
     Ok(())
 }

@@ -41,6 +41,8 @@ regex = "1.10"
 rand = "0.8"
 libc = "0.2"
 signal-hook = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Dev dependencies (used in [dev-dependencies] sections)
 assert_cmd = "2.0"

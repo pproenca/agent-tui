@@ -375,3 +375,12 @@ pub fn runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Daemon Lifecycle](daemon-rpc-patterns.md) - Service startup, shutdown, and worker coordination
+- [Error Channels](error-handling.md) - Channel-based error collection from threads
+- [Polling Patterns](polling-patterns.md) - Condition waiting with timeouts
+- [Performance](performance.md) - Threading and async performance considerations

@@ -2616,48 +2616,63 @@ test_pid_in_lock_vs_actual_process() {
 }
 
 #######################################
-# Test SP3: Daemon crash detection.
-# Tests: CLI correctly reports daemon unavailable after crash.
+# Test SP3: Daemon crash recovery.
+# Tests: CLI auto-restarts daemon after crash with new PID.
 # Globals:
-#   DAEMON_PID: Read and cleared
+#   DAEMON_PID: Updated to new PID after restart
 # Returns:
-#   0 if crash detected correctly, 1 otherwise
+#   0 if daemon restarts correctly, 1 otherwise
 #######################################
 test_daemon_crash_detection() {
-    log_section "Sad Path SP3: Daemon Crash Detection"
+    log_section "Sad Path SP3: Daemon Crash Recovery"
 
-    local daemon_pid
-    daemon_pid=$(get_daemon_pid_from_health)
+    local old_pid
+    old_pid=$(get_daemon_pid_from_health)
 
-    if [[ -z "$daemon_pid" ]]; then
+    if [[ -z "$old_pid" ]]; then
         log_fail "Daemon not running"
         return 1
     fi
-    log_info "Current daemon PID: $daemon_pid"
+    log_info "Current daemon PID: $old_pid"
 
     # Force kill the daemon
     log_info "Force killing daemon (SIGKILL)..."
-    kill -9 "$daemon_pid" 2>/dev/null || true
+    kill -9 "$old_pid" 2>/dev/null || true
     sleep 0.5
 
-    if process_not_exists "$daemon_pid"; then
+    if process_not_exists "$old_pid"; then
         log_pass "Daemon process terminated"
     else
         log_fail "Process still exists after SIGKILL"
         return 1
     fi
 
-    # CLI should fail when daemon is dead
-    log_info "Verifying CLI detects daemon unavailable..."
-    if agent-tui sessions 2>/dev/null; then
-        log_fail "CLI should fail when daemon is dead"
+    # CLI should auto-restart daemon when running a command
+    log_info "Verifying CLI auto-restarts daemon..."
+    if ! agent-tui sessions >/dev/null 2>&1; then
+        log_fail "CLI failed to auto-restart daemon"
         return 1
-    else
-        log_pass "CLI correctly reports daemon unavailable"
+    fi
+    log_pass "CLI command succeeded (daemon auto-restarted)"
+
+    # Verify new daemon has different PID
+    local new_pid
+    new_pid=$(get_daemon_pid_from_health)
+
+    if [[ -z "$new_pid" ]]; then
+        log_fail "Could not get new daemon PID"
+        return 1
     fi
 
-    # Clear DAEMON_PID so cleanup doesn't try to kill nonexistent process
-    DAEMON_PID=""
+    if [[ "$new_pid" != "$old_pid" ]]; then
+        log_pass "New daemon PID ($new_pid) differs from crashed PID ($old_pid)"
+    else
+        log_fail "Daemon PID unchanged after crash - unexpected"
+        return 1
+    fi
+
+    # Update DAEMON_PID for cleanup
+    DAEMON_PID="$new_pid"
 }
 
 #######################################

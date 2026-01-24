@@ -64,10 +64,9 @@ pub fn handle_sessions<U: SessionsUseCase>(usecase: &U, request: RpcRequest) -> 
 /// Handle resize requests using the use case pattern.
 pub fn handle_resize<U: ResizeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = parse_resize_input(&request);
-    let (cols, rows) = (input.cols, input.rows);
 
     match usecase.execute(input) {
-        Ok(output) => resize_output_to_response(request.id, output, cols, rows),
+        Ok(output) => resize_output_to_response(request.id, output),
         Err(e) => session_error_response(request.id, e),
     }
 }

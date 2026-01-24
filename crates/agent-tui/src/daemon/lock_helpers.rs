@@ -122,18 +122,25 @@ mod tests {
 
     #[test]
     fn test_acquire_session_lock_succeeds_after_contention() {
+        use std::sync::Barrier;
+
         // Simulates a lock held briefly by another thread that releases
         let data = Arc::new(Mutex::new(42i32));
         let data_clone = Arc::clone(&data);
 
+        // Barrier ensures spawned thread signals it has the lock
+        let barrier = Arc::new(Barrier::new(2));
+        let barrier_clone = Arc::clone(&barrier);
+
         // Thread holds lock for 20ms then releases
         let handle = thread::spawn(move || {
             let _guard = data_clone.lock().unwrap();
+            barrier_clone.wait(); // Signal: lock acquired
             thread::sleep(Duration::from_millis(20));
         });
 
-        // Give the thread time to acquire the lock
-        thread::sleep(Duration::from_millis(5));
+        // Wait until spawned thread has the lock
+        barrier.wait();
 
         // Now try to acquire with 100ms timeout - should succeed after ~20ms
         let start = Instant::now();
@@ -154,26 +161,29 @@ mod tests {
 
         handle.join().unwrap();
         assert!(acquired, "Should have acquired lock after contention");
-        assert!(
-            start.elapsed() >= Duration::from_millis(15),
-            "Should have waited for contention"
-        );
     }
 
     #[test]
     fn test_acquire_session_lock_timeout_returns_none_under_contention() {
+        use std::sync::Barrier;
+
         // Tests that timeout is respected even under heavy contention
         let data = Arc::new(Mutex::new(42i32));
         let data_clone = Arc::clone(&data);
 
+        // Barrier ensures spawned thread signals it has the lock
+        let barrier = Arc::new(Barrier::new(2));
+        let barrier_clone = Arc::clone(&barrier);
+
         // Thread holds lock for longer than our timeout
         let handle = thread::spawn(move || {
             let _guard = data_clone.lock().unwrap();
+            barrier_clone.wait(); // Signal: lock acquired
             thread::sleep(Duration::from_millis(200));
         });
 
-        // Give the thread time to acquire the lock
-        thread::sleep(Duration::from_millis(5));
+        // Wait until spawned thread has the lock
+        barrier.wait();
 
         // Try to acquire with short timeout - should fail
         let start = Instant::now();

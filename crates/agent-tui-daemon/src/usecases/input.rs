@@ -112,6 +112,7 @@ impl<R: SessionRepository> KeyupUseCase for KeyupUseCaseImpl<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::SessionId;
     use crate::test_support::{MockError, MockSessionRepository};
 
     // ========================================================================
@@ -142,7 +143,7 @@ mod tests {
         let usecase = KeystrokeUseCaseImpl::new(repo);
 
         let input = KeystrokeInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             key: "Tab".to_string(),
         };
 
@@ -178,7 +179,7 @@ mod tests {
         let usecase = TypeUseCaseImpl::new(repo);
 
         let input = TypeInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             text: "test text".to_string(),
         };
 
@@ -214,7 +215,7 @@ mod tests {
         let usecase = KeydownUseCaseImpl::new(repo);
 
         let input = KeydownInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             key: "Shift".to_string(),
         };
 
@@ -250,7 +251,7 @@ mod tests {
         let usecase = KeyupUseCaseImpl::new(repo);
 
         let input = KeyupInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             key: "Alt".to_string(),
         };
 

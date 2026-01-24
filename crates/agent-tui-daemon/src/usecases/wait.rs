@@ -80,6 +80,7 @@ impl<R: SessionRepository> WaitUseCase for WaitUseCaseImpl<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::SessionId;
     use crate::test_support::{MockError, MockSessionRepository};
 
     // ========================================================================
@@ -113,7 +114,7 @@ mod tests {
         let usecase = WaitUseCaseImpl::new(repo);
 
         let input = WaitInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             text: Some("ready".to_string()),
             timeout_ms: 1000,
             condition: None,

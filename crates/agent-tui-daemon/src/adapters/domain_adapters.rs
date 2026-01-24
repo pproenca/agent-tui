@@ -5,21 +5,42 @@ use agent_tui_core::{CursorPosition, Element, ElementType, Position};
 
 use crate::domain::{
     DomainAccessibilitySnapshot, DomainBounds, DomainCursorPosition, DomainElement,
-    DomainElementRef, DomainElementType, DomainPosition, DomainRefMap, DomainSnapshotStats,
+    DomainElementRef, DomainElementType, DomainPosition, DomainRefMap, DomainRole,
+    DomainSnapshotStats,
 };
 
-pub fn core_bounds_to_domain(bounds: &Bounds) -> DomainBounds {
-    DomainBounds {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
+/// Convert a role string to DomainRole.
+///
+/// Falls back to StaticText for unknown roles to maintain robustness.
+pub fn string_to_domain_role(role: &str) -> DomainRole {
+    match role {
+        "button" => DomainRole::Button,
+        "tab" => DomainRole::Tab,
+        "input" => DomainRole::Input,
+        "text" => DomainRole::StaticText,
+        "panel" => DomainRole::Panel,
+        "checkbox" => DomainRole::Checkbox,
+        "menuitem" => DomainRole::MenuItem,
+        "status" => DomainRole::Status,
+        "toolblock" => DomainRole::ToolBlock,
+        "prompt" => DomainRole::PromptMarker,
+        "progressbar" => DomainRole::ProgressBar,
+        "link" => DomainRole::Link,
+        "error" => DomainRole::ErrorMessage,
+        "diff" => DomainRole::DiffLine,
+        "codeblock" => DomainRole::CodeBlock,
+        _ => DomainRole::StaticText, // Fallback for unknown roles
     }
+}
+
+pub fn core_bounds_to_domain(bounds: &Bounds) -> DomainBounds {
+    // Safe to use unchecked: core Bounds come from validated/trusted source
+    DomainBounds::new_unchecked(bounds.x, bounds.y, bounds.width, bounds.height)
 }
 
 pub fn core_element_ref_to_domain(element: &ElementRef) -> DomainElementRef {
     DomainElementRef {
-        role: element.role.clone(),
+        role: string_to_domain_role(&element.role),
         name: element.name.clone(),
         bounds: core_bounds_to_domain(&element.bounds),
         visual_hash: element.visual_hash,
@@ -77,7 +98,7 @@ fn core_ref_map_into_domain(ref_map: RefMap) -> DomainRefMap {
 
 fn core_element_ref_into_domain(element: ElementRef) -> DomainElementRef {
     DomainElementRef {
-        role: element.role,
+        role: string_to_domain_role(&element.role),
         name: element.name,
         bounds: core_bounds_to_domain(&element.bounds),
         visual_hash: element.visual_hash,
@@ -152,10 +173,10 @@ mod tests {
         };
         let domain = core_bounds_to_domain(&core_bounds);
 
-        assert_eq!(domain.x, 10);
-        assert_eq!(domain.y, 5);
-        assert_eq!(domain.width, 20);
-        assert_eq!(domain.height, 3);
+        assert_eq!(domain.x(), 10);
+        assert_eq!(domain.y(), 5);
+        assert_eq!(domain.width(), 20);
+        assert_eq!(domain.height(), 3);
     }
 
     #[test]
@@ -175,9 +196,9 @@ mod tests {
         };
         let domain = core_element_ref_to_domain(&core_ref);
 
-        assert_eq!(domain.role, "button");
+        assert_eq!(domain.role, DomainRole::Button);
         assert_eq!(domain.name, Some("OK".to_string()));
-        assert_eq!(domain.bounds.x, 5);
+        assert_eq!(domain.bounds.x(), 5);
         assert_eq!(domain.visual_hash, 12345);
         assert_eq!(domain.nth, Some(2));
         assert!(!domain.selected);

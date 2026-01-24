@@ -23,12 +23,14 @@ impl<R: SessionRepository> SpawnUseCaseImpl<R> {
 
 impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SessionError> {
+        // Convert domain SessionId to infrastructure String at the boundary
+        let session_id_str = input.session_id.map(|id| id.to_string());
         let (session_id, pid) = self.repository.spawn(
             &input.command,
             &input.args,
             input.cwd.as_deref(),
             input.env.as_ref(),
-            input.session_id,
+            session_id_str,
             input.cols,
             input.rows,
         )?;
@@ -224,6 +226,7 @@ impl<R: SessionRepository> ResizeUseCase for ResizeUseCaseImpl<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::SessionId;
     use crate::session::SessionInfo;
     use crate::test_support::{MockError, MockSessionRepository};
     use std::collections::HashMap;
@@ -249,7 +252,7 @@ mod tests {
             args: vec!["-c".to_string(), "echo hello".to_string()],
             cwd: Some("/tmp".to_string()),
             env: Some(env.clone()),
-            session_id: Some("custom-id".to_string()),
+            session_id: Some(SessionId::new("custom-id")),
             cols: 120,
             rows: 40,
         };
@@ -355,7 +358,7 @@ mod tests {
             args: vec![],
             cwd: None,
             env: None,
-            session_id: Some("my-custom-session".to_string()),
+            session_id: Some(SessionId::new("my-custom-session")),
             cols: 80,
             rows: 24,
         };
@@ -549,7 +552,7 @@ mod tests {
         let usecase = ResizeUseCaseImpl::new(repo);
 
         let input = ResizeInput {
-            session_id: Some("unknown".to_string()),
+            session_id: Some(SessionId::new("unknown")),
             cols: 80,
             rows: 24,
         };

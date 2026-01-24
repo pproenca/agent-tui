@@ -2,7 +2,7 @@ use agent_tui_ipc::{RpcRequest, RpcResponse};
 use serde_json::json;
 
 use super::common::session_error_response;
-use crate::adapters::{build_asciicast, build_raw_frames};
+use crate::adapters::{build_asciicast, build_raw_frames, parse_session_id};
 use crate::domain::{RecordStartInput, RecordStatusInput, RecordStopInput};
 use crate::usecases::{RecordStartUseCase, RecordStatusUseCase, RecordStopUseCase};
 
@@ -11,7 +11,7 @@ pub fn handle_record_start_uc<U: RecordStartUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = RecordStartInput { session_id };
@@ -34,7 +34,7 @@ pub fn handle_record_stop_uc<U: RecordStopUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let format = request.param_str("format").map(String::from);
     let req_id = request.id;
 
@@ -72,7 +72,7 @@ pub fn handle_record_status_uc<U: RecordStatusUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = RecordStatusInput { session_id };

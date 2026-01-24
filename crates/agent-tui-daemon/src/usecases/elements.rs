@@ -901,6 +901,7 @@ impl<R: SessionRepository> ScrollIntoViewUseCase for ScrollIntoViewUseCaseImpl<R
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::SessionId;
     use crate::test_support::{MockError, MockSessionRepository};
 
     // ========================================================================
@@ -931,7 +932,7 @@ mod tests {
         let usecase = ClickUseCaseImpl::new(repo);
 
         let input = ClickInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             element_ref: "@e1".to_string(),
         };
 
@@ -968,7 +969,7 @@ mod tests {
         let usecase = FillUseCaseImpl::new(repo);
 
         let input = FillInput {
-            session_id: Some("nonexistent".to_string()),
+            session_id: Some(SessionId::new("nonexistent")),
             element_ref: "@inp1".to_string(),
             value: "test".to_string(),
         };
@@ -1002,7 +1003,7 @@ mod tests {
         let usecase = FindUseCaseImpl::new(repo);
 
         let input = FindInput {
-            session_id: Some("unknown".to_string()),
+            session_id: Some(SessionId::new("unknown")),
             ..Default::default()
         };
 
@@ -1039,7 +1040,7 @@ mod tests {
         let usecase = ToggleUseCaseImpl::new(repo);
 
         let input = ToggleInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             element_ref: "@cb1".to_string(),
             state: Some(true),
         };
@@ -1077,7 +1078,7 @@ mod tests {
         let usecase = SelectUseCaseImpl::new(repo);
 
         let input = SelectInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             element_ref: "@sel1".to_string(),
             option: "Option A".to_string(),
         };
@@ -1115,7 +1116,7 @@ mod tests {
         let usecase = MultiselectUseCaseImpl::new(repo);
 
         let input = MultiselectInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             element_ref: "@msel1".to_string(),
             options: vec!["A".to_string()],
         };
@@ -1152,7 +1153,7 @@ mod tests {
         let usecase = ScrollIntoViewUseCaseImpl::new(repo);
 
         let input = ScrollIntoViewInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             element_ref: "@e1".to_string(),
         };
 
@@ -1189,7 +1190,7 @@ mod tests {
         let usecase = ScrollUseCaseImpl::new(repo);
 
         let input = ScrollInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             direction: "up".to_string(),
             amount: 3,
         };
@@ -1228,7 +1229,7 @@ mod tests {
         let usecase = CountUseCaseImpl::new(repo);
 
         let input = CountInput {
-            session_id: Some("unknown".to_string()),
+            session_id: Some(SessionId::new("unknown")),
             role: None,
             name: None,
             text: None,
@@ -1266,7 +1267,7 @@ mod tests {
         let usecase = DoubleClickUseCaseImpl::new(repo);
 
         let input = DoubleClickInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             element_ref: "@e1".to_string(),
         };
 
@@ -1302,7 +1303,7 @@ mod tests {
         let usecase = FocusUseCaseImpl::new(repo);
 
         let input = FocusInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             element_ref: "@inp1".to_string(),
         };
 
@@ -1338,7 +1339,7 @@ mod tests {
         let usecase = ClearUseCaseImpl::new(repo);
 
         let input = ClearInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             element_ref: "@inp1".to_string(),
         };
 
@@ -1374,7 +1375,7 @@ mod tests {
         let usecase = SelectAllUseCaseImpl::new(repo);
 
         let input = SelectAllInput {
-            session_id: Some("missing".to_string()),
+            session_id: Some(SessionId::new("missing")),
             element_ref: "@inp1".to_string(),
         };
 

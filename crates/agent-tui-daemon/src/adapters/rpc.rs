@@ -4,11 +4,27 @@ use serde_json::{Value, json};
 use super::snapshot_adapters::session_info_to_json;
 use crate::domain::{
     ClickInput, CountInput, CountOutput, DomainElement, FillInput, FindInput, KeystrokeInput,
-    KillOutput, ResizeInput, ResizeOutput, ScrollInput, ScrollOutput, SessionsOutput,
+    KillOutput, ResizeInput, ResizeOutput, ScrollInput, ScrollOutput, SessionId, SessionsOutput,
     SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, TypeInput, WaitInput, WaitOutput,
 };
 use crate::error::{DomainError, SessionError};
 use crate::usecases::{AttachOutput, RestartOutput};
+
+/// Convert an optional string session ID to an optional SessionId.
+///
+/// This handles the conversion from IPC layer strings to domain SessionId:
+/// - None -> None (use active session)
+/// - Some("") or whitespace -> None (treat empty as unspecified)
+/// - Some(id) -> Some(SessionId::new(id))
+pub fn parse_session_id(session: Option<String>) -> Option<SessionId> {
+    session.and_then(|s| {
+        if s.trim().is_empty() {
+            None
+        } else {
+            Some(SessionId::new(s))
+        }
+    })
+}
 
 const MAX_TERMINAL_COLS: u16 = 500;
 const MAX_TERMINAL_ROWS: u16 = 200;
@@ -86,7 +102,7 @@ pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse
         args: rpc_params.args,
         cwd: rpc_params.cwd,
         env: None,
-        session_id: rpc_params.session,
+        session_id: parse_session_id(rpc_params.session),
         cols: rpc_params.cols.clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS),
         rows: rpc_params.rows.clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS),
     })
@@ -113,7 +129,7 @@ pub fn parse_snapshot_input(request: &RpcRequest) -> SnapshotInput {
         .unwrap_or_default();
 
     SnapshotInput {
-        session_id: rpc_params.session,
+        session_id: parse_session_id(rpc_params.session),
         include_elements: rpc_params.include_elements,
         region: rpc_params.region,
         strip_ansi: rpc_params.strip_ansi,
@@ -163,7 +179,7 @@ pub fn parse_click_input(request: &RpcRequest) -> Result<ClickInput, RpcResponse
     let element_ref = request.require_str("ref")?.to_string();
 
     Ok(ClickInput {
-        session_id: request.param_str("session").map(String::from),
+        session_id: parse_session_id(request.param_str("session").map(String::from)),
         element_ref,
     })
 }
@@ -175,7 +191,7 @@ pub fn parse_fill_input(request: &RpcRequest) -> Result<FillInput, RpcResponse> 
     let value = request.require_str("value")?.to_string();
 
     Ok(FillInput {
-        session_id: request.param_str("session").map(String::from),
+        session_id: parse_session_id(request.param_str("session").map(String::from)),
         element_ref,
         value,
     })
@@ -190,7 +206,7 @@ pub fn parse_find_input(request: &RpcRequest) -> FindInput {
         .unwrap_or_default();
 
     FindInput {
-        session_id: rpc_params.session,
+        session_id: parse_session_id(rpc_params.session),
         role: rpc_params.role,
         name: rpc_params.name,
         text: rpc_params.text,
@@ -207,7 +223,7 @@ pub fn parse_keystroke_input(request: &RpcRequest) -> Result<KeystrokeInput, Rpc
     let key = request.require_str("key")?.to_string();
 
     Ok(KeystrokeInput {
-        session_id: request.param_str("session").map(String::from),
+        session_id: parse_session_id(request.param_str("session").map(String::from)),
         key,
     })
 }
@@ -218,7 +234,7 @@ pub fn parse_type_input(request: &RpcRequest) -> Result<TypeInput, RpcResponse> 
     let text = request.require_str("text")?.to_string();
 
     Ok(TypeInput {
-        session_id: request.param_str("session").map(String::from),
+        session_id: parse_session_id(request.param_str("session").map(String::from)),
         text,
     })
 }
@@ -232,7 +248,7 @@ pub fn parse_wait_input(request: &RpcRequest) -> WaitInput {
         .unwrap_or_default();
 
     WaitInput {
-        session_id: rpc_params.session,
+        session_id: parse_session_id(rpc_params.session),
         text: rpc_params.text,
         timeout_ms: rpc_params.timeout_ms,
         condition: rpc_params.condition,
@@ -257,7 +273,7 @@ pub fn parse_scroll_input(request: &RpcRequest) -> Result<ScrollInput, RpcRespon
     let direction = request.require_str("direction")?.to_string();
 
     Ok(ScrollInput {
-        session_id: request.param_str("session").map(String::from),
+        session_id: parse_session_id(request.param_str("session").map(String::from)),
         direction,
         amount: request.param_u16("amount", 1),
     })
@@ -332,7 +348,7 @@ pub fn parse_resize_input(request: &RpcRequest) -> ResizeInput {
         });
 
     ResizeInput {
-        session_id: rpc_params.session,
+        session_id: parse_session_id(rpc_params.session),
         cols: rpc_params.cols.clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS),
         rows: rpc_params.rows.clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS),
     }
@@ -401,7 +417,7 @@ pub fn parse_count_input(request: &RpcRequest) -> CountInput {
         .unwrap_or_default();
 
     CountInput {
-        session_id: rpc_params.session,
+        session_id: parse_session_id(rpc_params.session),
         role: rpc_params.role,
         name: rpc_params.name,
         text: rpc_params.text,
@@ -416,6 +432,7 @@ pub fn count_output_to_response(id: u64, output: CountOutput) -> RpcResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::SessionId;
 
     fn make_request(id: u64, method: &str, params: Option<serde_json::Value>) -> RpcRequest {
         RpcRequest::new(id, method.to_string(), params)
@@ -479,7 +496,7 @@ mod tests {
             })),
         );
         let input = parse_snapshot_input(&request);
-        assert_eq!(input.session_id, Some("abc123".to_string()));
+        assert_eq!(input.session_id, Some(SessionId::new("abc123")));
         assert!(input.include_elements);
         assert!(input.include_cursor);
     }

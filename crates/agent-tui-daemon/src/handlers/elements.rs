@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use super::common::session_error_response;
 use crate::adapters::{
     count_output_to_response, element_to_json as adapter_element_to_json, fill_success_response,
-    parse_count_input, parse_fill_input, parse_find_input, parse_scroll_input,
+    parse_count_input, parse_fill_input, parse_find_input, parse_scroll_input, parse_session_id,
     parse_snapshot_input, scroll_output_to_response, snapshot_output_to_response, snapshot_to_dto,
 };
 use crate::domain::{
@@ -43,7 +43,7 @@ pub fn handle_accessibility_snapshot_uc<U: AccessibilitySnapshotUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let interactive_only = request.param_bool("interactive", false);
     let req_id = request.id;
 
@@ -75,7 +75,7 @@ pub fn handle_click_uc<U: ClickUseCase>(usecase: &U, request: RpcRequest) -> Rpc
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ClickInput {
@@ -95,7 +95,7 @@ pub fn handle_dbl_click_uc<U: DoubleClickUseCase>(usecase: &U, request: RpcReque
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = DoubleClickInput {
@@ -181,7 +181,7 @@ pub fn handle_get_text_uc<U: GetTextUseCase>(usecase: &U, request: RpcRequest) -
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ElementStateInput {
@@ -204,7 +204,7 @@ pub fn handle_get_value_uc<U: GetValueUseCase>(usecase: &U, request: RpcRequest)
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ElementStateInput {
@@ -227,7 +227,7 @@ pub fn handle_is_visible_uc<U: IsVisibleUseCase>(usecase: &U, request: RpcReques
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ElementStateInput {
@@ -250,7 +250,7 @@ pub fn handle_is_focused_uc<U: IsFocusedUseCase>(usecase: &U, request: RpcReques
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ElementStateInput {
@@ -273,7 +273,7 @@ pub fn handle_is_enabled_uc<U: IsEnabledUseCase>(usecase: &U, request: RpcReques
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ElementStateInput {
@@ -296,7 +296,7 @@ pub fn handle_is_checked_uc<U: IsCheckedUseCase>(usecase: &U, request: RpcReques
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ElementStateInput {
@@ -375,7 +375,7 @@ pub fn handle_focus_uc<U: FocusUseCase>(usecase: &U, request: RpcRequest) -> Rpc
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = FocusInput {
@@ -395,7 +395,7 @@ pub fn handle_clear_uc<U: ClearUseCase>(usecase: &U, request: RpcRequest) -> Rpc
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ClearInput {
@@ -415,7 +415,7 @@ pub fn handle_select_all_uc<U: SelectAllUseCase>(usecase: &U, request: RpcReques
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = SelectAllInput {
@@ -436,7 +436,7 @@ pub fn handle_toggle_uc<U: ToggleUseCase>(usecase: &U, request: RpcRequest) -> R
         Err(resp) => return resp,
     };
     let force_state = request.param_bool_opt("state");
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ToggleInput {
@@ -464,7 +464,7 @@ pub fn handle_select_uc<U: SelectUseCase>(usecase: &U, request: RpcRequest) -> R
         Ok(o) => o.to_owned(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = SelectInput {
@@ -491,7 +491,7 @@ pub fn handle_scroll_into_view_uc<U: ScrollIntoViewUseCase>(
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ScrollIntoViewInput {
@@ -543,7 +543,7 @@ pub fn handle_multiselect_uc<U: MultiselectUseCase>(
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = MultiselectInput {

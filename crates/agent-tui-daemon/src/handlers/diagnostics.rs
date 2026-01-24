@@ -2,6 +2,7 @@ use agent_tui_ipc::{RpcRequest, RpcResponse};
 use serde_json::json;
 
 use super::common::session_error_response;
+use crate::adapters::parse_session_id;
 use crate::domain::{
     ConsoleInput, ErrorsInput, HealthInput, MetricsInput, PtyReadInput, PtyWriteInput, TraceInput,
 };
@@ -55,7 +56,7 @@ pub fn handle_metrics_uc<U: MetricsUseCase>(usecase: &U, request: RpcRequest) ->
 
 /// Handle trace requests using the use case pattern.
 pub fn handle_trace_uc<U: TraceUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let count = request.param_u64("count", 1000) as usize;
     let req_id = request.id;
 
@@ -94,7 +95,7 @@ pub fn handle_trace_uc<U: TraceUseCase>(usecase: &U, request: RpcRequest) -> Rpc
 
 /// Handle console requests using the use case pattern.
 pub fn handle_console_uc<U: ConsoleUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = ConsoleInput {
@@ -117,7 +118,7 @@ pub fn handle_console_uc<U: ConsoleUseCase>(usecase: &U, request: RpcRequest) ->
 
 /// Handle errors requests using the use case pattern.
 pub fn handle_errors_uc<U: ErrorsUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let count = request.param_u64("count", 1000) as usize;
     let req_id = request.id;
 
@@ -155,7 +156,7 @@ pub fn handle_errors_uc<U: ErrorsUseCase>(usecase: &U, request: RpcRequest) -> R
 
 /// Handle pty_read requests using the use case pattern.
 pub fn handle_pty_read_uc<U: PtyReadUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let max_bytes = request.param_u64("max_bytes", 4096) as usize;
     let req_id = request.id;
 
@@ -183,7 +184,7 @@ pub fn handle_pty_write_uc<U: PtyWriteUseCase>(usecase: &U, request: RpcRequest)
         Ok(d) => d.to_string(),
         Err(resp) => return resp,
     };
-    let session_id = request.param_str("session").map(String::from);
+    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
 
     let input = PtyWriteInput { session_id, data };

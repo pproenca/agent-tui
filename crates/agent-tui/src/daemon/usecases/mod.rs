@@ -3,6 +3,7 @@ mod elements;
 mod input;
 mod recording;
 mod session;
+mod shutdown;
 mod snapshot;
 mod wait;
 
@@ -36,6 +37,7 @@ pub use session::{
     RestartUseCase, RestartUseCaseImpl, SessionsUseCase, SessionsUseCaseImpl, SpawnUseCase,
     SpawnUseCaseImpl,
 };
+pub use shutdown::{ShutdownUseCase, ShutdownUseCaseImpl};
 pub use snapshot::{
     AccessibilitySnapshotUseCase, AccessibilitySnapshotUseCaseImpl, SnapshotUseCase,
     SnapshotUseCaseImpl,

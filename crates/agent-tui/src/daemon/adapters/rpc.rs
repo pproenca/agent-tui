@@ -568,6 +568,19 @@ pub fn metrics_output_to_response(id: u64, output: MetricsOutput) -> RpcResponse
     )
 }
 
+/// Convert ShutdownOutput to RpcResponse.
+pub fn shutdown_output_to_response(
+    id: u64,
+    output: crate::daemon::domain::ShutdownOutput,
+) -> RpcResponse {
+    RpcResponse::success(
+        id,
+        json!({
+            "acknowledged": output.acknowledged
+        }),
+    )
+}
+
 /// Convert TraceOutput to RpcResponse.
 pub fn trace_output_to_response(id: u64, output: TraceOutput) -> RpcResponse {
     let trace_json: Vec<_> = output

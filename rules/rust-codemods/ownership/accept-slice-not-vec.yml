@@ -12,3 +12,4 @@ rule:
   regex: "^&Vec<"
   inside:
     kind: parameter
+    stopBy: end

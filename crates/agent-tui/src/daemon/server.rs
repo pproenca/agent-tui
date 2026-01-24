@@ -30,12 +30,6 @@ pub struct DaemonServer {
     metrics: Arc<DaemonMetrics>,
 }
 
-impl Default for DaemonServer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 struct ThreadPool {
     workers: Vec<thread::JoinHandle<()>>,
     sender: SyncSender<UnixSocketConnection>,
@@ -126,11 +120,7 @@ impl ThreadPool {
 }
 
 impl DaemonServer {
-    pub fn new() -> Self {
-        Self::with_config(DaemonConfig::default())
-    }
-
-    pub fn with_config(config: DaemonConfig) -> Self {
+    pub fn with_config(config: DaemonConfig, shutdown_flag: Arc<AtomicBool>) -> Self {
         let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
         let metrics = Arc::new(DaemonMetrics::new());
         let start_time = Instant::now();
@@ -140,6 +130,7 @@ impl DaemonServer {
             Arc::clone(&metrics),
             start_time,
             Arc::clone(&active_connections),
+            shutdown_flag,
         );
         Self {
             session_manager,
@@ -334,7 +325,7 @@ pub fn start_daemon() -> Result<(), DaemonError> {
 
     let shutdown = Arc::new(AtomicBool::new(false));
     let config = DaemonConfig::from_env();
-    let server = Arc::new(DaemonServer::with_config(config));
+    let server = Arc::new(DaemonServer::with_config(config, Arc::clone(&shutdown)));
 
     let _signal_handler = SignalHandler::setup(Arc::clone(&shutdown))?;
 

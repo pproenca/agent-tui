@@ -32,7 +32,7 @@ fn test_session_not_found_structured_error() {
     );
 
     harness
-        .run(&["snap"])
+        .run(&["screen"])
         .failure()
         .stderr(predicate::str::contains("Session not found"));
 }
@@ -54,7 +54,7 @@ fn test_no_active_session_error() {
     );
 
     harness
-        .run(&["snap"])
+        .run(&["screen"])
         .failure()
         .stderr(predicate::str::contains("No active session"));
 }
@@ -83,7 +83,7 @@ fn test_element_not_found_includes_ref() {
     );
 
     harness
-        .run(&["click", "@missing-button"])
+        .run(&["action", "@missing-button"])
         .failure()
         .stderr(predicate::str::contains("Element not found"));
 }
@@ -109,7 +109,7 @@ fn test_wrong_element_type_shows_actual_expected() {
     );
 
     harness
-        .run(&["fill", "@btn1", "test-value"])
+        .run(&["action", "@btn1", "test-value"])
         .failure()
         .stderr(predicate::str::contains("button"));
 }
@@ -138,7 +138,7 @@ fn test_lock_timeout_marked_retryable() {
     );
 
     harness
-        .run(&["click", "@btn1"])
+        .run(&["action", "@btn1"])
         .failure()
         .stderr(predicate::str::contains("lock").or(predicate::str::contains("timeout")));
 }
@@ -194,7 +194,7 @@ fn test_invalid_key_error() {
     );
 
     harness
-        .run(&["key", "InvalidKey"])
+        .run(&["input", "InvalidKey"])
         .failure()
         .stderr(predicate::str::contains("Invalid"));
 }
@@ -354,7 +354,7 @@ fn test_error_with_all_fields() {
     );
 
     harness
-        .run(&["click", "@nonexistent"])
+        .run(&["action", "@nonexistent"])
         .failure()
         .stderr(predicate::str::contains("not found"));
 }
@@ -387,7 +387,7 @@ fn test_not_found_category_errors() {
             },
         );
 
-        harness.run(&["snap"]).failure();
+        harness.run(&["screen"]).failure();
     }
 }
 

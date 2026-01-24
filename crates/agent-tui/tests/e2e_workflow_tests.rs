@@ -21,7 +21,7 @@ fn test_spawn_snapshot_kill() {
     assert!(!session_id.is_empty());
 
     // 2. Snapshot should show shell prompt
-    let output = h.cli_json().args(["snap"]).output().unwrap();
+    let output = h.cli_json().args(["screen"]).output().unwrap();
     assert!(output.status.success());
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     let screen = json["screen"].as_str().unwrap();
@@ -31,7 +31,7 @@ fn test_spawn_snapshot_kill() {
     assert!(h.cli().args(["kill"]).output().unwrap().status.success());
 
     // 4. Sessions list should not contain our session
-    let output = h.cli_json().args(["ls"]).output().unwrap();
+    let output = h.cli_json().args(["sessions"]).output().unwrap();
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     let sessions = json["sessions"].as_array().unwrap();
     assert!(
@@ -54,7 +54,7 @@ fn test_type_changes_screen() {
     // 1. Type command with unique marker
     assert!(
         h.cli()
-            .args(["key", "--type", "echo E2E_MARKER_ABC123"])
+            .args(["input", "echo E2E_MARKER_ABC123"])
             .output()
             .unwrap()
             .status
@@ -72,7 +72,7 @@ fn test_type_changes_screen() {
     );
 
     // 3. Snapshot contains typed text
-    let output = h.cli_json().args(["snap"]).output().unwrap();
+    let output = h.cli_json().args(["screen"]).output().unwrap();
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     let screen = json["screen"].as_str().unwrap();
     assert!(
@@ -99,7 +99,7 @@ fn test_multi_session_switching() {
     // 3. Type unique markers in each session
     assert!(
         h.cli()
-            .args(["-s", &sess_a, "key", "--type", "MARKER_AAA"])
+            .args(["-s", &sess_a, "input", "MARKER_AAA"])
             .output()
             .unwrap()
             .status
@@ -107,7 +107,7 @@ fn test_multi_session_switching() {
     );
     assert!(
         h.cli()
-            .args(["-s", &sess_b, "key", "--type", "MARKER_BBB"])
+            .args(["-s", &sess_b, "input", "MARKER_BBB"])
             .output()
             .unwrap()
             .status
@@ -133,7 +133,7 @@ fn test_multi_session_switching() {
     );
 
     // 5. Sessions list shows both
-    let output = h.cli_json().args(["ls"]).output().unwrap();
+    let output = h.cli_json().args(["sessions"]).output().unwrap();
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     let sessions = json["sessions"].as_array().unwrap();
     assert!(sessions.len() >= 2, "Should have at least 2 sessions");
@@ -149,7 +149,11 @@ fn test_multi_session_switching() {
     );
 
     // 7. Session B still works - snapshot shows its marker
-    let output = h.cli_json().args(["-s", &sess_b, "snap"]).output().unwrap();
+    let output = h
+        .cli_json()
+        .args(["-s", &sess_b, "screen"])
+        .output()
+        .unwrap();
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert!(
         json["screen"].as_str().unwrap().contains("MARKER_BBB"),
@@ -169,7 +173,7 @@ fn test_wait_for_delayed_output() {
     // Clear the screen first so we have a clean slate
     assert!(
         h.cli()
-            .args(["key", "--type", "clear"])
+            .args(["input", "clear"])
             .output()
             .unwrap()
             .status
@@ -177,7 +181,7 @@ fn test_wait_for_delayed_output() {
     );
     assert!(
         h.cli()
-            .args(["key", "Enter"])
+            .args(["input", "Enter"])
             .output()
             .unwrap()
             .status
@@ -205,7 +209,7 @@ fn test_wait_for_delayed_output() {
 
     assert!(
         h.cli()
-            .args(["key", "--type", "sleep 1; echo MARKER_UNIQUE_42"])
+            .args(["input", "sleep 1; echo MARKER_UNIQUE_42"])
             .output()
             .unwrap()
             .status
@@ -213,7 +217,7 @@ fn test_wait_for_delayed_output() {
     );
 
     // Verify marker appears once in the typed command
-    let output = h.cli_json().args(["snap"]).output().unwrap();
+    let output = h.cli_json().args(["screen"]).output().unwrap();
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     let screen_before = json["screen"].as_str().unwrap();
     let count_before = screen_before.matches("MARKER_UNIQUE_42").count();
@@ -222,7 +226,7 @@ fn test_wait_for_delayed_output() {
     // Execute the command
     assert!(
         h.cli()
-            .args(["key", "Enter"])
+            .args(["input", "Enter"])
             .output()
             .unwrap()
             .status
@@ -234,7 +238,7 @@ fn test_wait_for_delayed_output() {
 
     // Poll until we see 2 occurrences
     loop {
-        let output = h.cli_json().args(["snap"]).output().unwrap();
+        let output = h.cli_json().args(["screen"]).output().unwrap();
         let json: Value = serde_json::from_slice(&output.stdout).unwrap();
         let screen = json["screen"].as_str().unwrap();
         let count = screen.matches("MARKER_UNIQUE_42").count();
@@ -310,7 +314,7 @@ fn test_click_nonexistent_element() {
     // Click on element ref that doesn't exist
     let status = h
         .cli()
-        .args(["click", "@nonexistent_element"])
+        .args(["action", "@nonexistent_element", "click"])
         .output()
         .unwrap()
         .status;
@@ -348,7 +352,7 @@ fn test_operation_on_dead_session() {
     // Operations on dead session should fail
     let status = h
         .cli()
-        .args(["-s", &session_id, "snap"])
+        .args(["-s", &session_id, "screen"])
         .output()
         .unwrap()
         .status;
@@ -377,7 +381,7 @@ fn test_concurrent_session_access() {
     let t1 = thread::spawn(move || {
         Command::new(env!("CARGO_BIN_EXE_agent-tui"))
             .env("AGENT_TUI_SOCKET", &socket_path)
-            .args(["-s", &sid1, "key", "--type", "echo concurrent1"])
+            .args(["-s", &sid1, "input", "echo concurrent1"])
             .status()
             .expect("key --type command failed")
     });
@@ -386,7 +390,7 @@ fn test_concurrent_session_access() {
     let t2 = thread::spawn(move || {
         Command::new(env!("CARGO_BIN_EXE_agent-tui"))
             .env("AGENT_TUI_SOCKET", &socket_path2)
-            .args(["-f", "json", "-s", &sid2, "snap"])
+            .args(["-f", "json", "-s", &sid2, "screen"])
             .output()
             .expect("snapshot failed")
     });
@@ -422,7 +426,7 @@ fn test_rapid_session_spawn_and_kill() {
     }
 
     // All sessions should be cleaned up
-    let output = h.cli_json().args(["ls"]).output().unwrap();
+    let output = h.cli_json().args(["sessions"]).output().unwrap();
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     let sessions = json["sessions"].as_array().unwrap();
     assert_eq!(sessions.len(), 0, "All sessions should be killed");
@@ -440,7 +444,7 @@ fn test_pty_read_write_round_trip() {
     // Write a command via type (which uses pty_write internally for each char)
     assert!(
         h.cli()
-            .args(["key", "--type", "echo PTY_ROUNDTRIP_TEST"])
+            .args(["input", "echo PTY_ROUNDTRIP_TEST"])
             .output()
             .unwrap()
             .status
@@ -450,7 +454,7 @@ fn test_pty_read_write_round_trip() {
     // Execute the command
     assert!(
         h.cli()
-            .args(["key", "Enter"])
+            .args(["input", "Enter"])
             .output()
             .unwrap()
             .status
@@ -468,7 +472,7 @@ fn test_pty_read_write_round_trip() {
     );
 
     // Verify the round-trip: typed command -> executed -> output captured
-    let output = h.cli_json().args(["snap"]).output().unwrap();
+    let output = h.cli_json().args(["screen"]).output().unwrap();
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     let screen = json["screen"].as_str().unwrap();
 
@@ -495,7 +499,7 @@ fn test_dbl_click_real_tui_element() {
     // Type a marker that we can try to double-click on
     assert!(
         h.cli()
-            .args(["key", "--type", "echo DBLCLICK_TARGET"])
+            .args(["input", "echo DBLCLICK_TARGET"])
             .output()
             .unwrap()
             .status
@@ -505,7 +509,7 @@ fn test_dbl_click_real_tui_element() {
     // Execute to have output
     assert!(
         h.cli()
-            .args(["key", "Enter"])
+            .args(["input", "Enter"])
             .output()
             .unwrap()
             .status
@@ -522,18 +526,18 @@ fn test_dbl_click_real_tui_element() {
             .success()
     );
 
-    // Try to dblclick on the text. This tests the atomic lock behavior:
+    // Try to dblclick on a ref. This tests the atomic lock behavior:
     // The lock is held across both clicks, so no race condition can occur.
-    // Note: This may fail with "element not found" if the text isn't recognized
-    // as a clickable element, but that's expected. The test verifies the
-    // dbl_click operation completes without hanging or crashing.
-    let status = h.cli().args(["click", "-2", "DBLCLICK_TARGET"]).output();
+    // Note: This may fail with "element not found" if no element is detected,
+    // but that's expected. The test verifies the dbl_click operation completes
+    // without hanging or crashing.
+    let status = h.cli().args(["action", "@e1", "dblclick"]).output();
 
     // The operation should complete (success or element-not-found error)
     assert!(status.is_ok(), "dblclick command should complete");
 
     // Session should still be usable after dblclick
-    let output = h.cli_json().args(["snap"]).output().unwrap();
+    let output = h.cli_json().args(["screen"]).output().unwrap();
     assert!(
         output.status.success(),
         "Session should be usable after dblclick"
@@ -552,7 +556,7 @@ fn test_accessibility_snapshot_detects_buttons() {
     // Display button-like elements that the VOM should detect
     assert!(
         h.cli()
-            .args(["key", "--type", "printf '[Y] [N] [OK] [Cancel]\\n'"])
+            .args(["input", "printf '[Y] [N] [OK] [Cancel]\\n'"])
             .output()
             .unwrap()
             .status
@@ -562,7 +566,7 @@ fn test_accessibility_snapshot_detects_buttons() {
     // Press Enter to execute the printf command
     assert!(
         h.cli()
-            .args(["key", "Enter"])
+            .args(["input", "Enter"])
             .output()
             .unwrap()
             .status
@@ -580,7 +584,7 @@ fn test_accessibility_snapshot_detects_buttons() {
     );
 
     // Get accessibility snapshot and verify button detection
-    let output = h.cli_json().args(["snap", "-a"]).output().unwrap();
+    let output = h.cli_json().args(["screen", "-a"]).output().unwrap();
     assert!(
         output.status.success(),
         "Accessibility snapshot should succeed"
@@ -605,7 +609,7 @@ fn test_accessibility_snapshot_refs_can_be_clicked() {
     // Display a simple button
     assert!(
         h.cli()
-            .args(["key", "--type", "printf '[Submit]\\n'"])
+            .args(["input", "printf '[Submit]\\n'"])
             .output()
             .unwrap()
             .status
@@ -615,7 +619,7 @@ fn test_accessibility_snapshot_refs_can_be_clicked() {
     // Execute the command
     assert!(
         h.cli()
-            .args(["key", "Enter"])
+            .args(["input", "Enter"])
             .output()
             .unwrap()
             .status
@@ -633,7 +637,7 @@ fn test_accessibility_snapshot_refs_can_be_clicked() {
     );
 
     // Get accessibility snapshot to find the ref
-    let output = h.cli_json().args(["snap", "-a"]).output().unwrap();
+    let output = h.cli_json().args(["screen", "-a"]).output().unwrap();
     assert!(output.status.success());
 
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -665,7 +669,7 @@ fn test_accessibility_snapshot_detects_status_indicators() {
     // Use echo with -e flag to handle unicode properly
     assert!(
         h.cli()
-            .args(["key", "--type", "echo '⠋ Loading...'"])
+            .args(["input", "echo '⠋ Loading...'"])
             .output()
             .unwrap()
             .status
@@ -675,7 +679,7 @@ fn test_accessibility_snapshot_detects_status_indicators() {
     // Execute the command
     assert!(
         h.cli()
-            .args(["key", "Enter"])
+            .args(["input", "Enter"])
             .output()
             .unwrap()
             .status
@@ -693,7 +697,7 @@ fn test_accessibility_snapshot_detects_status_indicators() {
     );
 
     // Get accessibility snapshot
-    let output = h.cli_json().args(["snap", "-a"]).output().unwrap();
+    let output = h.cli_json().args(["screen", "-a"]).output().unwrap();
     assert!(
         output.status.success(),
         "Accessibility snapshot should succeed"
@@ -723,7 +727,7 @@ fn test_accessibility_snapshot_detects_checkmark_status() {
     // Display checkmark status indicator
     assert!(
         h.cli()
-            .args(["key", "--type", "echo '✓ Done'"])
+            .args(["input", "echo '✓ Done'"])
             .output()
             .unwrap()
             .status
@@ -733,7 +737,7 @@ fn test_accessibility_snapshot_detects_checkmark_status() {
     // Execute
     assert!(
         h.cli()
-            .args(["key", "Enter"])
+            .args(["input", "Enter"])
             .output()
             .unwrap()
             .status
@@ -751,7 +755,7 @@ fn test_accessibility_snapshot_detects_checkmark_status() {
     );
 
     // Get accessibility snapshot
-    let output = h.cli_json().args(["snap", "-a"]).output().unwrap();
+    let output = h.cli_json().args(["screen", "-a"]).output().unwrap();
     assert!(output.status.success());
 
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();

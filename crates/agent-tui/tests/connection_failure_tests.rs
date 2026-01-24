@@ -19,7 +19,7 @@ fn test_daemon_socket_not_exists() {
     cmd.env("XDG_RUNTIME_DIR", "/nonexistent/path/that/does/not/exist");
     cmd.env("TMPDIR", "/nonexistent/path/that/does/not/exist");
 
-    cmd.args(["status"])
+    cmd.args(["daemon", "status"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("not running").or(predicate::str::contains("connect")));
@@ -48,10 +48,11 @@ fn test_daemon_disconnect_during_request() {
     // Set daemon to disconnect immediately
     harness.set_response("health", MockResponse::Disconnect);
 
+    // daemon status returns success but reports error in output
     harness
-        .run(&["status"])
-        .failure()
-        .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("not running"));
 }
 
 #[test]
@@ -92,10 +93,11 @@ fn test_malformed_response_handling() {
         MockResponse::Malformed("not valid json".to_string()),
     );
 
+    // daemon status returns success but reports error in output
     harness
-        .run(&["status"])
-        .failure()
-        .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("not running"));
 }
 
 #[test]
@@ -108,10 +110,11 @@ fn test_malformed_json_rpc_missing_result() {
         MockResponse::Malformed(r#"{"jsonrpc":"2.0","id":1}"#.to_string()),
     );
 
+    // daemon status returns success but reports error in output
     harness
-        .run(&["status"])
-        .failure()
-        .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("not running"));
 }
 
 #[test]
@@ -126,7 +129,7 @@ fn test_malformed_json_rpc_wrong_version() {
 
     // This might succeed because we may not validate version strictly
     // The test verifies we don't crash on unexpected data
-    let _ = harness.run(&["status"]);
+    let _ = harness.run(&["daemon", "status"]);
 }
 
 #[test]
@@ -136,10 +139,11 @@ fn test_empty_response() {
     // Empty string response
     harness.set_response("health", MockResponse::Malformed(String::new()));
 
+    // daemon status returns success but reports error in output
     harness
-        .run(&["status"])
-        .failure()
-        .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("not running"));
 }
 
 #[test]
@@ -152,10 +156,11 @@ fn test_partial_json_response() {
         MockResponse::Malformed(r#"{"jsonrpc":"2.0","id":1,"result":{"status":"#.to_string()),
     );
 
+    // daemon status returns success but reports error in output
     harness
-        .run(&["status"])
-        .failure()
-        .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("not running"));
 }
 
 // =============================================================================
@@ -168,7 +173,7 @@ fn test_connection_recovers_after_failure() {
 
     // First request fails
     harness.set_response("health", MockResponse::Disconnect);
-    let _ = harness.run(&["status"]);
+    let _ = harness.run(&["daemon", "status"]);
 
     // Restore normal response
     harness.set_success_response(
@@ -184,7 +189,7 @@ fn test_connection_recovers_after_failure() {
 
     // Second request should succeed
     harness
-        .run(&["status"])
+        .run(&["daemon", "status"])
         .success()
         .stdout(predicate::str::contains("healthy"));
 }
@@ -193,9 +198,12 @@ fn test_connection_recovers_after_failure() {
 fn test_different_commands_independent_failure() {
     let harness = TestHarness::new();
 
-    // health fails
+    // health fails - daemon status returns success but reports "not running"
     harness.set_response("health", MockResponse::Disconnect);
-    harness.run(&["status"]).failure();
+    harness
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("not running"));
 
     // sessions should still work (different connection)
     harness

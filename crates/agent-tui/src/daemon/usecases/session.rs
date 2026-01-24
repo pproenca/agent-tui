@@ -9,12 +9,6 @@ use crate::daemon::error::{DomainError, SessionError};
 use crate::daemon::repository::SessionRepository;
 use crate::daemon::session::SessionId;
 
-/// Use case for creating new terminal sessions.
-///
-/// Single responsibility: create a new session. The terminal dimensions (cols/rows)
-/// are essential parameters for PTY creation - you cannot create a terminal without
-/// specifying its initial size. This is distinct from ResizeUseCase which changes
-/// dimensions of an existing session.
 pub trait SpawnUseCase: Send + Sync {
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, DomainError>;
 }
@@ -31,7 +25,6 @@ impl<R: SessionRepository> SpawnUseCaseImpl<R> {
 
 impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, DomainError> {
-        // Convert domain SessionId to infrastructure String at the boundary
         let session_id_str = input.session_id.map(|id| id.to_string());
         let command = input.command.clone();
 
@@ -47,7 +40,6 @@ impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
             Ok((session_id, pid)) => Ok(SpawnOutput { session_id, pid }),
             Err(SessionError::LimitReached(max)) => Err(DomainError::SessionLimitReached { max }),
             Err(e) => {
-                // Classify spawn errors into specific domain errors
                 let err_str = e.to_string();
                 if err_str.contains("No such file") || err_str.contains("not found") {
                     Err(DomainError::CommandNotFound { command })
@@ -236,11 +228,6 @@ impl<R: SessionRepository> ResizeUseCase for ResizeUseCaseImpl<R> {
     }
 }
 
-/// Use case for cleaning up sessions.
-///
-/// Cleans up sessions based on the `all` flag:
-/// - If `all` is true, terminates all sessions
-/// - If `all` is false, terminates only non-running sessions
 pub trait CleanupUseCase: Send + Sync {
     fn execute(&self, input: CleanupInput) -> CleanupOutput;
 }
@@ -262,7 +249,6 @@ impl<R: SessionRepository> CleanupUseCase for CleanupUseCaseImpl<R> {
         let mut failures = Vec::new();
 
         for info in sessions {
-            // If not cleaning all, skip running sessions
             let should_cleanup = input.all || !info.is_active();
 
             if should_cleanup {
@@ -282,12 +268,6 @@ impl<R: SessionRepository> CleanupUseCase for CleanupUseCaseImpl<R> {
 
 use crate::daemon::domain::{AssertConditionType, AssertInput, AssertOutput};
 
-/// Use case for asserting conditions.
-///
-/// Performs condition checks based on condition type:
-/// - Text: checks if text is visible on screen
-/// - Element: checks if element exists and is visible
-/// - Session: checks if session exists and is running
 pub trait AssertUseCase: Send + Sync {
     fn execute(&self, input: AssertInput) -> Result<AssertOutput, SessionError>;
 }
@@ -308,7 +288,6 @@ impl<R: SessionRepository> AssertUseCase for AssertUseCaseImpl<R> {
 
         let passed = match input.condition_type {
             AssertConditionType::Text => {
-                // Resolve session and check if text is visible
                 let session = self.repository.resolve(input.session_id.as_deref())?;
                 let mut guard = session.lock().unwrap();
                 guard.update()?;
@@ -316,7 +295,6 @@ impl<R: SessionRepository> AssertUseCase for AssertUseCaseImpl<R> {
                 screen.contains(&input.value)
             }
             AssertConditionType::Element => {
-                // Resolve session and check if element exists
                 let session = self.repository.resolve(input.session_id.as_deref())?;
                 let mut guard = session.lock().unwrap();
                 guard.update()?;
@@ -324,7 +302,6 @@ impl<R: SessionRepository> AssertUseCase for AssertUseCaseImpl<R> {
                 guard.find_element(&input.value).is_some()
             }
             AssertConditionType::Session => {
-                // Check if session exists and is running
                 let sessions = self.repository.list();
                 sessions
                     .iter()
@@ -343,10 +320,6 @@ mod tests {
     use crate::daemon::session::SessionInfo;
     use crate::daemon::test_support::{MockError, MockSessionRepository};
     use std::collections::HashMap;
-
-    // ========================================================================
-    // SpawnUseCase Tests
-    // ========================================================================
 
     #[test]
     fn test_spawn_usecase_forwards_all_parameters_to_repository() {
@@ -486,10 +459,6 @@ mod tests {
         assert_eq!(params[0].session_id, Some("my-custom-session".to_string()));
     }
 
-    // ========================================================================
-    // SpawnUseCase Error Classification Tests
-    // ========================================================================
-
     #[test]
     fn test_spawn_usecase_classifies_command_not_found_error() {
         let repo = Arc::new(
@@ -597,10 +566,6 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // SessionsUseCase Tests
-    // ========================================================================
-
     #[test]
     fn test_sessions_usecase_returns_empty_list_when_no_sessions() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -672,10 +637,6 @@ mod tests {
         assert!(result.active_session.is_none());
     }
 
-    // ========================================================================
-    // KillUseCase Tests (Error paths only - happy path needs real Session)
-    // ========================================================================
-
     #[test]
     fn test_kill_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -702,10 +663,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
-    // ========================================================================
-    // RestartUseCase Tests (Error paths only - happy path needs real Session)
-    // ========================================================================
-
     #[test]
     fn test_restart_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -731,10 +688,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(id)) if id == "missing"));
     }
-
-    // ========================================================================
-    // AttachUseCase Tests (Error paths only - happy path needs real Session)
-    // ========================================================================
 
     #[test]
     fn test_attach_usecase_returns_error_when_session_not_found() {
@@ -763,10 +716,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(id)) if id == "target-session"));
     }
-
-    // ========================================================================
-    // ResizeUseCase Tests (Error paths only - happy path needs real Session)
-    // ========================================================================
 
     #[test]
     fn test_resize_usecase_returns_error_when_no_active_session() {

@@ -1,8 +1,3 @@
-//! Mock implementation of SessionOps for testing use cases.
-//!
-//! This module provides a MockSession that implements the SessionOps trait,
-//! enabling happy-path testing of use cases without real PTY sessions.
-
 use crate::core::Element;
 use crate::core::vom::Component;
 use std::cell::RefCell;
@@ -10,29 +5,17 @@ use std::cell::RefCell;
 use crate::daemon::repository::SessionOps;
 use crate::daemon::session::SessionError;
 
-/// Mock session for testing use cases.
-///
-/// Implements SessionOps with configurable behavior for testing happy paths
-/// and error scenarios.
 pub struct MockSession {
-    /// Session identifier.
     pub id: String,
-    /// Screen text to return from screen_text().
     screen_text: String,
-    /// Elements to return from detect_elements().
     elements: Vec<Element>,
-    /// Components to return from analyze_screen().
     components: Vec<Component>,
-    /// Error to return from update(), if any.
     update_error: Option<SessionError>,
-    /// Error to return from pty_write(), if any.
     pty_write_error: Option<SessionError>,
-    /// Track bytes written via pty_write().
     written_data: RefCell<Vec<Vec<u8>>>,
 }
 
 impl MockSession {
-    /// Create a new MockSession with default values.
     pub fn new(id: impl Into<String>) -> Self {
         Self {
             id: id.into(),
@@ -45,12 +28,10 @@ impl MockSession {
         }
     }
 
-    /// Create a builder for configuring MockSession.
     pub fn builder(id: impl Into<String>) -> MockSessionBuilder {
         MockSessionBuilder::new(id)
     }
 
-    /// Get the data written via pty_write() calls.
     pub fn written_data(&self) -> Vec<Vec<u8>> {
         self.written_data.borrow().clone()
     }
@@ -59,7 +40,6 @@ impl MockSession {
 impl SessionOps for MockSession {
     fn update(&mut self) -> Result<(), SessionError> {
         if let Some(ref err) = self.update_error {
-            // Clone the error message for return
             Err(SessionError::Pty(crate::terminal::PtyError::Write(
                 err.to_string(),
             )))
@@ -96,50 +76,42 @@ impl SessionOps for MockSession {
     }
 }
 
-/// Builder for MockSession with fluent configuration.
 pub struct MockSessionBuilder {
     session: MockSession,
 }
 
 impl MockSessionBuilder {
-    /// Create a new builder.
     pub fn new(id: impl Into<String>) -> Self {
         Self {
             session: MockSession::new(id),
         }
     }
 
-    /// Configure the screen text to return.
     pub fn with_screen_text(mut self, text: impl Into<String>) -> Self {
         self.session.screen_text = text.into();
         self
     }
 
-    /// Configure the elements to return from detect_elements().
     pub fn with_elements(mut self, elements: Vec<Element>) -> Self {
         self.session.elements = elements;
         self
     }
 
-    /// Configure the components to return from analyze_screen().
     pub fn with_components(mut self, components: Vec<Component>) -> Self {
         self.session.components = components;
         self
     }
 
-    /// Configure update() to return an error.
     pub fn with_update_error(mut self, error: SessionError) -> Self {
         self.session.update_error = Some(error);
         self
     }
 
-    /// Configure pty_write() to return an error.
     pub fn with_pty_write_error(mut self, error: SessionError) -> Self {
         self.session.pty_write_error = Some(error);
         self
     }
 
-    /// Build the configured MockSession.
     pub fn build(self) -> MockSession {
         self.session
     }

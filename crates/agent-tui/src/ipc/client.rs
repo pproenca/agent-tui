@@ -17,17 +17,12 @@ use crate::ipc::socket::socket_path;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Polling configuration for daemon startup/shutdown.
 pub mod polling {
     use std::time::Duration;
 
-    /// Maximum number of polls during daemon startup.
     pub const MAX_STARTUP_POLLS: u32 = 50;
-    /// Initial delay between polls.
     pub const INITIAL_POLL_INTERVAL: Duration = Duration::from_millis(50);
-    /// Maximum delay between polls (after exponential backoff).
     pub const MAX_POLL_INTERVAL: Duration = Duration::from_millis(500);
-    /// Timeout for daemon shutdown.
     pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 }
 
@@ -94,15 +89,9 @@ struct RpcError {
     data: Option<Value>,
 }
 
-/// Trait for daemon client implementations.
-///
-/// This trait abstracts the communication with the daemon, allowing for
-/// different transport implementations (Unix socket, mock for testing, etc.).
 pub trait DaemonClient: Send + Sync {
-    /// Make an RPC call to the daemon.
     fn call(&mut self, method: &str, params: Option<Value>) -> Result<Value, ClientError>;
 
-    /// Make an RPC call with custom configuration.
     fn call_with_config(
         &mut self,
         method: &str,
@@ -110,7 +99,6 @@ pub trait DaemonClient: Send + Sync {
         config: &DaemonClientConfig,
     ) -> Result<Value, ClientError>;
 
-    /// Make an RPC call with retry logic.
     fn call_with_retry(
         &mut self,
         method: &str,
@@ -119,7 +107,6 @@ pub trait DaemonClient: Send + Sync {
     ) -> Result<Value, ClientError>;
 }
 
-/// Unix socket-based daemon client implementation.
 pub struct UnixSocketClient;
 
 fn is_retriable_error(error: &ClientError) -> bool {
@@ -250,7 +237,7 @@ impl DaemonClient for UnixSocketClient {
                     }
                     last_error = Some(e);
                     std::thread::sleep(delay);
-                    delay *= 2; // exponential backoff: 100ms, 200ms, 400ms
+                    delay *= 2;
                 }
             }
         }
@@ -297,7 +284,7 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
         if UnixSocketClient::is_daemon_running() {
             return Ok(());
         }
-        // Exponential backoff with cap
+
         delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
 
         if i == polling::MAX_STARTUP_POLLS - 1 {
@@ -326,18 +313,13 @@ pub fn ensure_daemon() -> Result<UnixSocketClient, ClientError> {
     UnixSocketClient::connect()
 }
 
-/// Result of PID lookup from lock file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PidLookupResult {
-    /// Daemon is running with this PID.
     Found(u32),
-    /// No lock file exists (daemon not running).
     NotRunning,
-    /// Lock file exists but could not be read or parsed.
     Error(String),
 }
 
-/// Get the daemon PID from the lock file.
 pub fn get_daemon_pid() -> PidLookupResult {
     let lock_path = socket_path().with_extension("lock");
     if !lock_path.exists() {

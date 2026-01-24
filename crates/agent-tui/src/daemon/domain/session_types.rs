@@ -1,14 +1,6 @@
-//! Domain types for session management.
-//!
-//! These types belong to the domain layer and should not depend on infrastructure.
-//!
-//! IMPORTANT: Domain types must not depend on framework crates like serde or uuid.
-//! Serialization is handled by adapter layers at the boundaries.
-
 use std::fmt;
 use std::ops::Deref;
 
-/// Error returned when SessionId validation fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionIdError {
     pub message: String,
@@ -22,25 +14,10 @@ impl fmt::Display for SessionIdError {
 
 impl std::error::Error for SessionIdError {}
 
-/// Unique identifier for a session.
-///
-/// This is a value object that wraps a string identifier. ID generation
-/// happens in the infrastructure layer (see `IdGenerator`).
-///
-/// # Invariants
-/// - Session ID must not be empty
-/// - Session ID must not be whitespace-only
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SessionId(String);
 
 impl SessionId {
-    /// Create a new SessionId from a string, validating that it's not empty.
-    ///
-    /// Use this when accepting IDs from external sources or from
-    /// infrastructure-generated IDs.
-    ///
-    /// # Errors
-    /// Returns `SessionIdError` if the ID is empty or whitespace-only.
     pub fn try_new(id: impl Into<String>) -> Result<Self, SessionIdError> {
         let id = id.into();
         if id.trim().is_empty() {
@@ -51,16 +28,10 @@ impl SessionId {
         Ok(Self(id))
     }
 
-    /// Create a new SessionId without validation.
-    ///
-    /// # Safety
-    /// This bypasses validation. Use only when the ID is known to be valid
-    /// (e.g., from infrastructure ID generation).
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
-    /// Returns the session ID as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -86,9 +57,6 @@ impl Deref for SessionId {
     }
 }
 
-// Keep From implementations for backwards compatibility with infrastructure code
-// that generates valid IDs. These bypass validation - use try_new() for
-// user-provided IDs that need validation.
 impl From<String> for SessionId {
     fn from(s: String) -> Self {
         Self(s)
@@ -101,7 +69,6 @@ impl From<&str> for SessionId {
     }
 }
 
-/// Error returned when TerminalSize validation fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSizeError {
     pub message: String,
@@ -115,11 +82,6 @@ impl fmt::Display for TerminalSizeError {
 
 impl std::error::Error for TerminalSizeError {}
 
-/// Terminal dimensions with validation.
-///
-/// # Invariants
-/// - Columns must be between 10 and 500
-/// - Rows must be between 2 and 200
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerminalSize {
     cols: u16,
@@ -127,19 +89,11 @@ pub struct TerminalSize {
 }
 
 impl TerminalSize {
-    /// Minimum number of columns.
     pub const MIN_COLS: u16 = 10;
-    /// Maximum number of columns.
     pub const MAX_COLS: u16 = 500;
-    /// Minimum number of rows.
     pub const MIN_ROWS: u16 = 2;
-    /// Maximum number of rows.
     pub const MAX_ROWS: u16 = 200;
 
-    /// Create a new TerminalSize with validation.
-    ///
-    /// # Errors
-    /// Returns `TerminalSizeError` if dimensions are outside valid bounds.
     pub fn new(cols: u16, rows: u16) -> Result<Self, TerminalSizeError> {
         if cols < Self::MIN_COLS {
             return Err(TerminalSizeError {
@@ -164,17 +118,14 @@ impl TerminalSize {
         Ok(Self { cols, rows })
     }
 
-    /// Get the number of columns.
     pub fn cols(&self) -> u16 {
         self.cols
     }
 
-    /// Get the number of rows.
     pub fn rows(&self) -> u16 {
         self.rows
     }
 
-    /// Get dimensions as a tuple (cols, rows).
     pub fn as_tuple(&self) -> (u16, u16) {
         (self.cols, self.rows)
     }
@@ -182,26 +133,22 @@ impl TerminalSize {
 
 impl Default for TerminalSize {
     fn default() -> Self {
-        // Safe to unwrap - 80x24 is within valid bounds
         Self::new(80, 24).unwrap()
     }
 }
 
-/// A single frame in a screen recording.
 #[derive(Clone, Debug)]
 pub struct RecordingFrame {
     pub timestamp_ms: u64,
     pub screen: String,
 }
 
-/// Status of the recording feature.
 pub struct RecordingStatus {
     pub is_recording: bool,
     pub frame_count: usize,
     pub duration_ms: u64,
 }
 
-/// A single entry in the trace log.
 #[derive(Clone, Debug)]
 pub struct TraceEntry {
     pub timestamp_ms: u64,
@@ -209,7 +156,6 @@ pub struct TraceEntry {
     pub details: Option<String>,
 }
 
-/// A single error entry.
 #[derive(Clone, Debug)]
 pub struct ErrorEntry {
     pub timestamp: String,
@@ -217,7 +163,6 @@ pub struct ErrorEntry {
     pub source: String,
 }
 
-/// Information about a session.
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
     pub id: SessionId,
@@ -229,37 +174,26 @@ pub struct SessionInfo {
 }
 
 impl SessionInfo {
-    /// Returns true if the session is currently active/running.
     pub fn is_active(&self) -> bool {
         self.running
     }
 
-    /// Returns the terminal dimensions as (columns, rows).
     pub fn dimensions(&self) -> (u16, u16) {
         self.size
     }
 
-    /// Returns the number of columns in the terminal.
     pub fn cols(&self) -> u16 {
         self.size.0
     }
 
-    /// Returns the number of rows in the terminal.
     pub fn rows(&self) -> u16 {
         self.size.1
     }
 
-    /// Returns the creation timestamp as a string.
-    ///
-    /// Note: Age calculation requires datetime parsing which is handled
-    /// by the adapter layer to keep domain types framework-independent.
     pub fn created_at(&self) -> &str {
         &self.created_at
     }
 }
-
-// Note: SessionInfo serialization is handled by session_info_to_json()
-// in the adapters layer to keep domain types framework-independent.
 
 #[cfg(test)]
 mod tests {
@@ -270,9 +204,6 @@ mod tests {
         let id = SessionId::new("test123");
         assert_eq!(id.as_str(), "test123");
     }
-
-    // Note: SessionId::generate() was moved to infrastructure layer.
-    // See IdGenerator in session.rs for ID generation tests.
 
     #[test]
     fn test_session_id_display() {
@@ -298,9 +229,6 @@ mod tests {
         let s: &str = id.as_ref();
         assert_eq!(s, "test");
     }
-
-    // Note: SessionId serde serialization was removed from domain layer.
-    // Serialization happens via adapters using .as_str() at boundaries.
 
     #[test]
     fn test_recording_frame_creation() {
@@ -415,27 +343,17 @@ mod tests {
         assert_eq!(info.created_at(), "2024-01-01T12:30:45Z");
     }
 
-    // Note: test_session_info_to_json was moved to adapters/snapshot_adapters.rs
-    // since serialization is now handled at the adapter layer.
-
-    // ============================================================
-    // TDD RED PHASE: SessionId Validation Tests
-    // These tests should FAIL until validation is implemented.
-    // ============================================================
-
     mod session_id_validation_tests {
         use super::*;
 
         #[test]
         fn test_session_id_rejects_empty_string() {
-            // SessionId::new("") should return Err, not Ok
             let result = SessionId::try_new("");
             assert!(result.is_err(), "Empty string should be rejected");
         }
 
         #[test]
         fn test_session_id_rejects_whitespace_only() {
-            // Whitespace-only strings should be rejected
             assert!(
                 SessionId::try_new("   ").is_err(),
                 "Whitespace-only should be rejected"
@@ -452,10 +370,9 @@ mod tests {
 
         #[test]
         fn test_session_id_accepts_valid_id() {
-            // Valid IDs should be accepted
             assert!(SessionId::try_new("abc123").is_ok());
             assert!(SessionId::try_new("session-1").is_ok());
-            assert!(SessionId::try_new("a").is_ok()); // Single char is valid
+            assert!(SessionId::try_new("a").is_ok());
             assert!(SessionId::try_new("test_session").is_ok());
         }
 
@@ -467,7 +384,6 @@ mod tests {
 
         #[test]
         fn test_try_new_from_string_validates() {
-            // try_new should validate String input
             assert!(
                 SessionId::try_new("".to_string()).is_err(),
                 "try_new should validate String"
@@ -480,7 +396,6 @@ mod tests {
 
         #[test]
         fn test_try_new_from_str_validates() {
-            // try_new should validate &str input
             assert!(
                 SessionId::try_new("").is_err(),
                 "try_new should validate &str"
@@ -498,11 +413,6 @@ mod tests {
             assert!(err.to_string().contains("empty"));
         }
     }
-
-    // ============================================================
-    // TDD RED PHASE: TerminalSize Validation Tests
-    // These tests should FAIL until TerminalSize is implemented.
-    // ============================================================
 
     mod terminal_size_validation_tests {
         use super::*;
@@ -534,7 +444,6 @@ mod tests {
 
         #[test]
         fn test_terminal_size_accepts_minimum() {
-            // Minimum reasonable terminal size
             let size = TerminalSize::new(10, 2).expect("Minimum size should be accepted");
             assert_eq!(size.cols(), 10);
             assert_eq!(size.rows(), 2);

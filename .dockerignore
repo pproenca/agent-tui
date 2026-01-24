@@ -1,0 +1,38 @@
+# Docker build context exclusions for agent-tui E2E tests
+
+# Exclude all target (built in container)
+target
+
+# Git
+.git
+.gitignore
+.github
+
+# IDE and editor
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Documentation (not needed for build/test)
+docs
+*.md
+!docker/*.md
+
+# Development files
+.claude
+.env
+.env.*
+
+# Test artifacts
+*.log
+*.tmp
+
+# Shell scripts not needed (except e2e-tests.sh)
+e2e
+scripts
+
+# Rules and configs
+rules
+.ast-grep

@@ -1,8 +1,3 @@
-//! Test support utilities for use case unit testing.
-//!
-//! This module provides mock implementations and builders for testing
-//! use cases in isolation without requiring real PTY sessions.
-
 mod element_builder;
 mod mock_repository;
 mod mock_session;

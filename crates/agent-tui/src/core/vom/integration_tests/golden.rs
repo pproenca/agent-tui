@@ -1,8 +1,3 @@
-//! Golden tests for Claude Code screen layouts.
-//!
-//! These tests verify VOM analysis against known Claude Code screen patterns.
-//! Each test creates a realistic screen buffer and verifies all expected components.
-
 use crate::core::CursorPosition;
 use crate::core::style::CellStyle;
 use crate::core::test_fixtures::MockScreenBuffer;
@@ -29,12 +24,6 @@ fn styled_line(content: &str, bold: bool, inverse: bool) -> Vec<(char, CellStyle
     content.chars().map(|c| (c, style.clone())).collect()
 }
 
-/// Golden test: Permission dialog screen
-/// Tests: ToolBlock, Link (file path in message)
-///
-/// Note: VOM segmentation groups by style, so buttons on the same line
-/// with the same style become one cluster. Individual button detection
-/// requires style differentiation or post-processing.
 #[test]
 fn golden_permission_dialog() {
     let mut buffer = MockScreenBuffer::new(50, 10);
@@ -81,8 +70,6 @@ fn golden_permission_dialog() {
     );
 }
 
-/// Golden test: Tool use block with code
-/// Tests: ToolBlock header and footer (CodeBlock uses │ without corners)
 #[test]
 fn golden_tool_block_with_code() {
     let mut buffer = MockScreenBuffer::new(50, 8);
@@ -126,8 +113,6 @@ fn golden_tool_block_with_code() {
     );
 }
 
-/// Golden test: Status spinner with message
-/// Tests: Status, StaticText
 #[test]
 fn golden_status_spinner() {
     let mut buffer = MockScreenBuffer::new(40, 5);
@@ -154,8 +139,6 @@ fn golden_status_spinner() {
     );
 }
 
-/// Golden test: Error output
-/// Tests: ErrorMessage, DiffLine (for context)
 #[test]
 fn golden_error_output() {
     let mut buffer = MockScreenBuffer::new(60, 6);
@@ -197,8 +180,6 @@ fn golden_error_output() {
     );
 }
 
-/// Golden test: Diff output
-/// Tests: DiffLine (additions and deletions)
 #[test]
 fn golden_diff_output() {
     let mut buffer = MockScreenBuffer::new(50, 6);
@@ -231,8 +212,6 @@ fn golden_diff_output() {
     );
 }
 
-/// Golden test: Progress indicator
-/// Tests: ProgressBar, Status
 #[test]
 fn golden_progress_indicator() {
     let mut buffer = MockScreenBuffer::new(50, 4);
@@ -262,8 +241,6 @@ fn golden_progress_indicator() {
     );
 }
 
-/// Golden test: Prompt with input
-/// Tests: PromptMarker, Input (if present)
 #[test]
 fn golden_prompt_input() {
     let mut buffer = MockScreenBuffer::new(40, 3);
@@ -283,11 +260,6 @@ fn golden_prompt_input() {
     assert!(!prompts.is_empty(), "Should detect prompt marker");
 }
 
-/// Golden test: Selected menu item
-/// Tests: MenuItem with selected state via inverse video
-///
-/// Menu items are detected when they start with specific prefixes like ❯, >, •
-/// Note: Inverse video at y <= 2 is classified as Tab, so menu starts at row 3+
 #[test]
 fn golden_selected_menu_item() {
     let mut buffer = MockScreenBuffer::new(30, 8);

@@ -6,7 +6,7 @@ use crate::daemon::session::DEFAULT_MAX_SESSIONS;
 const DEFAULT_MAX_CONNECTIONS: usize = 64;
 const DEFAULT_LOCK_TIMEOUT_SECS: u64 = 5;
 const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 300;
-const DEFAULT_MAX_REQUEST_BYTES: usize = 1_048_576; // 1MB
+const DEFAULT_MAX_REQUEST_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Clone)]
 pub struct DaemonConfig {

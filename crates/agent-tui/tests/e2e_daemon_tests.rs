@@ -1,26 +1,8 @@
-//! E2E tests with mock daemon
-//!
-//! These tests verify CLI↔daemon integration using the MockDaemon infrastructure.
-//! Tests focus on:
-//! - Error response handling and propagation
-//! - Complex response processing (warnings, multi-step operations)
-//! - Output formatting for various response types
-//! - Multi-command sequences
-//!
-//! ## Note on Test Pyramid
-//! CLI argument parsing and simple param serialization are tested as unit tests
-//! in `commands.rs` (parsing) and `handlers.rs` (formatting). This file focuses
-//! on true integration scenarios that require a mock daemon.
-
 mod common;
 
 use common::{TEST_COLS, TEST_ROWS, TEST_SESSION_ID, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
-
-// =============================================================================
-// Health Command Tests - Response Processing
-// =============================================================================
 
 #[test]
 fn test_health_returns_daemon_status() {
@@ -73,10 +55,6 @@ fn test_health_verbose_shows_connection_details() {
         .stdout(predicate::str::contains("Socket:"))
         .stdout(predicate::str::contains("PID file:"));
 }
-
-// =============================================================================
-// Session Management Tests
-// =============================================================================
 
 #[test]
 fn test_sessions_empty_list() {
@@ -140,10 +118,6 @@ fn test_kill_session() {
 
     harness.assert_method_called("kill");
 }
-
-// =============================================================================
-// Snapshot Tests - Response Formatting
-// =============================================================================
 
 #[test]
 fn test_snap_returns_screen_content() {
@@ -376,10 +350,6 @@ fn test_accessibility_snapshot_interactive_only() {
     harness.assert_method_called_with("accessibility_snapshot", json!({ "interactive": true }));
 }
 
-// =============================================================================
-// Click by Ref Tests - Accessibility Tree Integration
-// =============================================================================
-
 #[test]
 fn test_click_with_accessibility_ref() {
     let harness = TestHarness::new();
@@ -419,10 +389,6 @@ fn test_click_with_at_prefix_ref() {
 
     harness.assert_method_called_with("click", json!({ "ref": "@e2" }));
 }
-
-// =============================================================================
-// Error Handling Tests
-// =============================================================================
 
 #[test]
 fn test_click_error_handling() {
@@ -501,14 +467,6 @@ fn test_unknown_method_error() {
         .stderr(predicate::str::contains("Method not found"));
 }
 
-// Note: scroll --to and multiselect commands were removed as part of CLI consolidation.
-// scroll_into_view is internal, accessed via action @ref scroll.
-// multiselect is accessed via action @ref select opt1 opt2.
-
-// =============================================================================
-// Multi-Command Sequence Tests
-// =============================================================================
-
 #[test]
 fn test_keydown_keyup_sequence() {
     let harness = TestHarness::new();
@@ -533,11 +491,6 @@ fn test_multiple_requests_recorded() {
     let requests = harness.get_requests();
     assert!(requests.len() >= 3);
 
-    // Each command now makes a version check "health" call first.
-    // status = 1 version check + 1 health = 2 health calls
-    // ls = 1 version check + 1 sessions
-    // status = 1 version check + 1 health = 2 health calls
-    // Total: 5 health calls, 1 sessions call
     assert_eq!(harness.call_count("health"), 5);
     assert_eq!(harness.call_count("sessions"), 1);
 }
@@ -546,7 +499,6 @@ fn test_multiple_requests_recorded() {
 fn test_clear_requests_works() {
     let harness = TestHarness::new();
 
-    // status = 1 version check + 1 health = 2 health calls
     harness.run(&["sessions", "--status"]).success();
     assert_eq!(harness.call_count("health"), 2);
 
@@ -556,10 +508,6 @@ fn test_clear_requests_works() {
     harness.run(&["sessions", "--status"]).success();
     assert_eq!(harness.call_count("health"), 2);
 }
-
-// =============================================================================
-// Version/Env Information Tests
-// =============================================================================
 
 #[test]
 fn test_version_shows_cli_and_daemon() {
@@ -585,14 +533,6 @@ fn test_env_shows_configuration() {
         .stdout(predicate::str::contains("Socket:"));
 }
 
-// Note: assert and find commands were removed as part of CLI consolidation.
-// Use wait --assert for assertion-style waiting.
-// Element finding can be done via screen -e filtering.
-
-// =============================================================================
-// Recording Command Response Tests
-// =============================================================================
-
 #[test]
 fn test_record_stop_with_frame_count() {
     let harness = TestHarness::new();
@@ -613,10 +553,6 @@ fn test_record_stop_with_frame_count() {
         .stdout(predicate::str::contains("Recording stopped"))
         .stdout(predicate::str::contains("100 frames"));
 }
-
-// =============================================================================
-// Wait Command Response Tests
-// =============================================================================
 
 #[test]
 fn test_wait_timeout() {
@@ -655,10 +591,6 @@ fn test_wait_found() {
         .stdout(predicate::str::contains("Found"))
         .stdout(predicate::str::contains("150ms"));
 }
-
-// =============================================================================
-// Completions Command Tests (minimal - just verifies command runs)
-// =============================================================================
 
 #[test]
 fn test_completions_bash() {

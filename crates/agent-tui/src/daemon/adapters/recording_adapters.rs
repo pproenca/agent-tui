@@ -1,14 +1,8 @@
-//! Adapters for recording output format conversion.
-
 use serde_json::{Value, json};
 use tracing::error;
 
 use crate::daemon::session::RecordingFrame;
 
-/// Build asciicast v2 format from recording frames.
-///
-/// Asciicast is the format used by asciinema for terminal recordings.
-/// See: https://github.com/asciinema/asciinema/blob/develop/doc/asciicast-v2.md
 pub fn build_asciicast(session_id: &str, cols: u16, rows: u16, frames: &[RecordingFrame]) -> Value {
     let mut output = Vec::new();
 
@@ -69,7 +63,6 @@ pub fn build_asciicast(session_id: &str, cols: u16, rows: u16, frames: &[Recordi
     })
 }
 
-/// Build raw frames format from recording frames.
 pub fn build_raw_frames(frames: &[RecordingFrame]) -> Value {
     let frame_data: Vec<_> = frames
         .iter()

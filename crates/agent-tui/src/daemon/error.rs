@@ -1,14 +1,8 @@
-//! Domain errors for daemon operations.
-//!
-//! These errors are mapped to specific JSON-RPC error codes and include
-//! structured context for AI agents to handle programmatically.
-
 use crate::ipc::error_codes::{self, ErrorCategory};
 use crate::terminal::PtyError;
 use serde_json::{Value, json};
 use thiserror::Error;
 
-/// Session-level errors with structured context for AI agents.
 #[derive(Error, Debug)]
 pub enum SessionError {
     #[error("Session not found: {0}")]
@@ -34,7 +28,6 @@ pub enum SessionError {
 }
 
 impl SessionError {
-    /// Returns the JSON-RPC error code for this error.
     pub fn code(&self) -> i32 {
         match self {
             SessionError::NotFound(_) => error_codes::SESSION_NOT_FOUND,
@@ -48,12 +41,10 @@ impl SessionError {
         }
     }
 
-    /// Returns the error category for programmatic handling.
     pub fn category(&self) -> ErrorCategory {
         error_codes::category_for_code(self.code())
     }
 
-    /// Returns structured context about the error for debugging.
     pub fn context(&self) -> Value {
         match self {
             SessionError::NotFound(id) => json!({ "session_id": id }),
@@ -79,7 +70,6 @@ impl SessionError {
         }
     }
 
-    /// Returns a helpful suggestion for resolving the error.
     pub fn suggestion(&self) -> String {
         match self {
             SessionError::NotFound(_) | SessionError::NoActiveSession => {
@@ -110,7 +100,6 @@ impl SessionError {
         }
     }
 
-    /// Returns whether this error is potentially transient and may succeed on retry.
     pub fn is_retryable(&self) -> bool {
         match self {
             SessionError::Pty(pty_err) => pty_err.is_retryable(),
@@ -120,7 +109,6 @@ impl SessionError {
     }
 }
 
-/// Daemon startup and lifecycle errors.
 #[derive(Error, Debug)]
 pub enum DaemonError {
     #[error("Failed to bind socket: {0}")]
@@ -136,17 +124,14 @@ pub enum DaemonError {
 }
 
 impl DaemonError {
-    /// Returns the JSON-RPC error code for this error.
     pub fn code(&self) -> i32 {
         error_codes::DAEMON_ERROR
     }
 
-    /// Returns the error category for programmatic handling.
     pub fn category(&self) -> ErrorCategory {
         ErrorCategory::External
     }
 
-    /// Returns structured context about the error for debugging.
     pub fn context(&self) -> Value {
         match self {
             DaemonError::SocketBind(reason) => {
@@ -165,7 +150,6 @@ impl DaemonError {
         }
     }
 
-    /// Returns a helpful suggestion for resolving the error.
     pub fn suggestion(&self) -> String {
         match self {
             DaemonError::SocketBind(_) => {
@@ -186,13 +170,11 @@ impl DaemonError {
         }
     }
 
-    /// Returns whether this error is potentially transient and may succeed on retry.
     pub fn is_retryable(&self) -> bool {
         matches!(self, DaemonError::LockFailed(_))
     }
 }
 
-/// Domain-specific errors with semantic codes and structured context.
 #[derive(Error, Debug)]
 pub enum DomainError {
     #[error("Session not found: {session_id}")]
@@ -244,7 +226,6 @@ pub enum DomainError {
 }
 
 impl DomainError {
-    /// Returns the JSON-RPC error code for this error.
     pub fn code(&self) -> i32 {
         match self {
             DomainError::SessionNotFound { .. } => error_codes::SESSION_NOT_FOUND,
@@ -262,12 +243,10 @@ impl DomainError {
         }
     }
 
-    /// Returns the error category for programmatic handling.
     pub fn category(&self) -> ErrorCategory {
         error_codes::category_for_code(self.code())
     }
 
-    /// Returns structured context about the error for debugging.
     pub fn context(&self) -> Value {
         match self {
             DomainError::SessionNotFound { session_id } => {
@@ -334,7 +313,6 @@ impl DomainError {
         }
     }
 
-    /// Returns a helpful suggestion for resolving the error.
     pub fn suggestion(&self) -> String {
         match self {
             DomainError::SessionNotFound { .. } | DomainError::NoActiveSession => {
@@ -529,7 +507,6 @@ mod tests {
         assert_eq!(err.to_string(), "Element @el1 is a button not a input");
     }
 
-    // SessionError tests
     #[test]
     fn test_session_error_not_found_code() {
         let err = SessionError::NotFound("abc123".into());
@@ -607,7 +584,6 @@ mod tests {
         assert!(!SessionError::InvalidKey("x".into()).is_retryable());
     }
 
-    // SessionError::Persistence tests
     #[test]
     fn test_session_error_persistence_code() {
         let err = SessionError::Persistence {
@@ -646,7 +622,6 @@ mod tests {
         assert_eq!(err.to_string(), "Persistence error during write: disk full");
     }
 
-    // DaemonError tests
     #[test]
     fn test_daemon_error_socket_bind() {
         let err = DaemonError::SocketBind("address in use".into());
@@ -694,7 +669,6 @@ mod tests {
         );
     }
 
-    // PtyError conversion test
     #[test]
     fn test_pty_error_conversion_preserves_context() {
         let pty_err = PtyError::Write("broken pipe".into());

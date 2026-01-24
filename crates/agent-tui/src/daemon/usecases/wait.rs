@@ -19,7 +19,6 @@ pub struct WaitUseCaseImpl<R: SessionRepository, S: Sleeper = RealSleeper> {
 }
 
 impl<R: SessionRepository> WaitUseCaseImpl<R, RealSleeper> {
-    /// Create a new WaitUseCaseImpl with the default RealSleeper.
     pub fn new(repository: Arc<R>) -> Self {
         Self {
             repository,
@@ -29,8 +28,6 @@ impl<R: SessionRepository> WaitUseCaseImpl<R, RealSleeper> {
 }
 
 impl<R: SessionRepository, S: Sleeper> WaitUseCaseImpl<R, S> {
-    /// Create a new WaitUseCaseImpl with a custom sleeper.
-    /// Use this for testing with MockSleeper.
     pub fn with_sleeper(repository: Arc<R>, sleeper: S) -> Self {
         Self {
             repository,
@@ -101,30 +98,17 @@ mod tests {
     use crate::daemon::sleeper::MockSleeper;
     use crate::daemon::test_support::{MockError, MockSessionRepository};
 
-    // ========================================================================
-    // WaitUseCase Tests (Error paths)
-    // ========================================================================
-
-    // ========================================================================
-    // MockSleeper Integration Tests
-    // ========================================================================
-
     #[test]
     fn test_wait_usecase_can_be_constructed_with_mock_sleeper() {
-        // This test demonstrates that WaitUseCaseImpl can be constructed
-        // with a MockSleeper, enabling deterministic tests without sleeping.
         let repo = Arc::new(MockSessionRepository::new());
         let mock_sleeper = MockSleeper::new();
         let _usecase = WaitUseCaseImpl::with_sleeper(repo, mock_sleeper);
-        // Construction succeeds - the mock sleeper is injectable
     }
 
     #[test]
     fn test_wait_usecase_default_uses_real_sleeper() {
-        // This test demonstrates that WaitUseCaseImpl::new() uses RealSleeper by default
         let repo = Arc::new(MockSessionRepository::new());
         let _usecase: WaitUseCaseImpl<_, RealSleeper> = WaitUseCaseImpl::new(repo);
-        // Type annotation confirms RealSleeper is the default
     }
 
     #[test]

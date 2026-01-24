@@ -20,7 +20,6 @@ use crate::daemon::usecases::{
     SnapshotUseCase, ToggleUseCase,
 };
 
-/// Handle snapshot requests using the use case pattern.
 pub fn handle_snapshot_uc<U: SnapshotUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = parse_snapshot_input(&request);
     let strip_ansi = request
@@ -37,9 +36,6 @@ pub fn handle_snapshot_uc<U: SnapshotUseCase>(usecase: &U, request: RpcRequest) 
     }
 }
 
-/// Handle accessibility snapshot requests using the use case pattern.
-///
-/// Returns the accessibility tree format with refs for element interaction.
 pub fn handle_accessibility_snapshot_uc<U: AccessibilitySnapshotUseCase>(
     usecase: &U,
     request: RpcRequest,
@@ -70,7 +66,6 @@ pub fn handle_accessibility_snapshot_uc<U: AccessibilitySnapshotUseCase>(
     }
 }
 
-/// Handle click requests using the use case pattern.
 pub fn handle_click_uc<U: ClickUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -90,7 +85,6 @@ pub fn handle_click_uc<U: ClickUseCase>(usecase: &U, request: RpcRequest) -> Rpc
     }
 }
 
-/// Handle double-click requests using the use case pattern.
 pub fn handle_dbl_click_uc<U: DoubleClickUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -110,7 +104,6 @@ pub fn handle_dbl_click_uc<U: DoubleClickUseCase>(usecase: &U, request: RpcReque
     }
 }
 
-/// Handle fill requests using the use case pattern.
 pub fn handle_fill_uc<U: FillUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = match parse_fill_input(&request) {
         Ok(i) => i,
@@ -125,7 +118,6 @@ pub fn handle_fill_uc<U: FillUseCase>(usecase: &U, request: RpcRequest) -> RpcRe
     }
 }
 
-/// Handle find requests using the use case pattern.
 pub fn handle_find_uc<U: FindUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = parse_find_input(&request);
     let req_id = request.id;
@@ -149,7 +141,6 @@ pub fn handle_find_uc<U: FindUseCase>(usecase: &U, request: RpcRequest) -> RpcRe
     }
 }
 
-/// Handle count requests using the use case pattern.
 pub fn handle_count_uc<U: CountUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = parse_count_input(&request);
     let req_id = request.id;
@@ -160,7 +151,6 @@ pub fn handle_count_uc<U: CountUseCase>(usecase: &U, request: RpcRequest) -> Rpc
     }
 }
 
-/// Handle scroll requests using the use case pattern.
 pub fn handle_scroll_uc<U: ScrollUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = match parse_scroll_input(&request) {
         Ok(i) => i,
@@ -176,7 +166,6 @@ pub fn handle_scroll_uc<U: ScrollUseCase>(usecase: &U, request: RpcRequest) -> R
     }
 }
 
-/// Handle get_text requests using the use case pattern.
 pub fn handle_get_text_uc<U: GetTextUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -199,7 +188,6 @@ pub fn handle_get_text_uc<U: GetTextUseCase>(usecase: &U, request: RpcRequest) -
     }
 }
 
-/// Handle get_value requests using the use case pattern.
 pub fn handle_get_value_uc<U: GetValueUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -222,7 +210,6 @@ pub fn handle_get_value_uc<U: GetValueUseCase>(usecase: &U, request: RpcRequest)
     }
 }
 
-/// Handle is_visible requests using the use case pattern.
 pub fn handle_is_visible_uc<U: IsVisibleUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -245,7 +232,6 @@ pub fn handle_is_visible_uc<U: IsVisibleUseCase>(usecase: &U, request: RpcReques
     }
 }
 
-/// Handle is_focused requests using the use case pattern.
 pub fn handle_is_focused_uc<U: IsFocusedUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -268,7 +254,6 @@ pub fn handle_is_focused_uc<U: IsFocusedUseCase>(usecase: &U, request: RpcReques
     }
 }
 
-/// Handle is_enabled requests using the use case pattern.
 pub fn handle_is_enabled_uc<U: IsEnabledUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -291,7 +276,6 @@ pub fn handle_is_enabled_uc<U: IsEnabledUseCase>(usecase: &U, request: RpcReques
     }
 }
 
-/// Handle is_checked requests using the use case pattern.
 pub fn handle_is_checked_uc<U: IsCheckedUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -318,7 +302,6 @@ pub fn handle_is_checked_uc<U: IsCheckedUseCase>(usecase: &U, request: RpcReques
     }
 }
 
-/// Handle get_focused requests using the use case pattern.
 pub fn handle_get_focused_uc<U: GetFocusedUseCase>(
     usecase: &U,
     request: RpcRequest,
@@ -353,7 +336,6 @@ pub fn handle_get_focused_uc<U: GetFocusedUseCase>(
     }
 }
 
-/// Handle get_title requests using the use case pattern.
 pub fn handle_get_title_uc<U: GetTitleUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = parse_session_input(&request);
     let req_id = request.id;
@@ -370,7 +352,6 @@ pub fn handle_get_title_uc<U: GetTitleUseCase>(usecase: &U, request: RpcRequest)
     }
 }
 
-/// Handle focus requests using the use case pattern.
 pub fn handle_focus_uc<U: FocusUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -390,7 +371,6 @@ pub fn handle_focus_uc<U: FocusUseCase>(usecase: &U, request: RpcRequest) -> Rpc
     }
 }
 
-/// Handle clear requests using the use case pattern.
 pub fn handle_clear_uc<U: ClearUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -410,7 +390,6 @@ pub fn handle_clear_uc<U: ClearUseCase>(usecase: &U, request: RpcRequest) -> Rpc
     }
 }
 
-/// Handle select_all requests using the use case pattern.
 pub fn handle_select_all_uc<U: SelectAllUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -430,7 +409,6 @@ pub fn handle_select_all_uc<U: SelectAllUseCase>(usecase: &U, request: RpcReques
     }
 }
 
-/// Handle toggle requests using the use case pattern.
 pub fn handle_toggle_uc<U: ToggleUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -455,7 +433,6 @@ pub fn handle_toggle_uc<U: ToggleUseCase>(usecase: &U, request: RpcRequest) -> R
     }
 }
 
-/// Handle select requests using the use case pattern.
 pub fn handle_select_uc<U: SelectUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
@@ -483,7 +460,6 @@ pub fn handle_select_uc<U: SelectUseCase>(usecase: &U, request: RpcRequest) -> R
     }
 }
 
-/// Handle scroll_into_view requests using the use case pattern.
 pub fn handle_scroll_into_view_uc<U: ScrollIntoViewUseCase>(
     usecase: &U,
     request: RpcRequest,
@@ -525,7 +501,6 @@ pub fn handle_scroll_into_view_uc<U: ScrollIntoViewUseCase>(
     }
 }
 
-/// Handle multiselect requests using the use case pattern.
 pub fn handle_multiselect_uc<U: MultiselectUseCase>(
     usecase: &U,
     request: RpcRequest,
@@ -575,15 +550,10 @@ mod tests {
         ClickUseCase, FillUseCase, FindUseCase, GetTextUseCase, GetTitleUseCase, IsVisibleUseCase,
     };
 
-    // Helper to extract JSON result from response
     fn extract_json(response: RpcResponse) -> serde_json::Value {
         let json_str = serde_json::to_string(&response).expect("serialize");
         serde_json::from_str(&json_str).expect("parse")
     }
-
-    // ========================================================================
-    // MockGetTitleUseCase
-    // ========================================================================
 
     struct MockGetTitleUseCase {
         session_id: String,
@@ -607,10 +577,6 @@ mod tests {
             })
         }
     }
-
-    // ========================================================================
-    // MockClickUseCase
-    // ========================================================================
 
     enum MockClickResult {
         Success { message: Option<String> },
@@ -648,10 +614,6 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // MockFillUseCase
-    // ========================================================================
-
     enum MockFillResult {
         Success,
         Error(SessionError),
@@ -687,10 +649,6 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // MockFindUseCase
-    // ========================================================================
-
     struct MockFindUseCase {
         elements: Vec<DomainElement>,
     }
@@ -713,10 +671,6 @@ mod tests {
             })
         }
     }
-
-    // ========================================================================
-    // MockGetTextUseCase
-    // ========================================================================
 
     enum MockGetTextResult {
         Success { text: String },
@@ -758,10 +712,6 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // MockIsVisibleUseCase
-    // ========================================================================
-
     struct MockIsVisibleUseCase {
         visible: bool,
         found: bool,
@@ -792,10 +742,6 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // Tests
-    // ========================================================================
-
     #[test]
     fn test_handle_get_title_response_has_no_command_field() {
         let usecase = MockGetTitleUseCase::with_success("test-session", "My App Title");
@@ -804,7 +750,6 @@ mod tests {
         let response = handle_get_title_uc(&usecase, request);
         let parsed = extract_json(response);
 
-        // Verify it's a success response
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert!(parsed.get("result").is_some());
 
@@ -817,10 +762,6 @@ mod tests {
         );
     }
 
-    // ========================================================================
-    // handle_click_uc tests
-    // ========================================================================
-
     #[test]
     fn test_handle_click_uc_success() {
         let usecase = MockClickUseCase::with_success();
@@ -829,7 +770,6 @@ mod tests {
         let response = handle_click_uc(&usecase, request);
         let parsed = extract_json(response);
 
-        // Verify it's a success response (action_success format)
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         let result = &parsed["result"];
         assert_eq!(result["success"], true);
@@ -847,7 +787,6 @@ mod tests {
         let response = handle_click_uc(&usecase, request);
         let parsed = extract_json(response);
 
-        // Verify it's a success response
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         let result = &parsed["result"];
         assert_eq!(result["success"], true);
@@ -875,10 +814,6 @@ mod tests {
 
         assert!(parsed.get("error").is_some());
     }
-
-    // ========================================================================
-    // handle_fill_uc tests
-    // ========================================================================
 
     #[test]
     fn test_handle_fill_uc_success() {
@@ -922,10 +857,6 @@ mod tests {
 
         assert!(parsed.get("error").is_some());
     }
-
-    // ========================================================================
-    // handle_find_uc tests
-    // ========================================================================
 
     #[test]
     fn test_handle_find_uc_returns_elements() {
@@ -976,10 +907,6 @@ mod tests {
         assert_eq!(result["elements"], json!([]));
     }
 
-    // ========================================================================
-    // handle_get_text_uc tests
-    // ========================================================================
-
     #[test]
     fn test_handle_get_text_uc_found() {
         let usecase = MockGetTextUseCase::with_text("Hello World");
@@ -1009,10 +936,6 @@ mod tests {
         let result = &parsed["result"];
         assert_eq!(result["found"], false);
     }
-
-    // ========================================================================
-    // handle_is_visible_uc tests
-    // ========================================================================
 
     #[test]
     fn test_handle_is_visible_uc_visible() {

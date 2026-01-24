@@ -1,9 +1,8 @@
-//! Application entry point and command dispatch.
-
 use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
 
+use crate::common::key_names::is_key_name;
 use crate::common::{Colors, color_init};
 use crate::daemon::{DaemonError, start_daemon};
 use crate::ipc::{ClientError, DaemonClient, ensure_daemon};
@@ -12,83 +11,23 @@ use crate::attach::AttachError;
 use crate::commands::{Cli, Commands, DaemonCommand, DebugCommand, RecordAction};
 use crate::handlers::{self, HandlerContext};
 
-/// Exit codes based on BSD sysexits.h
 mod exit_codes {
     pub const SUCCESS: i32 = 0;
     pub const GENERAL_ERROR: i32 = 1;
-    pub const USAGE: i32 = 64; // EX_USAGE: command line usage error
-    pub const UNAVAILABLE: i32 = 69; // EX_UNAVAILABLE: service unavailable
-    pub const CANTCREAT: i32 = 73; // EX_CANTCREAT: can't create output
-    pub const IOERR: i32 = 74; // EX_IOERR: input/output error
-    pub const TEMPFAIL: i32 = 75; // EX_TEMPFAIL: temporary failure
+    pub const USAGE: i32 = 64;
+    pub const UNAVAILABLE: i32 = 69;
+    pub const CANTCREAT: i32 = 73;
+    pub const IOERR: i32 = 74;
+    pub const TEMPFAIL: i32 = 75;
 }
 
-/// Check if input is a recognized key name (case-insensitive).
-/// Returns true for key names like Enter, Tab, Ctrl+C, F1, etc.
-/// Returns false for text that should be typed character by character.
-fn is_key_name(input: &str) -> bool {
-    let lower = input.to_ascii_lowercase();
-
-    // Check for modifier combinations first (e.g., Ctrl+C, Alt+F4)
-    if lower.contains('+') {
-        if let Some(modifier) = lower.split('+').next() {
-            return matches!(modifier, "ctrl" | "alt" | "shift" | "meta" | "control");
-        }
-    }
-
-    // Single key names (case-insensitive)
-    matches!(
-        lower.as_str(),
-        "enter"
-            | "tab"
-            | "escape"
-            | "esc"
-            | "backspace"
-            | "delete"
-            | "arrowup"
-            | "arrowdown"
-            | "arrowleft"
-            | "arrowright"
-            | "up"
-            | "down"
-            | "left"
-            | "right"
-            | "home"
-            | "end"
-            | "pageup"
-            | "pagedown"
-            | "insert"
-            | "space"
-            | "f1"
-            | "f2"
-            | "f3"
-            | "f4"
-            | "f5"
-            | "f6"
-            | "f7"
-            | "f8"
-            | "f9"
-            | "f10"
-            | "f11"
-            | "f12"
-            | "shift"
-            | "control"
-            | "ctrl"
-            | "alt"
-            | "meta"
-    )
-}
-
-/// Application encapsulates the CLI runtime behavior.
 pub struct Application;
 
 impl Application {
-    /// Create a new Application instance.
     pub fn new() -> Self {
         Self
     }
 
-    /// Run the application, returning the exit code.
     pub fn run(&self) -> i32 {
         match self.execute() {
             Ok(()) => exit_codes::SUCCESS,
@@ -100,27 +39,21 @@ impl Application {
         let cli = Cli::parse();
         color_init(cli.no_color);
 
-        // Handle commands that don't need a daemon connection
         if self.handle_standalone_commands(&cli)? {
             return Ok(());
         }
 
-        // Connect to daemon
         let mut client = self.connect_to_daemon()?;
 
-        // Check for version mismatch (skip for daemon commands and version command)
         if !matches!(cli.command, Commands::Daemon(_) | Commands::Version) {
             check_version_mismatch(&mut client);
         }
 
-        // Execute command
         let format = cli.effective_format();
         let mut ctx = HandlerContext::new(&mut client, cli.session, format);
         self.dispatch_command(&mut ctx, &cli.command)
     }
 
-    /// Handle commands that don't require a daemon connection.
-    /// Returns true if the command was handled, false if it needs daemon.
     fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool, Box<dyn std::error::Error>> {
         match &cli.command {
             Commands::Daemon(DaemonCommand::Start { foreground: true }) => {
@@ -276,8 +209,7 @@ impl Application {
                     handlers::handle_attach(ctx, attach_id.clone(), true)?
                 } else if *cleanup {
                     handlers::handle_cleanup(ctx, *all)?
-                } else if let Some(_id) = session_id {
-                    // Show details for specific session - currently just lists all
+                } else if session_id.is_some() {
                     handlers::handle_sessions(ctx)?
                 } else if *status {
                     handlers::handle_health(ctx, true)?
@@ -379,7 +311,6 @@ impl Default for Application {
     }
 }
 
-/// Check for version mismatch between CLI and daemon, print warning if found.
 fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
     use crate::ipc::version::{VersionCheckResult, check_version};
 
@@ -420,64 +351,5 @@ fn exit_code_for_client_error(error: &ClientError) -> i32 {
         Some(ErrorCategory::Internal) => exit_codes::IOERR,
         Some(ErrorCategory::Timeout) => exit_codes::TEMPFAIL,
         None => exit_codes::GENERAL_ERROR,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_key_name_case_insensitive() {
-        // Standard casing
-        assert!(is_key_name("Enter"));
-        assert!(is_key_name("Tab"));
-        assert!(is_key_name("Escape"));
-        assert!(is_key_name("F1"));
-
-        // Lowercase
-        assert!(is_key_name("enter"));
-        assert!(is_key_name("tab"));
-        assert!(is_key_name("escape"));
-        assert!(is_key_name("f1"));
-
-        // Uppercase
-        assert!(is_key_name("ENTER"));
-        assert!(is_key_name("TAB"));
-        assert!(is_key_name("ESCAPE"));
-        assert!(is_key_name("F1"));
-
-        // Mixed case
-        assert!(is_key_name("EnTeR"));
-        assert!(is_key_name("ArrowUp"));
-        assert!(is_key_name("arrowup"));
-        assert!(is_key_name("ARROWUP"));
-    }
-
-    #[test]
-    fn test_is_key_name_modifier_combos_case_insensitive() {
-        // Standard casing
-        assert!(is_key_name("Ctrl+c"));
-        assert!(is_key_name("Alt+F4"));
-        assert!(is_key_name("Shift+Tab"));
-
-        // Lowercase modifiers
-        assert!(is_key_name("ctrl+c"));
-        assert!(is_key_name("alt+f4"));
-        assert!(is_key_name("shift+tab"));
-
-        // Uppercase modifiers
-        assert!(is_key_name("CTRL+C"));
-        assert!(is_key_name("ALT+F4"));
-        assert!(is_key_name("SHIFT+TAB"));
-    }
-
-    #[test]
-    fn test_is_key_name_text_not_detected() {
-        // Regular text should not be detected as key names
-        assert!(!is_key_name("hello"));
-        assert!(!is_key_name("Hello World"));
-        assert!(!is_key_name("test123"));
-        assert!(!is_key_name("a")); // Single character is text, not a key
     }
 }

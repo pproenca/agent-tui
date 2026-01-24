@@ -1,51 +1,31 @@
-//! Semantic error codes for JSON-RPC domain errors.
-//!
-//! Error codes follow the JSON-RPC 2.0 specification:
-//! - -32700 to -32600: Reserved protocol errors
-//! - -32000 to -32099: Server errors (we use -32001 to -32020 for domain errors)
-
-// Session-related errors
 pub const SESSION_NOT_FOUND: i32 = -32001;
 pub const NO_ACTIVE_SESSION: i32 = -32002;
 pub const SESSION_LIMIT: i32 = -32006;
 pub const LOCK_TIMEOUT: i32 = -32007;
 
-// Element-related errors
 pub const ELEMENT_NOT_FOUND: i32 = -32003;
 pub const WRONG_ELEMENT_TYPE: i32 = -32004;
 
-// Input/operation errors
 pub const INVALID_KEY: i32 = -32005;
 pub const PTY_ERROR: i32 = -32008;
 
-// Wait/timing errors
 pub const WAIT_TIMEOUT: i32 = -32013;
 
-// Process errors
 pub const COMMAND_NOT_FOUND: i32 = -32014;
 pub const PERMISSION_DENIED: i32 = -32015;
 
-// Daemon errors
 pub const DAEMON_ERROR: i32 = -32016;
 pub const PERSISTENCE_ERROR: i32 = -32017;
 
-// Legacy generic error (for backwards compatibility)
 pub const GENERIC_ERROR: i32 = -32000;
 
-/// Error category for programmatic handling by AI agents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorCategory {
-    /// Resource not found (session, element)
     NotFound,
-    /// Invalid input parameters
     InvalidInput,
-    /// Resource busy or locked
     Busy,
-    /// Internal server error
     Internal,
-    /// External dependency failure (PTY, process)
     External,
-    /// Operation timed out
     Timeout,
 }
 
@@ -84,16 +64,10 @@ impl std::fmt::Display for ErrorCategory {
     }
 }
 
-/// Returns whether an error code represents a retriable operation.
-///
-/// Retriable errors are transient conditions that may succeed on retry:
-/// - Lock timeouts (another operation in progress)
-/// - Connection issues (daemon busy)
 pub fn is_retryable(code: i32) -> bool {
     matches!(code, LOCK_TIMEOUT | GENERIC_ERROR)
 }
 
-/// Returns the error category for a given error code.
 pub fn category_for_code(code: i32) -> ErrorCategory {
     match code {
         SESSION_NOT_FOUND | NO_ACTIVE_SESSION | ELEMENT_NOT_FOUND => ErrorCategory::NotFound,

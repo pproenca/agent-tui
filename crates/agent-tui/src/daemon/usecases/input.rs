@@ -115,10 +115,6 @@ mod tests {
     use crate::daemon::domain::SessionId;
     use crate::daemon::test_support::{MockError, MockSessionRepository};
 
-    // ========================================================================
-    // KeystrokeUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_keystroke_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -150,10 +146,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // TypeUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_type_usecase_returns_error_when_no_active_session() {
@@ -187,10 +179,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
-    // ========================================================================
-    // KeydownUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_keydown_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -222,10 +210,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // KeyupUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_keyup_usecase_returns_error_when_no_active_session() {

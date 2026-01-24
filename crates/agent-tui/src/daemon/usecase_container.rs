@@ -19,10 +19,6 @@ use crate::daemon::usecases::{
     WaitUseCaseImpl,
 };
 
-/// Container holding all use case implementations.
-///
-/// This enables dependency injection and makes handlers testable
-/// by allowing different use case implementations to be injected.
 pub struct UseCaseContainer<R: SessionRepository + 'static> {
     pub session: SessionUseCases<R>,
     pub elements: ElementUseCases<R>,
@@ -32,7 +28,6 @@ pub struct UseCaseContainer<R: SessionRepository + 'static> {
     pub wait: WaitUseCaseImpl<R>,
 }
 
-/// Session-related use cases.
 pub struct SessionUseCases<R: SessionRepository + 'static> {
     pub spawn: SpawnUseCaseImpl<R>,
     pub kill: KillUseCaseImpl<R>,
@@ -44,7 +39,6 @@ pub struct SessionUseCases<R: SessionRepository + 'static> {
     pub assert: AssertUseCaseImpl<R>,
 }
 
-/// Element-related use cases.
 pub struct ElementUseCases<R: SessionRepository + 'static> {
     pub snapshot: SnapshotUseCaseImpl<R>,
     pub accessibility_snapshot: AccessibilitySnapshotUseCaseImpl<R>,
@@ -60,7 +54,7 @@ pub struct ElementUseCases<R: SessionRepository + 'static> {
     pub toggle: ToggleUseCaseImpl<R>,
     pub select: SelectUseCaseImpl<R>,
     pub multiselect: MultiselectUseCaseImpl<R>,
-    // Query use cases
+
     pub get_text: GetTextUseCaseImpl<R>,
     pub get_value: GetValueUseCaseImpl<R>,
     pub is_visible: IsVisibleUseCaseImpl<R>,
@@ -72,7 +66,6 @@ pub struct ElementUseCases<R: SessionRepository + 'static> {
     pub scroll_into_view: ScrollIntoViewUseCaseImpl<R>,
 }
 
-/// Input-related use cases.
 pub struct InputUseCases<R: SessionRepository + 'static> {
     pub keystroke: KeystrokeUseCaseImpl<R>,
     pub type_text: TypeUseCaseImpl<R>,
@@ -80,14 +73,12 @@ pub struct InputUseCases<R: SessionRepository + 'static> {
     pub keyup: KeyupUseCaseImpl<R>,
 }
 
-/// Recording-related use cases.
 pub struct RecordingUseCases<R: SessionRepository + 'static> {
     pub record_start: RecordStartUseCaseImpl<R>,
     pub record_stop: RecordStopUseCaseImpl<R>,
     pub record_status: RecordStatusUseCaseImpl<R>,
 }
 
-/// Diagnostics-related use cases.
 pub struct DiagnosticsUseCases<R: SessionRepository + 'static> {
     pub trace: TraceUseCaseImpl<R>,
     pub console: ConsoleUseCaseImpl<R>,
@@ -100,7 +91,6 @@ pub struct DiagnosticsUseCases<R: SessionRepository + 'static> {
 }
 
 impl<R: SessionRepository + 'static> UseCaseContainer<R> {
-    /// Create a new UseCaseContainer with all use cases initialized.
     pub fn new(
         repository: Arc<R>,
         metrics: Arc<DaemonMetrics>,

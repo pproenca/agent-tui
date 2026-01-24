@@ -193,10 +193,6 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // check_condition() tests using MockSession
-    // ========================================================================
-
     #[test]
     fn test_check_condition_text_found() {
         let mut session = MockSession::builder("test")
@@ -313,7 +309,7 @@ mod tests {
             &mut tracker,
         );
 
-        assert!(result); // Element is not visible because it doesn't exist
+        assert!(result);
     }
 
     #[test]
@@ -328,7 +324,7 @@ mod tests {
             &mut tracker,
         );
 
-        assert!(!result); // Element IS visible, so not_visible is false
+        assert!(!result);
     }
 
     #[test]
@@ -344,7 +340,7 @@ mod tests {
             &mut tracker,
         );
 
-        assert!(result); // "Loading" is not in screen, so text_gone is true
+        assert!(result);
     }
 
     #[test]
@@ -360,7 +356,7 @@ mod tests {
             &mut tracker,
         );
 
-        assert!(!result); // "Loading" is still in screen
+        assert!(!result);
     }
 
     #[test]
@@ -441,7 +437,6 @@ mod tests {
             .build();
         let mut tracker = StableTracker::new(3);
 
-        // First 2 checks build up history, return false
         assert!(!check_condition(
             &mut session,
             &WaitCondition::Stable,
@@ -453,17 +448,12 @@ mod tests {
             &mut tracker
         ));
 
-        // 3rd check completes the stable window, returns true
         assert!(check_condition(
             &mut session,
             &WaitCondition::Stable,
             &mut tracker
         ));
     }
-
-    // ========================================================================
-    // WaitCondition::parse() tests
-    // ========================================================================
 
     #[test]
     fn test_parse_text_condition() {

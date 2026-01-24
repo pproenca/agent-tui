@@ -1,11 +1,3 @@
-//! String utility functions shared across agent-tui crates.
-
-/// Strip ANSI escape codes from a string.
-///
-/// Handles:
-/// - SGR sequences (colors, styles): `\x1b[...m`
-/// - OSC sequences (titles, etc.): `\x1b]...\x07` or `\x1b]...\x1b\\`
-/// - Cursor movement and other CSI sequences
 pub fn strip_ansi_codes(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();

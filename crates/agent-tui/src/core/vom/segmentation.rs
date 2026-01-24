@@ -208,10 +208,6 @@ mod tests {
         assert_eq!(clusters[0].rect.width, 1);
     }
 
-    // ============================================================
-    // Property-based tests
-    // ============================================================
-
     mod prop_tests {
         use super::*;
         use proptest::prelude::*;

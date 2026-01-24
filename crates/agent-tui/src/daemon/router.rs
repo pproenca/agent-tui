@@ -1,9 +1,3 @@
-//! Request routing for the daemon server.
-//!
-//! The Router maps RPC method names to their handlers, keeping routing logic
-//! separate from server infrastructure. This enables independent testing of
-//! routing without server setup.
-
 use crate::ipc::{RpcRequest, RpcResponse};
 use serde_json::json;
 
@@ -11,28 +5,15 @@ use super::usecase_container::UseCaseContainer;
 use crate::daemon::handlers;
 use crate::daemon::repository::SessionRepository;
 
-/// Routes RPC requests to appropriate handlers.
-///
-/// The Router is responsible for:
-/// - Mapping method names to handlers
-/// - Delegating to use cases via handlers
-/// - Returning appropriate error responses for unknown methods
-///
-/// This design makes the server a "humble object" with minimal logic.
 pub struct Router<'a, R: SessionRepository + 'static> {
     usecases: &'a UseCaseContainer<R>,
 }
 
 impl<'a, R: SessionRepository + 'static> Router<'a, R> {
-    /// Create a new router with the given use case container.
     pub fn new(usecases: &'a UseCaseContainer<R>) -> Self {
         Self { usecases }
     }
 
-    /// Route an RPC request to the appropriate handler.
-    ///
-    /// Returns the RPC response from the handler, or an error response
-    /// if the method is not found or deprecated.
     pub fn route(&self, request: RpcRequest) -> RpcResponse {
         match request.method.as_str() {
             "ping" => RpcResponse::success(request.id, json!({ "pong": true })),
@@ -46,7 +27,6 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
                 request,
             ),
 
-            // Session handlers using use cases
             "spawn" => handlers::session::handle_spawn(&self.usecases.session.spawn, request),
             "kill" => handlers::session::handle_kill(&self.usecases.session.kill, request),
             "restart" => handlers::session::handle_restart(&self.usecases.session.restart, request),
@@ -58,7 +38,6 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
             "cleanup" => handlers::session::handle_cleanup(&self.usecases.session.cleanup, request),
             "assert" => handlers::session::handle_assert(&self.usecases.session.assert, request),
 
-            // Element handlers - using use cases
             "snapshot" => {
                 handlers::elements::handle_snapshot_uc(&self.usecases.elements.snapshot, request)
             }
@@ -126,7 +105,6 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
                 request,
             ),
 
-            // Input handlers - keystroke and type use use cases
             "keystroke" => {
                 handlers::input::handle_keystroke_uc(&self.usecases.input.keystroke, request)
             }
@@ -134,10 +112,8 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
             "keyup" => handlers::input::handle_keyup_uc(&self.usecases.input.keyup, request),
             "type" => handlers::input::handle_type_uc(&self.usecases.input.type_text, request),
 
-            // Wait handler using use case
             "wait" => handlers::wait::handle_wait_uc(&self.usecases.wait, request),
 
-            // Recording handlers - using use cases
             "record_start" => handlers::recording::handle_record_start_uc(
                 &self.usecases.recording.record_start,
                 request,
@@ -151,7 +127,6 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
                 request,
             ),
 
-            // Diagnostics handlers - using use cases
             "trace" => {
                 handlers::diagnostics::handle_trace_uc(&self.usecases.diagnostics.trace, request)
             }
@@ -325,7 +300,6 @@ mod tests {
         let usecases = create_test_usecases();
         let router = Router::new(&usecases);
 
-        // Invalid condition format (missing colon separator)
         let request = RpcRequest::new(
             1,
             "assert".to_string(),
@@ -351,7 +325,6 @@ mod tests {
         let usecases = create_test_usecases();
         let router = Router::new(&usecases);
 
-        // Session condition for a non-existent session should return passed: false
         let request = RpcRequest::new(
             1,
             "assert".to_string(),

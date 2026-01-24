@@ -1,25 +1,17 @@
-//! Shutdown use case for daemon termination.
-//!
-//! This use case provides a clean mechanism for shutting down the daemon
-//! via RPC, as an alternative to signal-based shutdown (SIGTERM).
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::daemon::domain::{ShutdownInput, ShutdownOutput};
 
-/// Use case for initiating daemon shutdown.
 pub trait ShutdownUseCase: Send + Sync {
     fn execute(&self, input: ShutdownInput) -> ShutdownOutput;
 }
 
-/// Implementation of the shutdown use case.
 pub struct ShutdownUseCaseImpl {
     shutdown_flag: Arc<AtomicBool>,
 }
 
 impl ShutdownUseCaseImpl {
-    /// Create a new shutdown use case with the given shutdown flag.
     pub fn new(shutdown_flag: Arc<AtomicBool>) -> Self {
         Self { shutdown_flag }
     }
@@ -41,13 +33,10 @@ mod tests {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let usecase = ShutdownUseCaseImpl::new(Arc::clone(&shutdown_flag));
 
-        // Flag should be false initially
         assert!(!shutdown_flag.load(Ordering::SeqCst));
 
-        // Execute shutdown
         let output = usecase.execute(ShutdownInput);
 
-        // Flag should be true after execution
         assert!(shutdown_flag.load(Ordering::SeqCst));
         assert!(output.acknowledged);
     }
@@ -67,11 +56,9 @@ mod tests {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let usecase = ShutdownUseCaseImpl::new(Arc::clone(&shutdown_flag));
 
-        // Call shutdown multiple times
         let output1 = usecase.execute(ShutdownInput);
         let output2 = usecase.execute(ShutdownInput);
 
-        // Both should succeed and flag should remain true
         assert!(output1.acknowledged);
         assert!(output2.acknowledged);
         assert!(shutdown_flag.load(Ordering::SeqCst));

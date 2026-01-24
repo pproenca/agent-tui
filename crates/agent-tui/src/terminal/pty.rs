@@ -130,8 +130,6 @@ impl PtyHandle {
             revents: 0,
         };
 
-        // SAFETY: poll() is safe with valid pollfd. fd is from PTY master,
-        // timeout is passed directly, and return value is checked for errors.
         let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
 
         if result < 0 {

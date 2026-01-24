@@ -1,8 +1,3 @@
-//! Concurrent request tests
-//!
-//! Tests for handling concurrent/parallel requests to the daemon.
-//! Verifies thread safety and data integrity under load.
-
 mod common;
 
 use common::{MockResponse, TEST_SESSION_ID, TestHarness, with_timeout};
@@ -12,15 +7,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-// =============================================================================
-// Parallel Snapshot Tests
-// =============================================================================
-
 #[test]
 fn test_parallel_snapshots_same_session() {
     let harness = Arc::new(TestHarness::new());
 
-    // Run 4 snapshots in parallel
     let handles: Vec<_> = (0..4)
         .map(|_| {
             let harness = Arc::clone(&harness);
@@ -28,13 +18,11 @@ fn test_parallel_snapshots_same_session() {
         })
         .collect();
 
-    // All should complete successfully
     for handle in handles {
         let result = handle.join().expect("Thread panicked");
         result.stdout(predicate::str::contains("Screen"));
     }
 
-    // All 4 snapshot calls should have been made
     assert_eq!(harness.call_count("snapshot"), 4);
 }
 
@@ -42,7 +30,6 @@ fn test_parallel_snapshots_same_session() {
 fn test_parallel_snapshots_with_different_options() {
     let harness = Arc::new(TestHarness::new());
 
-    // Configure snapshot response with elements
     harness.set_success_response(
         "screen",
         json!({
@@ -81,15 +68,10 @@ fn test_parallel_snapshots_with_different_options() {
     }
 }
 
-// =============================================================================
-// Parallel Type Command Tests
-// =============================================================================
-
 #[test]
 fn test_parallel_type_commands() {
     let harness = Arc::new(TestHarness::new());
 
-    // Run 4 key --type commands in parallel
     let texts = vec!["Hello", "World", "Test", "Data"];
 
     let handles: Vec<_> = texts
@@ -104,19 +86,13 @@ fn test_parallel_type_commands() {
         handle.join().expect("Thread panicked");
     }
 
-    // All 4 type calls should have been made
     assert_eq!(harness.call_count("type"), 4);
 }
-
-// =============================================================================
-// Concurrent Spawn Tests
-// =============================================================================
 
 #[test]
 fn test_concurrent_spawns() {
     let harness = Arc::new(TestHarness::new());
 
-    // Configure unique responses for each spawn using Sequence
     let spawn_responses: Vec<MockResponse> = (0..4)
         .map(|i| {
             MockResponse::Success(json!({
@@ -142,23 +118,17 @@ fn test_concurrent_spawns() {
         handle.join().expect("Thread panicked");
     }
 
-    // All spawns should succeed
     assert_eq!(harness.call_count("spawn"), 4);
 }
-
-// =============================================================================
-// Rapid Connect/Disconnect Tests
-// =============================================================================
 
 #[test]
 fn test_rapid_connect_disconnect() {
     let harness = Arc::new(TestHarness::new());
 
-    // 20 rapid health checks
     let handles: Vec<_> = (0..20)
         .map(|_| {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["status"]))
+            thread::spawn(move || harness.run(&["daemon", "status"]))
         })
         .collect();
 
@@ -170,13 +140,8 @@ fn test_rapid_connect_disconnect() {
         }
     }
 
-    // All should succeed
     assert_eq!(successes, 20);
 }
-
-// =============================================================================
-// Mixed Command Concurrency Tests
-// =============================================================================
 
 #[test]
 fn test_mixed_commands_parallel() {
@@ -185,7 +150,7 @@ fn test_mixed_commands_parallel() {
     let handles = vec![
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["status"]))
+            thread::spawn(move || h.run(&["daemon", "status"]))
         },
         {
             let h = Arc::clone(&harness);
@@ -197,7 +162,7 @@ fn test_mixed_commands_parallel() {
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["action", "@btn1"]))
+            thread::spawn(move || h.run(&["action", "@btn1", "click"]))
         },
     ];
 
@@ -206,40 +171,34 @@ fn test_mixed_commands_parallel() {
         result.success();
     }
 
-    // Verify all different methods were called
-    assert_eq!(harness.call_count("health"), 1);
+    assert_eq!(harness.call_count("health"), 4);
     assert_eq!(harness.call_count("sessions"), 1);
     assert_eq!(harness.call_count("snapshot"), 1);
     assert_eq!(harness.call_count("click"), 1);
 }
 
-// =============================================================================
-// Concurrent Error Handling Tests
-// =============================================================================
-
 #[test]
 fn test_concurrent_errors_isolated() {
     let harness = Arc::new(TestHarness::new());
 
-    // health succeeds, click fails
     harness.set_error_response("click", -32003, "Element not found");
 
     let handles = vec![
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["status"]).success())
+            thread::spawn(move || h.run(&["daemon", "status"]).success())
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["action", "@missing"]).failure())
+            thread::spawn(move || h.run(&["action", "@missing", "click"]).failure())
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["status"]).success())
+            thread::spawn(move || h.run(&["daemon", "status"]).success())
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["action", "@missing"]).failure())
+            thread::spawn(move || h.run(&["action", "@missing", "click"]).failure())
         },
     ];
 
@@ -247,20 +206,14 @@ fn test_concurrent_errors_isolated() {
         handle.join().expect("Thread panicked");
     }
 
-    // Errors don't affect other commands
-    assert_eq!(harness.call_count("health"), 2);
+    assert_eq!(harness.call_count("health"), 4);
     assert_eq!(harness.call_count("click"), 2);
 }
-
-// =============================================================================
-// Concurrent with Delayed Responses
-// =============================================================================
 
 #[test]
 fn test_concurrent_with_delays() {
     let harness = Arc::new(TestHarness::new());
 
-    // One slow response, others normal
     harness.set_response(
         "health",
         MockResponse::Delayed(
@@ -280,7 +233,7 @@ fn test_concurrent_with_delays() {
         let handles = vec![
             {
                 let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["status"]).success())
+                thread::spawn(move || h.run(&["daemon", "status"]).success())
             },
             {
                 let h = Arc::clone(&harness_clone);
@@ -303,10 +256,6 @@ fn test_concurrent_with_delays() {
     );
 }
 
-// =============================================================================
-// Stress Tests
-// =============================================================================
-
 #[test]
 fn test_many_parallel_health_checks() {
     let harness = Arc::new(TestHarness::new());
@@ -314,7 +263,7 @@ fn test_many_parallel_health_checks() {
     let handles: Vec<_> = (0..50)
         .map(|_| {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["status"]))
+            thread::spawn(move || h.run(&["daemon", "status"]))
         })
         .collect();
 
@@ -326,20 +275,14 @@ fn test_many_parallel_health_checks() {
         }
     }
 
-    // All should succeed
     assert_eq!(successes, 50);
     assert_eq!(harness.call_count("health"), 50);
 }
-
-// =============================================================================
-// PTY Operations Concurrency Tests
-// =============================================================================
 
 #[test]
 fn test_concurrent_pty_read_write_no_deadlock() {
     let harness = Arc::new(TestHarness::new());
 
-    // Configure PTY read/write handlers
     harness.set_success_response(
         "pty_read",
         json!({
@@ -356,18 +299,15 @@ fn test_concurrent_pty_read_write_no_deadlock() {
         }),
     );
 
-    // The daemon fix ensures pty_read/pty_write use acquire_session_lock
-    // with timeout instead of mutex_lock_or_recover, preventing deadlocks
     let result = with_timeout(Duration::from_secs(5), move || {
         let handles: Vec<_> = (0..10)
             .map(|i| {
                 let h = Arc::clone(&harness);
                 thread::spawn(move || {
-                    // Simulate interleaved reads and writes
                     if i % 2 == 0 {
-                        h.run(&["status"]) // Simulates read path
+                        h.run(&["daemon", "status"])
                     } else {
-                        h.run(&["input", "test"]) // Simulates write path
+                        h.run(&["input", "test"])
                     }
                 })
             })
@@ -384,10 +324,6 @@ fn test_concurrent_pty_read_write_no_deadlock() {
     );
 }
 
-// =============================================================================
-// Double-Click Concurrency Tests
-// =============================================================================
-
 #[test]
 fn test_parallel_dbl_click_same_session() {
     let harness = Arc::new(TestHarness::new());
@@ -400,12 +336,10 @@ fn test_parallel_dbl_click_same_session() {
         }),
     );
 
-    // Multiple dbl_click operations on same session
-    // The daemon fix holds lock across both clicks atomically
     let handles: Vec<_> = (0..4)
         .map(|_| {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["action", "-2", "@btn1"]).success())
+            thread::spawn(move || h.run(&["action", "@btn1", "dblclick"]).success())
         })
         .collect();
 
@@ -413,19 +347,13 @@ fn test_parallel_dbl_click_same_session() {
         handle.join().expect("Thread panicked");
     }
 
-    // All calls should complete
     assert_eq!(harness.call_count("dbl_click"), 4);
 }
-
-// =============================================================================
-// Lock Contention Tests
-// =============================================================================
 
 #[test]
 fn test_high_contention_lock_recovery() {
     let harness = Arc::new(TestHarness::new());
 
-    // Simulate occasional lock timeouts followed by success
     harness.set_response(
         "click",
         MockResponse::Sequence(vec![
@@ -454,11 +382,10 @@ fn test_high_contention_lock_recovery() {
         ]),
     );
 
-    // Run 8 parallel click operations
     let handles: Vec<_> = (0..8)
         .map(|_| {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["action", "@btn1"]))
+            thread::spawn(move || h.run(&["action", "@btn1", "click"]))
         })
         .collect();
 
@@ -474,8 +401,6 @@ fn test_high_contention_lock_recovery() {
         }
     }
 
-    // Some should succeed, some may fail (lock timeout)
-    // The key is that we don't deadlock and all operations complete
     assert_eq!(successes + failures, 8, "All operations should complete");
     assert!(successes >= 6, "Most operations should succeed");
 }

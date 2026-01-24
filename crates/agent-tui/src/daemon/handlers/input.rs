@@ -6,7 +6,6 @@ use crate::daemon::adapters::{
 };
 use crate::daemon::usecases::{KeydownUseCase, KeystrokeUseCase, KeyupUseCase, TypeUseCase};
 
-/// Handle keystroke requests using the use case pattern.
 pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = match parse_keystroke_input(&request) {
@@ -20,7 +19,6 @@ pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest
     }
 }
 
-/// Handle type requests using the use case pattern.
 pub fn handle_type_uc<U: TypeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = match parse_type_input(&request) {
@@ -34,7 +32,6 @@ pub fn handle_type_uc<U: TypeUseCase>(usecase: &U, request: RpcRequest) -> RpcRe
     }
 }
 
-/// Handle keydown requests using the use case pattern.
 pub fn handle_keydown_uc<U: KeydownUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = match parse_keydown_input(&request) {
@@ -48,7 +45,6 @@ pub fn handle_keydown_uc<U: KeydownUseCase>(usecase: &U, request: RpcRequest) ->
     }
 }
 
-/// Handle keyup requests using the use case pattern.
 pub fn handle_keyup_uc<U: KeyupUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = match parse_keyup_input(&request) {

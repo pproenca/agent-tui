@@ -21,28 +21,15 @@ use crate::daemon::error::SessionError;
 use crate::daemon::repository::SessionRepository;
 use crate::daemon::select_helpers::navigate_to_option;
 
-// ============================================================================
-// Shared Element Filtering
-// ============================================================================
-
-/// Criteria for filtering elements. Used by Find and Count use cases.
 #[derive(Debug, Clone, Default)]
 pub struct ElementFilterCriteria {
-    /// Filter by element role/type (case-insensitive contains match)
     pub role: Option<String>,
-    /// Filter by element name/label
     pub name: Option<String>,
-    /// Filter by element text content
     pub text: Option<String>,
-    /// Filter by focused state
     pub focused: Option<bool>,
-    /// If true, name must match exactly; otherwise case-insensitive contains
     pub exact: bool,
 }
 
-/// Filter elements based on the provided criteria.
-///
-/// Returns elements that match ALL specified criteria (AND logic).
 pub fn filter_elements<'a>(
     elements: impl IntoIterator<Item = &'a Element>,
     criteria: &ElementFilterCriteria,
@@ -50,7 +37,6 @@ pub fn filter_elements<'a>(
     elements
         .into_iter()
         .filter(|el| {
-            // Filter by role/element_type if specified
             if let Some(ref role) = criteria.role {
                 let el_type = format!("{:?}", el.element_type).to_lowercase();
                 if !el_type.contains(&role.to_lowercase()) {
@@ -58,7 +44,6 @@ pub fn filter_elements<'a>(
                 }
             }
 
-            // Filter by name/label if specified
             if let Some(ref name) = criteria.name {
                 let el_label = el.label.as_deref().unwrap_or("");
                 if criteria.exact {
@@ -70,7 +55,6 @@ pub fn filter_elements<'a>(
                 }
             }
 
-            // Filter by text if specified
             if let Some(ref text) = criteria.text {
                 let el_text = el.label.as_deref().unwrap_or("").to_lowercase();
                 if !el_text.contains(&text.to_lowercase()) {
@@ -78,7 +62,6 @@ pub fn filter_elements<'a>(
                 }
             }
 
-            // Filter by focused if specified
             if let Some(focused) = criteria.focused {
                 if el.focused != focused {
                     return false;
@@ -141,10 +124,8 @@ impl<R: SessionRepository> FillUseCase for FillUseCaseImpl<R> {
 
         session_guard.update()?;
 
-        // Click on the element first to focus it
         session_guard.click(&input.element_ref)?;
 
-        // Clear existing content and type new value
         session_guard.keystroke("ctrl+a")?;
         session_guard.type_text(&input.value)?;
 
@@ -187,7 +168,6 @@ impl<R: SessionRepository> FindUseCase for FindUseCaseImpl<R> {
 
         let filtered = filter_elements(all_elements.iter(), &criteria);
 
-        // Handle nth selection
         let elements: Vec<_> = if let Some(nth) = input.nth {
             filtered.get(nth).into_iter().cloned().cloned().collect()
         } else {
@@ -335,12 +315,10 @@ impl<R: SessionRepository> FocusUseCase for FocusUseCaseImpl<R> {
         session_guard.update()?;
         session_guard.detect_elements();
 
-        // Verify element exists
         if session_guard.find_element(&input.element_ref).is_none() {
             return Err(SessionError::ElementNotFound(input.element_ref));
         }
 
-        // Send Tab to focus (standard terminal focus navigation)
         session_guard.pty_write(b"\t")?;
 
         Ok(FocusOutput { success: true })
@@ -369,12 +347,10 @@ impl<R: SessionRepository> ClearUseCase for ClearUseCaseImpl<R> {
         session_guard.update()?;
         session_guard.detect_elements();
 
-        // Verify element exists
         if session_guard.find_element(&input.element_ref).is_none() {
             return Err(SessionError::ElementNotFound(input.element_ref));
         }
 
-        // Send Ctrl+U to clear line
         session_guard.pty_write(b"\x15")?;
 
         Ok(ClearOutput { success: true })
@@ -403,12 +379,10 @@ impl<R: SessionRepository> SelectAllUseCase for SelectAllUseCaseImpl<R> {
         session_guard.update()?;
         session_guard.detect_elements();
 
-        // Verify element exists
         if session_guard.find_element(&input.element_ref).is_none() {
             return Err(SessionError::ElementNotFound(input.element_ref));
         }
 
-        // Send Ctrl+A to select all
         session_guard.pty_write(b"\x01")?;
 
         Ok(SelectAllOutput { success: true })
@@ -536,7 +510,6 @@ impl<R: SessionRepository> MultiselectUseCase for MultiselectUseCaseImpl<R> {
         session_guard.update()?;
         session_guard.detect_elements();
 
-        // Verify element exists
         if session_guard.find_element(&input.element_ref).is_none() {
             return Err(SessionError::ElementNotFound(input.element_ref));
         }
@@ -545,12 +518,12 @@ impl<R: SessionRepository> MultiselectUseCase for MultiselectUseCaseImpl<R> {
         for option in &input.options {
             session_guard.pty_write(option.as_bytes())?;
             thread::sleep(Duration::from_millis(50));
-            session_guard.pty_write(b" ")?; // Toggle selection
-            session_guard.pty_write(&[0x15])?; // Ctrl+U to clear
+            session_guard.pty_write(b" ")?;
+            session_guard.pty_write(&[0x15])?;
             selected.push(option.clone());
         }
 
-        session_guard.pty_write(b"\r")?; // Confirm selection
+        session_guard.pty_write(b"\r")?;
 
         Ok(MultiselectOutput {
             success: true,
@@ -559,10 +532,6 @@ impl<R: SessionRepository> MultiselectUseCase for MultiselectUseCaseImpl<R> {
         })
     }
 }
-
-// ============================================================================
-// Element Query Use Cases
-// ============================================================================
 
 pub trait GetTextUseCase: Send + Sync {
     fn execute(&self, input: ElementStateInput) -> Result<GetTextOutput, SessionError>;
@@ -905,10 +874,6 @@ mod tests {
     use crate::daemon::domain::SessionId;
     use crate::daemon::test_support::{MockError, MockSessionRepository};
 
-    // ========================================================================
-    // ClickUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_click_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -940,10 +905,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // FillUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_fill_usecase_returns_error_when_no_active_session() {
@@ -979,10 +940,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
-    // ========================================================================
-    // FindUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_find_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -1011,10 +968,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // ToggleUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_toggle_usecase_returns_error_when_no_active_session() {
@@ -1050,10 +1003,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
-    // ========================================================================
-    // SelectUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_select_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -1087,10 +1036,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // MultiselectUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_multiselect_usecase_returns_error_when_no_active_session() {
@@ -1126,10 +1071,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
-    // ========================================================================
-    // ScrollIntoViewUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_scroll_into_view_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -1161,10 +1102,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // ScrollUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_scroll_usecase_returns_error_when_no_active_session() {
@@ -1199,10 +1136,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // CountUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_count_usecase_returns_error_when_no_active_session() {
@@ -1240,10 +1173,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
-    // ========================================================================
-    // DoubleClickUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_double_click_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -1275,10 +1204,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // FocusUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_focus_usecase_returns_error_when_no_active_session() {
@@ -1312,10 +1237,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
-    // ========================================================================
-    // ClearUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_clear_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -1347,10 +1268,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
-
-    // ========================================================================
-    // SelectAllUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_select_all_usecase_returns_error_when_no_active_session() {
@@ -1384,10 +1301,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NotFound(_))));
     }
 
-    // ========================================================================
-    // GetTextUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_get_text_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -1401,10 +1314,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
-
-    // ========================================================================
-    // GetValueUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_get_value_usecase_returns_error_when_no_active_session() {
@@ -1420,10 +1329,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
 
-    // ========================================================================
-    // IsVisibleUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_is_visible_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -1437,10 +1342,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
-
-    // ========================================================================
-    // IsFocusedUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_is_focused_usecase_returns_error_when_no_active_session() {
@@ -1456,10 +1357,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
 
-    // ========================================================================
-    // IsEnabledUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_is_enabled_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -1473,10 +1370,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
-
-    // ========================================================================
-    // IsCheckedUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_is_checked_usecase_returns_error_when_no_active_session() {
@@ -1492,10 +1385,6 @@ mod tests {
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
 
-    // ========================================================================
-    // GetFocusedUseCase Tests (Error paths)
-    // ========================================================================
-
     #[test]
     fn test_get_focused_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
@@ -1505,10 +1394,6 @@ mod tests {
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
-
-    // ========================================================================
-    // GetTitleUseCase Tests (Error paths)
-    // ========================================================================
 
     #[test]
     fn test_get_title_usecase_returns_error_when_no_active_session() {

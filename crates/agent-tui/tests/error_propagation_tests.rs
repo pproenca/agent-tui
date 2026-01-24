@@ -83,7 +83,7 @@ fn test_element_not_found_includes_ref() {
     );
 
     harness
-        .run(&["action", "@missing-button"])
+        .run(&["action", "@missing-button", "click"])
         .failure()
         .stderr(predicate::str::contains("Element not found"));
 }
@@ -109,7 +109,7 @@ fn test_wrong_element_type_shows_actual_expected() {
     );
 
     harness
-        .run(&["action", "@btn1", "test-value"])
+        .run(&["action", "@btn1", "fill", "test-value"])
         .failure()
         .stderr(predicate::str::contains("button"));
 }
@@ -138,7 +138,7 @@ fn test_lock_timeout_marked_retryable() {
     );
 
     harness
-        .run(&["action", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .failure()
         .stderr(predicate::str::contains("lock").or(predicate::str::contains("timeout")));
 }
@@ -178,8 +178,9 @@ fn test_session_limit_reached() {
 fn test_invalid_key_error() {
     let harness = TestHarness::new();
 
+    // input --hold calls keydown method
     harness.set_response(
-        "keystroke",
+        "keydown",
         MockResponse::StructuredError {
             code: -32005, // INVALID_KEY
             message: "Invalid key: 'InvalidKey'".to_string(),
@@ -189,12 +190,13 @@ fn test_invalid_key_error() {
                 "key": "InvalidKey",
                 "valid_keys": ["Enter", "Tab", "Escape", "Backspace", "Delete", "Up", "Down", "Left", "Right"]
             })),
-            suggestion: Some("See 'agent-tui key --help' for valid key names".to_string()),
+            suggestion: Some("See 'agent-tui input --help' for valid key names".to_string()),
         },
     );
 
+    // Use --hold to force key mode (otherwise InvalidKey would be typed as text)
     harness
-        .run(&["input", "InvalidKey"])
+        .run(&["input", "--hold", "InvalidKey"])
         .failure()
         .stderr(predicate::str::contains("Invalid"));
 }
@@ -327,11 +329,10 @@ fn test_error_json_format_includes_code() {
         },
     );
 
-    let output = harness.run(&["-f", "json", "status"]);
+    let output = harness.run(&["-f", "json", "daemon", "status"]);
 
-    // The CLI may output error to stdout or stderr in JSON mode
-    // Just verify it fails with the error
-    output.failure();
+    // daemon status returns success but includes error info in JSON output
+    output.success();
 }
 
 #[test]
@@ -354,7 +355,7 @@ fn test_error_with_all_fields() {
     );
 
     harness
-        .run(&["action", "@nonexistent"])
+        .run(&["action", "@nonexistent", "click"])
         .failure()
         .stderr(predicate::str::contains("not found"));
 }
@@ -404,8 +405,9 @@ fn test_simple_error_without_structured_data() {
         },
     );
 
+    // daemon status returns success but includes error in output
     harness
-        .run(&["status"])
-        .failure()
-        .stderr(predicate::str::contains("Invalid request"));
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("Invalid request"));
 }

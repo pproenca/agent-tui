@@ -29,6 +29,9 @@ pub enum ClientError {
 
     #[error("Failed to send signal to process {pid}: {message}")]
     SignalFailed { pid: u32, message: String },
+
+    #[error("Unexpected response: {message}")]
+    UnexpectedResponse { message: String },
 }
 
 impl ClientError {
@@ -117,6 +120,12 @@ impl ClientError {
                 "category": "external",
                 "retryable": false,
                 "exit_code": 74,
+            }),
+            ClientError::UnexpectedResponse { message } => serde_json::json!({
+                "code": -32000,
+                "message": format!("Unexpected response: {}", message),
+                "category": "internal",
+                "retryable": false,
             }),
         }
     }

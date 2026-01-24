@@ -1111,7 +1111,10 @@ pub fn handle_assert<C: DaemonClient>(
 // Daemon lifecycle handlers
 // ============================================================================
 
-pub fn handle_daemon_stop<C: DaemonClient>(ctx: &HandlerContext<C>, force: bool) -> HandlerResult {
+pub fn handle_daemon_stop<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    force: bool,
+) -> HandlerResult {
     use crate::ipc::{PidLookupResult, daemon_lifecycle, get_daemon_pid};
 
     let pid = match get_daemon_pid() {
@@ -1127,8 +1130,29 @@ pub fn handle_daemon_stop<C: DaemonClient>(ctx: &HandlerContext<C>, force: bool)
         }
     };
 
+    let socket = socket_path();
+
+    // If not forcing, try RPC shutdown first (graceful)
+    if !force {
+        match daemon_lifecycle::stop_daemon_via_rpc(ctx.client, &socket) {
+            Ok(mut result) => {
+                result.pid = pid;
+                // Print warnings to stderr
+                for warning in &result.warnings {
+                    eprintln!("{}", Colors::warning(warning));
+                }
+                ctx.presenter().present_success("Daemon stopped", None);
+                return Ok(());
+            }
+            Err(_) => {
+                // RPC failed, fall back to signal-based shutdown
+            }
+        }
+    }
+
+    // Fall back to signal-based shutdown (or force with SIGKILL)
     let controller = UnixProcessController;
-    let result = daemon_lifecycle::stop_daemon(&controller, pid, &socket_path(), force)?;
+    let result = daemon_lifecycle::stop_daemon(&controller, pid, &socket, force)?;
 
     // Print warnings to stderr
     for warning in &result.warnings {

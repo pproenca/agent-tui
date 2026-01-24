@@ -2,12 +2,13 @@
 //!
 //! This module provides functions for managing daemon lifecycle:
 //! - `stop_daemon`: Stop the running daemon
+//! - `stop_daemon_via_rpc`: Stop daemon using RPC shutdown method
 //! - `restart_daemon`: Stop (if running) and start the daemon
 
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::ipc::client::polling;
+use crate::ipc::client::{DaemonClient, DaemonClientConfig, polling};
 use crate::ipc::error::ClientError;
 use crate::ipc::process::{ProcessController, ProcessStatus, Signal};
 
@@ -72,6 +73,114 @@ pub fn stop_daemon<P: ProcessController>(
     }
 
     Ok(StopResult { pid, warnings })
+}
+
+/// Stop the daemon process using the RPC shutdown method.
+///
+/// This is the preferred method for stopping the daemon as it allows for
+/// graceful shutdown. The daemon will receive the shutdown request and
+/// cleanly terminate its processes.
+///
+/// # Arguments
+/// * `client` - Daemon client for making RPC calls
+/// * `socket_path` - Path to the daemon socket file
+///
+/// # Returns
+/// * `Ok(())` if the daemon acknowledged the shutdown
+/// * `Err(ClientError)` if the RPC call failed
+pub fn stop_daemon_via_rpc(
+    client: &mut impl DaemonClient,
+    socket_path: &Path,
+) -> Result<StopResult, ClientError> {
+    let mut warnings = Vec::new();
+
+    // Use a short timeout config for the shutdown call
+    let config = DaemonClientConfig::default()
+        .with_read_timeout(Duration::from_secs(5))
+        .with_write_timeout(Duration::from_secs(5))
+        .with_max_retries(0); // No retries for shutdown
+
+    // Call the shutdown RPC method
+    let result = client.call_with_config("shutdown", None, &config)?;
+
+    // Verify the response contains acknowledged: true
+    let acknowledged = result
+        .get("acknowledged")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if !acknowledged {
+        return Err(ClientError::UnexpectedResponse {
+            message: "Shutdown was not acknowledged by daemon".to_string(),
+        });
+    }
+
+    // Wait for socket removal (daemon shutting down)
+    wait_for_socket_removal(socket_path);
+
+    // Cleanup if socket still exists
+    if socket_path.exists() {
+        cleanup_daemon_files_with_warnings(socket_path, &mut warnings);
+    }
+
+    // We don't have the PID here, so we return 0
+    // The actual PID is tracked by the caller if needed
+    Ok(StopResult { pid: 0, warnings })
+}
+
+/// Stop the daemon using RPC first, falling back to signals if RPC fails.
+///
+/// This is the recommended way to stop the daemon as it:
+/// 1. Tries graceful RPC shutdown first
+/// 2. Falls back to SIGTERM if RPC is unavailable
+/// 3. Uses SIGKILL only if `force` is true
+///
+/// # Arguments
+/// * `client_factory` - Function to create a daemon client (may be called multiple times)
+/// * `controller` - Process controller for sending signals
+/// * `pid` - PID of the daemon to stop
+/// * `socket_path` - Path to the daemon socket file
+/// * `force` - If true, skip RPC and go directly to SIGKILL
+pub fn stop_daemon_graceful<F, P, C>(
+    client_factory: F,
+    controller: &P,
+    pid: u32,
+    socket_path: &Path,
+    force: bool,
+) -> Result<StopResult, ClientError>
+where
+    F: Fn() -> Result<C, ClientError>,
+    P: ProcessController,
+    C: DaemonClient,
+{
+    // If force is requested, skip RPC and go directly to SIGKILL
+    if force {
+        return stop_daemon(controller, pid, socket_path, true);
+    }
+
+    // Try RPC shutdown first
+    match client_factory() {
+        Ok(mut client) => {
+            match stop_daemon_via_rpc(&mut client, socket_path) {
+                Ok(mut result) => {
+                    // RPC succeeded, update PID in result
+                    result.pid = pid;
+                    return Ok(result);
+                }
+                Err(e) => {
+                    // RPC failed, log and fall back to signals
+                    // Note: We don't log here as the caller handles messaging
+                    let _ = e; // Suppress unused warning
+                }
+            }
+        }
+        Err(_) => {
+            // Could not connect to daemon, fall back to signals
+        }
+    }
+
+    // Fall back to signal-based shutdown
+    stop_daemon(controller, pid, socket_path, false)
 }
 
 /// Clean up daemon socket and lock files, collecting warnings.
@@ -296,5 +405,111 @@ mod tests {
         assert!(matches!(result, Err(ClientError::ConnectionFailed(_))));
         // No stop signal should have been sent (daemon wasn't running)
         assert!(mock.signals_sent().is_empty());
+    }
+
+    // ========================================================================
+    // Tests for stop_daemon_via_rpc
+    // ========================================================================
+
+    use serde_json::{Value, json};
+    use std::sync::Mutex;
+
+    /// Mock daemon client for testing RPC-based shutdown
+    struct MockDaemonClient {
+        shutdown_response: Mutex<Option<Result<Value, ClientError>>>,
+        calls: Mutex<Vec<String>>,
+    }
+
+    impl MockDaemonClient {
+        fn new() -> Self {
+            Self {
+                shutdown_response: Mutex::new(Some(Ok(json!({ "acknowledged": true })))),
+                calls: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn with_shutdown_response(self, response: Result<Value, ClientError>) -> Self {
+            *self.shutdown_response.lock().unwrap() = Some(response);
+            self
+        }
+
+        fn calls(&self) -> Vec<String> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    impl DaemonClient for MockDaemonClient {
+        fn call(&mut self, method: &str, _params: Option<Value>) -> Result<Value, ClientError> {
+            self.calls.lock().unwrap().push(method.to_string());
+            if method == "shutdown" {
+                self.shutdown_response
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .unwrap_or(Err(ClientError::InvalidResponse))
+            } else {
+                Err(ClientError::InvalidResponse)
+            }
+        }
+
+        fn call_with_config(
+            &mut self,
+            method: &str,
+            params: Option<Value>,
+            _config: &DaemonClientConfig,
+        ) -> Result<Value, ClientError> {
+            self.call(method, params)
+        }
+
+        fn call_with_retry(
+            &mut self,
+            method: &str,
+            params: Option<Value>,
+            _max_retries: u32,
+        ) -> Result<Value, ClientError> {
+            self.call(method, params)
+        }
+    }
+
+    #[test]
+    fn test_stop_daemon_via_rpc_success() {
+        let mut client = MockDaemonClient::new();
+        let dir = tempdir().unwrap();
+        let socket = dir.path().join("test.sock");
+
+        let result = stop_daemon_via_rpc(&mut client, &socket);
+
+        assert!(result.is_ok());
+        let stop_result = result.unwrap();
+        assert!(stop_result.warnings.is_empty());
+        assert_eq!(client.calls(), vec!["shutdown"]);
+    }
+
+    #[test]
+    fn test_stop_daemon_via_rpc_not_acknowledged() {
+        let mut client =
+            MockDaemonClient::new().with_shutdown_response(Ok(json!({ "acknowledged": false })));
+        let dir = tempdir().unwrap();
+        let socket = dir.path().join("test.sock");
+
+        let result = stop_daemon_via_rpc(&mut client, &socket);
+
+        assert!(matches!(
+            result,
+            Err(ClientError::UnexpectedResponse { message }) if message.contains("not acknowledged")
+        ));
+    }
+
+    #[test]
+    fn test_stop_daemon_via_rpc_connection_failed() {
+        let mut client = MockDaemonClient::new().with_shutdown_response(Err(
+            ClientError::ConnectionFailed(std::io::Error::other("connection refused")),
+        ));
+        let dir = tempdir().unwrap();
+        let socket = dir.path().join("test.sock");
+
+        let result = stop_daemon_via_rpc(&mut client, &socket);
+
+        assert!(matches!(result, Err(ClientError::ConnectionFailed(_))));
     }
 }

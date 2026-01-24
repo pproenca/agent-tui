@@ -409,8 +409,7 @@ pub fn handle_get_title_uc<U: GetTitleUseCase>(usecase: &U, request: RpcRequest)
             req_id,
             json!({
                 "session_id": output.session_id,
-                "title": output.title,
-                "command": output.title
+                "title": output.title
             }),
         ),
         Err(e) => session_error_response(req_id, e),
@@ -606,5 +605,65 @@ pub fn handle_multiselect_uc<U: MultiselectUseCase>(
             json!({ "success": true, "ref": element_ref, "selected_options": output.selected_options }),
         ),
         Err(e) => session_error_response(req_id, e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{GetTitleOutput, SessionId};
+    use crate::error::SessionError;
+    use crate::usecases::GetTitleUseCase;
+
+    struct MockGetTitleUseCase {
+        session_id: String,
+        title: String,
+    }
+
+    impl MockGetTitleUseCase {
+        fn with_success(session_id: &str, title: &str) -> Self {
+            Self {
+                session_id: session_id.to_string(),
+                title: title.to_string(),
+            }
+        }
+    }
+
+    impl GetTitleUseCase for MockGetTitleUseCase {
+        fn execute(&self, _session_id: Option<&str>) -> Result<GetTitleOutput, SessionError> {
+            Ok(GetTitleOutput {
+                session_id: SessionId::new(&self.session_id),
+                title: self.title.clone(),
+            })
+        }
+    }
+
+    #[test]
+    fn test_handle_get_title_response_has_no_command_field() {
+        let usecase = MockGetTitleUseCase::with_success("test-session", "My App Title");
+        let request = RpcRequest::new(1, "get_title".to_string(), None);
+
+        let response = handle_get_title_uc(&usecase, request);
+
+        // Serialize the response to JSON and parse it to verify structure
+        let json_str = serde_json::to_string(&response).expect("Failed to serialize response");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("Failed to parse response JSON");
+
+        // Verify it's a success response (has result, no error)
+        assert!(parsed.get("error").is_none() || parsed["error"].is_null());
+        assert!(parsed.get("result").is_some());
+
+        let result = &parsed["result"];
+
+        // Verify session_id and title are present
+        assert_eq!(result["session_id"], "test-session");
+        assert_eq!(result["title"], "My App Title");
+
+        // Verify command field is NOT present (this is the bug we're testing for)
+        assert!(
+            result.get("command").is_none(),
+            "Response should NOT contain 'command' field"
+        );
     }
 }

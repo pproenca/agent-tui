@@ -15,6 +15,7 @@ use crate::commands::OutputFormat;
 use crate::commands::RecordFormat;
 use crate::commands::ScrollDirection;
 use crate::commands::WaitParams;
+use crate::presenter::{Presenter, create_presenter};
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -59,15 +60,23 @@ pub struct HandlerContext<'a, C: DaemonClient> {
     pub client: &'a mut C,
     pub session: Option<String>,
     pub format: OutputFormat,
+    presenter: Box<dyn Presenter>,
 }
 
 impl<'a, C: DaemonClient> HandlerContext<'a, C> {
     pub fn new(client: &'a mut C, session: Option<String>, format: OutputFormat) -> Self {
+        let presenter = create_presenter(&format);
         Self {
             client,
             session,
             format,
+            presenter,
         }
+    }
+
+    /// Get a reference to the presenter for output formatting
+    pub fn presenter(&self) -> &dyn Presenter {
+        self.presenter.as_ref()
     }
 
     pub fn output_success_result(
@@ -80,17 +89,16 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
 
         match self.format {
             OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(result)?);
+                self.presenter.present_value(result);
             }
             OutputFormat::Text => {
                 if success {
-                    println!("{}", success_msg);
-                    if let Some(warning) = result.get("warning").and_then(|w| w.as_str()) {
-                        eprintln!("{}", warning);
-                    }
+                    let warning = result.get("warning").and_then(|w| w.as_str());
+                    self.presenter.present_success(success_msg, warning);
                 } else {
                     let msg = result.str_or("message", "Unknown error");
-                    eprintln!("{}: {}", failure_prefix, msg);
+                    self.presenter
+                        .present_error(&format!("{}: {}", failure_prefix, msg));
                     std::process::exit(1);
                 }
             }
@@ -131,7 +139,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
     {
         match self.format {
             OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(result)?);
+                self.presenter.present_value(result);
             }
             OutputFormat::Text => {
                 text_fn();
@@ -153,23 +161,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
 
     /// Display a ClientError with structured information.
     pub fn display_error(&self, error: &ClientError) {
-        match self.format {
-            OutputFormat::Json => {
-                eprintln!("{}", error.to_json());
-            }
-            OutputFormat::Text => {
-                eprintln!("{} {}", Colors::error("Error:"), error);
-                if let Some(suggestion) = error.suggestion() {
-                    eprintln!("{} {}", Colors::dim("Suggestion:"), suggestion);
-                }
-                if error.is_retryable() {
-                    eprintln!(
-                        "{}",
-                        Colors::dim("(This error may be transient - retry may succeed)")
-                    );
-                }
-            }
-        }
+        self.presenter.present_client_error(error);
     }
 }
 
@@ -1198,6 +1190,111 @@ pub fn handle_assert<C: DaemonClient>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::presenter::{Presenter, TextPresenter};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Mock presenter that captures output for testing
+    struct MockPresenter {
+        output: Rc<RefCell<Vec<String>>>,
+    }
+
+    impl MockPresenter {
+        fn new() -> (Self, Rc<RefCell<Vec<String>>>) {
+            let output = Rc::new(RefCell::new(Vec::new()));
+            (
+                Self {
+                    output: output.clone(),
+                },
+                output,
+            )
+        }
+    }
+
+    impl Presenter for MockPresenter {
+        fn present_success(&self, message: &str, warning: Option<&str>) {
+            self.output
+                .borrow_mut()
+                .push(format!("success: {}", message));
+            if let Some(w) = warning {
+                self.output.borrow_mut().push(format!("warning: {}", w));
+            }
+        }
+
+        fn present_error(&self, message: &str) {
+            self.output.borrow_mut().push(format!("error: {}", message));
+        }
+
+        fn present_value(&self, value: &Value) {
+            self.output.borrow_mut().push(format!("value: {}", value));
+        }
+
+        fn present_client_error(&self, error: &agent_tui_ipc::ClientError) {
+            self.output
+                .borrow_mut()
+                .push(format!("client_error: {}", error));
+        }
+
+        fn present_kv(&self, key: &str, value: &str) {
+            self.output
+                .borrow_mut()
+                .push(format!("kv: {}={}", key, value));
+        }
+
+        fn present_session_id(&self, session_id: &str, label: Option<&str>) {
+            self.output
+                .borrow_mut()
+                .push(format!("session: {} {:?}", session_id, label));
+        }
+
+        fn present_element_ref(&self, element_ref: &str, info: Option<&str>) {
+            self.output
+                .borrow_mut()
+                .push(format!("ref: {} {:?}", element_ref, info));
+        }
+
+        fn present_list_header(&self, title: &str) {
+            self.output.borrow_mut().push(format!("header: {}", title));
+        }
+
+        fn present_list_item(&self, item: &str) {
+            self.output.borrow_mut().push(format!("item: {}", item));
+        }
+
+        fn present_info(&self, message: &str) {
+            self.output.borrow_mut().push(format!("info: {}", message));
+        }
+
+        fn present_header(&self, text: &str) {
+            self.output.borrow_mut().push(format!("bold: {}", text));
+        }
+
+        fn present_raw(&self, text: &str) {
+            self.output.borrow_mut().push(format!("raw: {}", text));
+        }
+    }
+
+    #[test]
+    fn test_handler_context_has_presenter() {
+        // This test verifies that HandlerContext can hold and access a presenter
+        let presenter = TextPresenter;
+        // Just verify the type compiles - the presenter trait is available
+        let _: &dyn Presenter = &presenter;
+    }
+
+    #[test]
+    fn test_mock_presenter_captures_output() {
+        let (presenter, output) = MockPresenter::new();
+
+        presenter.present_success("Operation completed", None);
+        presenter.present_error("Something failed");
+        presenter.present_kv("key", "value");
+
+        let captured = output.borrow();
+        assert!(captured.iter().any(|s| s.contains("success:")));
+        assert!(captured.iter().any(|s| s.contains("error:")));
+        assert!(captured.iter().any(|s| s.contains("kv:")));
+    }
 
     fn make_element(json: Value) -> Value {
         json

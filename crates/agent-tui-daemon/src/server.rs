@@ -29,8 +29,6 @@ const CHANNEL_CAPACITY: usize = 128;
 pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
     usecases: UseCaseContainer<SessionManager>,
-    #[allow(dead_code)]
-    shutdown: Arc<AtomicBool>,
     active_connections: Arc<AtomicUsize>,
     metrics: Arc<DaemonMetrics>,
 }
@@ -149,27 +147,6 @@ impl DaemonServer {
         Self {
             session_manager,
             usecases,
-            shutdown: Arc::new(AtomicBool::new(false)),
-            active_connections,
-            metrics,
-        }
-    }
-
-    pub fn with_shutdown_and_config(shutdown: Arc<AtomicBool>, config: DaemonConfig) -> Self {
-        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
-        let metrics = Arc::new(DaemonMetrics::new());
-        let start_time = Instant::now();
-        let active_connections = Arc::new(AtomicUsize::new(0));
-        let usecases = UseCaseContainer::new(
-            Arc::clone(&session_manager),
-            Arc::clone(&metrics),
-            start_time,
-            Arc::clone(&active_connections),
-        );
-        Self {
-            session_manager,
-            usecases,
-            shutdown,
             active_connections,
             metrics,
         }
@@ -435,10 +412,7 @@ pub fn start_daemon() -> Result<(), DaemonError> {
 
     let shutdown = Arc::new(AtomicBool::new(false));
     let config = DaemonConfig::from_env();
-    let server = Arc::new(DaemonServer::with_shutdown_and_config(
-        Arc::clone(&shutdown),
-        config,
-    ));
+    let server = Arc::new(DaemonServer::with_config(config));
 
     let mut signals =
         Signals::new([SIGINT, SIGTERM]).map_err(|e| DaemonError::SignalSetup(e.to_string()))?;

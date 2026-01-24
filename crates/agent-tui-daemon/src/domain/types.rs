@@ -959,6 +959,24 @@ pub struct SessionInput {
     pub session_id: Option<SessionId>,
 }
 
+/// Input for attaching to a session.
+#[derive(Debug, Clone)]
+pub struct AttachInput {
+    /// Session ID to attach to (required).
+    pub session_id: SessionId,
+}
+
+/// Output for attach operation.
+#[derive(Debug, Clone)]
+pub struct AttachOutput {
+    /// Session ID that was attached.
+    pub session_id: SessionId,
+    /// Whether the attach was successful.
+    pub success: bool,
+    /// Human-readable message about the result.
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct HealthInput;
 

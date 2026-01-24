@@ -1,9 +1,9 @@
 use agent_tui_ipc::{RpcRequest, RpcResponse};
 
 use crate::adapters::{
-    attach_output_to_response, domain_error_response, kill_output_to_response, parse_resize_input,
-    parse_spawn_input, restart_output_to_response, session_error_response,
-    sessions_output_to_response, spawn_output_to_response,
+    attach_output_to_response, domain_error_response, kill_output_to_response, parse_attach_input,
+    parse_resize_input, parse_session_input, parse_spawn_input, restart_output_to_response,
+    session_error_response, sessions_output_to_response, spawn_output_to_response,
 };
 use crate::domain::ResizeOutput;
 use crate::error::DomainError;
@@ -13,44 +13,28 @@ use crate::usecases::{
 };
 
 /// Handle spawn requests using the use case pattern.
+///
+/// This handler is a thin coordinator that:
+/// 1. Parses the RPC request into a domain input using adapters
+/// 2. Delegates to the use case for business logic (including error classification)
+/// 3. Converts the result to an RPC response using adapters
 pub fn handle_spawn<U: SpawnUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = match parse_spawn_input(&request) {
         Ok(input) => input,
         Err(resp) => return resp,
     };
 
-    match usecase.execute(input.clone()) {
+    match usecase.execute(input) {
         Ok(output) => spawn_output_to_response(request.id, output),
-        Err(SessionError::LimitReached(max)) => {
-            let err = DomainError::SessionLimitReached { max };
-            domain_error_response(request.id, &err)
-        }
-        Err(e) => {
-            let err_str = e.to_string();
-            let domain_err = if err_str.contains("No such file") || err_str.contains("not found") {
-                DomainError::CommandNotFound {
-                    command: input.command,
-                }
-            } else if err_str.contains("Permission denied") {
-                DomainError::PermissionDenied {
-                    command: input.command,
-                }
-            } else {
-                DomainError::PtyError {
-                    operation: "spawn".to_string(),
-                    reason: err_str,
-                }
-            };
-            domain_error_response(request.id, &domain_err)
-        }
+        Err(e) => domain_error_response(request.id, &e),
     }
 }
 
 /// Handle kill requests using the use case pattern.
 pub fn handle_kill<U: KillUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let session_id = request.param_str("session").map(String::from);
+    let input = parse_session_input(&request);
 
-    match usecase.execute(session_id) {
+    match usecase.execute(input) {
         Ok(output) => kill_output_to_response(request.id, output),
         Err(SessionError::NoActiveSession) => {
             domain_error_response(request.id, &DomainError::NoActiveSession)
@@ -61,9 +45,9 @@ pub fn handle_kill<U: KillUseCase>(usecase: &U, request: RpcRequest) -> RpcRespo
 
 /// Handle restart requests using the use case pattern.
 pub fn handle_restart<U: RestartUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let session_id = request.param_str("session").map(String::from);
+    let input = parse_session_input(&request);
 
-    match usecase.execute(session_id) {
+    match usecase.execute(input) {
         Ok(output) => restart_output_to_response(request.id, output),
         Err(e) => session_error_response(request.id, e),
     }
@@ -103,13 +87,14 @@ pub fn handle_resize<U: ResizeUseCase>(usecase: &U, request: RpcRequest) -> RpcR
 
 /// Handle attach requests using the use case pattern.
 pub fn handle_attach<U: AttachUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let session_id = match request.require_str("session") {
-        Ok(s) => s,
+    let req_id = request.id;
+    let input = match parse_attach_input(&request) {
+        Ok(i) => i,
         Err(resp) => return resp,
     };
 
-    match usecase.execute(session_id) {
-        Ok(output) => attach_output_to_response(request.id, output),
-        Err(e) => session_error_response(request.id, e),
+    match usecase.execute(input) {
+        Ok(output) => attach_output_to_response(req_id, output),
+        Err(e) => session_error_response(req_id, e),
     }
 }

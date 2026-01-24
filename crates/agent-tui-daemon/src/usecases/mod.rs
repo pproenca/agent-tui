@@ -31,7 +31,7 @@ pub use recording::{
     RecordStopUseCase, RecordStopUseCaseImpl,
 };
 pub use session::{
-    AttachOutput, AttachUseCase, AttachUseCaseImpl, KillUseCase, KillUseCaseImpl, ResizeUseCase,
+    AttachUseCase, AttachUseCaseImpl, KillUseCase, KillUseCaseImpl, ResizeUseCase,
     ResizeUseCaseImpl, RestartOutput, RestartUseCase, RestartUseCaseImpl, SessionsUseCase,
     SessionsUseCaseImpl, SpawnUseCase, SpawnUseCaseImpl,
 };

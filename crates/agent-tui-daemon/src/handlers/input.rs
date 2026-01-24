@@ -1,20 +1,18 @@
 use agent_tui_ipc::{RpcRequest, RpcResponse};
 
 use super::common::session_error_response;
-use crate::adapters::parse_session_id;
-use crate::domain::{KeydownInput, KeystrokeInput, KeyupInput, TypeInput};
+use crate::adapters::{
+    parse_keydown_input, parse_keystroke_input, parse_keyup_input, parse_type_input,
+};
 use crate::usecases::{KeydownUseCase, KeystrokeUseCase, KeyupUseCase, TypeUseCase};
 
 /// Handle keystroke requests using the use case pattern.
 pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let key = match request.require_str("key") {
-        Ok(k) => k.to_string(),
+    let req_id = request.id;
+    let input = match parse_keystroke_input(&request) {
+        Ok(i) => i,
         Err(resp) => return resp,
     };
-    let session_id = parse_session_id(request.param_str("session").map(String::from));
-    let req_id = request.id;
-
-    let input = KeystrokeInput { session_id, key };
 
     match usecase.execute(input) {
         Ok(_) => RpcResponse::action_success(req_id),
@@ -24,14 +22,11 @@ pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest
 
 /// Handle type requests using the use case pattern.
 pub fn handle_type_uc<U: TypeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let text = match request.require_str("text") {
-        Ok(t) => t.to_string(),
+    let req_id = request.id;
+    let input = match parse_type_input(&request) {
+        Ok(i) => i,
         Err(resp) => return resp,
     };
-    let session_id = parse_session_id(request.param_str("session").map(String::from));
-    let req_id = request.id;
-
-    let input = TypeInput { session_id, text };
 
     match usecase.execute(input) {
         Ok(_) => RpcResponse::action_success(req_id),
@@ -41,14 +36,11 @@ pub fn handle_type_uc<U: TypeUseCase>(usecase: &U, request: RpcRequest) -> RpcRe
 
 /// Handle keydown requests using the use case pattern.
 pub fn handle_keydown_uc<U: KeydownUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let key = match request.require_str("key") {
-        Ok(k) => k.to_string(),
+    let req_id = request.id;
+    let input = match parse_keydown_input(&request) {
+        Ok(i) => i,
         Err(resp) => return resp,
     };
-    let session_id = parse_session_id(request.param_str("session").map(String::from));
-    let req_id = request.id;
-
-    let input = KeydownInput { session_id, key };
 
     match usecase.execute(input) {
         Ok(_) => RpcResponse::action_success(req_id),
@@ -58,14 +50,11 @@ pub fn handle_keydown_uc<U: KeydownUseCase>(usecase: &U, request: RpcRequest) ->
 
 /// Handle keyup requests using the use case pattern.
 pub fn handle_keyup_uc<U: KeyupUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let key = match request.require_str("key") {
-        Ok(k) => k.to_string(),
+    let req_id = request.id;
+    let input = match parse_keyup_input(&request) {
+        Ok(i) => i,
         Err(resp) => return resp,
     };
-    let session_id = parse_session_id(request.param_str("session").map(String::from));
-    let req_id = request.id;
-
-    let input = KeyupInput { session_id, key };
 
     match usecase.execute(input) {
         Ok(_) => RpcResponse::action_success(req_id),

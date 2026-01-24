@@ -14,6 +14,7 @@ mod repository;
 mod select_helpers;
 mod server;
 mod session;
+mod sleeper;
 mod terminal_state;
 #[cfg(test)]
 pub mod test_support;
@@ -46,6 +47,9 @@ pub use session::SessionInfo;
 pub use session::SessionManager;
 pub use session::SessionPersistence;
 pub use session::TraceEntry;
+pub use sleeper::MockSleeper;
+pub use sleeper::RealSleeper;
+pub use sleeper::Sleeper;
 pub use terminal_state::TerminalState;
 pub use usecase_container::ElementUseCases;
 pub use usecase_container::InputUseCases;

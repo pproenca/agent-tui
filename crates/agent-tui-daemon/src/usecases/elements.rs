@@ -14,7 +14,8 @@ use crate::domain::{
     FocusCheckOutput, FocusInput, FocusOutput, GetFocusedOutput, GetTextOutput, GetTitleOutput,
     GetValueOutput, IsCheckedOutput, IsEnabledOutput, MultiselectInput, MultiselectOutput,
     ScrollInput, ScrollIntoViewInput, ScrollIntoViewOutput, ScrollOutput, SelectAllInput,
-    SelectAllOutput, SelectInput, SelectOutput, ToggleInput, ToggleOutput, VisibilityOutput,
+    SelectAllOutput, SelectInput, SelectOutput, SessionInput, ToggleInput, ToggleOutput,
+    VisibilityOutput,
 };
 use crate::error::SessionError;
 use crate::repository::SessionRepository;
@@ -789,7 +790,7 @@ impl<R: SessionRepository> IsCheckedUseCase for IsCheckedUseCaseImpl<R> {
 }
 
 pub trait GetFocusedUseCase: Send + Sync {
-    fn execute(&self, session_id: Option<&str>) -> Result<GetFocusedOutput, SessionError>;
+    fn execute(&self, input: SessionInput) -> Result<GetFocusedOutput, SessionError>;
 }
 
 pub struct GetFocusedUseCaseImpl<R: SessionRepository> {
@@ -803,8 +804,8 @@ impl<R: SessionRepository> GetFocusedUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> GetFocusedUseCase for GetFocusedUseCaseImpl<R> {
-    fn execute(&self, session_id: Option<&str>) -> Result<GetFocusedOutput, SessionError> {
-        let session = self.repository.resolve(session_id)?;
+    fn execute(&self, input: SessionInput) -> Result<GetFocusedOutput, SessionError> {
+        let session = self.repository.resolve(input.session_id.as_deref())?;
         let mut session_guard = mutex_lock_or_recover(&session);
 
         session_guard.update()?;
@@ -824,7 +825,7 @@ impl<R: SessionRepository> GetFocusedUseCase for GetFocusedUseCaseImpl<R> {
 }
 
 pub trait GetTitleUseCase: Send + Sync {
-    fn execute(&self, session_id: Option<&str>) -> Result<GetTitleOutput, SessionError>;
+    fn execute(&self, input: SessionInput) -> Result<GetTitleOutput, SessionError>;
 }
 
 pub struct GetTitleUseCaseImpl<R: SessionRepository> {
@@ -838,8 +839,8 @@ impl<R: SessionRepository> GetTitleUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> GetTitleUseCase for GetTitleUseCaseImpl<R> {
-    fn execute(&self, session_id: Option<&str>) -> Result<GetTitleOutput, SessionError> {
-        let session = self.repository.resolve(session_id)?;
+    fn execute(&self, input: SessionInput) -> Result<GetTitleOutput, SessionError> {
+        let session = self.repository.resolve(input.session_id.as_deref())?;
         let session_guard = mutex_lock_or_recover(&session);
 
         Ok(GetTitleOutput {
@@ -1500,7 +1501,8 @@ mod tests {
         let repo = Arc::new(MockSessionRepository::new());
         let usecase = GetFocusedUseCaseImpl::new(repo);
 
-        let result = usecase.execute(None);
+        let input = SessionInput { session_id: None };
+        let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
 
@@ -1513,7 +1515,8 @@ mod tests {
         let repo = Arc::new(MockSessionRepository::new());
         let usecase = GetTitleUseCaseImpl::new(repo);
 
-        let result = usecase.execute(None);
+        let input = SessionInput { session_id: None };
+        let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
     }
 }

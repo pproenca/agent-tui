@@ -132,6 +132,7 @@ These root-level modules are acceptable as partial boundaries:
 | `select_helpers.rs` | Element selection algorithms | Uses `SessionOps` trait for dependency inversion |
 | `adapters/domain_adapters.rs` | Core -> Domain translation | Pure functions, no I/O |
 | `adapters/snapshot_adapters.rs` | Domain -> DTO translation | Pure functions, no I/O |
+| `pty_session.rs` | PTY lifecycle management wrapper | Thin wrapper around PTY handle, no business logic |
 
 These modules are used by use cases. The `wait.rs` and `select_helpers.rs` modules use the `SessionOps` trait (defined in `repository.rs`) for dependency inversion, allowing them to work with any session-like type without depending on the concrete `Session` implementation.
 

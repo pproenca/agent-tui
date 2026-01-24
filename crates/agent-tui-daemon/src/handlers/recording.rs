@@ -2,8 +2,10 @@ use agent_tui_ipc::{RpcRequest, RpcResponse};
 use serde_json::json;
 
 use super::common::session_error_response;
-use crate::adapters::{build_asciicast, build_raw_frames, parse_session_id};
-use crate::domain::{RecordStartInput, RecordStatusInput, RecordStopInput};
+use crate::adapters::{
+    build_asciicast, build_raw_frames, parse_record_start_input, parse_record_status_input,
+    parse_record_stop_input, record_start_output_to_response, record_status_output_to_response,
+};
 use crate::usecases::{RecordStartUseCase, RecordStatusUseCase, RecordStopUseCase};
 
 /// Handle record_start requests using the use case pattern.
@@ -11,20 +13,11 @@ pub fn handle_record_start_uc<U: RecordStartUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
-    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
-
-    let input = RecordStartInput { session_id };
+    let input = parse_record_start_input(&request);
 
     match usecase.execute(input) {
-        Ok(output) => RpcResponse::success(
-            req_id,
-            json!({
-                "success": output.success,
-                "session_id": output.session_id.as_str(),
-                "recording": true
-            }),
-        ),
+        Ok(output) => record_start_output_to_response(req_id, output),
         Err(e) => session_error_response(req_id, e),
     }
 }
@@ -34,11 +27,8 @@ pub fn handle_record_stop_uc<U: RecordStopUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
-    let session_id = parse_session_id(request.param_str("session").map(String::from));
-    let format = request.param_str("format").map(String::from);
     let req_id = request.id;
-
-    let input = RecordStopInput { session_id, format };
+    let input = parse_record_stop_input(&request);
 
     match usecase.execute(input) {
         Ok(output) => {
@@ -72,20 +62,11 @@ pub fn handle_record_status_uc<U: RecordStatusUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
-    let session_id = parse_session_id(request.param_str("session").map(String::from));
     let req_id = request.id;
-
-    let input = RecordStatusInput { session_id };
+    let input = parse_record_status_input(&request);
 
     match usecase.execute(input) {
-        Ok(status) => RpcResponse::success(
-            req_id,
-            json!({
-                "recording": status.is_recording,
-                "frame_count": status.frame_count,
-                "duration_ms": status.duration_ms
-            }),
-        ),
+        Ok(status) => record_status_output_to_response(req_id, status),
         Err(e) => session_error_response(req_id, e),
     }
 }

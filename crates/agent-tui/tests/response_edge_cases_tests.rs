@@ -19,7 +19,8 @@ fn test_empty_result_object() {
     harness.set_success_response("health", json!({}));
 
     // Should handle empty result gracefully
-    let _ = harness.run(&["status"]);
+    // daemon status returns success even with empty health response
+    harness.run(&["daemon", "status"]).success();
 }
 
 #[test]
@@ -211,7 +212,9 @@ fn test_unicode_in_element_labels() {
 fn test_unicode_in_fill_value() {
     let harness = TestHarness::new();
 
-    harness.run(&["action", "@inp1", "Здравствуйте"]).success();
+    harness
+        .run(&["action", "@inp1", "fill", "Здравствуйте"])
+        .success();
 
     let req = harness.last_request_for("fill").unwrap();
     assert_eq!(
@@ -238,7 +241,7 @@ fn test_warning_field_in_click_response() {
     );
 
     harness
-        .run(&["action", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .success()
         .stderr(predicate::str::contains("obscured"));
 }
@@ -258,7 +261,7 @@ fn test_warning_field_in_fill_response() {
     );
 
     harness
-        .run(&["action", "@btn1", "test"])
+        .run(&["action", "@btn1", "fill", "test"])
         .success()
         .stderr(predicate::str::contains("button"));
 }
@@ -277,7 +280,7 @@ fn test_no_warning_when_field_absent() {
 
     // No warning in output
     harness
-        .run(&["action", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .success()
         .stdout(predicate::str::contains("Clicked"));
 }
@@ -426,7 +429,7 @@ fn test_unknown_fields_in_response_ignored() {
 
     // Should work despite unknown fields
     harness
-        .run(&["status"])
+        .run(&["daemon", "status"])
         .success()
         .stdout(predicate::str::contains("healthy"));
 }
@@ -499,7 +502,7 @@ fn test_json_output_preserves_structure() {
 fn test_json_output_contains_valid_json() {
     let harness = TestHarness::new();
 
-    let output = harness.run(&["-f", "json", "status"]);
+    let output = harness.run(&["-f", "json", "daemon", "status"]);
     let stdout = output.get_output().stdout.clone();
     let stdout_str = String::from_utf8_lossy(&stdout);
 

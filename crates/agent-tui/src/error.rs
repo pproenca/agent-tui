@@ -5,7 +5,7 @@
 
 use std::io;
 
-use agent_tui_ipc::error_codes::{self, ErrorCategory};
+use crate::ipc::error_codes::{self, ErrorCategory};
 use serde_json::{Value, json};
 use thiserror::Error;
 

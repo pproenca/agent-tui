@@ -1,8 +1,8 @@
 use serde_json::Value;
 
-use agent_tui_common::Colors;
-use agent_tui_common::ValueExt;
-use agent_tui_ipc::ClientError;
+use crate::common::Colors;
+use crate::common::ValueExt;
+use crate::ipc::ClientError;
 
 /// Trait for presenting output to the user.
 ///
@@ -98,7 +98,7 @@ impl HealthResult {
     /// Parse a health result from JSON response.
     /// The `socket_path` and `pid_file_path` are only included if `verbose` is true.
     pub fn from_json(value: &Value, verbose: bool) -> Self {
-        use agent_tui_ipc::socket_path;
+        use crate::ipc::socket_path;
 
         let (socket, pid_file) = if verbose {
             let socket = socket_path();

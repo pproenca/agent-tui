@@ -104,13 +104,13 @@ impl RealTestHarness {
             .expect("no session_id in response")
             .to_string();
 
-        let wait_status = self
+        let wait_output = self
             .cli()
             .args(["-s", &session_id, "wait", "-t", "1000", "$"])
-            .status()
+            .output()
             .expect("wait command failed");
 
-        assert!(wait_status.success(), "wait for bash prompt failed");
+        assert!(wait_output.status.success(), "wait for bash prompt failed");
 
         self.sessions.borrow_mut().push(session_id.clone());
         session_id
@@ -118,7 +118,12 @@ impl RealTestHarness {
 
     /// Kill a specific session with logging on failure.
     pub fn kill_session(&self, session_id: &str) {
-        match self.cli().args(["-s", session_id, "kill"]).status() {
+        match self
+            .cli()
+            .args(["-s", session_id, "kill"])
+            .output()
+            .map(|o| o.status)
+        {
             Ok(status) if status.success() => {}
             Ok(status) => {
                 eprintln!(

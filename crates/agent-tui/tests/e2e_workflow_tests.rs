@@ -28,7 +28,7 @@ fn test_spawn_snapshot_kill() {
     assert!(screen.contains("$"), "Shell prompt should be visible");
 
     // 3. Kill session
-    assert!(h.cli().args(["kill"]).status().unwrap().success());
+    assert!(h.cli().args(["kill"]).output().unwrap().status.success());
 
     // 4. Sessions list should not contain our session
     let output = h.cli_json().args(["ls"]).output().unwrap();
@@ -55,8 +55,9 @@ fn test_type_changes_screen() {
     assert!(
         h.cli()
             .args(["key", "--type", "echo E2E_MARKER_ABC123"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -64,8 +65,9 @@ fn test_type_changes_screen() {
     assert!(
         h.cli()
             .args(["wait", "-t", "5000", "E2E_MARKER_ABC123"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -98,15 +100,17 @@ fn test_multi_session_switching() {
     assert!(
         h.cli()
             .args(["-s", &sess_a, "key", "--type", "MARKER_AAA"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
     assert!(
         h.cli()
             .args(["-s", &sess_b, "key", "--type", "MARKER_BBB"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -114,15 +118,17 @@ fn test_multi_session_switching() {
     assert!(
         h.cli()
             .args(["-s", &sess_a, "wait", "-t", "5000", "MARKER_AAA"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
     assert!(
         h.cli()
             .args(["-s", &sess_b, "wait", "-t", "5000", "MARKER_BBB"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -136,8 +142,9 @@ fn test_multi_session_switching() {
     assert!(
         h.cli()
             .args(["-s", &sess_a, "kill"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -163,16 +170,25 @@ fn test_wait_for_delayed_output() {
     assert!(
         h.cli()
             .args(["key", "--type", "clear"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
-    assert!(h.cli().args(["key", "Enter"]).status().unwrap().success());
+    assert!(
+        h.cli()
+            .args(["key", "Enter"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
     assert!(
         h.cli()
             .args(["wait", "--stable", "-t", "2000"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -190,8 +206,9 @@ fn test_wait_for_delayed_output() {
     assert!(
         h.cli()
             .args(["key", "--type", "sleep 1; echo MARKER_UNIQUE_42"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -203,7 +220,14 @@ fn test_wait_for_delayed_output() {
     assert_eq!(count_before, 1, "Marker should appear once in command line");
 
     // Execute the command
-    assert!(h.cli().args(["key", "Enter"]).status().unwrap().success());
+    assert!(
+        h.cli()
+            .args(["key", "Enter"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
 
     // Wait for the second occurrence (the echo output)
     let start = std::time::Instant::now();
@@ -250,8 +274,9 @@ fn test_wait_timeout_fails() {
     let status = h
         .cli()
         .args(["wait", "-t", "500", "TEXT_THAT_NEVER_APPEARS"])
-        .status()
-        .unwrap();
+        .output()
+        .unwrap()
+        .status;
     assert!(!status.success(), "Wait should fail on timeout");
 }
 
@@ -264,8 +289,9 @@ fn test_wait_stable_succeeds() {
     let status = h
         .cli()
         .args(["wait", "--stable", "-t", "3000"])
-        .status()
-        .unwrap();
+        .output()
+        .unwrap()
+        .status;
     assert!(
         status.success(),
         "Wait stable should succeed for idle shell"
@@ -285,8 +311,9 @@ fn test_click_nonexistent_element() {
     let status = h
         .cli()
         .args(["click", "@nonexistent_element"])
-        .status()
-        .unwrap();
+        .output()
+        .unwrap()
+        .status;
     assert!(
         !status.success(),
         "Click on nonexistent element should fail"
@@ -306,19 +333,25 @@ fn test_operation_on_dead_session() {
     let _ = h
         .cli()
         .args(["-s", &session_id, "wait", "-t", "2000", "$"])
-        .status();
+        .output();
 
     // Kill it
     assert!(
         h.cli()
             .args(["-s", &session_id, "kill"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
     // Operations on dead session should fail
-    let status = h.cli().args(["-s", &session_id, "snap"]).status().unwrap();
+    let status = h
+        .cli()
+        .args(["-s", &session_id, "snap"])
+        .output()
+        .unwrap()
+        .status;
     assert!(!status.success(), "Snapshot on dead session should fail");
 }
 
@@ -384,7 +417,7 @@ fn test_rapid_session_spawn_and_kill() {
         let sid = json["session_id"].as_str().unwrap();
 
         // Kill immediately
-        let status = h.cli().args(["-s", sid, "kill"]).status().unwrap();
+        let status = h.cli().args(["-s", sid, "kill"]).output().unwrap().status;
         assert!(status.success(), "kill {} failed", i);
     }
 
@@ -408,20 +441,29 @@ fn test_pty_read_write_round_trip() {
     assert!(
         h.cli()
             .args(["key", "--type", "echo PTY_ROUNDTRIP_TEST"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
     // Execute the command
-    assert!(h.cli().args(["key", "Enter"]).status().unwrap().success());
+    assert!(
+        h.cli()
+            .args(["key", "Enter"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
 
     // Wait for the output to appear (pty_read happens during snapshot)
     assert!(
         h.cli()
             .args(["wait", "-t", "5000", "PTY_ROUNDTRIP_TEST"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -454,20 +496,29 @@ fn test_dbl_click_real_tui_element() {
     assert!(
         h.cli()
             .args(["key", "--type", "echo DBLCLICK_TARGET"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
     // Execute to have output
-    assert!(h.cli().args(["key", "Enter"]).status().unwrap().success());
+    assert!(
+        h.cli()
+            .args(["key", "Enter"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
 
     // Wait for output
     assert!(
         h.cli()
             .args(["wait", "-t", "5000", "DBLCLICK_TARGET"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -476,7 +527,7 @@ fn test_dbl_click_real_tui_element() {
     // Note: This may fail with "element not found" if the text isn't recognized
     // as a clickable element, but that's expected. The test verifies the
     // dbl_click operation completes without hanging or crashing.
-    let status = h.cli().args(["click", "-2", "DBLCLICK_TARGET"]).status();
+    let status = h.cli().args(["click", "-2", "DBLCLICK_TARGET"]).output();
 
     // The operation should complete (success or element-not-found error)
     assert!(status.is_ok(), "dblclick command should complete");
@@ -502,20 +553,29 @@ fn test_accessibility_snapshot_detects_buttons() {
     assert!(
         h.cli()
             .args(["key", "--type", "printf '[Y] [N] [OK] [Cancel]\\n'"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
     // Press Enter to execute the printf command
-    assert!(h.cli().args(["key", "Enter"]).status().unwrap().success());
+    assert!(
+        h.cli()
+            .args(["key", "Enter"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
 
     // Wait for the output to appear
     assert!(
         h.cli()
             .args(["wait", "-t", "5000", "[Y]"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -546,20 +606,29 @@ fn test_accessibility_snapshot_refs_can_be_clicked() {
     assert!(
         h.cli()
             .args(["key", "--type", "printf '[Submit]\\n'"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
     // Execute the command
-    assert!(h.cli().args(["key", "Enter"]).status().unwrap().success());
+    assert!(
+        h.cli()
+            .args(["key", "Enter"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
 
     // Wait for button to appear
     assert!(
         h.cli()
             .args(["wait", "-t", "5000", "[Submit]"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -597,20 +666,29 @@ fn test_accessibility_snapshot_detects_status_indicators() {
     assert!(
         h.cli()
             .args(["key", "--type", "echo '⠋ Loading...'"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
     // Execute the command
-    assert!(h.cli().args(["key", "Enter"]).status().unwrap().success());
+    assert!(
+        h.cli()
+            .args(["key", "Enter"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
 
     // Wait for output to appear
     assert!(
         h.cli()
             .args(["wait", "-t", "5000", "Loading"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
@@ -646,20 +724,29 @@ fn test_accessibility_snapshot_detects_checkmark_status() {
     assert!(
         h.cli()
             .args(["key", "--type", "echo '✓ Done'"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 
     // Execute
-    assert!(h.cli().args(["key", "Enter"]).status().unwrap().success());
+    assert!(
+        h.cli()
+            .args(["key", "Enter"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
 
     // Wait for output
     assert!(
         h.cli()
             .args(["wait", "-t", "5000", "Done"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 

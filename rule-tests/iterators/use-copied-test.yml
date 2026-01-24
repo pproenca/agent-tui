@@ -1,0 +1,10 @@
+id: iter-use-copied
+valid:
+  - "iter.copied();"
+  - "iter.cloned();"
+  - "iter.map(|x| *x + 1);"
+  - "iter.map(|x| process(*x));"
+invalid:
+  - "iter.map(|x| *x);"
+  - "vec.iter().map(|item| *item);"
+  - "self.data.iter().map(|x| *x);"

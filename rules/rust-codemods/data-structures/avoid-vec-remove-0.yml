@@ -1,0 +1,10 @@
+id: ds-avoid-vec-remove-0
+language: rust
+severity: warning
+message: "Vec::remove(0) is O(n), consider using VecDeque for frequent front removal"
+note: |
+  Removing from the front of a Vec requires shifting all remaining elements, making it O(n).
+  If you frequently need to remove from the front, consider using VecDeque which provides O(1)
+  pop_front() operation.
+rule:
+  pattern: $VEC.remove(0)

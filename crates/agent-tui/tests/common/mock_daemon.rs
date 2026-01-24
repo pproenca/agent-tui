@@ -1,16 +1,3 @@
-//! Mock daemon for testing CLI behavior without a real daemon
-//!
-//! The MockDaemon listens on a Unix socket (or TCP for testing) and
-//! responds to JSON-RPC requests with predefined responses.
-//!
-//! ## Anti-Gaming Design
-//!
-//! This mock is designed to catch real regressions:
-//! 1. Validates exact JSON field names (catches serialization bugs)
-//! 2. Returns realistic responses (catches parsing bugs)
-//! 3. Can simulate failures and edge cases
-//! 4. Records all requests for verification
-
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
@@ -24,7 +11,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
 use tokio::sync::oneshot;
 
-/// JSON-RPC request structure (mirrors protocol.rs)
 #[derive(Debug, Deserialize)]
 struct Request {
     jsonrpc: String,
@@ -33,7 +19,6 @@ struct Request {
     params: Option<Value>,
 }
 
-/// JSON-RPC response structure
 #[derive(Debug, Serialize)]
 struct Response {
     jsonrpc: String,
@@ -52,21 +37,19 @@ struct RpcError {
     data: Option<Value>,
 }
 
-/// Recorded request for test verification
 #[derive(Debug, Clone)]
 pub struct RecordedRequest {
     pub method: String,
     pub params: Option<Value>,
 }
 
-/// Configuration for how the mock should respond
 #[derive(Debug, Clone)]
 pub enum MockResponse {
-    /// Return a successful result
     Success(Value),
-    /// Return an error
-    Error { code: i32, message: String },
-    /// Return a structured error with category, context, retryable, suggestion
+    Error {
+        code: i32,
+        message: String,
+    },
     StructuredError {
         code: i32,
         message: String,
@@ -75,44 +58,29 @@ pub enum MockResponse {
         context: Option<Value>,
         suggestion: Option<String>,
     },
-    /// Return malformed JSON (for error handling tests)
     Malformed(String),
-    /// Hang forever (for timeout tests) - use with small timeout
     Hang,
-    /// Close connection immediately
     Disconnect,
-    /// Return different responses for each call (cycles through the list)
     Sequence(Vec<MockResponse>),
-    /// Delay before returning the response
     Delayed(Duration, Box<MockResponse>),
 }
 
-/// Mock daemon for testing
 pub struct MockDaemon {
-    /// Temporary directory containing the socket
     _temp_dir: TempDir,
-    /// Path to the socket file
     socket_path: PathBuf,
-    /// Path to the PID file
     pid_path: PathBuf,
-    /// Shutdown signal sender
     shutdown_tx: Option<oneshot::Sender<()>>,
-    /// Recorded requests for verification
     requests: Arc<Mutex<Vec<RecordedRequest>>>,
-    /// Custom response handlers by method
     handlers: Arc<Mutex<HashMap<String, MockResponse>>>,
-    /// Sequence counters for Sequence responses (tracks which index to return next)
     sequence_counters: Arc<Mutex<HashMap<String, usize>>>,
 }
 
 impl MockDaemon {
-    /// Create and start a new mock daemon
     pub async fn start() -> Self {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let socket_path = temp_dir.path().join("agent-tui.sock");
         let pid_path = temp_dir.path().join("agent-tui.pid");
 
-        // Create PID file (required by CLI to detect running daemon)
         std::fs::write(&pid_path, format!("{}", std::process::id()))
             .expect("Failed to create PID file");
 
@@ -120,7 +88,6 @@ impl MockDaemon {
         let handlers = Arc::new(Mutex::new(HashMap::new()));
         let sequence_counters = Arc::new(Mutex::new(HashMap::new()));
 
-        // Set up default handlers
         {
             let mut h = handlers.lock().unwrap();
             h.insert(
@@ -179,7 +146,7 @@ impl MockDaemon {
                     }
                 })),
             );
-            // Deprecated method returns error
+
             h.insert(
                 "screen".to_string(),
                 MockResponse::Error {
@@ -478,7 +445,6 @@ impl MockDaemon {
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
-        // Start the listener
         let listener = UnixListener::bind(&socket_path).expect("Failed to bind socket");
         let requests_clone = requests.clone();
         let handlers_clone = handlers.clone();
@@ -495,7 +461,6 @@ impl MockDaemon {
             .await;
         });
 
-        // Give the server a moment to start
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
         Self {
@@ -509,28 +474,23 @@ impl MockDaemon {
         }
     }
 
-    /// Get the socket path for environment configuration
     pub fn socket_path(&self) -> &PathBuf {
         &self.socket_path
     }
 
-    /// Set a custom response for a method
     pub fn set_response(&self, method: &str, response: MockResponse) {
         let mut handlers = self.handlers.lock().unwrap();
         handlers.insert(method.to_string(), response);
     }
 
-    /// Get all recorded requests
     pub fn get_requests(&self) -> Vec<RecordedRequest> {
         self.requests.lock().unwrap().clone()
     }
 
-    /// Clear recorded requests
     pub fn clear_requests(&self) {
         self.requests.lock().unwrap().clear();
     }
 
-    /// Get the last request for a specific method
     pub fn last_request_for(&self, method: &str) -> Option<RecordedRequest> {
         self.requests
             .lock()
@@ -541,7 +501,6 @@ impl MockDaemon {
             .cloned()
     }
 
-    /// Get the count of calls for a specific method
     pub fn call_count_for(&self, method: &str) -> usize {
         self.requests
             .lock()
@@ -551,7 +510,6 @@ impl MockDaemon {
             .count()
     }
 
-    /// Get the nth call for a specific method (0-indexed)
     pub fn nth_call_for(&self, method: &str, n: usize) -> Option<RecordedRequest> {
         self.requests
             .lock()
@@ -562,19 +520,16 @@ impl MockDaemon {
             .cloned()
     }
 
-    /// Reset the sequence counter for a method
     pub fn reset_sequence(&self, method: &str) {
         let mut counters = self.sequence_counters.lock().unwrap();
         counters.remove(method);
     }
 
-    /// Reset all sequence counters
     pub fn reset_all_sequences(&self) {
         let mut counters = self.sequence_counters.lock().unwrap();
         counters.clear();
     }
 
-    /// Get environment variables to point CLI at this mock daemon
     pub fn env_vars(&self) -> Vec<(&'static str, String)> {
         vec![
             (
@@ -643,7 +598,6 @@ impl MockDaemon {
                 break;
             }
 
-            // Parse the request
             let request: Request = match serde_json::from_str(&line) {
                 Ok(r) => r,
                 Err(e) => {
@@ -653,7 +607,6 @@ impl MockDaemon {
                 }
             };
 
-            // Record the request
             {
                 let mut reqs = requests.lock().unwrap();
                 reqs.push(RecordedRequest {
@@ -662,25 +615,21 @@ impl MockDaemon {
                 });
             }
 
-            // Get the handler for this method
             let handler = {
                 let h = handlers.lock().unwrap();
                 h.get(&request.method).cloned()
             };
 
-            // Resolve Sequence to current response
             let resolved_handler =
                 Self::resolve_handler(handler, &request.method, &sequence_counters);
 
             let response_str =
                 Self::generate_response(resolved_handler, request.id, &request.method).await;
 
-            // None means we should disconnect
             let Some(response_str) = response_str else {
                 return;
             };
 
-            // Send response
             if writer.write_all(response_str.as_bytes()).await.is_err() {
                 break;
             }
@@ -695,7 +644,6 @@ impl MockDaemon {
         }
     }
 
-    /// Resolve Sequence handlers to the current response in the sequence
     fn resolve_handler(
         handler: Option<MockResponse>,
         method: &str,
@@ -707,7 +655,7 @@ impl MockDaemon {
                 let index = counters.entry(method.to_string()).or_insert(0);
                 let response = responses[*index % responses.len()].clone();
                 *index += 1;
-                // Recursively resolve in case Sequence contains Sequence
+
                 drop(counters);
                 Self::resolve_handler(Some(response), method, sequence_counters)
             }
@@ -715,7 +663,6 @@ impl MockDaemon {
         }
     }
 
-    /// Generate a response string from a MockResponse, returns None for Disconnect
     async fn generate_response(
         handler: Option<MockResponse>,
         request_id: u64,
@@ -783,22 +730,19 @@ impl MockDaemon {
             }
             Some(MockResponse::Malformed(s)) => Some(s),
             Some(MockResponse::Hang) => {
-                // Sleep forever (will be killed when test times out)
                 tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
                 None
             }
             Some(MockResponse::Disconnect) => None,
             Some(MockResponse::Delayed(duration, inner)) => {
                 tokio::time::sleep(duration).await;
-                // Box::into_inner is unstable, use *inner
+
                 Box::pin(Self::generate_response(Some(*inner), request_id, method)).await
             }
             Some(MockResponse::Sequence(_)) => {
-                // Should have been resolved by resolve_handler
                 unreachable!("Sequence should be resolved before generate_response")
             }
             None => {
-                // Unknown method error
                 let response = Response {
                     jsonrpc: "2.0".to_string(),
                     id: request_id,
@@ -832,7 +776,6 @@ mod tests {
         let daemon = MockDaemon::start().await;
         let socket_path = daemon.socket_path();
 
-        // Connect directly and send a ping
         let stream = tokio::net::UnixStream::connect(socket_path).await.unwrap();
         let (reader, mut writer) = stream.into_split();
 
@@ -855,7 +798,6 @@ mod tests {
         let response: Value = serde_json::from_str(&response_line).unwrap();
         assert_eq!(response["result"]["status"], "ok");
 
-        // Verify request was recorded
         let requests = daemon.get_requests();
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].method, "ping");
@@ -865,7 +807,6 @@ mod tests {
     async fn test_mock_daemon_custom_response() {
         let daemon = MockDaemon::start().await;
 
-        // Set custom response
         daemon.set_response(
             "spawn",
             MockResponse::Error {

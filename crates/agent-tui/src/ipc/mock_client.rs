@@ -9,26 +9,6 @@ use crate::ipc::error::ClientError;
 
 type CallRecord = Vec<(String, Option<Value>)>;
 
-/// A mock implementation of `DaemonClient` for testing.
-///
-/// This client allows you to configure predefined responses for RPC methods,
-/// and tracks all calls made to it for assertion purposes.
-///
-/// # Example
-///
-/// ```ignore
-/// use crate::ipc::{MockClient, DaemonClient};
-/// use serde_json::json;
-///
-/// let mut mock = MockClient::new();
-/// mock.set_response("health", json!({ "status": "ok" }));
-///
-/// let result = mock.call("health", None).unwrap();
-/// assert_eq!(result, json!({ "status": "ok" }));
-///
-/// // Verify the call was made
-/// assert_eq!(mock.call_count("health"), 1);
-/// ```
 #[derive(Clone)]
 pub struct MockClient {
     responses: Arc<Mutex<HashMap<String, Value>>>,
@@ -44,7 +24,6 @@ impl Default for MockClient {
 }
 
 impl MockClient {
-    /// Creates a new MockClient with no configured responses.
     pub fn new() -> Self {
         Self {
             responses: Arc::new(Mutex::new(HashMap::new())),
@@ -54,7 +33,6 @@ impl MockClient {
         }
     }
 
-    /// Creates a new MockClient that returns an error for unconfigured methods.
     pub fn new_strict() -> Self {
         Self {
             responses: Arc::new(Mutex::new(HashMap::new())),
@@ -64,7 +42,6 @@ impl MockClient {
         }
     }
 
-    /// Sets the response for a specific method.
     pub fn set_response(&mut self, method: &str, response: Value) {
         self.responses
             .lock()
@@ -72,17 +49,14 @@ impl MockClient {
             .insert(method.to_string(), response);
     }
 
-    /// Sets the default response for methods without configured responses.
     pub fn set_default_response(&mut self, response: Value) {
         self.default_response = response;
     }
 
-    /// Returns all calls made to this client.
     pub fn get_calls(&self) -> Vec<(String, Option<Value>)> {
         self.calls.lock().unwrap().clone()
     }
 
-    /// Returns the number of times a specific method was called.
     pub fn call_count(&self, method: &str) -> usize {
         self.calls
             .lock()
@@ -92,7 +66,6 @@ impl MockClient {
             .count()
     }
 
-    /// Returns the last call made to a specific method.
     pub fn last_call(&self, method: &str) -> Option<(String, Option<Value>)> {
         self.calls
             .lock()
@@ -103,7 +76,6 @@ impl MockClient {
             .cloned()
     }
 
-    /// Returns all parameters passed to calls of a specific method.
     pub fn params_for(&self, method: &str) -> Vec<Option<Value>> {
         self.calls
             .lock()
@@ -114,17 +86,14 @@ impl MockClient {
             .collect()
     }
 
-    /// Clears all recorded calls.
     pub fn clear_calls(&mut self) {
         self.calls.lock().unwrap().clear();
     }
 
-    /// Clears all configured responses.
     pub fn clear_responses(&mut self) {
         self.responses.lock().unwrap().clear();
     }
 
-    /// Resets the mock completely.
     pub fn reset(&mut self) {
         self.clear_calls();
         self.clear_responses();
@@ -254,7 +223,7 @@ mod tests {
 
         assert_eq!(mock.call_count("test"), 0);
         let result = mock.call("test", None).unwrap();
-        assert_eq!(result, json!({ "success": true })); // back to default
+        assert_eq!(result, json!({ "success": true }));
     }
 
     #[test]

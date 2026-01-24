@@ -14,12 +14,6 @@ use crate::daemon::usecases::{
     SessionsUseCase, SpawnUseCase,
 };
 
-/// Handle spawn requests using the use case pattern.
-///
-/// This handler is a thin coordinator that:
-/// 1. Parses the RPC request into a domain input using adapters
-/// 2. Delegates to the use case for business logic (including error classification)
-/// 3. Converts the result to an RPC response using adapters
 pub fn handle_spawn<U: SpawnUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = match parse_spawn_input(&request) {
         Ok(input) => input,
@@ -32,7 +26,6 @@ pub fn handle_spawn<U: SpawnUseCase>(usecase: &U, request: RpcRequest) -> RpcRes
     }
 }
 
-/// Handle kill requests using the use case pattern.
 pub fn handle_kill<U: KillUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = parse_session_input(&request);
 
@@ -45,7 +38,6 @@ pub fn handle_kill<U: KillUseCase>(usecase: &U, request: RpcRequest) -> RpcRespo
     }
 }
 
-/// Handle restart requests using the use case pattern.
 pub fn handle_restart<U: RestartUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = parse_session_input(&request);
 
@@ -55,13 +47,11 @@ pub fn handle_restart<U: RestartUseCase>(usecase: &U, request: RpcRequest) -> Rp
     }
 }
 
-/// Handle sessions list requests using the use case pattern.
 pub fn handle_sessions<U: SessionsUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let output = usecase.execute();
     sessions_output_to_response(request.id, output)
 }
 
-/// Handle resize requests using the use case pattern.
 pub fn handle_resize<U: ResizeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = parse_resize_input(&request);
 
@@ -71,7 +61,6 @@ pub fn handle_resize<U: ResizeUseCase>(usecase: &U, request: RpcRequest) -> RpcR
     }
 }
 
-/// Handle attach requests using the use case pattern.
 pub fn handle_attach<U: AttachUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = match parse_attach_input(&request) {
@@ -85,14 +74,12 @@ pub fn handle_attach<U: AttachUseCase>(usecase: &U, request: RpcRequest) -> RpcR
     }
 }
 
-/// Handle cleanup requests using the use case pattern.
 pub fn handle_cleanup<U: CleanupUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = parse_cleanup_input(&request);
     let output = usecase.execute(input);
     cleanup_output_to_response(request.id, output)
 }
 
-/// Handle assert requests using the use case pattern.
 pub fn handle_assert<U: AssertUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = match parse_assert_input(&request) {

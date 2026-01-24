@@ -1,41 +1,22 @@
-//! Process control for daemon lifecycle management.
-//!
-//! This module provides an abstraction over process control operations,
-//! enabling testability through the `ProcessController` trait.
-
-/// Signal types for process control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
-    /// Graceful shutdown (SIGTERM)
     Term,
-    /// Force kill (SIGKILL)
     Kill,
 }
 
-/// Result of checking if a process exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessStatus {
-    /// Process is running
     Running,
-    /// Process not found (ESRCH)
     NotFound,
-    /// Process exists but no permission to signal (EPERM)
     NoPermission,
 }
 
-/// Trait for process control operations.
-///
-/// This abstraction enables testing of daemon lifecycle logic
-/// without actually sending signals to processes.
 pub trait ProcessController: Send + Sync {
-    /// Check if a process exists.
     fn check_process(&self, pid: u32) -> Result<ProcessStatus, std::io::Error>;
 
-    /// Send a signal to a process.
     fn send_signal(&self, pid: u32, signal: Signal) -> Result<(), std::io::Error>;
 }
 
-/// Unix implementation using libc.
 pub struct UnixProcessController;
 
 impl ProcessController for UnixProcessController {
@@ -44,8 +25,6 @@ impl ProcessController for UnixProcessController {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "PID out of range")
         })?;
 
-        // SAFETY: kill(pid, 0) checks process existence without sending a signal.
-        // The pid is validated above.
         let result = unsafe { libc::kill(pid_t, 0) };
         if result == 0 {
             return Ok(ProcessStatus::Running);
@@ -69,7 +48,6 @@ impl ProcessController for UnixProcessController {
             Signal::Kill => libc::SIGKILL,
         };
 
-        // SAFETY: Sending signal to validated PID.
         let result = unsafe { libc::kill(pid_t, sig) };
         if result == 0 {
             Ok(())
@@ -85,7 +63,6 @@ pub mod mock {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
-    /// Mock process controller for testing.
     pub struct MockProcessController {
         process_states: Mutex<HashMap<u32, ProcessStatus>>,
         signals_sent: Mutex<Vec<(u32, Signal)>>,

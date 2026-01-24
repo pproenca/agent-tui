@@ -1,8 +1,3 @@
-//! Retry mechanism tests
-//!
-//! Tests for the MockDaemon's Sequence and Delayed response types, which enable
-//! testing retry scenarios. Also tests timing behavior for delayed responses.
-
 mod common;
 
 use common::{MockResponse, TestHarness, timed};
@@ -10,15 +5,10 @@ use predicates::prelude::*;
 use serde_json::json;
 use std::time::Duration;
 
-// =============================================================================
-// Sequence Response Tests
-// =============================================================================
-
 #[test]
 fn test_sequence_returns_different_responses() {
     let harness = TestHarness::new();
 
-    // First call fails, second succeeds
     harness.set_response(
         "health",
         MockResponse::Sequence(vec![
@@ -31,24 +21,21 @@ fn test_sequence_returns_different_responses() {
                 "pid": 12345,
                 "uptime_ms": 1000,
                 "session_count": 0,
-                "version": "1.0.0"
+                "version": env!("CARGO_PKG_VERSION")
             })),
         ]),
     );
 
-    // First call should fail
     harness
-        .run(&["status"])
-        .failure()
-        .stderr(predicate::str::contains("Temporary error"));
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("Temporary error"));
 
-    // Second call should succeed
     harness
-        .run(&["status"])
+        .run(&["daemon", "status"])
         .success()
         .stdout(predicate::str::contains("healthy"));
 
-    // Verify both calls were made
     assert_eq!(harness.call_count("health"), 2);
 }
 
@@ -56,42 +43,25 @@ fn test_sequence_returns_different_responses() {
 fn test_sequence_cycles_through_responses() {
     let harness = TestHarness::new();
 
-    // Cycle through 3 different responses
+    let cli_version = env!("CARGO_PKG_VERSION");
+
     harness.set_response(
         "health",
         MockResponse::Sequence(vec![
-            MockResponse::Success(json!({
-                "status": "healthy",
-                "pid": 1,
-                "uptime_ms": 1000,
-                "session_count": 0,
-                "version": "1.0.0"
-            })),
-            MockResponse::Success(json!({
-                "status": "degraded",
-                "pid": 2,
-                "uptime_ms": 2000,
-                "session_count": 1,
-                "version": "1.0.0"
-            })),
-            MockResponse::Success(json!({
-                "status": "healthy",
-                "pid": 3,
-                "uptime_ms": 3000,
-                "session_count": 2,
-                "version": "1.0.0"
-            })),
+            MockResponse::Success(json!({"status": "healthy", "pid": 1, "uptime_ms": 1000, "session_count": 0, "version": cli_version})),
+            MockResponse::Success(json!({"status": "degraded", "pid": 2, "uptime_ms": 2000, "session_count": 1, "version": cli_version})),
+            MockResponse::Success(json!({"status": "healthy", "pid": 3, "uptime_ms": 3000, "session_count": 2, "version": cli_version})),
+            MockResponse::Success(json!({"status": "healthy", "pid": 1, "uptime_ms": 1000, "session_count": 0, "version": cli_version})),
         ]),
     );
 
-    // Should cycle back to first response after exhausting sequence
-    harness.run(&["status"]).success(); // pid=1
-    harness.run(&["status"]).success(); // pid=2
-    harness.run(&["status"]).success(); // pid=3
+    harness.run(&["daemon", "status"]).success();
+    harness.run(&["daemon", "status"]).success();
+    harness.run(&["daemon", "status"]).success();
     harness
-        .run(&["status"])
+        .run(&["daemon", "status"])
         .success()
-        .stdout(predicate::str::contains("PID: 1")); // cycles back
+        .stdout(predicate::str::contains("PID: 1"));
 
     assert_eq!(harness.call_count("health"), 4);
 }
@@ -100,7 +70,8 @@ fn test_sequence_cycles_through_responses() {
 fn test_sequence_with_disconnect() {
     let harness = TestHarness::new();
 
-    // First call disconnects, second succeeds
+    let cli_version = env!("CARGO_PKG_VERSION");
+
     harness.set_response(
         "health",
         MockResponse::Sequence(vec![
@@ -110,23 +81,23 @@ fn test_sequence_with_disconnect() {
                 "pid": 12345,
                 "uptime_ms": 1000,
                 "session_count": 0,
-                "version": "1.0.0"
+                "version": cli_version
             })),
         ]),
     );
 
-    // First call fails due to disconnect
-    harness.run(&["status"]).failure();
+    harness
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("not running"));
 
-    // Second call succeeds
-    harness.run(&["status"]).success();
+    harness.run(&["daemon", "status"]).success();
 }
 
 #[test]
 fn test_sequence_with_malformed() {
     let harness = TestHarness::new();
 
-    // First call returns malformed, second succeeds
     harness.set_response(
         "sessions",
         MockResponse::Sequence(vec![
@@ -138,25 +109,18 @@ fn test_sequence_with_malformed() {
         ]),
     );
 
-    // First call fails
     harness.run(&["sessions"]).failure();
 
-    // Second call succeeds
     harness
         .run(&["sessions"])
         .success()
         .stdout(predicate::str::contains("No active sessions"));
 }
 
-// =============================================================================
-// Delayed Response Tests
-// =============================================================================
-
 #[test]
 fn test_delayed_response_adds_latency() {
     let harness = TestHarness::new();
 
-    // Delay response by 200ms
     harness.set_response(
         "health",
         MockResponse::Delayed(
@@ -171,13 +135,12 @@ fn test_delayed_response_adds_latency() {
         ),
     );
 
-    let (result, duration) = timed(|| harness.run(&["status"]));
+    let (result, duration) = timed(|| harness.run(&["daemon", "status"]));
 
     result.success();
 
-    // Should take at least 200ms
     assert!(
-        duration >= Duration::from_millis(150), // Allow some tolerance
+        duration >= Duration::from_millis(150),
         "Expected at least 150ms delay, got {:?}",
         duration
     );
@@ -187,7 +150,6 @@ fn test_delayed_response_adds_latency() {
 fn test_delayed_error_response() {
     let harness = TestHarness::new();
 
-    // Delay error response by 100ms
     harness.set_response(
         "health",
         MockResponse::Delayed(
@@ -199,33 +161,28 @@ fn test_delayed_error_response() {
         ),
     );
 
-    let (result, duration) = timed(|| harness.run(&["status"]));
+    let (result, duration) = timed(|| harness.run(&["daemon", "status"]));
 
     result
-        .failure()
-        .stderr(predicate::str::contains("Delayed error"));
+        .success()
+        .stdout(predicate::str::contains("Delayed error"));
 
     assert!(
-        duration >= Duration::from_millis(80), // Allow tolerance
+        duration >= Duration::from_millis(80),
         "Expected at least 80ms delay, got {:?}",
         duration
     );
 }
 
-// =============================================================================
-// Simulated Retry Scenarios
-// =============================================================================
-
 #[test]
 fn test_transient_failure_then_success_pattern() {
     let harness = TestHarness::new();
 
-    // Simulate: lock timeout, lock timeout, success
     harness.set_response(
         "click",
         MockResponse::Sequence(vec![
             MockResponse::Error {
-                code: -32007, // LOCK_TIMEOUT
+                code: -32007,
                 message: "Session locked".to_string(),
             },
             MockResponse::Error {
@@ -239,11 +196,10 @@ fn test_transient_failure_then_success_pattern() {
         ]),
     );
 
-    // Without retry logic in CLI, each call is independent
-    harness.run(&["action", "@btn1"]).failure();
-    harness.run(&["action", "@btn1"]).failure();
+    harness.run(&["action", "@btn1", "click"]).failure();
+    harness.run(&["action", "@btn1", "click"]).failure();
     harness
-        .run(&["action", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .success()
         .stdout(predicate::str::contains("Clicked"));
 
@@ -254,37 +210,31 @@ fn test_transient_failure_then_success_pattern() {
 fn test_permanent_failure_pattern() {
     let harness = TestHarness::new();
 
-    // Always fails with element not found (non-retryable)
     harness.set_response(
         "click",
         MockResponse::Error {
-            code: -32003, // ELEMENT_NOT_FOUND
+            code: -32003,
             message: "Element not found: @missing".to_string(),
         },
     );
 
-    // Should fail consistently
-    harness.run(&["action", "@missing"]).failure();
-    harness.run(&["action", "@missing"]).failure();
-    harness.run(&["action", "@missing"]).failure();
+    harness.run(&["action", "@missing", "click"]).failure();
+    harness.run(&["action", "@missing", "click"]).failure();
+    harness.run(&["action", "@missing", "click"]).failure();
 
     assert_eq!(harness.call_count("click"), 3);
 }
-
-// =============================================================================
-// Call Tracking Tests
-// =============================================================================
 
 #[test]
 fn test_call_count_for_method() {
     let harness = TestHarness::new();
 
-    harness.run(&["status"]).success();
+    harness.run(&["daemon", "status"]).success();
     harness.run(&["sessions"]).success();
-    harness.run(&["status"]).success();
-    harness.run(&["status"]).success();
+    harness.run(&["daemon", "status"]).success();
+    harness.run(&["daemon", "status"]).success();
 
-    assert_eq!(harness.call_count("health"), 3);
+    assert_eq!(harness.call_count("health"), 4);
     assert_eq!(harness.call_count("sessions"), 1);
     assert_eq!(harness.call_count("nonexistent"), 0);
 }
@@ -293,12 +243,12 @@ fn test_call_count_for_method() {
 fn test_nth_call_params_tracking() {
     let harness = TestHarness::new();
 
-    harness.run(&["action", "@btn1"]).success();
-    harness.run(&["action", "@btn2"]).success();
-    harness.run(&["action", "@btn3"]).success();
+    harness.run(&["action", "@btn1", "click"]).success();
+    harness.run(&["action", "@btn2", "click"]).success();
+    harness.run(&["action", "@btn3", "click"]).success();
 
     let first = harness.last_request_for("click").unwrap();
-    // last_request_for returns the last call, not first
+
     assert!(
         first.params.as_ref().unwrap()["ref"]
             .as_str()
@@ -311,13 +261,13 @@ fn test_nth_call_params_tracking() {
 fn test_clear_requests_resets_tracking() {
     let harness = TestHarness::new();
 
-    harness.run(&["status"]).success();
-    harness.run(&["status"]).success();
+    harness.run(&["daemon", "status"]).success();
+    harness.run(&["daemon", "status"]).success();
     assert_eq!(harness.call_count("health"), 2);
 
     harness.clear_requests();
     assert_eq!(harness.call_count("health"), 0);
 
-    harness.run(&["status"]).success();
+    harness.run(&["daemon", "status"]).success();
     assert_eq!(harness.call_count("health"), 1);
 }

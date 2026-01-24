@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Returns true if the boolean is false (used by serde skip_serializing_if).
 #[inline]
 fn is_false(b: &bool) -> bool {
     !*b

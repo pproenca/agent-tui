@@ -42,10 +42,6 @@ const MAX_RECORDING_FRAMES: usize = 1000;
 const MAX_TRACE_ENTRIES: usize = 500;
 const MAX_ERROR_ENTRIES: usize = 500;
 
-/// Generate a new unique session ID.
-///
-/// This is the infrastructure-level ID generation that uses UUID.
-/// Domain layer SessionId only holds the string value.
 pub fn generate_session_id() -> SessionId {
     SessionId::new(Uuid::new_v4().to_string()[..8].to_string())
 }
@@ -450,9 +446,6 @@ impl crate::daemon::repository::SessionOps for Session {
     }
 }
 
-/// Lock ordering: sessions → active_session → Session mutex
-///
-/// When acquiring multiple locks, always follow this order to prevent deadlocks.
 pub struct SessionManager {
     sessions: RwLock<HashMap<SessionId, Arc<Mutex<Session>>>>,
     active_session: RwLock<Option<SessionId>>,
@@ -656,10 +649,6 @@ impl SessionManager {
     }
 }
 
-/// Serializable session data for persistence.
-///
-/// Uses String for session ID to avoid framework dependencies
-/// in domain types. Converted to/from SessionId at boundaries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedSession {
     pub id: String,

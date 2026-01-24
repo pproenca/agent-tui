@@ -1,17 +1,5 @@
-//! Builder for creating test Element fixtures.
-
 use crate::core::{Element, ElementType, Position};
 
-/// Builder for creating test Element fixtures with controlled state.
-///
-/// # Example
-///
-/// ```ignore
-/// let button = ElementBuilder::new("@e1", ElementType::Button)
-///     .with_label("Submit")
-///     .focused()
-///     .build();
-/// ```
 #[derive(Debug, Clone)]
 pub struct ElementBuilder {
     element_ref: String,

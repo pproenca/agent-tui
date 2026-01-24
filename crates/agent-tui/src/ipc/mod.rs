@@ -11,10 +11,8 @@ mod socket;
 mod types;
 pub mod version;
 
-// Re-export error_codes from common for backwards compatibility
 pub use crate::common::error_codes;
 
-// Re-export polling constants for external use
 pub use client::polling;
 
 pub use client::DaemonClient;

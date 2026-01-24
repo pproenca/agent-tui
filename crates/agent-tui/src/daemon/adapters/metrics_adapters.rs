@@ -1,14 +1,7 @@
-//! Adapters for metrics serialization.
-//!
-//! This module contains adapter functions that convert DaemonMetrics
-//! to serialized formats like JSON, keeping serialization concerns
-//! out of the metrics module itself.
-
 use serde_json::Value;
 
 use crate::daemon::metrics::DaemonMetrics;
 
-/// Convert DaemonMetrics to a JSON value.
 pub fn metrics_to_json(metrics: &DaemonMetrics) -> Value {
     serde_json::json!({
         "requests_total": metrics.requests(),

@@ -1,34 +1,20 @@
-//! Version checking for CLI/daemon compatibility.
-
 use crate::common::ValueExt;
 
 use crate::ipc::client::DaemonClient;
 
-/// Version mismatch information.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionMismatch {
-    /// CLI version.
     pub cli_version: String,
-    /// Daemon version.
     pub daemon_version: String,
 }
 
-/// Result of version check operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VersionCheckResult {
-    /// CLI and daemon versions match.
     Match,
-    /// CLI and daemon versions differ.
     Mismatch(VersionMismatch),
-    /// Could not check version (daemon not running or RPC error).
     CheckFailed(String),
 }
 
-/// Check for version mismatch between CLI and daemon.
-///
-/// Returns `VersionCheckResult::Match` if versions are the same,
-/// `VersionCheckResult::Mismatch` with details if different,
-/// or `VersionCheckResult::CheckFailed` if the check could not be performed.
 pub fn check_version<C: DaemonClient>(client: &mut C, cli_version: &str) -> VersionCheckResult {
     match client.call("health", None) {
         Err(e) => VersionCheckResult::CheckFailed(e.to_string()),
@@ -91,7 +77,6 @@ mod tests {
     #[test]
     fn test_daemon_not_running_returns_check_failed() {
         let mut client = MockClient::new_strict();
-        // new_strict() returns error for unconfigured methods
 
         let result = check_version(&mut client, "1.0.0");
         match result {
@@ -109,7 +94,7 @@ mod tests {
             "health",
             json!({
                 "status": "healthy"
-                // No version field
+
             }),
         );
 

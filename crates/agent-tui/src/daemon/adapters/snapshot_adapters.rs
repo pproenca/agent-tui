@@ -50,9 +50,6 @@ pub fn snapshot_to_dto(snapshot: &DomainAccessibilitySnapshot) -> AccessibilityS
     }
 }
 
-/// Converts a Domain snapshot into a DTO, consuming the input.
-///
-/// Use this variant when ownership can be transferred to avoid cloning strings.
 pub fn snapshot_into_dto(snapshot: DomainAccessibilitySnapshot) -> AccessibilitySnapshotDto {
     AccessibilitySnapshotDto {
         tree: snapshot.tree,
@@ -84,10 +81,6 @@ fn element_ref_into_dto(element: DomainElementRef) -> ElementRefDto {
 
 use crate::daemon::domain::session_types::SessionInfo;
 
-/// Convert SessionInfo to JSON representation.
-///
-/// This adapter function handles serialization at the boundary,
-/// keeping the domain SessionInfo free of framework dependencies.
 pub fn session_info_to_json(info: &SessionInfo) -> serde_json::Value {
     serde_json::json!({
         "id": info.id.as_str(),

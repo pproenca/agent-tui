@@ -1,13 +1,7 @@
-//! PTY errors with structured context for AI agents.
-//!
-//! These errors provide semantic codes, categories, and actionable suggestions
-//! to enable programmatic error handling.
-
 use crate::common::error_codes::{self, ErrorCategory};
 use serde_json::{Value, json};
 use thiserror::Error;
 
-/// PTY operation errors with structured context.
 #[derive(Error, Debug)]
 pub enum PtyError {
     #[error("Failed to open PTY: {0}")]
@@ -23,21 +17,14 @@ pub enum PtyError {
 }
 
 impl PtyError {
-    /// Returns the JSON-RPC error code for this error.
-    ///
-    /// All PTY errors map to PTY_ERROR (-32008) since they're all
-    /// external/terminal communication failures. The specific operation
-    /// is available via `context()`.
     pub fn code(&self) -> i32 {
         error_codes::PTY_ERROR
     }
 
-    /// Returns the error category for programmatic handling.
     pub fn category(&self) -> ErrorCategory {
         ErrorCategory::External
     }
 
-    /// Returns structured context about the error for debugging.
     pub fn context(&self) -> Value {
         match self {
             PtyError::Open(reason) => json!({
@@ -63,7 +50,6 @@ impl PtyError {
         }
     }
 
-    /// Returns a helpful suggestion for resolving the error.
     pub fn suggestion(&self) -> String {
         match self {
             PtyError::Open(_) => {
@@ -93,12 +79,10 @@ impl PtyError {
         }
     }
 
-    /// Returns whether this error is potentially transient and may succeed on retry.
     pub fn is_retryable(&self) -> bool {
         matches!(self, PtyError::Read(_) | PtyError::Write(_))
     }
 
-    /// Returns the operation that failed.
     pub fn operation(&self) -> &'static str {
         match self {
             PtyError::Open(_) => "open",
@@ -109,7 +93,6 @@ impl PtyError {
         }
     }
 
-    /// Returns the underlying reason/message for the error.
     pub fn reason(&self) -> &str {
         match self {
             PtyError::Open(r)

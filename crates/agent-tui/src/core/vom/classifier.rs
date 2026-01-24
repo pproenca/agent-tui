@@ -10,15 +10,11 @@ use super::patterns::{
 use crate::core::CursorPosition;
 use crate::core::style::Color;
 
-/// ANSI indexed color for blue background (indicates tab in many TUIs)
 const TAB_BG_BLUE: u8 = 4;
-/// ANSI indexed color for cyan background (indicates tab in many TUIs)
 const TAB_BG_CYAN: u8 = 6;
 
-/// Options for the classification phase.
 #[derive(Debug, Clone)]
 pub struct ClassifyOptions {
-    /// Row threshold for Tab detection (elements on row <= threshold with inverse are Tabs).
     pub tab_row_threshold: u16,
 }
 
@@ -51,39 +47,9 @@ fn is_selected(cluster: &Cluster) -> bool {
     cluster.style.inverse || cluster.text.starts_with('❯')
 }
 
-/// Infers the role of a cluster based on its content and style.
-///
-/// # Classification Priority Order
-///
-/// The order of checks is important because some patterns overlap. The priority is:
-///
-/// 1. **Cursor position** → Input (cursor within cluster bounds)
-/// 2. **Button text** → Button (bracketed text like `[OK]`, `<Cancel>`)
-/// 3. **Inverse style** → Tab or MenuItem (based on row threshold)
-/// 4. **Tab background color** → Tab (blue/cyan background)
-/// 5. **Error prefixes** → ErrorMessage (`Error:`, `✗`)
-/// 6. **Input field patterns** → Input (`___`, `: _`)
-/// 7. **Checkbox markers** → Checkbox (`[x]`, `☐`)
-/// 8. **Prompt marker** → PromptMarker (`>` alone) - BEFORE MenuItem!
-/// 9. **Menu item prefixes** → MenuItem (`> `, `- `, `• `) - BEFORE Link/DiffLine!
-/// 10. **URL/file paths** → Link (`https://`, `src/main.rs`)
-/// 11. **Progress bar chars** → ProgressBar (`████░░░░`)
-/// 12. **Diff line markers** → DiffLine (`+`, `-` without space, `@@`)
-/// 13. **Tool block borders** → ToolBlock (rounded corners `╭╮╰╯`)
-/// 14. **Code block borders** → CodeBlock (vertical line `│`)
-/// 15. **Panel borders** → Panel (box drawing chars)
-/// 16. **Status indicators** → Status (spinners, checkmarks)
-/// 17. **Default** → StaticText
-///
-/// # Why Order Matters
-///
-/// - `PromptMarker` must precede `MenuItem` because `>` alone is a prompt, not a menu
-/// - `MenuItem` must precede `Link` because `> src/main.rs` is a menu item, not a link
-/// - `MenuItem` must precede `DiffLine` because `- List item` is a menu, not a diff deletion
 fn infer_role(cluster: &Cluster, cursor: &CursorPosition, options: &ClassifyOptions) -> Role {
     let text = cluster.text.trim();
 
-    // If cursor is within this cluster's bounds, it's an input field
     if cluster.rect.y == cursor.row
         && cursor.col >= cluster.rect.x
         && cursor.col < cluster.rect.x + cluster.rect.width
@@ -120,16 +86,10 @@ fn infer_role(cluster: &Cluster, cursor: &CursorPosition, options: &ClassifyOpti
         return Role::Checkbox;
     }
 
-    // PromptMarker must be checked before MenuItem because ">" alone is a prompt,
-    // not a menu item. MenuItem requires content after the prefix.
     if is_prompt_marker(text) {
         return Role::PromptMarker;
     }
 
-    // Menu items are checked before Link and DiffLine because they use distinctive
-    // prefixes (>, ❯, -, •, *) that could otherwise match those patterns.
-    // For example, "> src/main.rs" should be MenuItem, not Link.
-    // And "- List item" should be MenuItem, not DiffLine.
     if is_menu_item(text) {
         return Role::MenuItem;
     }
@@ -311,7 +271,6 @@ mod tests {
 
     #[test]
     fn test_status_spinner_braille() {
-        // Braille spinner characters used in CLI loaders
         for spinner in ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] {
             let text = format!("{} Loading...", spinner);
             let cluster = make_cluster(&text, CellStyle::default(), 0, 0);
@@ -322,7 +281,6 @@ mod tests {
 
     #[test]
     fn test_status_spinner_circle() {
-        // Circle spinner characters
         for spinner in ['◐', '◑', '◒', '◓'] {
             let text = format!("{} Processing", spinner);
             let cluster = make_cluster(&text, CellStyle::default(), 0, 0);
@@ -354,7 +312,6 @@ mod tests {
 
     #[test]
     fn test_status_not_regular_text() {
-        // Regular text should NOT be detected as status
         let cluster = make_cluster("Hello World", CellStyle::default(), 0, 0);
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_ne!(role, Role::Status);
@@ -362,7 +319,6 @@ mod tests {
 
     #[test]
     fn test_tool_block_top_border() {
-        // Rounded top border with title: ╭─ Write ─╮
         let cluster = make_cluster(
             "╭─ Write ─────────────────────╮",
             CellStyle::default(),
@@ -375,7 +331,6 @@ mod tests {
 
     #[test]
     fn test_tool_block_bottom_border() {
-        // Rounded bottom border: ╰──────────────────────────────╯
         let cluster = make_cluster(
             "╰──────────────────────────────╯",
             CellStyle::default(),
@@ -388,7 +343,6 @@ mod tests {
 
     #[test]
     fn test_tool_block_not_regular_panel() {
-        // Regular panel border (square corners) should be Panel, not ToolBlock
         let cluster = make_cluster(
             "┌──────────────────────────────┐",
             CellStyle::default(),
@@ -401,7 +355,6 @@ mod tests {
 
     #[test]
     fn test_prompt_marker_simple() {
-        // Simple prompt marker at start of line
         let cluster = make_cluster(">", CellStyle::default(), 0, 5);
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_eq!(role, Role::PromptMarker);
@@ -409,7 +362,6 @@ mod tests {
 
     #[test]
     fn test_prompt_marker_with_space() {
-        // Prompt marker with trailing space
         let cluster = make_cluster("> ", CellStyle::default(), 0, 5);
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_eq!(role, Role::PromptMarker);
@@ -417,7 +369,6 @@ mod tests {
 
     #[test]
     fn test_prompt_marker_not_menu_item() {
-        // Menu item with content after > should be MenuItem, not PromptMarker
         let cluster = make_cluster("> Option 1", CellStyle::default(), 0, 5);
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_eq!(role, Role::MenuItem);
@@ -458,15 +409,10 @@ mod tests {
 
     #[test]
     fn test_yn_not_checkbox() {
-        // Single letter checkboxes should still be detected
         let cluster = make_cluster("[x]", CellStyle::default(), 0, 0);
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_eq!(role, Role::Checkbox);
     }
-
-    // ============================================================
-    // NEW ROLE TESTS - Phase 1: RED (failing tests for new roles)
-    // ============================================================
 
     #[test]
     fn test_progress_bar_detection() {
@@ -529,8 +475,6 @@ mod tests {
 
     #[test]
     fn test_diff_line_deletion_detection() {
-        // Use pattern without space after dash - "- text" is now classified as MenuItem
-        // because TUI menus commonly use "- " as bullet prefix
         let cluster = make_cluster("-removed_line", CellStyle::default(), 0, 5);
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_eq!(role, Role::DiffLine);
@@ -591,7 +535,6 @@ mod tests {
 
     #[test]
     fn test_tab_row_threshold_configurable() {
-        // Element on row 5 with inverse should be MenuItem with default threshold (2)
         let cluster = make_cluster(
             "Option",
             CellStyle {
@@ -604,7 +547,6 @@ mod tests {
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_eq!(role, Role::MenuItem);
 
-        // Same element should be Tab with threshold = 5
         let opts = ClassifyOptions {
             tab_row_threshold: 5,
         };
@@ -614,8 +556,6 @@ mod tests {
 
     #[test]
     fn test_menu_item_with_file_path_not_link() {
-        // Menu items with file paths should be MenuItem, not Link
-        // This tests the classification priority: is_menu_item() before is_link()
         let cluster = make_cluster("> src/main.rs", CellStyle::default(), 0, 5);
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_eq!(
@@ -627,7 +567,6 @@ mod tests {
 
     #[test]
     fn test_menu_item_with_file_path_and_line_number() {
-        // Menu items with file:line notation should still be MenuItem
         let cluster = make_cluster("> src/lib.rs:42", CellStyle::default(), 0, 5);
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_eq!(
@@ -639,8 +578,6 @@ mod tests {
 
     #[test]
     fn test_dash_list_item_not_diff_line() {
-        // "- List item" with space after dash should be MenuItem, not DiffLine
-        // This tests classification priority: is_menu_item() before is_diff_line()
         let cluster = make_cluster("- List item", CellStyle::default(), 0, 5);
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_eq!(
@@ -652,7 +589,6 @@ mod tests {
 
     #[test]
     fn test_dash_list_navigation() {
-        // Common TUI navigation patterns with dash prefix
         let cluster = make_cluster("- Select option", CellStyle::default(), 0, 5);
         let role = infer_role(&cluster, &no_cursor(), &default_opts());
         assert_eq!(

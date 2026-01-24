@@ -13,7 +13,6 @@ use crate::daemon::usecases::{
     ShutdownUseCase, TraceUseCase,
 };
 
-/// Handle health requests using the use case pattern.
 pub fn handle_health_uc<U: HealthUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = HealthInput;
@@ -24,7 +23,6 @@ pub fn handle_health_uc<U: HealthUseCase>(usecase: &U, request: RpcRequest) -> R
     }
 }
 
-/// Handle metrics requests using the use case pattern.
 pub fn handle_metrics_uc<U: MetricsUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = MetricsInput;
@@ -35,7 +33,6 @@ pub fn handle_metrics_uc<U: MetricsUseCase>(usecase: &U, request: RpcRequest) ->
     }
 }
 
-/// Handle trace requests using the use case pattern.
 pub fn handle_trace_uc<U: TraceUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = parse_trace_input(&request);
@@ -46,7 +43,6 @@ pub fn handle_trace_uc<U: TraceUseCase>(usecase: &U, request: RpcRequest) -> Rpc
     }
 }
 
-/// Handle console requests using the use case pattern.
 pub fn handle_console_uc<U: ConsoleUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = parse_console_input(&request);
@@ -57,7 +53,6 @@ pub fn handle_console_uc<U: ConsoleUseCase>(usecase: &U, request: RpcRequest) ->
     }
 }
 
-/// Handle errors requests using the use case pattern.
 pub fn handle_errors_uc<U: ErrorsUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = parse_errors_input(&request);
@@ -68,7 +63,6 @@ pub fn handle_errors_uc<U: ErrorsUseCase>(usecase: &U, request: RpcRequest) -> R
     }
 }
 
-/// Handle pty_read requests using the use case pattern.
 pub fn handle_pty_read_uc<U: PtyReadUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = parse_pty_read_input(&request);
@@ -79,7 +73,6 @@ pub fn handle_pty_read_uc<U: PtyReadUseCase>(usecase: &U, request: RpcRequest) -
     }
 }
 
-/// Handle pty_write requests using the use case pattern.
 pub fn handle_pty_write_uc<U: PtyWriteUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let input = match parse_pty_write_input(&request) {
@@ -93,9 +86,6 @@ pub fn handle_pty_write_uc<U: PtyWriteUseCase>(usecase: &U, request: RpcRequest)
     }
 }
 
-/// Handle shutdown requests using the use case pattern.
-///
-/// This handler initiates a graceful daemon shutdown via RPC.
 pub fn handle_shutdown_uc<U: ShutdownUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let req_id = request.id;
     let output = usecase.execute(ShutdownInput);

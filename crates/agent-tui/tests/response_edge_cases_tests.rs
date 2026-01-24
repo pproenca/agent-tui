@@ -1,16 +1,8 @@
-//! Response edge case tests
-//!
-//! Tests for handling unusual or edge case responses from the daemon.
-
 mod common;
 
 use common::{TEST_COLS, TEST_ROWS, TEST_SESSION_ID, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
-
-// =============================================================================
-// Empty Response Tests
-// =============================================================================
 
 #[test]
 fn test_empty_result_object() {
@@ -18,8 +10,7 @@ fn test_empty_result_object() {
 
     harness.set_success_response("health", json!({}));
 
-    // Should handle empty result gracefully
-    let _ = harness.run(&["status"]);
+    harness.run(&["daemon", "status"]).success();
 }
 
 #[test]
@@ -55,7 +46,6 @@ fn test_empty_elements_array() {
         }),
     );
 
-    // With empty elements, snapshot -i just shows the screen without element list
     harness
         .run(&["screen", "-i"])
         .success()
@@ -80,15 +70,10 @@ fn test_empty_screen_content() {
     harness.run(&["screen"]).success();
 }
 
-// =============================================================================
-// Large Response Tests
-// =============================================================================
-
 #[test]
 fn test_large_screen_response() {
     let harness = TestHarness::new();
 
-    // Generate a 500x200 terminal screen
     let large_screen: String = (0..200)
         .map(|i| format!("{:>500}\n", format!("Line {}", i)))
         .collect();
@@ -111,7 +96,6 @@ fn test_large_screen_response() {
 fn test_many_elements_response() {
     let harness = TestHarness::new();
 
-    // Generate 100 elements
     let elements: Vec<serde_json::Value> = (0..100)
         .map(|i| {
             json!({
@@ -142,10 +126,6 @@ fn test_many_elements_response() {
         .stdout(predicate::str::contains("@el0"))
         .stdout(predicate::str::contains("@el99"));
 }
-
-// =============================================================================
-// Unicode Content Tests
-// =============================================================================
 
 #[test]
 fn test_unicode_in_screen_content() {
@@ -211,7 +191,9 @@ fn test_unicode_in_element_labels() {
 fn test_unicode_in_fill_value() {
     let harness = TestHarness::new();
 
-    harness.run(&["action", "@inp1", "Здравствуйте"]).success();
+    harness
+        .run(&["action", "@inp1", "fill", "Здравствуйте"])
+        .success();
 
     let req = harness.last_request_for("fill").unwrap();
     assert_eq!(
@@ -219,10 +201,6 @@ fn test_unicode_in_fill_value() {
         "Здравствуйте"
     );
 }
-
-// =============================================================================
-// Warning Field Tests
-// =============================================================================
 
 #[test]
 fn test_warning_field_in_click_response() {
@@ -238,7 +216,7 @@ fn test_warning_field_in_click_response() {
     );
 
     harness
-        .run(&["action", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .success()
         .stderr(predicate::str::contains("obscured"));
 }
@@ -258,7 +236,7 @@ fn test_warning_field_in_fill_response() {
     );
 
     harness
-        .run(&["action", "@btn1", "test"])
+        .run(&["action", "@btn1", "fill", "test"])
         .success()
         .stderr(predicate::str::contains("button"));
 }
@@ -275,16 +253,11 @@ fn test_no_warning_when_field_absent() {
         }),
     );
 
-    // No warning in output
     harness
-        .run(&["action", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .success()
         .stdout(predicate::str::contains("Clicked"));
 }
-
-// =============================================================================
-// Null Value Tests
-// =============================================================================
 
 #[test]
 fn test_null_active_session() {
@@ -307,7 +280,6 @@ fn test_null_active_session() {
         }),
     );
 
-    // Should show sessions without "(active)" marker
     harness
         .run(&["sessions"])
         .success()
@@ -329,13 +301,8 @@ fn test_null_cursor_position() {
         }),
     );
 
-    // Should handle null cursor gracefully
     harness.run(&["screen"]).success();
 }
-
-// =============================================================================
-// Special Characters Tests
-// =============================================================================
 
 #[test]
 fn test_newlines_in_screen_preserved() {
@@ -396,16 +363,11 @@ fn test_ansi_escape_sequences_stripped_when_requested() {
         }),
     );
 
-    // Request with strip_ansi
     harness.run(&["screen", "--strip-ansi"]).success();
 
     let req = harness.last_request_for("snapshot").unwrap();
     assert_eq!(req.params.as_ref().unwrap()["strip_ansi"], true);
 }
-
-// =============================================================================
-// Extra Fields Tests (forward compatibility)
-// =============================================================================
 
 #[test]
 fn test_unknown_fields_in_response_ignored() {
@@ -424,9 +386,8 @@ fn test_unknown_fields_in_response_ignored() {
         }),
     );
 
-    // Should work despite unknown fields
     harness
-        .run(&["status"])
+        .run(&["daemon", "status"])
         .success()
         .stdout(predicate::str::contains("healthy"));
 }
@@ -455,16 +416,11 @@ fn test_unknown_element_type_handled() {
         }),
     );
 
-    // Should display unknown type without crashing
     harness
         .run(&["screen", "-i"])
         .success()
         .stdout(predicate::str::contains("@unknown1"));
 }
-
-// =============================================================================
-// JSON Output Mode Tests
-// =============================================================================
 
 #[test]
 fn test_json_output_preserves_structure() {
@@ -499,11 +455,10 @@ fn test_json_output_preserves_structure() {
 fn test_json_output_contains_valid_json() {
     let harness = TestHarness::new();
 
-    let output = harness.run(&["-f", "json", "status"]);
+    let output = harness.run(&["-f", "json", "daemon", "status"]);
     let stdout = output.get_output().stdout.clone();
     let stdout_str = String::from_utf8_lossy(&stdout);
 
-    // Should be valid JSON
     let parsed: Result<serde_json::Value, _> = serde_json::from_str(&stdout_str);
     assert!(
         parsed.is_ok(),

@@ -5,8 +5,6 @@ use super::{Component, Rect};
 #[derive(Debug, Clone)]
 pub struct SnapshotOptions {
     pub interactive_only: bool,
-    /// Row threshold for Tab detection (elements on row <= threshold with inverse are Tabs).
-    /// Default: 2
     pub tab_row_threshold: u16,
 }
 
@@ -38,11 +36,6 @@ impl From<Rect> for Bounds {
     }
 }
 
-/// Reference to a detected UI element.
-///
-/// # Stability
-/// - `ref_id`: Sequential within a snapshot. Not stable across snapshots.
-/// - `visual_hash`: Uses `DefaultHasher`, stable within a session but not across binary versions.
 #[derive(Debug, Clone)]
 pub struct ElementRef {
     pub role: String,
@@ -86,7 +79,7 @@ pub fn format_snapshot(
     let mut lines = Vec::with_capacity(components.len());
     let mut ref_counter = 0usize;
     let mut interactive_count = 0usize;
-    // Preallocate for typical number of unique roles in a TUI screen
+
     let mut role_counts: HashMap<String, usize> = HashMap::with_capacity(16);
 
     for component in components {
@@ -104,7 +97,6 @@ pub fn format_snapshot(
         let name = component.text_content.trim();
         let role_str = component.role.to_string();
 
-        // Compute nth (0-indexed ordinal within same role)
         let entry = role_counts.entry(role_str.clone()).or_insert(0);
         let nth = *entry;
         *entry += 1;
@@ -408,19 +400,15 @@ mod tests {
         ];
         let snapshot = format_snapshot(&components, &SnapshotOptions::default());
 
-        // First button: nth=0
         let e1 = snapshot.refs.get("e1").unwrap();
         assert_eq!(e1.nth, Some(0));
 
-        // StaticText: nth=0 (first of its role)
         let e2 = snapshot.refs.get("e2").unwrap();
         assert_eq!(e2.nth, Some(0));
 
-        // Second button: nth=1
         let e3 = snapshot.refs.get("e3").unwrap();
         assert_eq!(e3.nth, Some(1));
 
-        // Third button: nth=2
         let e4 = snapshot.refs.get("e4").unwrap();
         assert_eq!(e4.nth, Some(2));
     }
@@ -562,7 +550,7 @@ mod tests {
             ) {
                 let snapshot = format_snapshot(&components, &SnapshotOptions::default());
 
-                // Group elements by role
+
                 let mut by_role: HashMap<String, Vec<usize>> = HashMap::new();
                 for elem in snapshot.refs.refs.values() {
                     by_role.entry(elem.role.clone())
@@ -570,7 +558,7 @@ mod tests {
                         .push(elem.nth.unwrap());
                 }
 
-                // Each role's nth values should be 0..n
+
                 for (role, mut nths) in by_role {
                     nths.sort();
                     let expected: Vec<usize> = (0..nths.len()).collect();

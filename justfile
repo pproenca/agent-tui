@@ -125,3 +125,15 @@ ast-grep-scan:
     @for rule in rules/rust-codemods/**/*.yml rules/clean-architecture/*.yml; do \
         ast-grep scan --rule "$$rule"; \
     done
+
+# Build Docker image for E2E tests (multi-stage build compiles in container)
+docker-build:
+    docker build -t agent-tui-e2e -f docker/Dockerfile .
+
+# Run E2E tests in Docker container
+docker-test: docker-build
+    docker run --rm agent-tui-e2e
+
+# Start interactive shell in Docker container for debugging
+docker-shell: docker-build
+    docker run --rm -it --entrypoint /bin/bash agent-tui-e2e

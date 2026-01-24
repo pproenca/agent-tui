@@ -213,7 +213,6 @@ impl DaemonServer {
     }
 }
 
-/// Initialize logging for the daemon.
 fn init_logging() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -225,7 +224,6 @@ fn init_logging() {
         .init();
 }
 
-/// Bind to the Unix socket, removing stale socket if needed.
 fn bind_socket(socket_path: &std::path::Path) -> Result<UnixSocketListener, DaemonError> {
     if socket_path.exists() {
         std::fs::remove_file(socket_path).map_err(|e| {
@@ -242,7 +240,6 @@ fn bind_socket(socket_path: &std::path::Path) -> Result<UnixSocketListener, Daem
     Ok(listener)
 }
 
-/// Run the main accept loop until shutdown is signaled.
 fn run_accept_loop(listener: &UnixSocketListener, pool: &ThreadPool, shutdown: &AtomicBool) {
     while !shutdown.load(Ordering::Relaxed) {
         match listener.accept() {
@@ -264,7 +261,6 @@ fn run_accept_loop(listener: &UnixSocketListener, pool: &ThreadPool, shutdown: &
     }
 }
 
-/// Wait for active connections to drain with timeout.
 fn wait_for_connections(server: &DaemonServer, timeout_secs: u64) {
     info!(
         active_connections = server.active_connections.load(Ordering::Relaxed),
@@ -280,7 +276,6 @@ fn wait_for_connections(server: &DaemonServer, timeout_secs: u64) {
     }
 }
 
-/// Clean up resources on shutdown.
 fn cleanup(
     socket_path: &std::path::Path,
     lock_path: &std::path::Path,
@@ -302,22 +297,12 @@ fn cleanup(
     info!("Daemon shutdown complete");
 }
 
-/// Start the daemon server.
-///
-/// This is the main entry point that orchestrates:
-/// 1. Logging initialization
-/// 2. Lock file acquisition (singleton enforcement)
-/// 3. Socket binding
-/// 4. Signal handler setup
-/// 5. Accept loop
-/// 6. Graceful shutdown
 pub fn start_daemon() -> Result<(), DaemonError> {
     init_logging();
 
     let socket_path = socket_path();
     let lock_path = socket_path.with_extension("lock");
 
-    // Acquire lock (holds until _lock is dropped)
     let _lock = LockFile::acquire(&lock_path)?;
 
     let listener = bind_socket(&socket_path)?;

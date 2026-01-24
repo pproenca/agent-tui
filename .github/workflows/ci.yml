@@ -139,10 +139,8 @@ jobs:
 
       - name: Run tests
         run: |
-          # Run lib and bin tests + e2e_daemon_tests (can run in parallel)
+          # Run lib and bin tests + e2e_daemon_tests (mock daemon tests can run in parallel)
           cargo test --release -p agent-tui --lib --bins --test e2e_daemon_tests
-          # Run e2e_workflow_tests single-threaded (they share daemon state)
-          cargo test --release -p agent-tui --test e2e_workflow_tests -- --test-threads=1
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
@@ -215,6 +213,28 @@ jobs:
       - name: Cleanup daemon
         if: always()
         run: agent-tui daemon stop || true
+
+  docker-e2e:
+    name: Docker E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build E2E Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          load: true
+          tags: agent-tui-e2e:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Docker E2E tests
+        run: docker run --rm agent-tui-e2e:test
 
   publish-check:
     name: Publish Dry-Run

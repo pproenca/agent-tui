@@ -27,6 +27,8 @@ DAEMON_PID=""   # Set by test_daemon_startup, used by cleanup
 # Logs an info message with yellow [INFO] prefix.
 # Arguments:
 #   $@: Message to log
+# Outputs:
+#   Writes info message to stdout
 #######################################
 log_info() {
     printf '%b[INFO]%b %s\n' "${YELLOW}" "${NC}" "$*"
@@ -38,6 +40,8 @@ log_info() {
 #   TESTS_PASSED: Incremented by 1
 # Arguments:
 #   $@: Message to log
+# Outputs:
+#   Writes pass message to stdout
 #######################################
 log_pass() {
     printf '%b[PASS]%b %s\n' "${GREEN}" "${NC}" "$*"
@@ -50,6 +54,8 @@ log_pass() {
 #   TESTS_FAILED: Incremented by 1
 # Arguments:
 #   $@: Message to log
+# Outputs:
+#   Writes fail message to stdout
 #######################################
 log_fail() {
     printf '%b[FAIL]%b %s\n' "${RED}" "${NC}" "$*"
@@ -60,12 +66,28 @@ log_fail() {
 # Logs a section header with decorative borders.
 # Arguments:
 #   $@: Section title
+# Outputs:
+#   Writes section header to stdout
 #######################################
 log_section() {
     printf '\n'
     printf '========================================\n'
     printf '%s\n' "$*"
     printf '========================================\n'
+}
+
+#######################################
+# Extracts session ID from agent-tui output.
+# Arguments:
+#   $1: Output from agent-tui run command
+# Outputs:
+#   Writes session ID to stdout, empty if not found
+#######################################
+extract_session_id() {
+    local output="$1"
+    grep -oE 'Session started: [0-9a-f]+' <<< "$output" \
+        | grep -oE '[0-9a-f]+$' \
+        | head -1
 }
 
 #######################################
@@ -84,7 +106,7 @@ cleanup() {
         kill "$DAEMON_PID" 2>/dev/null || true
     fi
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 #######################################
 # Test 1: Starts the daemon and verifies socket creation.
@@ -107,6 +129,11 @@ test_daemon_startup() {
     local timeout=${SOCKET_WAIT_TIMEOUT_ITERATIONS}
     local elapsed=0
     while [[ ! -S "${AGENT_TUI_SOCKET}" ]] && (( elapsed < timeout )); do
+        # Check if daemon process is still running
+        if ! kill -0 "${DAEMON_PID}" 2>/dev/null; then
+            log_fail "Daemon process died during startup"
+            return 1
+        fi
         sleep "${SOCKET_POLL_INTERVAL}"
         ((++elapsed)) || true
     done
@@ -143,7 +170,7 @@ test_spawn_htop() {
     output=$(agent-tui run htop 2>&1)
 
     # Extract session ID from output (format: "Session started: <8-char-hex>")
-    SESSION_ID=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    SESSION_ID=$(extract_session_id "$output")
 
     if [[ -z "${SESSION_ID}" ]]; then
         log_fail "Failed to extract session ID from output: $output"
@@ -291,7 +318,7 @@ test_type_changes_screen() {
     output=$(agent-tui run bash 2>&1)
 
     local bash_session
-    bash_session=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    bash_session=$(extract_session_id "$output")
 
     if [[ -z "${bash_session}" ]]; then
         log_fail "Failed to spawn bash session: $output"
@@ -356,7 +383,7 @@ test_multi_session_management() {
     local output_a
     output_a=$(agent-tui run bash 2>&1)
     local sess_a
-    sess_a=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output_a" | grep -oE '[0-9a-f]+$' | head -1)
+    sess_a=$(extract_session_id "$output_a")
 
     if [[ -z "${sess_a}" ]]; then
         log_fail "Failed to spawn first session"
@@ -369,7 +396,7 @@ test_multi_session_management() {
     local output_b
     output_b=$(agent-tui run bash 2>&1)
     local sess_b
-    sess_b=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output_b" | grep -oE '[0-9a-f]+$' | head -1)
+    sess_b=$(extract_session_id "$output_b")
 
     if [[ -z "${sess_b}" ]]; then
         log_fail "Failed to spawn second session"
@@ -446,7 +473,7 @@ test_wait_conditions() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -490,7 +517,7 @@ test_dead_session_operations() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -499,7 +526,7 @@ test_dead_session_operations() {
     log_pass "Session spawned: $sess"
 
     # Brief wait for initialization
-    sleep 0.5
+    sleep "${UI_UPDATE_DELAY}"
 
     # Kill the session
     if ! agent-tui kill --session "$sess"; then
@@ -531,7 +558,7 @@ test_click_nonexistent_element() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -568,7 +595,7 @@ test_pty_roundtrip() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -609,7 +636,7 @@ test_pty_roundtrip() {
     local snapshot
     snapshot=$(agent-tui screen --session "$sess" 2>&1)
     local count
-    count=$(grep -o "$marker" <<< "$snapshot" | wc -l)
+    count=$(grep -c "$marker" <<< "$snapshot" || echo 0)
 
     if (( count >= 2 )); then
         log_pass "PTY round-trip verified: marker appears $count times"
@@ -636,7 +663,7 @@ test_double_click() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -689,7 +716,7 @@ test_accessibility_snapshot() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -756,11 +783,11 @@ test_rapid_spawn_kill() {
     local iterations=5
     log_info "Rapidly spawning and killing $iterations sessions..."
 
-    for i in $(seq 1 "$iterations"); do
+    for ((i = 1; i <= iterations; i++)); do
         local output
         output=$(agent-tui run bash 2>&1)
         local sess
-        sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+        sess=$(extract_session_id "$output")
 
         if [[ -z "${sess}" ]]; then
             log_fail "Spawn $i failed"
@@ -778,7 +805,8 @@ test_rapid_spawn_kill() {
     # Verify no sessions left
     local sessions_list
     sessions_list=$(agent-tui -f json sessions 2>&1)
-    if grep -q '"sessions":\s*\[\]' <<< "$sessions_list" || ! grep -q '"id"' <<< "$sessions_list"; then
+    if grep -q '"sessions":\s*\[\]' <<< "$sessions_list" \
+        || ! grep -q '"id"' <<< "$sessions_list"; then
         log_pass "All sessions cleaned up"
     else
         log_info "Note: Some sessions may remain from earlier tests"
@@ -802,7 +830,7 @@ test_screen_elements_flag() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -848,7 +876,7 @@ test_screen_strip_ansi() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -889,7 +917,7 @@ test_screen_include_cursor() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -933,7 +961,7 @@ test_action_scroll() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -979,7 +1007,7 @@ test_action_focus() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1019,7 +1047,7 @@ test_action_clear() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1059,7 +1087,7 @@ test_action_selectall() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1099,7 +1127,7 @@ test_action_select_wrong_type() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1135,7 +1163,7 @@ test_action_fill() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1179,7 +1207,7 @@ test_wait_text_gone() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1219,7 +1247,7 @@ test_wait_assert_mode() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1270,7 +1298,7 @@ test_wait_dead_session() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1303,7 +1331,7 @@ test_wait_focused() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1343,7 +1371,7 @@ test_wait_element() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1387,7 +1415,7 @@ test_input_ctrl_c() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1401,7 +1429,7 @@ test_input_ctrl_c() {
     log_info "Starting long-running command..."
     agent-tui input 'sleep 100' --session "$sess" 2>/dev/null
     agent-tui input Enter --session "$sess" 2>/dev/null
-    sleep 0.5
+    sleep "${UI_UPDATE_DELAY}"
 
     # Send Ctrl+C
     log_info "Sending Ctrl+C..."
@@ -1421,7 +1449,8 @@ test_input_ctrl_c() {
     fi
 
     # Verify can still type
-    local marker="AFTER_CTRLC_$(date +%s)"
+    local marker
+    marker="AFTER_CTRLC_$(date +%s)"
     agent-tui input "echo $marker" --session "$sess" 2>/dev/null
     agent-tui input Enter --session "$sess" 2>/dev/null
 
@@ -1448,7 +1477,7 @@ test_input_hold_release() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1493,7 +1522,7 @@ test_invalid_key_name() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1505,8 +1534,8 @@ test_invalid_key_name() {
 
     # Try invalid key name - should either fail or be treated as text
     log_info "Testing invalid key name..."
-    local error_output
-    error_output=$(agent-tui input "InvalidKey12345" --session "$sess" 2>&1)
+    # Output intentionally discarded - we only care that it doesn't crash
+    agent-tui input "InvalidKey12345" --session "$sess" 2>&1 || true
 
     # May be treated as text to type (not an error) or may fail
     log_pass "Invalid key name handled (may be treated as text or rejected)"
@@ -1533,7 +1562,7 @@ test_run_custom_dimensions() {
     local output
     output=$(agent-tui run --cols 100 --rows 30 bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1578,7 +1607,7 @@ test_run_with_cwd() {
     local output
     output=$(agent-tui run --cwd /tmp bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1625,7 +1654,7 @@ test_run_command_not_found() {
     else
         # May create a session that immediately dies - check session list
         local sess
-        sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+        sess=$(extract_session_id "$output")
         if [[ -n "$sess" ]]; then
             # Session may exist but process died
             agent-tui kill --session "$sess" 2>/dev/null || true
@@ -1831,7 +1860,7 @@ test_global_session_flag() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1905,7 +1934,7 @@ test_recording_lifecycle() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1928,7 +1957,7 @@ test_recording_lifecycle() {
     # Do some activity
     agent-tui input "echo recording test" --session "$sess" 2>/dev/null
     agent-tui input Enter --session "$sess" 2>/dev/null
-    sleep 0.5
+    sleep "${UI_UPDATE_DELAY}"
 
     # Check recording status
     log_info "Testing record-status..."
@@ -1963,7 +1992,7 @@ test_recording_output_file() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -1983,7 +2012,7 @@ test_recording_output_file() {
     # Do some activity
     agent-tui input "echo test" --session "$sess" 2>/dev/null
     agent-tui input Enter --session "$sess" 2>/dev/null
-    sleep 0.5
+    sleep "${UI_UPDATE_DELAY}"
 
     # Stop recording with output file
     local recording_file="/tmp/e2e_recording_$$.json"
@@ -2016,7 +2045,7 @@ test_recording_asciicast() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -2036,7 +2065,7 @@ test_recording_asciicast() {
     # Do some activity
     agent-tui input "echo asciicast" --session "$sess" 2>/dev/null
     agent-tui input Enter --session "$sess" 2>/dev/null
-    sleep 0.5
+    sleep "${UI_UPDATE_DELAY}"
 
     # Stop with asciicast format
     local recording_file="/tmp/e2e_recording_$$.cast"
@@ -2069,7 +2098,7 @@ test_trace_commands() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -2125,7 +2154,7 @@ test_console_command() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -2169,7 +2198,7 @@ test_errors_command() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -2217,7 +2246,7 @@ test_session_id_prefix_matching() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -2282,7 +2311,7 @@ test_unicode_input() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"
@@ -2322,7 +2351,7 @@ test_long_command_output() {
     local output
     output=$(agent-tui run bash 2>&1)
     local sess
-    sess=$(grep -oE 'Session started: [0-9a-f]+' <<< "$output" | grep -oE '[0-9a-f]+$' | head -1)
+    sess=$(extract_session_id "$output")
 
     if [[ -z "${sess}" ]]; then
         log_fail "Failed to spawn session"

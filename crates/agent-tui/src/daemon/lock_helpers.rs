@@ -51,6 +51,7 @@ pub fn acquire_session_lock(
 mod tests {
     use super::*;
     use std::sync::Barrier;
+    use std::sync::Condvar;
 
     #[test]
     fn test_backoff_respects_max() {
@@ -123,28 +124,60 @@ mod tests {
 
     #[test]
     fn test_acquire_session_lock_succeeds_after_contention() {
-        // Simulates a lock held briefly by another thread that releases
+        // Uses Condvar to create deterministic sequence:
+        // 1. Worker acquires lock, signals main
+        // 2. Main tries (fails), signals worker
+        // 3. Worker releases lock
+        // 4. Main retries and succeeds
         let data = Arc::new(Mutex::new(42i32));
         let data_clone = Arc::clone(&data);
 
-        // Barrier ensures spawned thread signals it has the lock
-        let barrier = Arc::new(Barrier::new(2));
-        let barrier_clone = Arc::clone(&barrier);
+        // Synchronization state: (worker_has_lock, main_tried)
+        let sync = Arc::new((Mutex::new((false, false)), Condvar::new()));
+        let sync_clone = Arc::clone(&sync);
 
-        // Thread holds lock for 20ms then releases
         let handle = thread::spawn(move || {
             let _guard = data_clone.lock().unwrap();
-            barrier_clone.wait(); // Signal: lock acquired
-            thread::sleep(Duration::from_millis(20));
+
+            // Signal: I have the lock
+            {
+                let (lock, cvar) = &*sync_clone;
+                let mut state = lock.lock().unwrap();
+                state.0 = true;
+                cvar.notify_all();
+
+                // Wait until main has tried at least once
+                while !state.1 {
+                    state = cvar.wait(state).unwrap();
+                }
+            }
+            // Lock releases when _guard drops
         });
 
-        // Wait until spawned thread has the lock
-        barrier.wait();
+        // Wait until worker has the lock
+        {
+            let (lock, cvar) = &*sync;
+            let mut state = lock.lock().unwrap();
+            while !state.0 {
+                state = cvar.wait(state).unwrap();
+            }
+        }
 
-        // Now try to acquire with 100ms timeout - should succeed after ~20ms
+        // Verify contention exists
+        assert!(data.try_lock().is_err(), "Lock should be held by worker");
+
+        // Signal worker: main has tried
+        {
+            let (lock, cvar) = &*sync;
+            let mut state = lock.lock().unwrap();
+            state.1 = true;
+            cvar.notify_all();
+        }
+
+        // Retry - worker will release, we should succeed
         let start = Instant::now();
         let mut backoff = Duration::from_micros(100);
-        let timeout = Duration::from_millis(100);
+        let timeout = Duration::from_secs(5); // Generous timeout for CI
         let mut acquired = false;
 
         while start.elapsed() < timeout {
@@ -160,10 +193,6 @@ mod tests {
 
         handle.join().unwrap();
         assert!(acquired, "Should have acquired lock after contention");
-        assert!(
-            start.elapsed() >= Duration::from_millis(10),
-            "Should have waited for contention"
-        );
     }
 
     #[test]

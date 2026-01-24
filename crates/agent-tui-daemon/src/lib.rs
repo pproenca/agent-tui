@@ -35,7 +35,6 @@ pub use repository::SessionRepository;
 pub use repository::SessionSnapshot;
 pub use select_helpers::navigate_to_option;
 pub use select_helpers::parse_select_options;
-pub use select_helpers::strip_ansi_codes;
 pub use server::start_daemon;
 pub use session::ErrorEntry;
 pub use session::PersistedSession;

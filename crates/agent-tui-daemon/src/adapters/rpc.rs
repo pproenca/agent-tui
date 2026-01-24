@@ -1,6 +1,7 @@
 use agent_tui_ipc::{RpcRequest, RpcResponse, params};
 use serde_json::{Value, json};
 
+use super::snapshot_adapters::session_info_to_json;
 use crate::domain::{
     ClickInput, CountInput, CountOutput, DomainElement, FillInput, FindInput, KeystrokeInput,
     KillOutput, ResizeInput, ResizeOutput, ScrollInput, ScrollOutput, SessionsOutput,
@@ -96,7 +97,7 @@ pub fn spawn_output_to_response(id: u64, output: SpawnOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
-            "session_id": output.session_id,
+            "session_id": output.session_id.as_str(),
             "pid": output.pid
         }),
     )
@@ -121,10 +122,24 @@ pub fn parse_snapshot_input(request: &RpcRequest) -> SnapshotInput {
 }
 
 /// Convert SnapshotOutput to RpcResponse.
-pub fn snapshot_output_to_response(id: u64, output: SnapshotOutput) -> RpcResponse {
+///
+/// If `strip_ansi` is true, ANSI escape codes will be removed from the screen output.
+pub fn snapshot_output_to_response(
+    id: u64,
+    output: SnapshotOutput,
+    strip_ansi: bool,
+) -> RpcResponse {
+    use agent_tui_common::strip_ansi_codes;
+
+    let screen = if strip_ansi {
+        strip_ansi_codes(&output.screen)
+    } else {
+        output.screen
+    };
+
     let mut result = json!({
-        "session_id": output.session_id,
-        "screen": output.screen
+        "session_id": output.session_id.as_str(),
+        "screen": screen
     });
 
     if let Some(elements) = output.elements {
@@ -254,7 +269,7 @@ pub fn kill_output_to_response(id: u64, output: KillOutput) -> RpcResponse {
         id,
         json!({
             "success": output.success,
-            "session_id": output.session_id
+            "session_id": output.session_id.as_str()
         }),
     )
 }
@@ -264,8 +279,8 @@ pub fn sessions_output_to_response(id: u64, output: SessionsOutput) -> RpcRespon
     RpcResponse::success(
         id,
         json!({
-            "sessions": output.sessions.iter().map(|s| s.to_json()).collect::<Vec<_>>(),
-            "active_session": output.active_session
+            "sessions": output.sessions.iter().map(session_info_to_json).collect::<Vec<_>>(),
+            "active_session": output.active_session.as_ref().map(|id| id.as_str())
         }),
     )
 }
@@ -329,8 +344,7 @@ pub fn resize_output_to_response(id: u64, output: ResizeOutput) -> RpcResponse {
         id,
         json!({
             "success": output.success,
-            "session_id": output.session_id,
-            "size": { "cols": output.session_id, "rows": output.session_id }
+            "session_id": output.session_id.as_str()
         }),
     )
 }
@@ -341,8 +355,8 @@ pub fn restart_output_to_response(id: u64, output: RestartOutput) -> RpcResponse
         id,
         json!({
             "success": true,
-            "old_session_id": output.old_session_id,
-            "new_session_id": output.new_session_id,
+            "old_session_id": output.old_session_id.as_str(),
+            "new_session_id": output.new_session_id.as_str(),
             "command": output.command,
             "pid": output.pid
         }),
@@ -355,7 +369,7 @@ pub fn attach_output_to_response(id: u64, output: AttachOutput) -> RpcResponse {
         id,
         json!({
             "success": output.success,
-            "session_id": output.session_id,
+            "session_id": output.session_id.as_str(),
             "message": output.message
         }),
     )

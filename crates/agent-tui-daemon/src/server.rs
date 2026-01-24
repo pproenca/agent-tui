@@ -1,5 +1,6 @@
 use agent_tui_ipc::RpcResponse;
 use agent_tui_ipc::socket_path;
+use tracing::{error, info, warn};
 
 use crate::config::DaemonConfig;
 use crate::error::DaemonError;
@@ -73,7 +74,7 @@ impl ThreadPool {
                                 let lock = match receiver.lock() {
                                     Ok(l) => l,
                                     Err(e) => {
-                                        eprintln!("Worker {} receiver lock poisoned: {}", id, e);
+                                        error!(worker_id = id, error = %e, "Worker receiver lock poisoned");
                                         break;
                                     }
                                 };
@@ -91,7 +92,7 @@ impl ThreadPool {
                     }) {
                     Ok(h) => h,
                     Err(e) => {
-                        eprintln!("Failed to spawn worker {}: {}", id, e);
+                        error!(worker_id = id, error = %e, "Failed to spawn worker");
                         continue;
                     }
                 };
@@ -104,10 +105,10 @@ impl ThreadPool {
         }
 
         if workers.len() < size {
-            eprintln!(
-                "Warning: Only spawned {}/{} worker threads",
-                workers.len(),
-                size
+            warn!(
+                spawned = workers.len(),
+                requested = size,
+                "Only spawned partial worker threads"
             );
         }
 
@@ -156,7 +157,7 @@ impl DaemonServer {
         let sessions = self.session_manager.list();
         for info in sessions {
             if let Err(e) = self.session_manager.kill(info.id.as_str()) {
-                eprintln!("Warning: Failed to kill session {}: {}", info.id, e);
+                warn!(session_id = %info.id, error = %e, "Failed to kill session during shutdown");
             }
         }
     }
@@ -315,12 +316,12 @@ impl DaemonServer {
         let idle_timeout = DaemonConfig::from_env().idle_timeout;
 
         if let Err(e) = conn.set_read_timeout(Some(idle_timeout)) {
-            eprintln!("Failed to set read timeout: {}", e);
+            error!(error = %e, "Failed to set read timeout");
             return;
         }
 
         if let Err(e) = conn.set_write_timeout(Some(Duration::from_secs(30))) {
-            eprintln!("Failed to set write timeout: {}", e);
+            error!(error = %e, "Failed to set write timeout");
             return;
         }
 
@@ -349,7 +350,7 @@ impl DaemonServer {
                     continue;
                 }
                 Err(TransportError::Io(e)) => {
-                    eprintln!("Client connection error: {}", e);
+                    error!(error = %e, "Client connection error");
                     break;
                 }
             };
@@ -361,7 +362,7 @@ impl DaemonServer {
                 match e {
                     TransportError::ConnectionClosed => break,
                     _ => {
-                        eprintln!("Client write error: {}", e);
+                        error!(error = %e, "Client write error");
                         break;
                     }
                 }
@@ -371,6 +372,16 @@ impl DaemonServer {
 }
 
 pub fn start_daemon() -> Result<(), DaemonError> {
+    // Initialize tracing subscriber for logging
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
+        .with_target(false)
+        .with_writer(std::io::stderr)
+        .init();
+
     let socket_path = socket_path();
     let lock_path = socket_path.with_extension("lock");
 
@@ -407,8 +418,7 @@ pub fn start_daemon() -> Result<(), DaemonError> {
         .set_nonblocking(true)
         .map_err(|e| DaemonError::SocketBind(format!("failed to set non-blocking: {}", e)))?;
 
-    eprintln!("agent-tui daemon started on {}", socket_path.display());
-    eprintln!("PID: {}", std::process::id());
+    info!(socket = %socket_path.display(), pid = std::process::id(), "Daemon started");
 
     let shutdown = Arc::new(AtomicBool::new(false));
     let config = DaemonConfig::from_env();
@@ -421,7 +431,10 @@ pub fn start_daemon() -> Result<(), DaemonError> {
         .name("signal-handler".to_string())
         .spawn(move || {
             if let Some(sig) = signals.forever().next() {
-                eprintln!("\nReceived signal {}, initiating graceful shutdown...", sig);
+                info!(
+                    signal = sig,
+                    "Received signal, initiating graceful shutdown"
+                );
                 shutdown_signal.store(true, Ordering::SeqCst);
             }
         })
@@ -434,7 +447,7 @@ pub fn start_daemon() -> Result<(), DaemonError> {
         match listener.accept() {
             Ok(conn) => {
                 if let Err(conn) = pool.execute(conn) {
-                    eprintln!("Thread pool channel closed, dropping connection");
+                    warn!("Thread pool channel closed, dropping connection");
                     drop(conn);
                 }
             }
@@ -443,31 +456,31 @@ pub fn start_daemon() -> Result<(), DaemonError> {
             }
             Err(e) => {
                 if !shutdown.load(Ordering::Relaxed) {
-                    eprintln!("Error accepting connection: {}", e);
+                    error!(error = %e, "Error accepting connection");
                 }
             }
         }
     }
 
-    eprintln!("Shutting down daemon...");
+    info!("Shutting down daemon...");
 
-    eprintln!(
-        "Waiting for {} active connections to complete...",
-        server.active_connections.load(Ordering::Relaxed)
+    info!(
+        active_connections = server.active_connections.load(Ordering::Relaxed),
+        "Waiting for active connections to complete"
     );
     let shutdown_deadline = Instant::now() + Duration::from_secs(5);
     while server.active_connections.load(Ordering::Relaxed) > 0 {
         if Instant::now() > shutdown_deadline {
-            eprintln!("Shutdown timeout, forcing close");
+            warn!("Shutdown timeout, forcing close");
             break;
         }
         thread::sleep(Duration::from_millis(50));
     }
 
-    eprintln!("Cleaning up sessions...");
+    info!("Cleaning up sessions...");
     server.shutdown_all_sessions();
 
-    eprintln!("Stopping thread pool...");
+    info!("Stopping thread pool...");
     pool.shutdown();
 
     if socket_path.exists() {
@@ -478,6 +491,6 @@ pub fn start_daemon() -> Result<(), DaemonError> {
         let _ = std::fs::remove_file(&lock_path);
     }
 
-    eprintln!("Daemon shutdown complete.");
+    info!("Daemon shutdown complete");
     Ok(())
 }

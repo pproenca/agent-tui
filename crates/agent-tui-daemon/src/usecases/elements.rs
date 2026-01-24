@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use agent_tui_common::mutex_lock_or_recover;
 
+use agent_tui_core::Element;
+
 use crate::adapters::{core_element_to_domain, core_elements_to_domain};
 use crate::ansi_keys;
 use crate::domain::{
@@ -17,6 +19,75 @@ use crate::domain::{
 use crate::error::SessionError;
 use crate::repository::SessionRepository;
 use crate::select_helpers::navigate_to_option;
+
+// ============================================================================
+// Shared Element Filtering
+// ============================================================================
+
+/// Criteria for filtering elements. Used by Find and Count use cases.
+#[derive(Debug, Clone, Default)]
+pub struct ElementFilterCriteria {
+    /// Filter by element role/type (case-insensitive contains match)
+    pub role: Option<String>,
+    /// Filter by element name/label
+    pub name: Option<String>,
+    /// Filter by element text content
+    pub text: Option<String>,
+    /// Filter by focused state
+    pub focused: Option<bool>,
+    /// If true, name must match exactly; otherwise case-insensitive contains
+    pub exact: bool,
+}
+
+/// Filter elements based on the provided criteria.
+///
+/// Returns elements that match ALL specified criteria (AND logic).
+pub fn filter_elements<'a>(
+    elements: impl IntoIterator<Item = &'a Element>,
+    criteria: &ElementFilterCriteria,
+) -> Vec<&'a Element> {
+    elements
+        .into_iter()
+        .filter(|el| {
+            // Filter by role/element_type if specified
+            if let Some(ref role) = criteria.role {
+                let el_type = format!("{:?}", el.element_type).to_lowercase();
+                if !el_type.contains(&role.to_lowercase()) {
+                    return false;
+                }
+            }
+
+            // Filter by name/label if specified
+            if let Some(ref name) = criteria.name {
+                let el_label = el.label.as_deref().unwrap_or("");
+                if criteria.exact {
+                    if el_label != name {
+                        return false;
+                    }
+                } else if !el_label.to_lowercase().contains(&name.to_lowercase()) {
+                    return false;
+                }
+            }
+
+            // Filter by text if specified
+            if let Some(ref text) = criteria.text {
+                let el_text = el.label.as_deref().unwrap_or("").to_lowercase();
+                if !el_text.contains(&text.to_lowercase()) {
+                    return false;
+                }
+            }
+
+            // Filter by focused if specified
+            if let Some(focused) = criteria.focused {
+                if el.focused != focused {
+                    return false;
+                }
+            }
+
+            true
+        })
+        .collect()
+}
 
 pub trait ClickUseCase: Send + Sync {
     fn execute(&self, input: ClickInput) -> Result<ClickOutput, SessionError>;
@@ -105,58 +176,21 @@ impl<R: SessionRepository> FindUseCase for FindUseCaseImpl<R> {
         session_guard.update()?;
         let all_elements = session_guard.detect_elements();
 
-        let filtered: Vec<_> = all_elements
-            .iter()
-            .filter(|el| {
-                // Filter by role/element_type if specified
-                if let Some(ref role) = input.role {
-                    let el_type = format!("{:?}", el.element_type).to_lowercase();
-                    if !el_type.contains(&role.to_lowercase()) {
-                        return false;
-                    }
-                }
+        let criteria = ElementFilterCriteria {
+            role: input.role,
+            name: input.name,
+            text: input.text,
+            focused: input.focused,
+            exact: input.exact,
+        };
 
-                // Filter by name/label if specified
-                if let Some(ref name) = input.name {
-                    let el_label = el.label.as_deref().unwrap_or("");
-                    if input.exact {
-                        if el_label != name {
-                            return false;
-                        }
-                    } else if !el_label.to_lowercase().contains(&name.to_lowercase()) {
-                        return false;
-                    }
-                }
-
-                // Filter by text if specified
-                if let Some(ref text) = input.text {
-                    let el_text = el.label.as_deref().unwrap_or("").to_lowercase();
-                    if !el_text.contains(&text.to_lowercase()) {
-                        return false;
-                    }
-                }
-
-                // Filter by focused if specified
-                if let Some(focused) = input.focused {
-                    if el.focused != focused {
-                        return false;
-                    }
-                }
-
-                true
-            })
-            .cloned()
-            .collect();
+        let filtered = filter_elements(all_elements.iter(), &criteria);
 
         // Handle nth selection
-        let elements = if let Some(nth) = input.nth {
-            if nth < filtered.len() {
-                vec![filtered[nth].clone()]
-            } else {
-                vec![]
-            }
+        let elements: Vec<_> = if let Some(nth) = input.nth {
+            filtered.get(nth).into_iter().cloned().cloned().collect()
         } else {
-            filtered
+            filtered.into_iter().cloned().collect()
         };
 
         let count = elements.len();
@@ -231,30 +265,14 @@ impl<R: SessionRepository> CountUseCase for CountUseCaseImpl<R> {
         session_guard.update()?;
         let all_elements = session_guard.detect_elements();
 
-        let count = all_elements
-            .iter()
-            .filter(|el| {
-                if let Some(ref role) = input.role {
-                    let el_type = format!("{:?}", el.element_type).to_lowercase();
-                    if !el_type.contains(&role.to_lowercase()) {
-                        return false;
-                    }
-                }
-                if let Some(ref name) = input.name {
-                    let el_label = el.label.as_deref().unwrap_or("");
-                    if !el_label.to_lowercase().contains(&name.to_lowercase()) {
-                        return false;
-                    }
-                }
-                if let Some(ref text) = input.text {
-                    let el_text = el.label.as_deref().unwrap_or("").to_lowercase();
-                    if !el_text.contains(&text.to_lowercase()) {
-                        return false;
-                    }
-                }
-                true
-            })
-            .count();
+        let criteria = ElementFilterCriteria {
+            role: input.role,
+            name: input.name,
+            text: input.text,
+            ..Default::default()
+        };
+
+        let count = filter_elements(all_elements.iter(), &criteria).len();
 
         Ok(CountOutput { count })
     }

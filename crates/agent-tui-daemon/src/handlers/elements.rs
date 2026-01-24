@@ -5,14 +5,12 @@ use super::common::session_error_response;
 use crate::adapters::{
     count_output_to_response, element_to_json as adapter_element_to_json, fill_success_response,
     parse_count_input, parse_fill_input, parse_find_input, parse_scroll_input,
-    parse_snapshot_input, scroll_output_to_response, snapshot_to_dto,
+    parse_snapshot_input, scroll_output_to_response, snapshot_output_to_response, snapshot_to_dto,
 };
 use crate::domain::{
-    AccessibilitySnapshotInput, ClearInput, ClickInput, DomainElement, DoubleClickInput,
-    ElementStateInput, FocusInput, MultiselectInput, ScrollIntoViewInput, SelectAllInput,
-    SelectInput, ToggleInput,
+    AccessibilitySnapshotInput, ClearInput, ClickInput, DoubleClickInput, ElementStateInput,
+    FocusInput, MultiselectInput, ScrollIntoViewInput, SelectAllInput, SelectInput, ToggleInput,
 };
-use crate::select_helpers::strip_ansi_codes;
 use crate::usecases::{
     AccessibilitySnapshotUseCase, ClearUseCase, ClickUseCase, CountUseCase, DoubleClickUseCase,
     FillUseCase, FindUseCase, FocusUseCase, GetFocusedUseCase, GetTextUseCase, GetTitleUseCase,
@@ -21,30 +19,10 @@ use crate::usecases::{
     SnapshotUseCase, ToggleUseCase,
 };
 
-fn element_to_json(el: &DomainElement) -> Value {
-    json!({
-        "ref": el.element_ref,
-        "type": el.element_type.as_str(),
-        "label": el.label,
-        "value": el.value,
-        "position": {
-            "row": el.position.row,
-            "col": el.position.col,
-            "width": el.position.width,
-            "height": el.position.height
-        },
-        "focused": el.focused,
-        "selected": el.selected,
-        "checked": el.checked,
-        "disabled": el.disabled,
-        "hint": el.hint
-    })
-}
-
 /// Handle snapshot requests using the use case pattern.
 pub fn handle_snapshot_uc<U: SnapshotUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let input = parse_snapshot_input(&request);
-    let should_strip_ansi = request
+    let strip_ansi = request
         .params
         .as_ref()
         .and_then(|p| p.get("strip_ansi"))
@@ -53,32 +31,7 @@ pub fn handle_snapshot_uc<U: SnapshotUseCase>(usecase: &U, request: RpcRequest) 
     let req_id = request.id;
 
     match usecase.execute(input) {
-        Ok(output) => {
-            let mut screen = output.screen;
-            if should_strip_ansi {
-                screen = strip_ansi_codes(&screen);
-            }
-
-            let mut response = json!({
-                "session_id": output.session_id,
-                "screen": screen
-            });
-
-            if let Some(elements) = output.elements {
-                let elements_json: Vec<Value> = elements.iter().map(element_to_json).collect();
-                response["elements"] = json!(elements_json);
-            }
-
-            if let Some(cursor) = output.cursor {
-                response["cursor"] = json!({
-                    "row": cursor.row,
-                    "col": cursor.col,
-                    "visible": cursor.visible
-                });
-            }
-
-            RpcResponse::success(req_id, response)
-        }
+        Ok(output) => snapshot_output_to_response(req_id, output, strip_ansi),
         Err(e) => session_error_response(req_id, e),
     }
 }
@@ -105,7 +58,7 @@ pub fn handle_accessibility_snapshot_uc<U: AccessibilitySnapshotUseCase>(
             RpcResponse::success(
                 req_id,
                 json!({
-                    "session_id": output.session_id,
+                    "session_id": output.session_id.as_str(),
                     "tree": dto.tree,
                     "refs": dto.refs,
                     "stats": dto.stats
@@ -408,7 +361,7 @@ pub fn handle_get_title_uc<U: GetTitleUseCase>(usecase: &U, request: RpcRequest)
         Ok(output) => RpcResponse::success(
             req_id,
             json!({
-                "session_id": output.session_id,
+                "session_id": output.session_id.as_str(),
                 "title": output.title
             }),
         ),

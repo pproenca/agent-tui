@@ -168,7 +168,7 @@ pub fn handle_pty_read_uc<U: PtyReadUseCase>(usecase: &U, request: RpcRequest) -
         Ok(output) => RpcResponse::success(
             req_id,
             json!({
-                "session_id": output.session_id,
+                "session_id": output.session_id.as_str(),
                 "data": output.data,
                 "bytes_read": output.bytes_read
             }),
@@ -192,7 +192,7 @@ pub fn handle_pty_write_uc<U: PtyWriteUseCase>(usecase: &U, request: RpcRequest)
         Ok(output) => RpcResponse::success(
             req_id,
             json!({
-                "session_id": output.session_id,
+                "session_id": output.session_id.as_str(),
                 "bytes_written": output.bytes_written,
                 "success": output.success
             }),

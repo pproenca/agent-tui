@@ -84,6 +84,23 @@ fn element_ref_into_dto(element: DomainElementRef) -> ElementRefDto {
     }
 }
 
+use crate::domain::session_types::SessionInfo;
+
+/// Convert SessionInfo to JSON representation.
+///
+/// This adapter function handles serialization at the boundary,
+/// keeping the domain SessionInfo free of framework dependencies.
+pub fn session_info_to_json(info: &SessionInfo) -> serde_json::Value {
+    serde_json::json!({
+        "id": info.id.as_str(),
+        "command": info.command,
+        "pid": info.pid,
+        "running": info.running,
+        "created_at": info.created_at,
+        "size": { "cols": info.size.0, "rows": info.size.1 }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,5 +321,26 @@ mod tests {
         assert!(json.contains("checkbox"));
         assert!(json.contains("\"e1\""));
         assert!(json.contains("\"visual_hash\":99999"));
+    }
+
+    #[test]
+    fn test_session_info_to_json() {
+        use crate::domain::session_types::{SessionId, SessionInfo};
+
+        let info = SessionInfo {
+            id: SessionId::new("test"),
+            command: "bash".to_string(),
+            pid: 1234,
+            running: true,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            size: (80, 24),
+        };
+        let json = session_info_to_json(&info);
+        assert_eq!(json["id"], "test");
+        assert_eq!(json["command"], "bash");
+        assert_eq!(json["pid"], 1234);
+        assert_eq!(json["running"], true);
+        assert_eq!(json["size"]["cols"], 80);
+        assert_eq!(json["size"]["rows"], 24);
     }
 }

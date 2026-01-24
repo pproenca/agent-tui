@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_terminal::PtyError;
+use tracing::warn;
 
 use crate::domain::{
     ConsoleInput, ConsoleOutput, ErrorsInput, ErrorsOutput, HealthInput, HealthOutput,
@@ -63,7 +64,7 @@ impl<R: SessionRepository> ConsoleUseCase for ConsoleUseCaseImpl<R> {
         let mut session_guard = mutex_lock_or_recover(&session);
 
         if let Err(e) = session_guard.update() {
-            eprintln!("Warning: Session update failed during console: {}", e);
+            warn!(error = %e, "Session update failed during console");
         }
 
         let screen_text = session_guard.screen_text();

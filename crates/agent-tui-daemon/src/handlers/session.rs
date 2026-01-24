@@ -92,7 +92,7 @@ pub fn handle_resize<U: ResizeUseCase>(usecase: &U, request: RpcRequest) -> RpcR
                 request.id,
                 json!({
                     "success": full_output.success,
-                    "session_id": full_output.session_id,
+                    "session_id": full_output.session_id.as_str(),
                     "size": { "cols": cols, "rows": rows }
                 }),
             )

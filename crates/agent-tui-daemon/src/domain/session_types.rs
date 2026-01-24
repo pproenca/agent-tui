@@ -1,24 +1,27 @@
 //! Domain types for session management.
 //!
 //! These types belong to the domain layer and should not depend on infrastructure.
-
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+//!
+//! IMPORTANT: Domain types must not depend on framework crates like serde or uuid.
+//! Serialization is handled by adapter layers at the boundaries.
 
 /// Unique identifier for a session.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+///
+/// This is a value object that wraps a string identifier. ID generation
+/// happens in the infrastructure layer (see `IdGenerator`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SessionId(String);
 
 impl SessionId {
+    /// Create a new SessionId from a string.
+    ///
+    /// Use this when accepting IDs from external sources or from
+    /// infrastructure-generated IDs.
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
-    pub fn generate() -> Self {
-        Self(Uuid::new_v4().to_string()[..8].to_string())
-    }
-
+    /// Returns the session ID as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -89,18 +92,8 @@ pub struct SessionInfo {
     pub size: (u16, u16),
 }
 
-impl SessionInfo {
-    pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "id": self.id,
-            "command": self.command,
-            "pid": self.pid,
-            "running": self.running,
-            "created_at": self.created_at,
-            "size": { "cols": self.size.0, "rows": self.size.1 }
-        })
-    }
-}
+// Note: SessionInfo serialization is handled by session_info_to_json()
+// in the adapters layer to keep domain types framework-independent.
 
 #[cfg(test)]
 mod tests {
@@ -112,13 +105,8 @@ mod tests {
         assert_eq!(id.as_str(), "test123");
     }
 
-    #[test]
-    fn test_session_id_generate() {
-        let id1 = SessionId::generate();
-        let id2 = SessionId::generate();
-        assert_ne!(id1, id2);
-        assert_eq!(id1.as_str().len(), 8);
-    }
+    // Note: SessionId::generate() was moved to infrastructure layer.
+    // See IdGenerator in session.rs for ID generation tests.
 
     #[test]
     fn test_session_id_display() {
@@ -145,15 +133,8 @@ mod tests {
         assert_eq!(s, "test");
     }
 
-    #[test]
-    fn test_session_id_serialization() {
-        let id = SessionId::new("test123");
-        let json = serde_json::to_string(&id).unwrap();
-        assert_eq!(json, "\"test123\"");
-
-        let parsed: SessionId = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, id);
-    }
+    // Note: SessionId serde serialization was removed from domain layer.
+    // Serialization happens via adapters using .as_str() at boundaries.
 
     #[test]
     fn test_recording_frame_creation() {
@@ -217,20 +198,6 @@ mod tests {
         assert!(info.running);
     }
 
-    #[test]
-    fn test_session_info_to_json() {
-        let info = SessionInfo {
-            id: SessionId::new("test"),
-            command: "bash".to_string(),
-            pid: 1234,
-            running: true,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: (80, 24),
-        };
-        let json = info.to_json();
-        assert_eq!(json["id"], "test");
-        assert_eq!(json["command"], "bash");
-        assert_eq!(json["pid"], 1234);
-        assert_eq!(json["running"], true);
-    }
+    // Note: test_session_info_to_json was moved to adapters/snapshot_adapters.rs
+    // since serialization is now handled at the adapter layer.
 }

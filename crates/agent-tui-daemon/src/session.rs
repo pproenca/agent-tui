@@ -11,10 +11,13 @@ use std::sync::RwLock;
 use std::time::Duration;
 use std::time::Instant;
 
+use tracing::warn;
+
 use chrono::DateTime;
 use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
+use uuid::Uuid;
 
 use agent_tui_common::mutex_lock_or_recover;
 use agent_tui_common::rwlock_read_or_recover;
@@ -38,6 +41,14 @@ pub use crate::error::SessionError;
 const MAX_RECORDING_FRAMES: usize = 1000;
 const MAX_TRACE_ENTRIES: usize = 500;
 const MAX_ERROR_ENTRIES: usize = 500;
+
+/// Generate a new unique session ID.
+///
+/// This is the infrastructure-level ID generation that uses UUID.
+/// Domain layer SessionId only holds the string value.
+pub fn generate_session_id() -> SessionId {
+    SessionId::new(Uuid::new_v4().to_string()[..8].to_string())
+}
 
 fn get_last_n<T: Clone>(queue: &VecDeque<T>, count: usize) -> Vec<T> {
     let start = queue.len().saturating_sub(count);
@@ -465,7 +476,7 @@ impl SessionManager {
     pub fn with_max_sessions(max_sessions: usize) -> Self {
         let persistence = SessionPersistence::new();
         if let Err(e) = persistence.cleanup_stale_sessions() {
-            eprintln!("Warning: Failed to cleanup stale sessions: {}", e);
+            warn!(error = %e, "Failed to cleanup stale sessions");
         }
 
         Self {
@@ -496,7 +507,7 @@ impl SessionManager {
 
         let id = session_id
             .map(SessionId::new)
-            .unwrap_or_else(SessionId::generate);
+            .unwrap_or_else(generate_session_id);
 
         let pty = PtyHandle::spawn(command, args, cwd, env, cols, rows)?;
         let pid = pty.pid().unwrap_or(0);
@@ -506,7 +517,7 @@ impl SessionManager {
 
         let created_at = Utc::now().to_rfc3339();
         let persisted = PersistedSession {
-            id: id.clone(),
+            id: id.to_string(),
             command: command.to_string(),
             pid,
             created_at,
@@ -525,7 +536,7 @@ impl SessionManager {
         }
 
         if let Err(e) = self.persistence.add_session(persisted) {
-            eprintln!("Warning: Failed to persist session metadata: {}", e);
+            warn!(error = %e, "Failed to persist session metadata");
         }
 
         Ok((id, pid))
@@ -630,7 +641,7 @@ impl SessionManager {
         }
 
         if let Err(e) = self.persistence.remove_session(session_id) {
-            eprintln!("Warning: Failed to remove session from persistence: {}", e);
+            warn!(session_id = session_id, error = %e, "Failed to remove session from persistence");
         }
 
         Ok(())
@@ -645,9 +656,13 @@ impl SessionManager {
     }
 }
 
+/// Serializable session data for persistence.
+///
+/// Uses String for session ID to avoid framework dependencies
+/// in domain types. Converted to/from SessionId at boundaries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedSession {
-    pub id: SessionId,
+    pub id: String,
     pub command: String,
     pub pid: u32,
     pub created_at: String,
@@ -748,20 +763,20 @@ impl SessionPersistence {
                 match serde_json::from_reader(reader) {
                     Ok(sessions) => sessions,
                     Err(e) => {
-                        eprintln!(
-                            "Warning: Sessions file '{}' is corrupted ({}). Starting with empty session list.",
-                            self.path.display(),
-                            e
+                        warn!(
+                            path = %self.path.display(),
+                            error = %e,
+                            "Sessions file corrupted, starting with empty session list"
                         );
                         Vec::new()
                     }
                 }
             }
             Err(e) => {
-                eprintln!(
-                    "Warning: Failed to open sessions file '{}': {}",
-                    self.path.display(),
-                    e
+                warn!(
+                    path = %self.path.display(),
+                    error = %e,
+                    "Failed to open sessions file"
                 );
                 Vec::new()
             }
@@ -806,10 +821,7 @@ impl SessionPersistence {
         match self.acquire_lock() {
             Ok(_lock) => self.load_unlocked(),
             Err(e) => {
-                eprintln!(
-                    "Warning: Failed to acquire lock for loading sessions: {}",
-                    e
-                );
+                warn!(error = %e, "Failed to acquire lock for loading sessions");
                 self.load_unlocked()
             }
         }
@@ -871,7 +883,7 @@ fn is_process_running(pid: u32) -> bool {
 impl From<&SessionInfo> for PersistedSession {
     fn from(info: &SessionInfo) -> Self {
         PersistedSession {
-            id: info.id.clone(),
+            id: info.id.to_string(),
             command: info.command.clone(),
             pid: info.pid,
             created_at: info.created_at.clone(),
@@ -888,7 +900,7 @@ mod tests {
     #[test]
     fn test_persisted_session_serialization() {
         let session = PersistedSession {
-            id: SessionId::new("test123"),
+            id: "test123".to_string(),
             command: "bash".to_string(),
             pid: 12345,
             created_at: "2024-01-01T00:00:00Z".to_string(),

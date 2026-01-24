@@ -16,8 +16,13 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
-# Build release binary
-RUN cargo build --release -p agent-tui
+# Build release binary with BuildKit cache mounts for faster rebuilds
+# Note: Binary must be copied out of cache-mounted target directory before stage ends
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo build --release -p agent-tui && \
+    cp /build/target/release/agent-tui /build/agent-tui
 
 # Stage 2: Runtime image
 FROM debian:bookworm-slim
@@ -34,6 +39,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen
 
+# Create non-root user for running tests
+RUN groupadd -g 1001 testuser && \
+    useradd -u 1001 -g testuser -m -s /bin/bash testuser
+
 # Set locale and terminal environment
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
@@ -44,11 +53,14 @@ ENV LANG=en_US.UTF-8 \
 
 WORKDIR /app
 
-# Copy binary from builder stage
-COPY --from=builder /build/target/release/agent-tui /usr/local/bin/agent-tui
+# Copy binary from builder stage (from non-cache location)
+COPY --from=builder /build/agent-tui /usr/local/bin/agent-tui
 
-# Copy test script
-COPY docker/e2e-tests.sh /app/e2e-tests.sh
+# Copy test script with correct ownership
+COPY --chown=testuser:testuser docker/e2e-tests.sh /app/e2e-tests.sh
 RUN chmod +x /app/e2e-tests.sh
+
+# Switch to non-root user for running tests
+USER testuser
 
 ENTRYPOINT ["/app/e2e-tests.sh"]

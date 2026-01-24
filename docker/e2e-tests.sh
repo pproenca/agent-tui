@@ -16,24 +16,24 @@ TESTS_FAILED=0
 
 # Logging helpers
 log_info() {
-    echo -e "${YELLOW}[INFO]${NC} $1"
+    printf '%b[INFO]%b %s\n' "${YELLOW}" "${NC}" "$*"
 }
 
 log_pass() {
-    echo -e "${GREEN}[PASS]${NC} $1"
+    printf '%b[PASS]%b %s\n' "${GREEN}" "${NC}" "$*"
     ((++TESTS_PASSED)) || true
 }
 
 log_fail() {
-    echo -e "${RED}[FAIL]${NC} $1"
+    printf '%b[FAIL]%b %s\n' "${RED}" "${NC}" "$*"
     ((++TESTS_FAILED)) || true
 }
 
 log_section() {
-    echo ""
-    echo "========================================"
-    echo "$1"
-    echo "========================================"
+    printf '\n'
+    printf '========================================\n'
+    printf '%s\n' "$*"
+    printf '========================================\n'
 }
 
 # Cleanup function

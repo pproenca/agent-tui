@@ -682,6 +682,8 @@ pub struct ResizeInput {
 pub struct ResizeOutput {
     pub session_id: SessionId,
     pub success: bool,
+    pub cols: u16,
+    pub rows: u16,
 }
 
 #[derive(Debug, Clone)]

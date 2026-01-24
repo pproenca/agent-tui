@@ -230,6 +230,8 @@ impl<R: SessionRepository> ResizeUseCase for ResizeUseCaseImpl<R> {
         Ok(ResizeOutput {
             session_id: SessionId::from(guard.id.as_str()),
             success: true,
+            cols: input.cols,
+            rows: input.rows,
         })
     }
 }

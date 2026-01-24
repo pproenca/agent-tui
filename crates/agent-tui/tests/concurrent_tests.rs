@@ -158,7 +158,7 @@ fn test_rapid_connect_disconnect() {
     let handles: Vec<_> = (0..20)
         .map(|_| {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["status"]))
+            thread::spawn(move || harness.run(&["daemon", "status"]))
         })
         .collect();
 
@@ -185,7 +185,7 @@ fn test_mixed_commands_parallel() {
     let handles = vec![
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["status"]))
+            thread::spawn(move || h.run(&["daemon", "status"]))
         },
         {
             let h = Arc::clone(&harness);
@@ -197,7 +197,7 @@ fn test_mixed_commands_parallel() {
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["action", "@btn1"]))
+            thread::spawn(move || h.run(&["action", "@btn1", "click"]))
         },
     ];
 
@@ -207,9 +207,8 @@ fn test_mixed_commands_parallel() {
     }
 
     // Verify all different methods were called
-    // Note: Each command makes a version check (health call) plus its primary call
-    // status = 2 health, ls = 1 sessions + 1 health, snap = 1 snapshot + 1 health, click = 1 click + 1 health
-    assert_eq!(harness.call_count("health"), 5);
+    // daemon status = 1 health, sessions = 1 sessions + 1 health, screen = 1 snapshot + 1 health, action click = 1 click + 1 health
+    assert_eq!(harness.call_count("health"), 4);
     assert_eq!(harness.call_count("sessions"), 1);
     assert_eq!(harness.call_count("snapshot"), 1);
     assert_eq!(harness.call_count("click"), 1);
@@ -229,19 +228,19 @@ fn test_concurrent_errors_isolated() {
     let handles = vec![
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["status"]).success())
+            thread::spawn(move || h.run(&["daemon", "status"]).success())
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["action", "@missing"]).failure())
+            thread::spawn(move || h.run(&["action", "@missing", "click"]).failure())
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["status"]).success())
+            thread::spawn(move || h.run(&["daemon", "status"]).success())
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["action", "@missing"]).failure())
+            thread::spawn(move || h.run(&["action", "@missing", "click"]).failure())
         },
     ];
 
@@ -250,9 +249,8 @@ fn test_concurrent_errors_isolated() {
     }
 
     // Errors don't affect other commands
-    // Note: Each command makes a version check (health call) plus its primary call
-    // 2 status = 4 health, 2 click = 2 click + 2 health = 6 health total
-    assert_eq!(harness.call_count("health"), 6);
+    // 2 daemon status = 2 health, 2 action click = 2 click + 2 health = 4 health total
+    assert_eq!(harness.call_count("health"), 4);
     assert_eq!(harness.call_count("click"), 2);
 }
 
@@ -284,7 +282,7 @@ fn test_concurrent_with_delays() {
         let handles = vec![
             {
                 let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["status"]).success())
+                thread::spawn(move || h.run(&["daemon", "status"]).success())
             },
             {
                 let h = Arc::clone(&harness_clone);
@@ -318,7 +316,7 @@ fn test_many_parallel_health_checks() {
     let handles: Vec<_> = (0..50)
         .map(|_| {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["status"]))
+            thread::spawn(move || h.run(&["daemon", "status"]))
         })
         .collect();
 
@@ -331,9 +329,9 @@ fn test_many_parallel_health_checks() {
     }
 
     // All should succeed
-    // Note: Each status command makes 2 health calls (version check + actual status)
+    // Each daemon status command makes 1 health call
     assert_eq!(successes, 50);
-    assert_eq!(harness.call_count("health"), 100);
+    assert_eq!(harness.call_count("health"), 50);
 }
 
 // =============================================================================
@@ -370,7 +368,7 @@ fn test_concurrent_pty_read_write_no_deadlock() {
                 thread::spawn(move || {
                     // Simulate interleaved reads and writes
                     if i % 2 == 0 {
-                        h.run(&["status"]) // Simulates read path
+                        h.run(&["daemon", "status"]) // Simulates read path
                     } else {
                         h.run(&["input", "test"]) // Simulates write path
                     }
@@ -410,7 +408,7 @@ fn test_parallel_dbl_click_same_session() {
     let handles: Vec<_> = (0..4)
         .map(|_| {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["action", "-2", "@btn1"]).success())
+            thread::spawn(move || h.run(&["action", "@btn1", "dblclick"]).success())
         })
         .collect();
 
@@ -463,7 +461,7 @@ fn test_high_contention_lock_recovery() {
     let handles: Vec<_> = (0..8)
         .map(|_| {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["action", "@btn1"]))
+            thread::spawn(move || h.run(&["action", "@btn1", "click"]))
         })
         .collect();
 

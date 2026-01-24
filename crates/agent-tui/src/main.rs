@@ -65,6 +65,26 @@ fn main() {
     }
 }
 
+/// Check for version mismatch between CLI and daemon, print warning if found.
+fn check_version_mismatch<C: agent_tui_ipc::DaemonClient>(client: &mut C) {
+    use agent_tui_ipc::version::check_version;
+
+    if let Some(mismatch) = check_version(client, env!("CARGO_PKG_VERSION")) {
+        eprintln!(
+            "{} CLI version ({}) differs from daemon version ({})",
+            Colors::warning("Warning:"),
+            mismatch.cli_version,
+            mismatch.daemon_version
+        );
+        eprintln!(
+            "{} Run '{}' to update the daemon.",
+            Colors::dim("Hint:"),
+            Colors::info("agent-tui daemon restart")
+        );
+        eprintln!();
+    }
+}
+
 fn exit_code_for_client_error(error: &ClientError) -> i32 {
     use agent_tui_ipc::error_codes::ErrorCategory;
 
@@ -84,8 +104,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     color_init(cli.no_color);
 
-    if matches!(cli.command, Commands::Daemon) {
-        return start_daemon().map_err(Into::into);
+    // Handle daemon commands before connecting to daemon
+    if let Commands::Daemon(ref daemon_cmd) = cli.command {
+        use agent_tui::commands::DaemonCommand;
+        match daemon_cmd {
+            DaemonCommand::Start { foreground: true } => {
+                return start_daemon().map_err(Into::into);
+            }
+            DaemonCommand::Start { foreground: false } => {
+                agent_tui_ipc::start_daemon_background()?;
+                println!("Daemon started in background");
+                return Ok(());
+            }
+            // Other daemon commands need client connection, handled below
+            _ => {}
+        }
     }
 
     if let Commands::Completions { shell } = &cli.command {
@@ -111,11 +144,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // Check for version mismatch (skip for daemon commands and version command)
+    let is_daemon_cmd = matches!(cli.command, Commands::Daemon(_));
+    let is_version_cmd = matches!(cli.command, Commands::Version);
+    if !is_daemon_cmd && !is_version_cmd {
+        check_version_mismatch(&mut client);
+    }
+
     let format = cli.effective_format();
     let mut ctx = HandlerContext::new(&mut client, cli.session, format);
 
     match cli.command {
-        Commands::Daemon | Commands::Completions { .. } => unreachable!(),
+        Commands::Daemon(ref daemon_cmd) => {
+            use agent_tui::commands::DaemonCommand;
+            match daemon_cmd {
+                DaemonCommand::Start { .. } => unreachable!("Handled above"),
+                DaemonCommand::Stop { force } => handlers::handle_daemon_stop(&ctx, *force)?,
+                DaemonCommand::Status => handlers::handle_daemon_status(&mut ctx)?,
+                DaemonCommand::Restart => handlers::handle_daemon_restart(&ctx)?,
+            }
+        }
+        Commands::Completions { .. } => unreachable!(),
 
         Commands::Run {
             command,

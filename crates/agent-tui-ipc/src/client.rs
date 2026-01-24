@@ -17,6 +17,20 @@ use crate::socket::socket_path;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Polling configuration for daemon startup/shutdown.
+pub mod polling {
+    use std::time::Duration;
+
+    /// Maximum number of polls during daemon startup.
+    pub const MAX_STARTUP_POLLS: u32 = 50;
+    /// Initial delay between polls.
+    pub const INITIAL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+    /// Maximum delay between polls (after exponential backoff).
+    pub const MAX_POLL_INTERVAL: Duration = Duration::from_millis(500);
+    /// Timeout for daemon shutdown.
+    pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+}
+
 #[derive(Debug, Clone)]
 pub struct DaemonClientConfig {
     pub read_timeout: Duration,
@@ -271,18 +285,22 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
     };
 
     Command::new(exe)
-        .arg("daemon")
+        .args(["daemon", "start", "--foreground"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(stderr)
         .spawn()?;
 
-    for i in 0..50 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
+    let mut delay = polling::INITIAL_POLL_INTERVAL;
+    for i in 0..polling::MAX_STARTUP_POLLS {
+        std::thread::sleep(delay);
         if UnixSocketClient::is_daemon_running() {
             return Ok(());
         }
-        if i == 49 {
+        // Exponential backoff with cap
+        delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
+
+        if i == polling::MAX_STARTUP_POLLS - 1 {
             if let Ok(log_content) = std::fs::read_to_string(&log_path) {
                 let last_lines: String = log_content
                     .lines()
@@ -306,6 +324,86 @@ pub fn ensure_daemon() -> Result<UnixSocketClient, ClientError> {
     }
 
     UnixSocketClient::connect()
+}
+
+/// Clean up daemon socket and lock files.
+fn cleanup_daemon_files(socket: &std::path::Path) {
+    let _ = std::fs::remove_file(socket);
+    let _ = std::fs::remove_file(socket.with_extension("lock"));
+}
+
+/// Get the daemon PID from the lock file.
+pub fn get_daemon_pid() -> Option<u32> {
+    let lock_path = socket_path().with_extension("lock");
+    if !lock_path.exists() {
+        return None;
+    }
+
+    std::fs::read_to_string(&lock_path)
+        .ok()
+        .and_then(|content| content.trim().parse().ok())
+}
+
+/// Stop the running daemon.
+///
+/// If `force` is true, sends SIGKILL for immediate termination.
+/// Otherwise, sends SIGTERM for graceful shutdown.
+pub fn stop_daemon(force: bool) -> Result<(), ClientError> {
+    use std::time::{Duration, Instant};
+
+    let pid = get_daemon_pid().ok_or(ClientError::DaemonNotRunning)?;
+    let socket = socket_path();
+
+    // Convert PID to libc::pid_t, validating it fits
+    let pid_t: libc::pid_t = pid.try_into().map_err(|_| ClientError::InvalidResponse)?;
+
+    // Verify daemon is actually running with this PID
+    // SAFETY: kill(pid, 0) checks if process exists without sending a signal.
+    // The pid is read from our lock file and validated above.
+    let result = unsafe { libc::kill(pid_t, 0) };
+    let proc_exists = if result == 0 {
+        true
+    } else {
+        let err = std::io::Error::last_os_error();
+        match err.raw_os_error() {
+            Some(libc::ESRCH) => false, // No such process
+            Some(libc::EPERM) => true,  // Process exists but no permission
+            _ => return Err(ClientError::ConnectionFailed(err)),
+        }
+    };
+
+    if !proc_exists {
+        // PID doesn't exist, clean up stale files
+        cleanup_daemon_files(&socket);
+        return Err(ClientError::DaemonNotRunning);
+    }
+
+    // Send signal
+    let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+    // SAFETY: We verified the PID exists above. Sending SIGTERM/SIGKILL to our
+    // own daemon process is safe.
+    let result = unsafe { libc::kill(pid_t, signal) };
+
+    if result != 0 {
+        return Err(ClientError::ConnectionFailed(
+            std::io::Error::last_os_error(),
+        ));
+    }
+
+    // Wait for socket to be removed (with timeout)
+    let timeout = Duration::from_secs(10);
+    let start = Instant::now();
+
+    while socket.exists() && start.elapsed() < timeout {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    if socket.exists() {
+        // Force cleanup if still present
+        cleanup_daemon_files(&socket);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

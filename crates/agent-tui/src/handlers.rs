@@ -7,6 +7,7 @@ use agent_tui_common::Colors;
 use agent_tui_common::ValueExt;
 use agent_tui_ipc::ClientError;
 use agent_tui_ipc::DaemonClient;
+use agent_tui_ipc::UnixProcessController;
 use agent_tui_ipc::params;
 use agent_tui_ipc::socket_path;
 
@@ -1184,6 +1185,127 @@ pub fn handle_assert<C: DaemonClient>(
             }
         }
     }
+    Ok(())
+}
+
+// ============================================================================
+// Daemon lifecycle handlers
+// ============================================================================
+
+pub fn handle_daemon_stop<C: DaemonClient>(ctx: &HandlerContext<C>, force: bool) -> HandlerResult {
+    use agent_tui_ipc::{daemon_lifecycle, get_daemon_pid};
+
+    let pid = get_daemon_pid()
+        .ok_or_else(|| Box::new(ClientError::DaemonNotRunning) as Box<dyn std::error::Error>)?;
+
+    let controller = UnixProcessController;
+    let result = daemon_lifecycle::stop_daemon(&controller, pid, &socket_path(), force)?;
+
+    // Print warnings to stderr
+    for warning in &result.warnings {
+        eprintln!("{}", Colors::warning(warning));
+    }
+
+    ctx.presenter().present_success("Daemon stopped", None);
+    Ok(())
+}
+
+pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+    let cli_version = env!("CARGO_PKG_VERSION");
+
+    // Try to get daemon health
+    match ctx.client.call("health", None) {
+        Ok(result) => {
+            let daemon_version = result.str_or("version", "unknown");
+            let status = result.str_or("status", "unknown");
+            let pid = result.u64_or("pid", 0);
+            let uptime_ms = result.u64_or("uptime_ms", 0);
+            let session_count = result.u64_or("session_count", 0);
+
+            let version_mismatch = cli_version != daemon_version;
+
+            match ctx.format {
+                OutputFormat::Json => {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "running": true,
+                            "status": status,
+                            "pid": pid,
+                            "uptime_ms": uptime_ms,
+                            "session_count": session_count,
+                            "daemon_version": daemon_version,
+                            "cli_version": cli_version,
+                            "version_mismatch": version_mismatch
+                        })
+                    );
+                }
+                OutputFormat::Text => {
+                    println!(
+                        "{} {}",
+                        Colors::bold("Daemon status:"),
+                        Colors::success(status)
+                    );
+                    println!("  PID: {}", pid);
+                    println!("  Uptime: {}", format_uptime_ms(uptime_ms));
+                    println!("  Sessions: {}", session_count);
+                    println!("  Daemon version: {}", daemon_version);
+                    println!("  CLI version: {}", cli_version);
+
+                    if version_mismatch {
+                        eprintln!();
+                        eprintln!("{} Version mismatch detected!", Colors::warning("⚠"));
+                        eprintln!(
+                            "  Run '{}' to update the daemon.",
+                            Colors::info("agent-tui daemon restart")
+                        );
+                    }
+                }
+            }
+        }
+        Err(_) => match ctx.format {
+            OutputFormat::Json => {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "running": false,
+                        "cli_version": cli_version
+                    })
+                );
+            }
+            OutputFormat::Text => {
+                println!(
+                    "{} {}",
+                    Colors::bold("Daemon status:"),
+                    Colors::error("not running")
+                );
+                println!("  CLI version: {}", cli_version);
+            }
+        },
+    }
+    Ok(())
+}
+
+pub fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
+    use agent_tui_ipc::{daemon_lifecycle, get_daemon_pid, start_daemon_background};
+
+    if let OutputFormat::Text = ctx.format {
+        ctx.presenter().present_info("Restarting daemon...");
+    }
+
+    let controller = UnixProcessController;
+    let warnings = daemon_lifecycle::restart_daemon(
+        &controller,
+        get_daemon_pid,
+        &socket_path(),
+        start_daemon_background,
+    )?;
+
+    for warning in &warnings {
+        eprintln!("{}", Colors::warning(warning));
+    }
+
+    ctx.presenter().present_success("Daemon restarted", None);
     Ok(())
 }
 

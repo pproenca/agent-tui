@@ -1,0 +1,10 @@
+id: algo-use-sort-unstable
+language: rust
+severity: hint
+message: "Consider using sort_unstable() for faster sorting when equal element order doesn't matter"
+note: |
+  sort_unstable() is 10-30% faster because it doesn't preserve relative order of equal elements.
+  Only use sort() when you need stable sorting (preserving order of equal elements).
+rule:
+  pattern: $VEC.sort()
+fix: $VEC.sort_unstable()

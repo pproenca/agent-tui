@@ -41,4 +41,7 @@ cargo test --workspace
 printf '\n→ Checking for unused dependencies...\n'
 cargo machete
 
+printf '\n→ Checking version consistency...\n'
+node scripts/check-version.js --quiet
+
 printf '\nAll pre-push checks passed!\n'

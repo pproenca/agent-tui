@@ -44,6 +44,20 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+  version-check:
+    name: Check Version Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check versions match
+        run: node scripts/check-version.js
+
   lint:
     name: Clippy
     runs-on: ubuntu-latest

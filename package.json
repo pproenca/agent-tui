@@ -1,6 +1,6 @@
 {
   "name": "agent-tui",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "CLI tool for AI agents to interact with TUI applications",
   "license": "MIT",
   "repository": {
@@ -25,8 +25,9 @@
   },
   "scripts": {
     "build:native": "cargo build --release -p agent-tui && node scripts/copy-native.js",
-    "version:sync": "node scripts/sync-version.js",
+    "version:check": "node scripts/check-version.js",
     "preversion": "just ready",
+    "version": "echo 'ERROR: Use ./scripts/release.sh or just release-* instead' && exit 1",
     "postinstall": "node scripts/postinstall.js",
     "prepare": "husky"
   },

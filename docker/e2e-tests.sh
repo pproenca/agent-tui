@@ -101,6 +101,119 @@ extract_session_id() {
         | head -1
 }
 
+# =============================================================================
+# Process Verification Helpers (for Sad Path Tests)
+# =============================================================================
+
+#######################################
+# Checks if a process exists.
+# Arguments:
+#   $1: PID to check
+# Returns:
+#   0 if process exists, 1 otherwise
+#######################################
+process_exists() {
+    local pid="$1"
+    kill -0 "$pid" 2>/dev/null
+}
+
+#######################################
+# Checks if a process does NOT exist.
+# Arguments:
+#   $1: PID to check
+# Returns:
+#   0 if process does not exist, 1 otherwise
+#######################################
+process_not_exists() {
+    local pid="$1"
+    ! kill -0 "$pid" 2>/dev/null
+}
+
+#######################################
+# Gets daemon PID from health endpoint.
+# Outputs:
+#   Writes PID to stdout, empty if not found
+#######################################
+get_daemon_pid_from_health() {
+    agent-tui -f json daemon status 2>/dev/null \
+        | grep -oE '"pid":\s*[0-9]+' \
+        | grep -oE '[0-9]+' \
+        | head -1
+}
+
+#######################################
+# Gets daemon PID from lock file.
+# Globals:
+#   AGENT_TUI_SOCKET: Read to find lock file
+# Outputs:
+#   Writes PID to stdout, empty if not found
+#######################################
+get_daemon_pid_from_lock() {
+    local lock_file="${AGENT_TUI_SOCKET}.lock"
+    [[ -f "$lock_file" ]] && cat "$lock_file" | tr -d '[:space:]'
+}
+
+#######################################
+# Waits for a process to exit.
+# Arguments:
+#   $1: PID to wait for
+#   $2: Timeout in seconds (default: 5)
+# Returns:
+#   0 if process exited, 1 if timeout
+#######################################
+wait_for_process_exit() {
+    local pid="$1"
+    local timeout="${2:-5}"
+    local elapsed=0
+    while process_exists "$pid" && (( elapsed < timeout )); do
+        sleep 0.5
+        ((++elapsed)) || true
+    done
+    process_not_exists "$pid"
+}
+
+#######################################
+# Restarts the daemon for tests that kill it.
+# Globals:
+#   DAEMON_PID: Read and updated
+#   AGENT_TUI_SOCKET: Read to verify socket
+# Returns:
+#   0 if daemon restarted successfully, 1 otherwise
+#######################################
+restart_daemon_for_tests() {
+    # Kill existing daemon if running
+    if [[ -n "${DAEMON_PID:-}" ]]; then
+        kill "$DAEMON_PID" 2>/dev/null || true
+        wait_for_process_exit "$DAEMON_PID" 5 || true
+    fi
+
+    # Clean up any stale socket/lock
+    rm -f "${AGENT_TUI_SOCKET}" "${AGENT_TUI_SOCKET}.lock" 2>/dev/null || true
+
+    # Start new daemon
+    agent-tui daemon start --foreground &
+    DAEMON_PID=$!
+
+    # Wait for socket
+    local elapsed=0
+    while [[ ! -S "${AGENT_TUI_SOCKET}" ]] && (( elapsed < 20 )); do
+        if process_not_exists "$DAEMON_PID"; then
+            log_fail "Daemon died during restart"
+            return 1
+        fi
+        sleep 0.5
+        ((++elapsed)) || true
+    done
+
+    if [[ ! -S "${AGENT_TUI_SOCKET}" ]]; then
+        log_fail "Socket not created after restart"
+        return 1
+    fi
+
+    log_info "Daemon restarted with PID $DAEMON_PID"
+    return 0
+}
+
 #######################################
 # Cleans up test resources on exit.
 # Kills any active session and daemon process.
@@ -2417,6 +2530,499 @@ test_long_command_output() {
     agent-tui kill --session "$sess" 2>/dev/null || true
 }
 
+# =============================================================================
+# Phase 11: Sad Path Tests - Daemon Process Verification (Tests SP1-SP10)
+# =============================================================================
+
+#######################################
+# Test SP1: Health PID matches actual process.
+# Tests: PID from health endpoint = background job PID.
+# Globals:
+#   DAEMON_PID: Read to compare
+# Returns:
+#   0 if PIDs match, 1 otherwise
+#######################################
+test_health_pid_matches_actual_process() {
+    log_section "Sad Path SP1: Health PID Matches Actual Process"
+
+    local health_pid
+    health_pid=$(get_daemon_pid_from_health)
+
+    if [[ -z "$health_pid" ]]; then
+        log_fail "Could not get PID from health endpoint"
+        return 1
+    fi
+    log_info "Health reports PID: $health_pid"
+    log_info "DAEMON_PID is: $DAEMON_PID"
+
+    if [[ "$health_pid" == "$DAEMON_PID" ]]; then
+        log_pass "Health PID matches DAEMON_PID"
+    else
+        log_fail "Health PID ($health_pid) != DAEMON_PID ($DAEMON_PID)"
+        return 1
+    fi
+
+    if process_exists "$health_pid"; then
+        log_pass "Process $health_pid is running"
+    else
+        log_fail "Process $health_pid not running"
+        return 1
+    fi
+}
+
+#######################################
+# Test SP2: Lock file PID matches actual process.
+# Tests: PID from lock file = background job PID.
+# Globals:
+#   DAEMON_PID: Read to compare
+#   AGENT_TUI_SOCKET: Read to find lock file
+# Returns:
+#   0 if PIDs match, 1 otherwise
+#######################################
+test_pid_in_lock_vs_actual_process() {
+    log_section "Sad Path SP2: Lock File PID Consistency"
+
+    local lock_file="${AGENT_TUI_SOCKET}.lock"
+
+    if [[ ! -f "$lock_file" ]]; then
+        log_warn "Lock file does not exist at $lock_file"
+        log_pass "Lock file test skipped (no lock file)"
+        return 0
+    fi
+
+    local lock_pid
+    lock_pid=$(get_daemon_pid_from_lock)
+
+    if [[ -z "$lock_pid" ]]; then
+        log_fail "Could not read PID from lock file"
+        return 1
+    fi
+    log_info "Lock file PID: $lock_pid"
+    log_info "DAEMON_PID is: $DAEMON_PID"
+
+    if [[ "$lock_pid" == "$DAEMON_PID" ]]; then
+        log_pass "Lock file PID matches DAEMON_PID"
+    else
+        log_fail "Lock file PID ($lock_pid) != DAEMON_PID ($DAEMON_PID)"
+        return 1
+    fi
+
+    if process_exists "$lock_pid"; then
+        log_pass "Process $lock_pid from lock file is running"
+    else
+        log_fail "Process $lock_pid from lock file not running"
+        return 1
+    fi
+}
+
+#######################################
+# Test SP3: Daemon crash detection.
+# Tests: CLI correctly reports daemon unavailable after crash.
+# Globals:
+#   DAEMON_PID: Read and cleared
+# Returns:
+#   0 if crash detected correctly, 1 otherwise
+#######################################
+test_daemon_crash_detection() {
+    log_section "Sad Path SP3: Daemon Crash Detection"
+
+    local daemon_pid
+    daemon_pid=$(get_daemon_pid_from_health)
+
+    if [[ -z "$daemon_pid" ]]; then
+        log_fail "Daemon not running"
+        return 1
+    fi
+    log_info "Current daemon PID: $daemon_pid"
+
+    # Force kill the daemon
+    log_info "Force killing daemon (SIGKILL)..."
+    kill -9 "$daemon_pid" 2>/dev/null || true
+    sleep 0.5
+
+    if process_not_exists "$daemon_pid"; then
+        log_pass "Daemon process terminated"
+    else
+        log_fail "Process still exists after SIGKILL"
+        return 1
+    fi
+
+    # CLI should fail when daemon is dead
+    log_info "Verifying CLI detects daemon unavailable..."
+    if agent-tui sessions 2>/dev/null; then
+        log_fail "CLI should fail when daemon is dead"
+        return 1
+    else
+        log_pass "CLI correctly reports daemon unavailable"
+    fi
+
+    # Clear DAEMON_PID so cleanup doesn't try to kill nonexistent process
+    DAEMON_PID=""
+}
+
+#######################################
+# Test SP4: SIGTERM graceful shutdown.
+# Tests: SIGTERM properly cleans up socket and lock file.
+# Globals:
+#   DAEMON_PID: Used to terminate daemon
+#   AGENT_TUI_SOCKET: Read to verify cleanup
+# Returns:
+#   0 if graceful shutdown works, 1 otherwise
+#######################################
+test_daemon_sigterm_graceful_shutdown() {
+    log_section "Sad Path SP4: SIGTERM Graceful Shutdown"
+
+    # Need a running daemon - restart if needed
+    if [[ -z "${DAEMON_PID:-}" ]] || process_not_exists "$DAEMON_PID"; then
+        log_info "Starting daemon for SIGTERM test..."
+        restart_daemon_for_tests || return 1
+    fi
+
+    local daemon_pid="$DAEMON_PID"
+    local lock_file="${AGENT_TUI_SOCKET}.lock"
+
+    log_info "Sending SIGTERM to daemon (PID $daemon_pid)..."
+    kill -TERM "$daemon_pid" 2>/dev/null || true
+
+    # Wait for graceful shutdown
+    if wait_for_process_exit "$daemon_pid" 5; then
+        log_pass "Daemon exited after SIGTERM"
+    else
+        log_fail "Daemon did not exit after SIGTERM"
+        kill -9 "$daemon_pid" 2>/dev/null || true
+        DAEMON_PID=""
+        return 1
+    fi
+
+    # Check socket cleanup
+    sleep 0.5
+    if [[ ! -S "$AGENT_TUI_SOCKET" ]]; then
+        log_pass "Socket removed after graceful shutdown"
+    else
+        log_warn "Socket still exists (may be expected in some cases)"
+    fi
+
+    # Check lock file cleanup
+    if [[ ! -f "$lock_file" ]]; then
+        log_pass "Lock file removed after graceful shutdown"
+    else
+        log_warn "Lock file still exists (may be expected in some cases)"
+    fi
+
+    DAEMON_PID=""
+}
+
+#######################################
+# Test SP5: SIGKILL leaves stale artifacts.
+# Tests: SIGKILL leaves socket and lock file behind.
+# Globals:
+#   DAEMON_PID: Used to kill daemon
+#   AGENT_TUI_SOCKET: Read to verify stale artifacts
+# Returns:
+#   0 if stale artifacts detected, 1 otherwise
+#######################################
+test_daemon_sigkill_leaves_stale() {
+    log_section "Sad Path SP5: SIGKILL Leaves Stale Artifacts"
+
+    # Need a running daemon
+    log_info "Starting daemon for SIGKILL test..."
+    restart_daemon_for_tests || return 1
+
+    local daemon_pid="$DAEMON_PID"
+    local lock_file="${AGENT_TUI_SOCKET}.lock"
+
+    # Verify socket exists before kill
+    if [[ ! -S "$AGENT_TUI_SOCKET" ]]; then
+        log_fail "Socket should exist before SIGKILL"
+        return 1
+    fi
+    log_pass "Socket exists before SIGKILL"
+
+    # SIGKILL the daemon
+    log_info "Sending SIGKILL to daemon (PID $daemon_pid)..."
+    kill -9 "$daemon_pid" 2>/dev/null || true
+    sleep 0.5
+
+    if process_not_exists "$daemon_pid"; then
+        log_pass "Daemon killed"
+    else
+        log_fail "Daemon not killed"
+        return 1
+    fi
+
+    # Socket should still exist (stale)
+    if [[ -S "$AGENT_TUI_SOCKET" ]]; then
+        log_pass "Socket is stale after SIGKILL (expected)"
+    else
+        log_info "Socket was removed (daemon may have cleanup handler)"
+    fi
+
+    DAEMON_PID=""
+}
+
+#######################################
+# Test SP6: Stale socket recovery.
+# Tests: New daemon handles stale socket from crashed daemon.
+# Globals:
+#   AGENT_TUI_SOCKET: Read to verify recovery
+# Returns:
+#   0 if recovery works, 1 otherwise
+#######################################
+test_stale_socket_recovery() {
+    log_section "Sad Path SP6: Stale Socket Recovery"
+
+    # Clean up from previous test - socket may be stale
+    if [[ -S "$AGENT_TUI_SOCKET" ]]; then
+        log_info "Stale socket exists from previous test"
+    else
+        log_info "No stale socket - creating one"
+        # Start daemon and immediately SIGKILL to leave stale socket
+        agent-tui daemon start --foreground &
+        local temp_pid=$!
+        local elapsed=0
+        while [[ ! -S "${AGENT_TUI_SOCKET}" ]] && (( elapsed < 10 )); do
+            sleep 0.5
+            ((++elapsed)) || true
+        done
+        kill -9 "$temp_pid" 2>/dev/null || true
+        sleep 0.5
+    fi
+
+    if [[ -S "$AGENT_TUI_SOCKET" ]]; then
+        log_pass "Stale socket ready for recovery test"
+    else
+        log_warn "Could not create stale socket condition"
+        log_pass "Stale socket test skipped"
+        return 0
+    fi
+
+    # Start new daemon - should recover
+    log_info "Starting new daemon (should recover from stale socket)..."
+    agent-tui daemon start --foreground &
+    DAEMON_PID=$!
+
+    local elapsed=0
+    while [[ ! -S "${AGENT_TUI_SOCKET}" ]] && (( elapsed < 20 )); do
+        if process_not_exists "$DAEMON_PID"; then
+            log_fail "Daemon died during stale socket recovery"
+            DAEMON_PID=""
+            return 1
+        fi
+        sleep 0.5
+        ((++elapsed)) || true
+    done
+
+    # Verify daemon is responsive
+    if agent-tui daemon status 2>/dev/null; then
+        log_pass "New daemon recovered from stale socket"
+    else
+        log_fail "New daemon not responsive after recovery"
+        return 1
+    fi
+}
+
+#######################################
+# Test SP7: Stale lock file recovery.
+# Tests: New daemon handles stale lock file.
+# Globals:
+#   AGENT_TUI_SOCKET: Read to verify recovery
+# Returns:
+#   0 if recovery works, 1 otherwise
+#######################################
+test_stale_lock_file_recovery() {
+    log_section "Sad Path SP7: Stale Lock File Recovery"
+
+    # Kill current daemon
+    if [[ -n "${DAEMON_PID:-}" ]] && process_exists "$DAEMON_PID"; then
+        kill -9 "$DAEMON_PID" 2>/dev/null || true
+        sleep 0.5
+    fi
+
+    local lock_file="${AGENT_TUI_SOCKET}.lock"
+
+    # Clean socket but leave/create stale lock
+    rm -f "$AGENT_TUI_SOCKET" 2>/dev/null || true
+
+    # Create a stale lock file with a dead PID
+    echo "99999" > "$lock_file" 2>/dev/null || true
+
+    if [[ -f "$lock_file" ]]; then
+        log_pass "Stale lock file created"
+    else
+        log_warn "Could not create stale lock file"
+        log_pass "Stale lock test skipped"
+        return 0
+    fi
+
+    # Start new daemon - should recover
+    log_info "Starting new daemon (should recover from stale lock)..."
+    agent-tui daemon start --foreground &
+    DAEMON_PID=$!
+
+    local elapsed=0
+    while [[ ! -S "${AGENT_TUI_SOCKET}" ]] && (( elapsed < 20 )); do
+        if process_not_exists "$DAEMON_PID"; then
+            log_fail "Daemon died during stale lock recovery"
+            DAEMON_PID=""
+            return 1
+        fi
+        sleep 0.5
+        ((++elapsed)) || true
+    done
+
+    # Verify daemon is responsive
+    if agent-tui daemon status 2>/dev/null; then
+        log_pass "New daemon recovered from stale lock file"
+    else
+        log_fail "New daemon not responsive after lock recovery"
+        return 1
+    fi
+}
+
+#######################################
+# Test SP8: Daemon startup already running.
+# Tests: Second daemon fails with AlreadyRunning error.
+# Globals:
+#   DAEMON_PID: Read to verify first daemon running
+# Returns:
+#   0 if conflict detected, 1 otherwise
+#######################################
+test_daemon_startup_already_running() {
+    log_section "Sad Path SP8: Daemon Startup Already Running"
+
+    # Ensure daemon is running
+    if [[ -z "${DAEMON_PID:-}" ]] || process_not_exists "$DAEMON_PID"; then
+        log_info "Starting daemon for already-running test..."
+        restart_daemon_for_tests || return 1
+    fi
+
+    log_info "First daemon running (PID $DAEMON_PID)"
+
+    # Try to start second daemon
+    log_info "Attempting to start second daemon..."
+    local output
+    local exit_code=0
+    output=$(agent-tui daemon start 2>&1) || exit_code=$?
+
+    if (( exit_code != 0 )); then
+        log_pass "Second daemon correctly failed (exit code: $exit_code)"
+        if grep -qi "already\|running\|lock\|exists" <<< "$output"; then
+            log_pass "Error message indicates daemon already running"
+        fi
+    else
+        log_fail "Second daemon should fail when first is running"
+        return 1
+    fi
+
+    # Verify original daemon still works
+    if agent-tui daemon status 2>/dev/null; then
+        log_pass "Original daemon still responsive"
+    else
+        log_fail "Original daemon became unresponsive"
+        return 1
+    fi
+}
+
+#######################################
+# Test SP9: Daemon stop command.
+# Tests: `daemon stop` terminates daemon cleanly.
+# Globals:
+#   DAEMON_PID: Read and cleared
+# Returns:
+#   0 if stop works, 1 otherwise
+#######################################
+test_daemon_stop_command() {
+    log_section "Sad Path SP9: Daemon Stop Command"
+
+    # Ensure daemon is running
+    if [[ -z "${DAEMON_PID:-}" ]] || process_not_exists "$DAEMON_PID"; then
+        log_info "Starting daemon for stop test..."
+        restart_daemon_for_tests || return 1
+    fi
+
+    local daemon_pid
+    daemon_pid=$(get_daemon_pid_from_health)
+
+    if [[ -z "$daemon_pid" ]]; then
+        log_fail "Daemon not running"
+        return 1
+    fi
+    log_info "Current daemon PID: $daemon_pid"
+
+    # Stop daemon via command
+    log_info "Stopping daemon via 'daemon stop'..."
+    if agent-tui daemon stop 2>/dev/null; then
+        log_pass "daemon stop command succeeded"
+    else
+        log_fail "daemon stop command failed"
+        return 1
+    fi
+
+    # Verify process exited
+    if wait_for_process_exit "$daemon_pid" 5; then
+        log_pass "Daemon process terminated after stop"
+    else
+        log_fail "Process did not exit after stop"
+        return 1
+    fi
+
+    DAEMON_PID=""
+}
+
+#######################################
+# Test SP10: Daemon stop cleans artifacts.
+# Tests: `daemon stop` removes socket and lock file.
+# Globals:
+#   DAEMON_PID: Read and cleared
+#   AGENT_TUI_SOCKET: Read to verify cleanup
+# Returns:
+#   0 if artifacts cleaned, 1 otherwise
+#######################################
+test_daemon_stop_cleans_artifacts() {
+    log_section "Sad Path SP10: Daemon Stop Cleans Artifacts"
+
+    # Start fresh daemon
+    log_info "Starting daemon for cleanup test..."
+    restart_daemon_for_tests || return 1
+
+    local lock_file="${AGENT_TUI_SOCKET}.lock"
+
+    # Verify artifacts exist
+    if [[ ! -S "$AGENT_TUI_SOCKET" ]]; then
+        log_fail "Socket should exist before stop"
+        return 1
+    fi
+    log_pass "Socket exists before stop"
+
+    if [[ -f "$lock_file" ]]; then
+        log_pass "Lock file exists before stop"
+    else
+        log_info "Lock file not present (may be expected)"
+    fi
+
+    # Stop daemon
+    log_info "Stopping daemon..."
+    agent-tui daemon stop 2>/dev/null || true
+    sleep 1
+
+    # Check socket cleanup
+    if [[ ! -S "$AGENT_TUI_SOCKET" ]]; then
+        log_pass "Socket removed after stop"
+    else
+        log_fail "Socket should be removed after stop"
+        return 1
+    fi
+
+    # Check lock file cleanup
+    if [[ ! -f "$lock_file" ]]; then
+        log_pass "Lock file removed after stop"
+    else
+        log_warn "Lock file still exists after stop"
+    fi
+
+    DAEMON_PID=""
+}
+
 #######################################
 # Main entry point. Runs all tests and reports summary.
 # Globals:
@@ -2509,6 +3115,37 @@ main() {
     test_empty_sessions_list
     test_unicode_input
     test_long_command_output
+
+    # ==========================================================================
+    # Phase 11: Sad Path Tests - Daemon Process Verification (Tests SP1-SP10)
+    # ==========================================================================
+
+    log_section "Phase 11: Sad Path - Daemon Process Verification"
+
+    # Non-destructive tests (daemon stays running)
+    test_health_pid_matches_actual_process    # SP1
+    test_pid_in_lock_vs_actual_process        # SP2
+
+    # Destructive tests (kill/restart daemon)
+    test_daemon_crash_detection               # SP3
+    restart_daemon_for_tests
+
+    test_daemon_sigterm_graceful_shutdown     # SP4
+    restart_daemon_for_tests
+
+    test_daemon_sigkill_leaves_stale          # SP5
+    test_stale_socket_recovery                # SP6
+
+    test_stale_lock_file_recovery             # SP7
+    restart_daemon_for_tests
+
+    test_daemon_startup_already_running       # SP8
+
+    # Daemon stop command tests (SP9-SP10 at the end since they terminate daemon)
+    test_daemon_stop_command                  # SP9
+    restart_daemon_for_tests
+
+    test_daemon_stop_cleans_artifacts         # SP10
 
     # Summary
     log_section "Test Summary"

@@ -50,6 +50,7 @@ pub fn acquire_session_lock(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Barrier;
 
     #[test]
     fn test_backoff_respects_max() {
@@ -122,8 +123,6 @@ mod tests {
 
     #[test]
     fn test_acquire_session_lock_succeeds_after_contention() {
-        use std::sync::Barrier;
-
         // Simulates a lock held briefly by another thread that releases
         let data = Arc::new(Mutex::new(42i32));
         let data_clone = Arc::clone(&data);
@@ -161,12 +160,14 @@ mod tests {
 
         handle.join().unwrap();
         assert!(acquired, "Should have acquired lock after contention");
+        assert!(
+            start.elapsed() >= Duration::from_millis(10),
+            "Should have waited for contention"
+        );
     }
 
     #[test]
     fn test_acquire_session_lock_timeout_returns_none_under_contention() {
-        use std::sync::Barrier;
-
         // Tests that timeout is respected even under heavy contention
         let data = Arc::new(Mutex::new(42i32));
         let data_clone = Arc::clone(&data);

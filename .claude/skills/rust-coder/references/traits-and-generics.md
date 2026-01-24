@@ -269,3 +269,12 @@ fn get_fields(model: &Model) -> impl Iterator<Item = Field> + '_ {
     model.fields.iter().filter_map(|f| f.value.clone())
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Type Design](type-design.md) - Associated types and bounds
+- [Data Structures](data-structures.md) - Generic container traits
+- [Architecture](architecture.md) - Public trait design
+- [Macros](macros.md) - Derive macro patterns

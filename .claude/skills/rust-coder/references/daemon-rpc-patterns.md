@@ -979,3 +979,15 @@ Exit code conventions:
 - `0`: Success (found matches or completed successfully)
 - `1`: No results (search completed but no matches)
 - `2`: Error occurred
+
+---
+
+## Related Patterns
+
+- [Error Handling](error-handling.md) - Error types, context, and graceful degradation
+- [Concurrency](concurrency.md) - Thread coordination, channels, and synchronization
+- [Signal Handling](concurrency.md) - Interrupt handling patterns
+- [CLI Patterns](cli-patterns.md) - Command dispatch and argument parsing
+- [TUI Patterns](tui-patterns.md) - View state management and screen handling
+- [Serialization](serialization.md) - CBOR storage and data persistence
+- [Polling Patterns](polling-patterns.md) - Wait conditions and backoff strategies

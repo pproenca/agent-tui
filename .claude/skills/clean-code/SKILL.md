@@ -3,18 +3,27 @@ name: clean-code
 description: Clean Code principles from Robert C. Martin's seminal handbook. This skill should be used when writing, reviewing, or refactoring code to ensure maintainable, readable, and professional-quality implementations. Triggers on code reviews, refactoring tasks, naming discussions, function design, error handling, and test writing.
 ---
 
-# Robert C. Martin (Uncle Bob) Clean Code Best Practices
+# Clean Code Rules
 
-Comprehensive software craftsmanship guide based on Robert C. Martin's "Clean Code: A Handbook of Agile Software Craftsmanship". Contains 45 rules across 8 categories, prioritized by impact to guide code reviews, refactoring decisions, and new development.
+45 rules across 8 categories, prioritized by impact.
 
-## When to Apply
+## Usage
 
-Reference these guidelines when:
-- Writing new functions, classes, or modules
-- Naming variables, functions, classes, or files
-- Reviewing code for maintainability issues
-- Refactoring existing code to improve clarity
-- Writing or improving unit tests
+When reviewing code:
+1. Identify the most relevant categories (Names, Functions, Error Handling, etc.)
+2. Load the specific reference files needed
+3. Evaluate code against those rules
+4. Report violations with rule IDs (e.g., `func-small`) and specific fixes
+
+## Which Rules to Check
+
+| If reviewing... | Check these categories |
+|-----------------|------------------------|
+| Variable/function/class names | Names (1) |
+| Long or complex functions | Functions (2) |
+| Code with many comments | Comments (3) |
+| Exception/error code | Error Handling (6) |
+| Test code | Unit Tests (7) |
 
 ## Rule Categories by Priority
 
@@ -99,18 +108,3 @@ Reference these guidelines when:
 - [`class-organize-for-change`](references/class-organize-for-change.md) - Organize classes for change
 - [`class-isolate-from-change`](references/class-isolate-from-change.md) - Isolate classes from change
 - [`class-separate-concerns`](references/class-separate-concerns.md) - Separate construction from use
-
-## How to Use
-
-Read individual reference files for detailed explanations and code examples:
-
-- [Section definitions](references/_sections.md) - Category structure and impact levels
-- [Rule template](assets/templates/_template.md) - Template for adding new rules
-
-## Reference Files
-
-| File | Description |
-|------|-------------|
-| [references/_sections.md](references/_sections.md) | Category definitions and ordering |
-| [assets/templates/_template.md](assets/templates/_template.md) | Template for new rules |
-| [metadata.json](metadata.json) | Version and reference information |

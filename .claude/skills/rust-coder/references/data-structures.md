@@ -441,3 +441,12 @@ impl FullModel {
     }
 }
 ```
+
+---
+
+## Related Patterns
+
+- [Type Design](type-design.md) - Composite types and field design
+- [Traits & Generics](traits-and-generics.md) - Generic container traits
+- [Performance](performance.md) - Memory-efficient data structures
+- [Serialization](serialization.md) - Serializing complex structures

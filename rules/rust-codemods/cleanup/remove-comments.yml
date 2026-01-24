@@ -1,0 +1,9 @@
+id: remove-comments
+language: rust
+severity: hint
+message: Remove comment from code
+rule:
+  any:
+    - kind: line_comment
+    - kind: block_comment
+fix: ""

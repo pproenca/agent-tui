@@ -602,7 +602,21 @@ pub fn handle_find<C: DaemonClient>(
     Ok(())
 }
 
+/// Unified select handler that routes to single or multi-select based on option count.
+/// This keeps the business logic in the handler layer rather than the controller.
 pub fn handle_select<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    element_ref: String,
+    options: Vec<String>,
+) -> HandlerResult {
+    if options.len() == 1 {
+        handle_select_single(ctx, element_ref, options.into_iter().next().unwrap())
+    } else {
+        handle_select_multiple(ctx, element_ref, options)
+    }
+}
+
+fn handle_select_single<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     element_ref: String,
     option: String,
@@ -612,7 +626,7 @@ pub fn handle_select<C: DaemonClient>(
     ctx.output_success_and_ok(&result, &format!("Selected: {}", option), "Select failed")
 }
 
-pub fn handle_multiselect<C: DaemonClient>(
+fn handle_select_multiple<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     element_ref: String,
     options: Vec<String>,

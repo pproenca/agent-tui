@@ -25,7 +25,7 @@ impl RealTestHarness {
             PathBuf::from(format!("/tmp/agent-tui-test-{}.sock", uuid::Uuid::new_v4()));
 
         let mut daemon_process = Command::new(env!("CARGO_BIN_EXE_agent-tui"))
-            .arg("daemon")
+            .args(["daemon", "start", "--foreground"])
             .env("AGENT_TUI_SOCKET", &daemon_socket)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())

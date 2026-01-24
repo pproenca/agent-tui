@@ -67,21 +67,32 @@ fn main() {
 
 /// Check for version mismatch between CLI and daemon, print warning if found.
 fn check_version_mismatch<C: agent_tui_ipc::DaemonClient>(client: &mut C) {
-    use agent_tui_ipc::version::check_version;
+    use agent_tui_ipc::version::{VersionCheckResult, check_version};
 
-    if let Some(mismatch) = check_version(client, env!("CARGO_PKG_VERSION")) {
-        eprintln!(
-            "{} CLI version ({}) differs from daemon version ({})",
-            Colors::warning("Warning:"),
-            mismatch.cli_version,
-            mismatch.daemon_version
-        );
-        eprintln!(
-            "{} Run '{}' to update the daemon.",
-            Colors::dim("Hint:"),
-            Colors::info("agent-tui daemon restart")
-        );
-        eprintln!();
+    match check_version(client, env!("CARGO_PKG_VERSION")) {
+        VersionCheckResult::Match => {}
+        VersionCheckResult::Mismatch(mismatch) => {
+            eprintln!(
+                "{} CLI version ({}) differs from daemon version ({})",
+                Colors::warning("Warning:"),
+                mismatch.cli_version,
+                mismatch.daemon_version
+            );
+            eprintln!(
+                "{} Run '{}' to update the daemon.",
+                Colors::dim("Hint:"),
+                Colors::info("agent-tui daemon restart")
+            );
+            eprintln!();
+        }
+        VersionCheckResult::CheckFailed(err) => {
+            // Log warning but don't fail - version check is best effort
+            eprintln!(
+                "{} Could not check daemon version: {}",
+                Colors::dim("Note:"),
+                err
+            );
+        }
     }
 }
 

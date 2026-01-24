@@ -255,4 +255,46 @@ mod tests {
         assert!(started.load(std::sync::atomic::Ordering::SeqCst));
         assert_eq!(mock.signals_sent(), vec![(1234, Signal::Term)]);
     }
+
+    #[test]
+    fn test_restart_daemon_start_fails_after_stop() {
+        let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
+        let dir = tempdir().unwrap();
+        let socket = dir.path().join("test.sock");
+
+        let result = restart_daemon(
+            &mock,
+            || Some(1234),
+            &socket,
+            || Err(ClientError::DaemonNotRunning), // Simulate start failure
+        );
+
+        // Error should propagate from start_fn
+        assert!(matches!(result, Err(ClientError::DaemonNotRunning)));
+        // Stop should have been called
+        assert_eq!(mock.signals_sent(), vec![(1234, Signal::Term)]);
+    }
+
+    #[test]
+    fn test_restart_daemon_start_fails_when_not_running() {
+        let mock = MockProcessController::new();
+        let dir = tempdir().unwrap();
+        let socket = dir.path().join("test.sock");
+
+        let result = restart_daemon(
+            &mock,
+            || None, // Daemon not running
+            &socket,
+            || {
+                Err(ClientError::ConnectionFailed(std::io::Error::other(
+                    "Failed to start daemon",
+                )))
+            },
+        );
+
+        // Error should propagate from start_fn
+        assert!(matches!(result, Err(ClientError::ConnectionFailed(_))));
+        // No stop signal should have been sent (daemon wasn't running)
+        assert!(mock.signals_sent().is_empty());
+    }
 }

@@ -603,6 +603,8 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
     let sessions = sessions_result.get("sessions").and_then(|v| v.as_array());
 
     let mut cleaned = 0;
+    let mut failed: Vec<(String, String)> = Vec::new();
+
     if let Some(sessions) = sessions {
         for session in sessions {
             let id = session.get("id").and_then(|v| v.as_str());
@@ -610,10 +612,15 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
             if should_cleanup {
                 if let Some(id) = id {
                     let params = json!({ "session": id });
-                    if ctx.client.call("kill", Some(params)).is_ok() {
-                        cleaned += 1;
-                        if ctx.format == OutputFormat::Text {
-                            println!("Cleaned up session: {}", id);
+                    match ctx.client.call("kill", Some(params)) {
+                        Ok(_) => {
+                            cleaned += 1;
+                            if ctx.format == OutputFormat::Text {
+                                println!("Cleaned up session: {}", id);
+                            }
+                        }
+                        Err(e) => {
+                            failed.push((id.to_string(), e.to_string()));
                         }
                     }
                 }
@@ -623,7 +630,18 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
 
     match ctx.format {
         OutputFormat::Json => {
-            println!("{}", json!({ "sessions_cleaned": cleaned }));
+            let failed_json: Vec<_> = failed
+                .iter()
+                .map(|(id, err)| json!({"session": id, "error": err}))
+                .collect();
+            println!(
+                "{}",
+                json!({
+                    "sessions_cleaned": cleaned,
+                    "sessions_failed": failed.len(),
+                    "failures": failed_json
+                })
+            );
         }
         OutputFormat::Text => {
             if cleaned > 0 {
@@ -632,8 +650,20 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
                     Colors::success("Done:"),
                     cleaned
                 );
-            } else {
+            } else if failed.is_empty() {
                 println!("{}", Colors::dim("No sessions to clean up"));
+            }
+
+            if !failed.is_empty() {
+                eprintln!();
+                eprintln!(
+                    "{} Failed to clean up {} session(s):",
+                    Colors::error("Error:"),
+                    failed.len()
+                );
+                for (id, err) in &failed {
+                    eprintln!("  {}: {}", Colors::session_id(id), err);
+                }
             }
         }
     }
@@ -1193,10 +1223,20 @@ pub fn handle_assert<C: DaemonClient>(
 // ============================================================================
 
 pub fn handle_daemon_stop<C: DaemonClient>(ctx: &HandlerContext<C>, force: bool) -> HandlerResult {
-    use agent_tui_ipc::{daemon_lifecycle, get_daemon_pid};
+    use agent_tui_ipc::{PidLookupResult, daemon_lifecycle, get_daemon_pid};
 
-    let pid = get_daemon_pid()
-        .ok_or_else(|| Box::new(ClientError::DaemonNotRunning) as Box<dyn std::error::Error>)?;
+    let pid = match get_daemon_pid() {
+        PidLookupResult::Found(pid) => pid,
+        PidLookupResult::NotRunning => {
+            return Err(Box::new(ClientError::DaemonNotRunning));
+        }
+        PidLookupResult::Error(msg) => {
+            return Err(Box::new(ClientError::SignalFailed {
+                pid: 0,
+                message: msg,
+            }));
+        }
+    };
 
     let controller = UnixProcessController;
     let result = daemon_lifecycle::stop_daemon(&controller, pid, &socket_path(), force)?;
@@ -1263,21 +1303,23 @@ pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Han
                 }
             }
         }
-        Err(_) => match ctx.format {
+        Err(e) => match ctx.format {
             OutputFormat::Json => {
                 println!(
                     "{}",
                     serde_json::json!({
                         "running": false,
-                        "cli_version": cli_version
+                        "cli_version": cli_version,
+                        "error": e.to_string()
                     })
                 );
             }
             OutputFormat::Text => {
                 println!(
-                    "{} {}",
+                    "{} {} ({})",
                     Colors::bold("Daemon status:"),
-                    Colors::error("not running")
+                    Colors::error("not running"),
+                    Colors::dim(&e.to_string())
                 );
                 println!("  CLI version: {}", cli_version);
             }
@@ -1287,16 +1329,36 @@ pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Han
 }
 
 pub fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
-    use agent_tui_ipc::{daemon_lifecycle, get_daemon_pid, start_daemon_background};
+    use agent_tui_ipc::{
+        PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background,
+    };
 
     if let OutputFormat::Text = ctx.format {
         ctx.presenter().present_info("Restarting daemon...");
     }
 
     let controller = UnixProcessController;
+
+    // Wrap get_daemon_pid to convert PidLookupResult to Option<u32>
+    // For restart, if we can't read the PID file, log warning and continue
+    let get_pid = || -> Option<u32> {
+        match get_daemon_pid() {
+            PidLookupResult::Found(pid) => Some(pid),
+            PidLookupResult::NotRunning => None,
+            PidLookupResult::Error(msg) => {
+                eprintln!(
+                    "{} Could not read daemon PID: {}",
+                    Colors::warning("Warning:"),
+                    msg
+                );
+                None
+            }
+        }
+    };
+
     let warnings = daemon_lifecycle::restart_daemon(
         &controller,
-        get_daemon_pid,
+        get_pid,
         &socket_path(),
         start_daemon_background,
     )?;

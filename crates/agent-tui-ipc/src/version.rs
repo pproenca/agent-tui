@@ -5,6 +5,7 @@ use agent_tui_common::ValueExt;
 use crate::client::DaemonClient;
 
 /// Version mismatch information.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionMismatch {
     /// CLI version.
     pub cli_version: String,
@@ -12,24 +13,36 @@ pub struct VersionMismatch {
     pub daemon_version: String,
 }
 
+/// Result of version check operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VersionCheckResult {
+    /// CLI and daemon versions match.
+    Match,
+    /// CLI and daemon versions differ.
+    Mismatch(VersionMismatch),
+    /// Could not check version (daemon not running or RPC error).
+    CheckFailed(String),
+}
+
 /// Check for version mismatch between CLI and daemon.
 ///
-/// Returns `Some(VersionMismatch)` if versions differ, `None` if they match
-/// or if the daemon is not running.
-pub fn check_version<C: DaemonClient>(
-    client: &mut C,
-    cli_version: &str,
-) -> Option<VersionMismatch> {
-    let health = client.call("health", None).ok()?;
-    let daemon_version = health.str_or("version", "unknown");
-
-    if cli_version != daemon_version {
-        Some(VersionMismatch {
-            cli_version: cli_version.to_string(),
-            daemon_version: daemon_version.to_string(),
-        })
-    } else {
-        None
+/// Returns `VersionCheckResult::Match` if versions are the same,
+/// `VersionCheckResult::Mismatch` with details if different,
+/// or `VersionCheckResult::CheckFailed` if the check could not be performed.
+pub fn check_version<C: DaemonClient>(client: &mut C, cli_version: &str) -> VersionCheckResult {
+    match client.call("health", None) {
+        Err(e) => VersionCheckResult::CheckFailed(e.to_string()),
+        Ok(health) => {
+            let daemon_version = health.str_or("version", "unknown");
+            if cli_version != daemon_version {
+                VersionCheckResult::Mismatch(VersionMismatch {
+                    cli_version: cli_version.to_string(),
+                    daemon_version: daemon_version.to_string(),
+                })
+            } else {
+                VersionCheckResult::Match
+            }
+        }
     }
 }
 
@@ -40,7 +53,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn test_version_match_returns_none() {
+    fn test_version_match_returns_match() {
         let mut client = MockClient::new();
         client.set_response(
             "health",
@@ -51,11 +64,11 @@ mod tests {
         );
 
         let result = check_version(&mut client, "1.0.0");
-        assert!(result.is_none());
+        assert_eq!(result, VersionCheckResult::Match);
     }
 
     #[test]
-    fn test_version_mismatch_returns_some() {
+    fn test_version_mismatch_returns_mismatch() {
         let mut client = MockClient::new();
         client.set_response(
             "health",
@@ -66,19 +79,27 @@ mod tests {
         );
 
         let result = check_version(&mut client, "1.0.0");
-        assert!(result.is_some());
-        let mismatch = result.unwrap();
-        assert_eq!(mismatch.cli_version, "1.0.0");
-        assert_eq!(mismatch.daemon_version, "2.0.0");
+        match result {
+            VersionCheckResult::Mismatch(mismatch) => {
+                assert_eq!(mismatch.cli_version, "1.0.0");
+                assert_eq!(mismatch.daemon_version, "2.0.0");
+            }
+            _ => panic!("Expected Mismatch, got {:?}", result),
+        }
     }
 
     #[test]
-    fn test_daemon_not_running_returns_none() {
+    fn test_daemon_not_running_returns_check_failed() {
         let mut client = MockClient::new_strict();
         // new_strict() returns error for unconfigured methods
 
         let result = check_version(&mut client, "1.0.0");
-        assert!(result.is_none());
+        match result {
+            VersionCheckResult::CheckFailed(msg) => {
+                assert!(!msg.is_empty(), "Error message should not be empty");
+            }
+            _ => panic!("Expected CheckFailed, got {:?}", result),
+        }
     }
 
     #[test]
@@ -93,8 +114,11 @@ mod tests {
         );
 
         let result = check_version(&mut client, "1.0.0");
-        assert!(result.is_some());
-        let mismatch = result.unwrap();
-        assert_eq!(mismatch.daemon_version, "unknown");
+        match result {
+            VersionCheckResult::Mismatch(mismatch) => {
+                assert_eq!(mismatch.daemon_version, "unknown");
+            }
+            _ => panic!("Expected Mismatch, got {:?}", result),
+        }
     }
 }

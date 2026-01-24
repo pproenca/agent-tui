@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Constitution
+
+### When reviewing code
+
+- You MUST launch 3 subagents: 
+	- One that uses the /clean-architecture skill to evaluate all categories and priorities of that skill
+	- One that uses the /clean-code skill to evaluate all categories and priorities of that skill
+	- One that uses the /rust-coder skill to evaluate all categories and priorities of that skill
+
+
 ## Project Overview
 
 agent-tui enables AI agents to programmatically interact with TUI (Terminal User Interface) applications. It's a pure Rust system with a CLI that embeds a native daemon.

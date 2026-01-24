@@ -515,9 +515,9 @@ EXAMPLES:
         interactive: bool,
     },
 
-    /// Start the daemon (usually called automatically)
-    #[command(hide = true)]
-    Daemon,
+    /// Daemon lifecycle management
+    #[command(subcommand)]
+    Daemon(DaemonCommand),
 
     /// Show version information for CLI and daemon
     #[command(long_about = r#"Show detailed version information.
@@ -633,6 +633,63 @@ EXAMPLES:
         #[arg(value_enum)]
         shell: Shell,
     },
+}
+
+/// Daemon lifecycle management subcommands
+#[derive(Debug, Subcommand)]
+pub enum DaemonCommand {
+    /// Start the daemon
+    #[command(long_about = r#"Start the daemon process.
+
+By default, starts the daemon in the background. Use --foreground to run
+in the current terminal (useful for debugging).
+
+EXAMPLES:
+    agent-tui daemon start              # Start in background
+    agent-tui daemon start --foreground # Run in foreground (blocks)"#)]
+    Start {
+        /// Run in foreground instead of background
+        #[arg(long)]
+        foreground: bool,
+    },
+
+    /// Stop the running daemon gracefully
+    #[command(long_about = r#"Stop the running daemon.
+
+Sends SIGTERM to gracefully stop the daemon, allowing it to clean up
+sessions and resources. Use --force to send SIGKILL for immediate
+termination (not recommended unless daemon is unresponsive).
+
+EXAMPLES:
+    agent-tui daemon stop          # Graceful stop
+    agent-tui daemon stop --force  # Force kill (SIGKILL)"#)]
+    Stop {
+        /// Force immediate termination (SIGKILL instead of SIGTERM)
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Show daemon status with version info
+    #[command(long_about = r#"Show daemon status and version information.
+
+Displays whether the daemon is running, its PID, uptime, and version.
+Also checks for version mismatch between CLI and daemon.
+
+EXAMPLES:
+    agent-tui daemon status"#)]
+    Status,
+
+    /// Restart the daemon
+    #[command(long_about = r#"Restart the daemon.
+
+Stops the running daemon and starts a new one. Useful after updating
+the agent-tui binary to ensure the daemon is running the new version.
+
+All active sessions will be terminated during restart.
+
+EXAMPLES:
+    agent-tui daemon restart"#)]
+    Restart,
 }
 
 /// Debugging subcommands
@@ -1774,5 +1831,65 @@ mod tests {
             panic!("Expected Completions command, got {:?}", cli.command);
         };
         assert!(matches!(shell, Shell::Fish));
+    }
+
+    /// Test daemon start command (default: background)
+    #[test]
+    fn test_daemon_start_default() {
+        let cli = Cli::parse_from(["agent-tui", "daemon", "start"]);
+        let Commands::Daemon(DaemonCommand::Start { foreground }) = cli.command else {
+            panic!("Expected Daemon Start command, got {:?}", cli.command);
+        };
+        assert!(!foreground, "Default should be background mode");
+    }
+
+    /// Test daemon start --foreground
+    #[test]
+    fn test_daemon_start_foreground() {
+        let cli = Cli::parse_from(["agent-tui", "daemon", "start", "--foreground"]);
+        let Commands::Daemon(DaemonCommand::Start { foreground }) = cli.command else {
+            panic!("Expected Daemon Start command, got {:?}", cli.command);
+        };
+        assert!(foreground, "Should be foreground mode");
+    }
+
+    /// Test daemon stop command (default: graceful)
+    #[test]
+    fn test_daemon_stop_default() {
+        let cli = Cli::parse_from(["agent-tui", "daemon", "stop"]);
+        let Commands::Daemon(DaemonCommand::Stop { force }) = cli.command else {
+            panic!("Expected Daemon Stop command, got {:?}", cli.command);
+        };
+        assert!(!force, "Default should be graceful stop");
+    }
+
+    /// Test daemon stop --force
+    #[test]
+    fn test_daemon_stop_force() {
+        let cli = Cli::parse_from(["agent-tui", "daemon", "stop", "--force"]);
+        let Commands::Daemon(DaemonCommand::Stop { force }) = cli.command else {
+            panic!("Expected Daemon Stop command, got {:?}", cli.command);
+        };
+        assert!(force, "Should be force stop");
+    }
+
+    /// Test daemon status command
+    #[test]
+    fn test_daemon_status() {
+        let cli = Cli::parse_from(["agent-tui", "daemon", "status"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Daemon(DaemonCommand::Status)
+        ));
+    }
+
+    /// Test daemon restart command
+    #[test]
+    fn test_daemon_restart() {
+        let cli = Cli::parse_from(["agent-tui", "daemon", "restart"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Daemon(DaemonCommand::Restart)
+        ));
     }
 }

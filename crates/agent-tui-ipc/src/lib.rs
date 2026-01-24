@@ -19,6 +19,8 @@ pub use client::polling;
 
 pub use client::DaemonClient;
 pub use client::DaemonClientConfig;
+pub use client::PidLookupResult;
+pub use client::StopDaemonResult;
 pub use client::UnixSocketClient;
 pub use client::ensure_daemon;
 pub use client::get_daemon_pid;
@@ -38,6 +40,7 @@ pub use types::ErrorData;
 pub use types::RpcRequest;
 pub use types::RpcResponse;
 pub use types::RpcServerError;
+pub use version::VersionCheckResult;
 pub use version::VersionMismatch;
 
 pub type Result<T> = std::result::Result<T, ClientError>;

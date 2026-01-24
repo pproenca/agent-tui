@@ -326,36 +326,101 @@ pub fn ensure_daemon() -> Result<UnixSocketClient, ClientError> {
     UnixSocketClient::connect()
 }
 
-/// Clean up daemon socket and lock files.
-fn cleanup_daemon_files(socket: &std::path::Path) {
-    let _ = std::fs::remove_file(socket);
-    let _ = std::fs::remove_file(socket.with_extension("lock"));
+/// Clean up daemon socket and lock files, returning any warnings.
+fn cleanup_daemon_files(socket: &std::path::Path) -> Vec<String> {
+    let mut warnings = Vec::new();
+    if let Err(e) = std::fs::remove_file(socket) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            warnings.push(format!(
+                "Failed to remove socket {}: {}",
+                socket.display(),
+                e
+            ));
+        }
+    }
+    let lock = socket.with_extension("lock");
+    if let Err(e) = std::fs::remove_file(&lock) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            warnings.push(format!(
+                "Failed to remove lock file {}: {}",
+                lock.display(),
+                e
+            ));
+        }
+    }
+    warnings
+}
+
+/// Result of PID lookup from lock file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PidLookupResult {
+    /// Daemon is running with this PID.
+    Found(u32),
+    /// No lock file exists (daemon not running).
+    NotRunning,
+    /// Lock file exists but could not be read or parsed.
+    Error(String),
 }
 
 /// Get the daemon PID from the lock file.
-pub fn get_daemon_pid() -> Option<u32> {
+pub fn get_daemon_pid() -> PidLookupResult {
     let lock_path = socket_path().with_extension("lock");
     if !lock_path.exists() {
-        return None;
+        return PidLookupResult::NotRunning;
     }
 
-    std::fs::read_to_string(&lock_path)
-        .ok()
-        .and_then(|content| content.trim().parse().ok())
+    match std::fs::read_to_string(&lock_path) {
+        Err(e) => PidLookupResult::Error(format!(
+            "Failed to read lock file {}: {}",
+            lock_path.display(),
+            e
+        )),
+        Ok(content) => match content.trim().parse::<u32>() {
+            Ok(pid) => PidLookupResult::Found(pid),
+            Err(e) => PidLookupResult::Error(format!(
+                "Lock file contains invalid PID '{}': {}",
+                content.trim(),
+                e
+            )),
+        },
+    }
+}
+
+/// Result of stopping the daemon.
+pub struct StopDaemonResult {
+    /// PID of the stopped daemon.
+    pub pid: u32,
+    /// Warnings encountered during cleanup (non-fatal).
+    pub warnings: Vec<String>,
 }
 
 /// Stop the running daemon.
 ///
 /// If `force` is true, sends SIGKILL for immediate termination.
 /// Otherwise, sends SIGTERM for graceful shutdown.
-pub fn stop_daemon(force: bool) -> Result<(), ClientError> {
+///
+/// Returns the PID of the stopped daemon and any warnings from cleanup.
+pub fn stop_daemon(force: bool) -> Result<StopDaemonResult, ClientError> {
     use std::time::{Duration, Instant};
 
-    let pid = get_daemon_pid().ok_or(ClientError::DaemonNotRunning)?;
+    let pid = match get_daemon_pid() {
+        PidLookupResult::Found(pid) => pid,
+        PidLookupResult::NotRunning => return Err(ClientError::DaemonNotRunning),
+        PidLookupResult::Error(msg) => {
+            return Err(ClientError::SignalFailed {
+                pid: 0,
+                message: msg,
+            });
+        }
+    };
     let socket = socket_path();
+    let mut warnings = Vec::new();
 
     // Convert PID to libc::pid_t, validating it fits
-    let pid_t: libc::pid_t = pid.try_into().map_err(|_| ClientError::InvalidResponse)?;
+    let pid_t: libc::pid_t = pid.try_into().map_err(|_| ClientError::SignalFailed {
+        pid,
+        message: format!("PID {} is out of range for this system", pid),
+    })?;
 
     // Verify daemon is actually running with this PID
     // SAFETY: kill(pid, 0) checks if process exists without sending a signal.
@@ -374,7 +439,7 @@ pub fn stop_daemon(force: bool) -> Result<(), ClientError> {
 
     if !proc_exists {
         // PID doesn't exist, clean up stale files
-        cleanup_daemon_files(&socket);
+        warnings.extend(cleanup_daemon_files(&socket));
         return Err(ClientError::DaemonNotRunning);
     }
 
@@ -385,9 +450,10 @@ pub fn stop_daemon(force: bool) -> Result<(), ClientError> {
     let result = unsafe { libc::kill(pid_t, signal) };
 
     if result != 0 {
-        return Err(ClientError::ConnectionFailed(
-            std::io::Error::last_os_error(),
-        ));
+        return Err(ClientError::SignalFailed {
+            pid,
+            message: std::io::Error::last_os_error().to_string(),
+        });
     }
 
     // Wait for socket to be removed (with timeout)
@@ -400,10 +466,10 @@ pub fn stop_daemon(force: bool) -> Result<(), ClientError> {
 
     if socket.exists() {
         // Force cleanup if still present
-        cleanup_daemon_files(&socket);
+        warnings.extend(cleanup_daemon_files(&socket));
     }
 
-    Ok(())
+    Ok(StopDaemonResult { pid, warnings })
 }
 
 #[cfg(test)]

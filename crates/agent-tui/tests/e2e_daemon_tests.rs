@@ -565,7 +565,12 @@ fn test_multiple_requests_recorded() {
     let requests = harness.get_requests();
     assert!(requests.len() >= 3);
 
-    assert_eq!(harness.call_count("health"), 2);
+    // Each command now makes a version check "health" call first.
+    // status = 1 version check + 1 health = 2 health calls
+    // ls = 1 version check + 1 sessions
+    // status = 1 version check + 1 health = 2 health calls
+    // Total: 5 health calls, 1 sessions call
+    assert_eq!(harness.call_count("health"), 5);
     assert_eq!(harness.call_count("sessions"), 1);
 }
 
@@ -573,14 +578,15 @@ fn test_multiple_requests_recorded() {
 fn test_clear_requests_works() {
     let harness = TestHarness::new();
 
+    // status = 1 version check + 1 health = 2 health calls
     harness.run(&["status"]).success();
-    assert_eq!(harness.call_count("health"), 1);
+    assert_eq!(harness.call_count("health"), 2);
 
     harness.clear_requests();
     assert_eq!(harness.call_count("health"), 0);
 
     harness.run(&["status"]).success();
-    assert_eq!(harness.call_count("health"), 1);
+    assert_eq!(harness.call_count("health"), 2);
 }
 
 // =============================================================================

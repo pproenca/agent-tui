@@ -130,7 +130,7 @@ impl VirtualTerminal {
 
     pub fn resize(&mut self, cols: u16, rows: u16) {
         let mut parser = mutex_lock_or_recover(&self.parser);
-        parser.set_size(rows, cols);
+        parser.screen_mut().set_size(rows, cols);
         self.cols = cols;
         self.rows = rows;
     }
@@ -143,7 +143,7 @@ impl VirtualTerminal {
         let rows = self.rows;
         let cols = self.cols;
         let mut parser = mutex_lock_or_recover(&self.parser);
-        parser.set_size(rows, cols);
+        parser.screen_mut().set_size(rows, cols);
     }
 }
 

@@ -207,7 +207,9 @@ fn test_mixed_commands_parallel() {
     }
 
     // Verify all different methods were called
-    assert_eq!(harness.call_count("health"), 1);
+    // Note: Each command makes a version check (health call) plus its primary call
+    // status = 2 health, ls = 1 sessions + 1 health, snap = 1 snapshot + 1 health, click = 1 click + 1 health
+    assert_eq!(harness.call_count("health"), 5);
     assert_eq!(harness.call_count("sessions"), 1);
     assert_eq!(harness.call_count("snapshot"), 1);
     assert_eq!(harness.call_count("click"), 1);
@@ -248,7 +250,9 @@ fn test_concurrent_errors_isolated() {
     }
 
     // Errors don't affect other commands
-    assert_eq!(harness.call_count("health"), 2);
+    // Note: Each command makes a version check (health call) plus its primary call
+    // 2 status = 4 health, 2 click = 2 click + 2 health = 6 health total
+    assert_eq!(harness.call_count("health"), 6);
     assert_eq!(harness.call_count("click"), 2);
 }
 
@@ -327,8 +331,9 @@ fn test_many_parallel_health_checks() {
     }
 
     // All should succeed
+    // Note: Each status command makes 2 health calls (version check + actual status)
     assert_eq!(successes, 50);
-    assert_eq!(harness.call_count("health"), 50);
+    assert_eq!(harness.call_count("health"), 100);
 }
 
 // =============================================================================

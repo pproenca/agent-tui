@@ -18,35 +18,16 @@ use std::time::Duration;
 fn test_sequence_returns_different_responses() {
     let harness = TestHarness::new();
 
-    // Each status command makes 2 health calls (version check + actual status).
-    // Sequence: [version_check_1, status_1_FAIL, version_check_2, status_2_OK]
-    // First command: version check succeeds, actual status fails
-    // Second command: version check succeeds, actual status succeeds
+    // daemon status makes 1 health call per command
     harness.set_response(
         "health",
         MockResponse::Sequence(vec![
-            // First command's version check (succeeds)
-            MockResponse::Success(json!({
-                "status": "healthy",
-                "pid": 12345,
-                "uptime_ms": 1000,
-                "session_count": 0,
-                "version": env!("CARGO_PKG_VERSION")
-            })),
-            // First command's actual status (fails)
+            // First command (shows error in output)
             MockResponse::Error {
                 code: -32000,
                 message: "Temporary error".to_string(),
             },
-            // Second command's version check (succeeds)
-            MockResponse::Success(json!({
-                "status": "healthy",
-                "pid": 12345,
-                "uptime_ms": 1000,
-                "session_count": 0,
-                "version": env!("CARGO_PKG_VERSION")
-            })),
-            // Second command's actual status (succeeds)
+            // Second command (succeeds)
             MockResponse::Success(json!({
                 "status": "healthy",
                 "pid": 12345,
@@ -57,64 +38,50 @@ fn test_sequence_returns_different_responses() {
         ]),
     );
 
-    // First call should fail (version check OK, actual status fails)
+    // First call shows error in output (but daemon status returns success)
     harness
-        .run(&["status"])
-        .failure()
-        .stderr(predicate::str::contains("Temporary error"));
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("Temporary error"));
 
     // Second call should succeed
     harness
-        .run(&["status"])
+        .run(&["daemon", "status"])
         .success()
         .stdout(predicate::str::contains("healthy"));
 
-    // Verify all 4 health calls were made (2 per status command)
-    assert_eq!(harness.call_count("health"), 4);
+    // Verify both health calls were made (1 per status command)
+    assert_eq!(harness.call_count("health"), 2);
 }
 
 #[test]
 fn test_sequence_cycles_through_responses() {
     let harness = TestHarness::new();
 
-    // Each status command makes 2 health calls (version check + actual status).
-    // Use a consistent version to avoid mismatch warnings consuming attention.
+    // daemon status makes 1 health call per command
     let cli_version = env!("CARGO_PKG_VERSION");
 
-    // To test cycling, we need responses for all 8 health calls (4 commands × 2 calls each).
-    // Pattern: version_check always succeeds, actual status cycles through pid 1,2,3,1...
+    // 4 commands × 1 health call each = 4 responses needed
     harness.set_response(
         "health",
         MockResponse::Sequence(vec![
-            // Command 1: version check
-            MockResponse::Success(json!({"status": "healthy", "pid": 0, "uptime_ms": 1000, "session_count": 0, "version": cli_version})),
-            // Command 1: actual status (pid=1)
             MockResponse::Success(json!({"status": "healthy", "pid": 1, "uptime_ms": 1000, "session_count": 0, "version": cli_version})),
-            // Command 2: version check
-            MockResponse::Success(json!({"status": "healthy", "pid": 0, "uptime_ms": 1000, "session_count": 0, "version": cli_version})),
-            // Command 2: actual status (pid=2)
             MockResponse::Success(json!({"status": "degraded", "pid": 2, "uptime_ms": 2000, "session_count": 1, "version": cli_version})),
-            // Command 3: version check
-            MockResponse::Success(json!({"status": "healthy", "pid": 0, "uptime_ms": 1000, "session_count": 0, "version": cli_version})),
-            // Command 3: actual status (pid=3)
             MockResponse::Success(json!({"status": "healthy", "pid": 3, "uptime_ms": 3000, "session_count": 2, "version": cli_version})),
-            // Command 4: version check
-            MockResponse::Success(json!({"status": "healthy", "pid": 0, "uptime_ms": 1000, "session_count": 0, "version": cli_version})),
-            // Command 4: actual status (pid=1, cycles back)
             MockResponse::Success(json!({"status": "healthy", "pid": 1, "uptime_ms": 1000, "session_count": 0, "version": cli_version})),
         ]),
     );
 
-    harness.run(&["status"]).success(); // shows pid=1
-    harness.run(&["status"]).success(); // shows pid=2
-    harness.run(&["status"]).success(); // shows pid=3
+    harness.run(&["daemon", "status"]).success(); // pid=1
+    harness.run(&["daemon", "status"]).success(); // pid=2
+    harness.run(&["daemon", "status"]).success(); // pid=3
     harness
-        .run(&["status"])
+        .run(&["daemon", "status"])
         .success()
         .stdout(predicate::str::contains("PID: 1")); // cycles back to pid=1
 
-    // 4 commands × 2 health calls = 8 total
-    assert_eq!(harness.call_count("health"), 8);
+    // 4 commands × 1 health call = 4 total
+    assert_eq!(harness.call_count("health"), 4);
 }
 
 #[test]
@@ -123,31 +90,13 @@ fn test_sequence_with_disconnect() {
 
     let cli_version = env!("CARGO_PKG_VERSION");
 
-    // Each status command makes 2 health calls (version check + actual status).
-    // Version check failure just prints a note but continues to actual command.
-    // To make the command fail, the *actual* status call must disconnect.
+    // daemon status makes 1 health call per command
     harness.set_response(
         "health",
         MockResponse::Sequence(vec![
-            // Command 1: version check succeeds
-            MockResponse::Success(json!({
-                "status": "healthy",
-                "pid": 12345,
-                "uptime_ms": 1000,
-                "session_count": 0,
-                "version": cli_version
-            })),
-            // Command 1: actual status disconnects (command fails)
+            // Command 1: disconnects (daemon status reports "not running")
             MockResponse::Disconnect,
-            // Command 2: version check succeeds
-            MockResponse::Success(json!({
-                "status": "healthy",
-                "pid": 12345,
-                "uptime_ms": 1000,
-                "session_count": 0,
-                "version": cli_version
-            })),
-            // Command 2: actual status succeeds
+            // Command 2: succeeds
             MockResponse::Success(json!({
                 "status": "healthy",
                 "pid": 12345,
@@ -158,11 +107,14 @@ fn test_sequence_with_disconnect() {
         ]),
     );
 
-    // First call fails due to disconnect during actual status call
-    harness.run(&["status"]).failure();
+    // First call shows "not running" due to disconnect (but returns success)
+    harness
+        .run(&["daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("not running"));
 
     // Second call succeeds
-    harness.run(&["status"]).success();
+    harness.run(&["daemon", "status"]).success();
 }
 
 #[test]
@@ -214,7 +166,7 @@ fn test_delayed_response_adds_latency() {
         ),
     );
 
-    let (result, duration) = timed(|| harness.run(&["status"]));
+    let (result, duration) = timed(|| harness.run(&["daemon", "status"]));
 
     result.success();
 
@@ -242,11 +194,12 @@ fn test_delayed_error_response() {
         ),
     );
 
-    let (result, duration) = timed(|| harness.run(&["status"]));
+    let (result, duration) = timed(|| harness.run(&["daemon", "status"]));
 
+    // daemon status returns success but reports error in output
     result
-        .failure()
-        .stderr(predicate::str::contains("Delayed error"));
+        .success()
+        .stdout(predicate::str::contains("Delayed error"));
 
     assert!(
         duration >= Duration::from_millis(80), // Allow tolerance
@@ -283,10 +236,10 @@ fn test_transient_failure_then_success_pattern() {
     );
 
     // Without retry logic in CLI, each call is independent
-    harness.run(&["action", "@btn1"]).failure();
-    harness.run(&["action", "@btn1"]).failure();
+    harness.run(&["action", "@btn1", "click"]).failure();
+    harness.run(&["action", "@btn1", "click"]).failure();
     harness
-        .run(&["action", "@btn1"])
+        .run(&["action", "@btn1", "click"])
         .success()
         .stdout(predicate::str::contains("Clicked"));
 
@@ -307,9 +260,9 @@ fn test_permanent_failure_pattern() {
     );
 
     // Should fail consistently
-    harness.run(&["action", "@missing"]).failure();
-    harness.run(&["action", "@missing"]).failure();
-    harness.run(&["action", "@missing"]).failure();
+    harness.run(&["action", "@missing", "click"]).failure();
+    harness.run(&["action", "@missing", "click"]).failure();
+    harness.run(&["action", "@missing", "click"]).failure();
 
     assert_eq!(harness.call_count("click"), 3);
 }
@@ -322,14 +275,14 @@ fn test_permanent_failure_pattern() {
 fn test_call_count_for_method() {
     let harness = TestHarness::new();
 
-    harness.run(&["status"]).success();
+    harness.run(&["daemon", "status"]).success();
     harness.run(&["sessions"]).success();
-    harness.run(&["status"]).success();
-    harness.run(&["status"]).success();
+    harness.run(&["daemon", "status"]).success();
+    harness.run(&["daemon", "status"]).success();
 
-    // Each command makes a version check (health call) plus its primary call
-    // 3 status = 6 health, 1 ls = 1 health + 1 sessions = 7 health total
-    assert_eq!(harness.call_count("health"), 7);
+    // daemon status = 1 health, sessions = 1 sessions + 1 health
+    // 3 daemon status = 3 health, 1 sessions = 1 health + 1 sessions = 4 health total
+    assert_eq!(harness.call_count("health"), 4);
     assert_eq!(harness.call_count("sessions"), 1);
     assert_eq!(harness.call_count("nonexistent"), 0);
 }
@@ -338,9 +291,9 @@ fn test_call_count_for_method() {
 fn test_nth_call_params_tracking() {
     let harness = TestHarness::new();
 
-    harness.run(&["action", "@btn1"]).success();
-    harness.run(&["action", "@btn2"]).success();
-    harness.run(&["action", "@btn3"]).success();
+    harness.run(&["action", "@btn1", "click"]).success();
+    harness.run(&["action", "@btn2", "click"]).success();
+    harness.run(&["action", "@btn3", "click"]).success();
 
     let first = harness.last_request_for("click").unwrap();
     // last_request_for returns the last call, not first
@@ -356,14 +309,14 @@ fn test_nth_call_params_tracking() {
 fn test_clear_requests_resets_tracking() {
     let harness = TestHarness::new();
 
-    // Each status command makes 2 health calls (version check + actual status)
-    harness.run(&["status"]).success();
-    harness.run(&["status"]).success();
-    assert_eq!(harness.call_count("health"), 4);
+    // daemon status makes 1 health call per command
+    harness.run(&["daemon", "status"]).success();
+    harness.run(&["daemon", "status"]).success();
+    assert_eq!(harness.call_count("health"), 2);
 
     harness.clear_requests();
     assert_eq!(harness.call_count("health"), 0);
 
-    harness.run(&["status"]).success();
-    assert_eq!(harness.call_count("health"), 2);
+    harness.run(&["daemon", "status"]).success();
+    assert_eq!(harness.call_count("health"), 1);
 }

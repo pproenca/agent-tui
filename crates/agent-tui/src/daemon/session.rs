@@ -491,6 +491,14 @@ impl SessionManager {
         cols: u16,
         rows: u16,
     ) -> Result<(SessionId, u32), SessionError> {
+        if let Some(ref requested_id) = session_id {
+            let sessions = rwlock_read_or_recover(&self.sessions);
+            let id = SessionId::new(requested_id.clone());
+            if sessions.contains_key(&id) {
+                return Err(SessionError::AlreadyExists(requested_id.clone()));
+            }
+        }
+
         {
             let sessions = rwlock_read_or_recover(&self.sessions);
             if sessions.len() >= self.max_sessions {
@@ -885,6 +893,19 @@ impl From<&SessionInfo> for PersistedSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
+
+    struct HomeGuard(Option<String>);
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            if let Some(home) = self.0.take() {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+        }
+    }
 
     #[test]
     fn test_persisted_session_serialization() {
@@ -911,5 +932,27 @@ mod tests {
         assert!(is_process_running(current_pid));
 
         assert!(!is_process_running(999999999));
+    }
+
+    #[test]
+    fn test_spawn_rejects_duplicate_session_id() {
+        let temp_home = tempdir().unwrap();
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        std::env::set_var("HOME", temp_home.path());
+
+        let manager = SessionManager::with_max_sessions(2);
+        let session_id = "dup-session".to_string();
+        let _ = manager
+            .spawn("sh", &[], None, None, Some(session_id.clone()), 80, 24)
+            .unwrap();
+
+        let result = manager.spawn("sh", &[], None, None, Some(session_id.clone()), 80, 24);
+
+        assert!(matches!(
+            result,
+            Err(SessionError::AlreadyExists(id)) if id == session_id
+        ));
+
+        let _ = manager.kill(&session_id);
     }
 }

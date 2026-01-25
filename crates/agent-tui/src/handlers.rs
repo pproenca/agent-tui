@@ -1197,58 +1197,60 @@ pub fn handle_daemon_stop<C: DaemonClient>(
     Ok(())
 }
 
-pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub fn print_daemon_status_from_result(result: &serde_json::Value, format: OutputFormat) {
     let cli_version = env!("CARGO_PKG_VERSION");
+    let daemon_version = result.str_or("version", "unknown");
+    let status = result.str_or("status", "unknown");
+    let pid = result.u64_or("pid", 0);
+    let uptime_ms = result.u64_or("uptime_ms", 0);
+    let session_count = result.u64_or("session_count", 0);
 
-    match ctx.client.call("health", None) {
-        Ok(result) => {
-            let daemon_version = result.str_or("version", "unknown");
-            let status = result.str_or("status", "unknown");
-            let pid = result.u64_or("pid", 0);
-            let uptime_ms = result.u64_or("uptime_ms", 0);
-            let session_count = result.u64_or("session_count", 0);
+    let version_mismatch = cli_version != daemon_version;
 
-            let version_mismatch = cli_version != daemon_version;
+    match format {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "running": true,
+                    "status": status,
+                    "pid": pid,
+                    "uptime_ms": uptime_ms,
+                    "session_count": session_count,
+                    "daemon_version": daemon_version,
+                    "cli_version": cli_version,
+                    "version_mismatch": version_mismatch
+                })
+            );
+        }
+        OutputFormat::Text => {
+            println!(
+                "{} {}",
+                Colors::bold("Daemon status:"),
+                Colors::success(status)
+            );
+            println!("  PID: {}", pid);
+            println!("  Uptime: {}", format_uptime_ms(uptime_ms));
+            println!("  Sessions: {}", session_count);
+            println!("  Daemon version: {}", daemon_version);
+            println!("  CLI version: {}", cli_version);
 
-            match ctx.format {
-                OutputFormat::Json => {
-                    println!(
-                        "{}",
-                        serde_json::json!({
-                            "running": true,
-                            "status": status,
-                            "pid": pid,
-                            "uptime_ms": uptime_ms,
-                            "session_count": session_count,
-                            "daemon_version": daemon_version,
-                            "cli_version": cli_version,
-                            "version_mismatch": version_mismatch
-                        })
-                    );
-                }
-                OutputFormat::Text => {
-                    println!(
-                        "{} {}",
-                        Colors::bold("Daemon status:"),
-                        Colors::success(status)
-                    );
-                    println!("  PID: {}", pid);
-                    println!("  Uptime: {}", format_uptime_ms(uptime_ms));
-                    println!("  Sessions: {}", session_count);
-                    println!("  Daemon version: {}", daemon_version);
-                    println!("  CLI version: {}", cli_version);
-
-                    if version_mismatch {
-                        eprintln!();
-                        eprintln!("{} Version mismatch detected!", Colors::warning("⚠"));
-                        eprintln!(
-                            "  Run '{}' to update the daemon.",
-                            Colors::info("agent-tui daemon restart")
-                        );
-                    }
-                }
+            if version_mismatch {
+                eprintln!();
+                eprintln!("{} Version mismatch detected!", Colors::warning("⚠"));
+                eprintln!(
+                    "  Run '{}' to update the daemon.",
+                    Colors::info("agent-tui daemon restart")
+                );
             }
         }
+    }
+}
+
+pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+    let cli_version = env!("CARGO_PKG_VERSION");
+    match ctx.client.call("health", None) {
+        Ok(result) => print_daemon_status_from_result(&result, ctx.format),
         Err(e) => match ctx.format {
             OutputFormat::Json => {
                 println!(

@@ -7,6 +7,8 @@ use thiserror::Error;
 pub enum SessionError {
     #[error("Session not found: {0}")]
     NotFound(String),
+    #[error("Session already exists: {0}")]
+    AlreadyExists(String),
     #[error("No active session")]
     NoActiveSession,
     #[error("PTY error: {0}")]
@@ -31,6 +33,7 @@ impl SessionError {
     pub fn code(&self) -> i32 {
         match self {
             SessionError::NotFound(_) => error_codes::SESSION_NOT_FOUND,
+            SessionError::AlreadyExists(_) => error_codes::SESSION_ALREADY_EXISTS,
             SessionError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
             SessionError::ElementNotFound(_) => error_codes::ELEMENT_NOT_FOUND,
             SessionError::WrongElementType { .. } => error_codes::WRONG_ELEMENT_TYPE,
@@ -48,6 +51,7 @@ impl SessionError {
     pub fn context(&self) -> Value {
         match self {
             SessionError::NotFound(id) => json!({ "session_id": id }),
+            SessionError::AlreadyExists(id) => json!({ "session_id": id }),
             SessionError::NoActiveSession => json!({}),
             SessionError::ElementNotFound(element_ref) => json!({ "element_ref": element_ref }),
             SessionError::WrongElementType {
@@ -72,7 +76,9 @@ impl SessionError {
 
     pub fn suggestion(&self) -> String {
         match self {
-            SessionError::NotFound(_) | SessionError::NoActiveSession => {
+            SessionError::NotFound(_)
+            | SessionError::AlreadyExists(_)
+            | SessionError::NoActiveSession => {
                 "Run 'sessions' to list active sessions or 'spawn <cmd>' to start a new one."
                     .to_string()
             }
@@ -180,6 +186,9 @@ pub enum DomainError {
     #[error("Session not found: {session_id}")]
     SessionNotFound { session_id: String },
 
+    #[error("Session already exists: {session_id}")]
+    SessionAlreadyExists { session_id: String },
+
     #[error("No active session")]
     NoActiveSession,
 
@@ -229,6 +238,7 @@ impl DomainError {
     pub fn code(&self) -> i32 {
         match self {
             DomainError::SessionNotFound { .. } => error_codes::SESSION_NOT_FOUND,
+            DomainError::SessionAlreadyExists { .. } => error_codes::SESSION_ALREADY_EXISTS,
             DomainError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
             DomainError::ElementNotFound { .. } => error_codes::ELEMENT_NOT_FOUND,
             DomainError::WrongElementType { .. } => error_codes::WRONG_ELEMENT_TYPE,
@@ -250,6 +260,9 @@ impl DomainError {
     pub fn context(&self) -> Value {
         match self {
             DomainError::SessionNotFound { session_id } => {
+                json!({ "session_id": session_id })
+            }
+            DomainError::SessionAlreadyExists { session_id } => {
                 json!({ "session_id": session_id })
             }
             DomainError::NoActiveSession => json!({}),
@@ -315,7 +328,9 @@ impl DomainError {
 
     pub fn suggestion(&self) -> String {
         match self {
-            DomainError::SessionNotFound { .. } | DomainError::NoActiveSession => {
+            DomainError::SessionNotFound { .. }
+            | DomainError::SessionAlreadyExists { .. }
+            | DomainError::NoActiveSession => {
                 "Run 'sessions' to list active sessions or 'spawn <cmd>' to start a new one."
                     .to_string()
             }
@@ -383,6 +398,7 @@ impl From<SessionError> for DomainError {
     fn from(err: SessionError) -> Self {
         match err {
             SessionError::NotFound(id) => DomainError::SessionNotFound { session_id: id },
+            SessionError::AlreadyExists(id) => DomainError::SessionAlreadyExists { session_id: id },
             SessionError::NoActiveSession => DomainError::NoActiveSession,
             SessionError::ElementNotFound(element_ref) => DomainError::ElementNotFound {
                 element_ref,

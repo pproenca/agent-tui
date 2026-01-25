@@ -5,6 +5,9 @@ use predicates::prelude::*;
 use serde_json::json;
 use std::time::Duration;
 
+/// LSB exit code 3: program is not running
+const EXIT_NOT_RUNNING: i32 = 3;
+
 #[test]
 fn test_sequence_returns_different_responses() {
     let harness = TestHarness::new();
@@ -26,10 +29,11 @@ fn test_sequence_returns_different_responses() {
         ]),
     );
 
+    // First call returns error, which means daemon status shows "not running"
     harness
         .run(&["daemon", "status"])
-        .success()
-        .stdout(predicate::str::contains("Temporary error"));
+        .code(EXIT_NOT_RUNNING)
+        .stdout(predicate::str::contains("not running"));
 
     harness
         .run(&["daemon", "status"])
@@ -86,9 +90,10 @@ fn test_sequence_with_disconnect() {
         ]),
     );
 
+    // First call gets disconnect, which shows "not running" with exit code 3
     harness
         .run(&["daemon", "status"])
-        .success()
+        .code(EXIT_NOT_RUNNING)
         .stdout(predicate::str::contains("not running"));
 
     harness.run(&["daemon", "status"]).success();
@@ -163,9 +168,10 @@ fn test_delayed_error_response() {
 
     let (result, duration) = timed(|| harness.run(&["daemon", "status"]));
 
+    // Error from health check means daemon status shows "not running"
     result
-        .success()
-        .stdout(predicate::str::contains("Delayed error"));
+        .code(EXIT_NOT_RUNNING)
+        .stdout(predicate::str::contains("not running"));
 
     assert!(
         duration >= Duration::from_millis(80),

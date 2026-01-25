@@ -164,10 +164,10 @@ impl Application {
             Ok(mut client) => {
                 // Verify daemon is actually responding before showing status
                 match client.call("health", None) {
-                    Ok(_) => {
+                    Ok(result) => {
                         let format = cli.effective_format();
-                        let mut ctx = HandlerContext::new(&mut client, cli.session.clone(), format);
-                        handlers::handle_daemon_status(&mut ctx)
+                        handlers::print_daemon_status_from_result(&result, format);
+                        Ok(())
                     }
                     Err(_) => {
                         // Connected but daemon not responding - treat as not running

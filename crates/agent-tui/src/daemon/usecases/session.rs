@@ -39,6 +39,9 @@ impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
         ) {
             Ok((session_id, pid)) => Ok(SpawnOutput { session_id, pid }),
             Err(SessionError::LimitReached(max)) => Err(DomainError::SessionLimitReached { max }),
+            Err(SessionError::AlreadyExists(session_id)) => {
+                Err(DomainError::SessionAlreadyExists { session_id })
+            }
             Err(e) => {
                 let err_str = e.to_string();
                 if err_str.contains("No such file") || err_str.contains("not found") {

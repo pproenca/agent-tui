@@ -39,7 +39,7 @@ fn test_daemon_disconnect_during_request() {
 
     harness
         .run(&["daemon", "status"])
-        .success()
+        .code(EXIT_NOT_RUNNING)
         .stdout(predicate::str::contains("not running"));
 }
 
@@ -78,7 +78,7 @@ fn test_malformed_response_handling() {
 
     harness
         .run(&["daemon", "status"])
-        .success()
+        .code(EXIT_NOT_RUNNING)
         .stdout(predicate::str::contains("not running"));
 }
 
@@ -93,7 +93,7 @@ fn test_malformed_json_rpc_missing_result() {
 
     harness
         .run(&["daemon", "status"])
-        .success()
+        .code(EXIT_NOT_RUNNING)
         .stdout(predicate::str::contains("not running"));
 }
 
@@ -117,7 +117,7 @@ fn test_empty_response() {
 
     harness
         .run(&["daemon", "status"])
-        .success()
+        .code(EXIT_NOT_RUNNING)
         .stdout(predicate::str::contains("not running"));
 }
 
@@ -132,7 +132,7 @@ fn test_partial_json_response() {
 
     harness
         .run(&["daemon", "status"])
-        .success()
+        .code(EXIT_NOT_RUNNING)
         .stdout(predicate::str::contains("not running"));
 }
 
@@ -167,7 +167,7 @@ fn test_different_commands_independent_failure() {
     harness.set_response("health", MockResponse::Disconnect);
     harness
         .run(&["daemon", "status"])
-        .success()
+        .code(EXIT_NOT_RUNNING)
         .stdout(predicate::str::contains("not running"));
 
     harness

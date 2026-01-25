@@ -68,6 +68,7 @@ pub mod mock {
         signals_sent: Mutex<Vec<(u32, Signal)>>,
         check_error: Mutex<Option<std::io::Error>>,
         signal_error: Mutex<Option<std::io::Error>>,
+        signal_kills_process: bool,
     }
 
     impl Default for MockProcessController {
@@ -83,7 +84,13 @@ pub mod mock {
                 signals_sent: Mutex::new(Vec::new()),
                 check_error: Mutex::new(None),
                 signal_error: Mutex::new(None),
+                signal_kills_process: false,
             }
+        }
+
+        pub fn with_signal_kills_process(mut self) -> Self {
+            self.signal_kills_process = true;
+            self
         }
 
         pub fn with_process(self, pid: u32, status: ProcessStatus) -> Self {
@@ -125,6 +132,9 @@ pub mod mock {
                 return Err(err);
             }
             self.signals_sent.lock().unwrap().push((pid, signal));
+            if self.signal_kills_process {
+                self.process_states.lock().unwrap().remove(&pid);
+            }
             Ok(())
         }
     }

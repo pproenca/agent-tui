@@ -47,6 +47,27 @@ pub fn stop_daemon<P: ProcessController>(
 
     wait_for_socket_removal(socket_path);
 
+    match controller
+        .check_process(pid)
+        .map_err(|e| ClientError::SignalFailed {
+            pid,
+            message: e.to_string(),
+        })? {
+        ProcessStatus::Running => {
+            return Err(ClientError::SignalFailed {
+                pid,
+                message: "Daemon did not shut down".to_string(),
+            });
+        }
+        ProcessStatus::NoPermission => {
+            return Err(ClientError::SignalFailed {
+                pid,
+                message: "Permission denied".to_string(),
+            });
+        }
+        ProcessStatus::NotFound => {}
+    }
+
     if socket_path.exists() {
         cleanup_daemon_files_with_warnings(socket_path, &mut warnings);
     }
@@ -183,7 +204,9 @@ mod tests {
 
     #[test]
     fn test_stop_daemon_success() {
-        let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
+        let mock = MockProcessController::new()
+            .with_process(1234, ProcessStatus::Running)
+            .with_signal_kills_process();
         let dir = tempdir().unwrap();
         let socket = dir.path().join("test.sock");
 
@@ -197,13 +220,29 @@ mod tests {
 
     #[test]
     fn test_stop_daemon_force() {
-        let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
+        let mock = MockProcessController::new()
+            .with_process(1234, ProcessStatus::Running)
+            .with_signal_kills_process();
         let dir = tempdir().unwrap();
         let socket = dir.path().join("test.sock");
 
         let result = stop_daemon(&mock, 1234, &socket, true);
         assert!(result.is_ok());
         assert_eq!(mock.signals_sent(), vec![(1234, Signal::Kill)]);
+    }
+
+    #[test]
+    fn test_stop_daemon_returns_error_if_process_still_running() {
+        let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
+        let dir = tempdir().unwrap();
+        let socket = dir.path().join("missing.sock");
+
+        let result = stop_daemon(&mock, 1234, &socket, false);
+
+        assert!(matches!(
+            result,
+            Err(ClientError::SignalFailed { pid: 1234, message }) if message.contains("did not shut down")
+        ));
     }
 
     #[test]
@@ -262,7 +301,9 @@ mod tests {
 
     #[test]
     fn test_restart_daemon_running() {
-        let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
+        let mock = MockProcessController::new()
+            .with_process(1234, ProcessStatus::Running)
+            .with_signal_kills_process();
         let dir = tempdir().unwrap();
         let socket = dir.path().join("test.sock");
         let started = std::sync::atomic::AtomicBool::new(false);
@@ -284,7 +325,9 @@ mod tests {
 
     #[test]
     fn test_restart_daemon_start_fails_after_stop() {
-        let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
+        let mock = MockProcessController::new()
+            .with_process(1234, ProcessStatus::Running)
+            .with_signal_kills_process();
         let dir = tempdir().unwrap();
         let socket = dir.path().join("test.sock");
 

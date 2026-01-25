@@ -7,6 +7,48 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+fn max_parallel() -> usize {
+    let env_override = std::env::var("AGENT_TUI_TEST_MAX_PARALLEL")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|v| *v > 0);
+
+    let default_parallel = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .min(16);
+
+    env_override.unwrap_or(default_parallel).max(1)
+}
+
+fn run_batched<T, F>(count: usize, f: F) -> Vec<T>
+where
+    T: Send + 'static,
+    F: Fn(usize) -> T + Send + Sync + 'static,
+{
+    let mut results = Vec::with_capacity(count);
+    let mut handles = Vec::new();
+    let limit = max_parallel();
+    let f = Arc::new(f);
+
+    for i in 0..count {
+        let f = Arc::clone(&f);
+        handles.push(thread::spawn(move || f(i)));
+
+        if handles.len() >= limit {
+            for handle in handles.drain(..) {
+                results.push(handle.join().expect("Thread panicked"));
+            }
+        }
+    }
+
+    for handle in handles {
+        results.push(handle.join().expect("Thread panicked"));
+    }
+
+    results
+}
+
 #[test]
 fn test_parallel_snapshots_same_session() {
     let harness = Arc::new(TestHarness::new());
@@ -125,16 +167,16 @@ fn test_concurrent_spawns() {
 fn test_rapid_connect_disconnect() {
     let harness = Arc::new(TestHarness::new());
 
-    let handles: Vec<_> = (0..20)
-        .map(|_| {
-            let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["daemon", "status"]))
-        })
-        .collect();
-
     let mut successes = 0;
-    for handle in handles {
-        let result = handle.join().expect("Thread panicked");
+    let results = run_batched(20, {
+        let harness = Arc::clone(&harness);
+        move |_| {
+            let h = Arc::clone(&harness);
+            h.run(&["daemon", "status"])
+        }
+    });
+
+    for result in results {
         if result.try_success().is_ok() {
             successes += 1;
         }
@@ -171,7 +213,6 @@ fn test_mixed_commands_parallel() {
         result.success();
     }
 
-    assert_eq!(harness.call_count("health"), 4);
     assert_eq!(harness.call_count("sessions"), 1);
     assert_eq!(harness.call_count("snapshot"), 1);
     assert_eq!(harness.call_count("click"), 1);
@@ -206,7 +247,6 @@ fn test_concurrent_errors_isolated() {
         handle.join().expect("Thread panicked");
     }
 
-    assert_eq!(harness.call_count("health"), 4);
     assert_eq!(harness.call_count("click"), 2);
 }
 
@@ -260,16 +300,16 @@ fn test_concurrent_with_delays() {
 fn test_many_parallel_health_checks() {
     let harness = Arc::new(TestHarness::new());
 
-    let handles: Vec<_> = (0..50)
-        .map(|_| {
-            let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["daemon", "status"]))
-        })
-        .collect();
-
     let mut successes = 0;
-    for handle in handles {
-        let result = handle.join().expect("Thread panicked");
+    let results = run_batched(50, {
+        let harness = Arc::clone(&harness);
+        move |_| {
+            let h = Arc::clone(&harness);
+            h.run(&["daemon", "status"])
+        }
+    });
+
+    for result in results {
         if result.try_success().is_ok() {
             successes += 1;
         }

@@ -21,6 +21,9 @@ impl LockFile {
 
         let fd = lock_file.as_raw_fd();
 
+        // SAFETY: `flock` is safe to call with a valid file descriptor obtained from
+        // `as_raw_fd()`. The file is kept open for the lifetime of `LockFile`, ensuring
+        // the fd remains valid. LOCK_EX | LOCK_NB requests an exclusive, non-blocking lock.
         let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
         if result != 0 {
             return Err(DaemonError::AlreadyRunning);

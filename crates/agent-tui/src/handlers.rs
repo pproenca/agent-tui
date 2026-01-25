@@ -195,10 +195,11 @@ pub fn handle_spawn<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     command: String,
     args: Vec<String>,
-    cwd: Option<String>,
+    cwd: Option<PathBuf>,
     cols: u16,
     rows: u16,
 ) -> HandlerResult {
+    let cwd = cwd.map(|path| path.to_string_lossy().into_owned());
     let rpc_params = params::SpawnParams {
         command,
         args,
@@ -842,7 +843,7 @@ pub fn handle_record_start<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Hand
 
 pub fn handle_record_stop<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
-    output: Option<String>,
+    output: Option<PathBuf>,
     record_format: RecordFormat,
 ) -> HandlerResult {
     let format_str = record_format.as_str();
@@ -1716,3 +1717,4 @@ mod tests {
         assert_eq!(tgt, None);
     }
 }
+use std::path::PathBuf;

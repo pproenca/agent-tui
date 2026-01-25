@@ -725,6 +725,9 @@ impl SessionPersistence {
         let mut backoff = Duration::from_millis(1);
 
         loop {
+            // SAFETY: `flock` is safe to call with a valid file descriptor obtained from
+            // `as_raw_fd()`. The file remains open throughout this loop, ensuring the fd
+            // is valid. LOCK_EX | LOCK_NB requests an exclusive, non-blocking lock.
             let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
             if result == 0 {
                 return Ok(lock_file);
@@ -874,6 +877,9 @@ impl Default for SessionPersistence {
 }
 
 fn is_process_running(pid: u32) -> bool {
+    // SAFETY: `kill` with signal 0 performs a permission check without sending any signal.
+    // This is a standard POSIX idiom to check if a process exists. The pid is a u32 cast
+    // to i32, which is safe because valid PIDs are always positive and fit in i32.
     unsafe { libc::kill(pid as i32, 0) == 0 }
 }
 

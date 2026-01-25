@@ -4,16 +4,16 @@ mod client;
 pub mod daemon_lifecycle;
 mod error;
 mod mock_client;
+pub mod polling;
 pub mod params;
 pub mod process;
 mod snapshot_dto;
 mod socket;
+pub mod transport;
 mod types;
 pub mod version;
 
 pub use crate::common::error_codes;
-
-pub use client::polling;
 
 pub use client::DaemonClient;
 pub use client::DaemonClientConfig;
@@ -21,7 +21,6 @@ pub use client::PidLookupResult;
 pub use client::UnixSocketClient;
 pub use client::ensure_daemon;
 pub use client::get_daemon_pid;
-pub use client::start_daemon_background;
 pub use daemon_lifecycle::StopResult;
 pub use error::ClientError;
 pub use mock_client::MockClient;
@@ -38,5 +37,11 @@ pub use types::RpcResponse;
 pub use types::RpcServerError;
 pub use version::VersionCheckResult;
 pub use version::VersionMismatch;
+pub use transport::IpcTransport;
+pub use transport::InMemoryTransport;
+pub use transport::TcpSocketTransport;
+pub use transport::UnixSocketTransport;
+pub use transport::default_transport;
+pub use transport::start_daemon_background;
 
 pub type Result<T> = std::result::Result<T, ClientError>;

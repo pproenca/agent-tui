@@ -20,16 +20,25 @@ use crate::ipc::DaemonClient;
 pub use crate::error::AttachError;
 
 /// RAII guard that ignores a signal during its lifetime and restores default behavior on drop.
+///
+/// # Thread Safety
+/// Signal handlers are process-global state, not thread-local. Creating multiple `SignalGuard`
+/// instances for the same signal from different threads leads to undefined behavior. This type
+/// should only be used from a single thread (typically the main thread) when controlling signal
+/// disposition for interactive terminal sessions.
+#[must_use = "SignalGuard must be held for the duration of signal ignoring; dropping it restores the default handler"]
 struct SignalGuard {
     signal: libc::c_int,
 }
 
 impl SignalGuard {
     /// Creates a new SignalGuard that ignores the specified signal.
-    ///
-    /// # Safety
-    /// Uses libc signal handling which is inherently unsafe.
     fn new(signal: libc::c_int) -> Self {
+        // SAFETY: `libc::signal` is safe to call with any valid signal number and SIG_IGN.
+        // SIG_IGN is a valid signal disposition. The previous handler is intentionally
+        // discarded since we restore SIG_DFL on drop, which is the correct default for
+        // most signals. This matches POSIX semantics where ignoring signal return values
+        // is acceptable when setting to SIG_IGN.
         unsafe {
             libc::signal(signal, libc::SIG_IGN);
         }
@@ -39,6 +48,9 @@ impl SignalGuard {
 
 impl Drop for SignalGuard {
     fn drop(&mut self) {
+        // SAFETY: `libc::signal` is safe to call with any valid signal number and SIG_DFL.
+        // SIG_DFL is the default disposition for signals. Restoring to SIG_DFL is always
+        // safe and ensures the process returns to normal signal handling behavior.
         unsafe {
             libc::signal(self.signal, libc::SIG_DFL);
         }

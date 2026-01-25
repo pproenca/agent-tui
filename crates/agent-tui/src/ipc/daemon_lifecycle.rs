@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::ipc::client::{DaemonClient, DaemonClientConfig, polling};
+use crate::ipc::{DaemonClient, DaemonClientConfig, polling};
 use crate::ipc::error::ClientError;
 use crate::ipc::process::{ProcessController, ProcessStatus, Signal};
 

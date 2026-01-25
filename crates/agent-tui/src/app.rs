@@ -117,7 +117,10 @@ impl Application {
             return Ok(());
         }
 
-        let mut client = self.connect_to_daemon()?;
+        let mut client: UnixSocketClient = match &cli.command {
+            Commands::Run { .. } => self.connect_to_daemon_autostart()?,
+            _ => self.connect_to_daemon_no_autostart()?,
+        };
 
         if !matches!(cli.command, Commands::Daemon(_) | Commands::Version) {
             check_version_mismatch(&mut client);
@@ -221,7 +224,9 @@ impl Application {
         Ok(())
     }
 
-    fn connect_to_daemon(&self) -> Result<impl DaemonClient, Box<dyn std::error::Error>> {
+    fn connect_to_daemon_autostart(
+        &self,
+    ) -> Result<UnixSocketClient, Box<dyn std::error::Error>> {
         ensure_daemon().map_err(|e| {
             eprintln!(
                 "{} Failed to connect to daemon: {}",
@@ -235,6 +240,19 @@ impl Application {
             eprintln!("  3. Check current configuration: agent-tui env");
             e.into()
         })
+    }
+
+    fn connect_to_daemon_no_autostart(
+        &self,
+    ) -> Result<UnixSocketClient, Box<dyn std::error::Error>> {
+        match UnixSocketClient::connect() {
+            Ok(client) => Ok(client),
+            Err(ClientError::DaemonNotRunning) => {
+                println!("Daemon is not running");
+                Err(Box::new(DaemonNotRunningError))
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 
     fn dispatch_command<C: DaemonClient>(

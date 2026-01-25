@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 
 #[derive(Debug, Deserialize)]
@@ -67,7 +67,7 @@ pub enum MockResponse {
 
 pub struct MockDaemon {
     _temp_dir: TempDir,
-    socket_path: PathBuf,
+    tcp_addr: std::net::SocketAddr,
     pid_path: PathBuf,
     shutdown_tx: Option<oneshot::Sender<()>>,
     requests: Arc<Mutex<Vec<RecordedRequest>>>,
@@ -77,8 +77,12 @@ pub struct MockDaemon {
 
 impl MockDaemon {
     pub async fn start() -> Self {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let socket_path = temp_dir.path().join("agent-tui.sock");
+        let temp_dir = TempDir::new_in("/tmp").expect("Failed to create temp dir");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o777));
+        }
         let pid_path = temp_dir.path().join("agent-tui.pid");
 
         std::fs::write(&pid_path, format!("{}", std::process::id()))
@@ -445,7 +449,10 @@ impl MockDaemon {
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
-        let listener = UnixListener::bind(&socket_path).expect("Failed to bind socket");
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("Failed to bind TCP listener");
+        let tcp_addr = listener.local_addr().expect("Failed to get TCP addr");
         let requests_clone = requests.clone();
         let handlers_clone = handlers.clone();
         let sequence_counters_clone = sequence_counters.clone();
@@ -465,7 +472,7 @@ impl MockDaemon {
 
         Self {
             _temp_dir: temp_dir,
-            socket_path,
+            tcp_addr,
             pid_path,
             shutdown_tx: Some(shutdown_tx),
             requests,
@@ -474,8 +481,8 @@ impl MockDaemon {
         }
     }
 
-    pub fn socket_path(&self) -> &PathBuf {
-        &self.socket_path
+    pub fn tcp_addr(&self) -> std::net::SocketAddr {
+        self.tcp_addr
     }
 
     pub fn set_response(&self, method: &str, response: MockResponse) {
@@ -532,27 +539,17 @@ impl MockDaemon {
 
     pub fn env_vars(&self) -> Vec<(&'static str, String)> {
         vec![
-            (
-                "XDG_RUNTIME_DIR",
-                self.socket_path
-                    .parent()
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned(),
-            ),
+            ("AGENT_TUI_TRANSPORT", "tcp".to_string()),
+            ("AGENT_TUI_TCP_ADDR", self.tcp_addr.to_string()),
             (
                 "TMPDIR",
-                self.socket_path
-                    .parent()
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned(),
+                self._temp_dir.path().to_string_lossy().into_owned(),
             ),
         ]
     }
 
     async fn run_server(
-        listener: UnixListener,
+        listener: TcpListener,
         requests: Arc<Mutex<Vec<RecordedRequest>>>,
         handlers: Arc<Mutex<HashMap<String, MockResponse>>>,
         sequence_counters: Arc<Mutex<HashMap<String, usize>>>,
@@ -584,7 +581,7 @@ impl MockDaemon {
     }
 
     async fn handle_connection(
-        stream: tokio::net::UnixStream,
+        stream: TcpStream,
         requests: Arc<Mutex<Vec<RecordedRequest>>>,
         handlers: Arc<Mutex<HashMap<String, MockResponse>>>,
         sequence_counters: Arc<Mutex<HashMap<String, usize>>>,
@@ -774,9 +771,9 @@ mod tests {
     #[tokio::test]
     async fn test_mock_daemon_responds_to_ping() {
         let daemon = MockDaemon::start().await;
-        let socket_path = daemon.socket_path();
-
-        let stream = tokio::net::UnixStream::connect(socket_path).await.unwrap();
+        let stream = tokio::net::TcpStream::connect(daemon.tcp_addr())
+            .await
+            .unwrap();
         let (reader, mut writer) = stream.into_split();
 
         let request = serde_json::json!({
@@ -815,8 +812,9 @@ mod tests {
             },
         );
 
-        let socket_path = daemon.socket_path();
-        let stream = tokio::net::UnixStream::connect(socket_path).await.unwrap();
+        let stream = tokio::net::TcpStream::connect(daemon.tcp_addr())
+            .await
+            .unwrap();
         let (reader, mut writer) = stream.into_split();
 
         let request = serde_json::json!({

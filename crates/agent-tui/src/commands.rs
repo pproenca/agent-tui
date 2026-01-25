@@ -1,7 +1,9 @@
+use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
 use clap::ValueEnum;
 pub use clap_complete::Shell;
+use std::path::PathBuf;
 
 const AFTER_LONG_HELP: &str = r#"WORKFLOW:
     1. Run a TUI application
@@ -40,7 +42,7 @@ EXAMPLES:
 
 #[derive(Parser)]
 #[command(name = "agent-tui")]
-#[command(author, version)]
+#[command(author, version, propagate_version = true)]
 #[command(about = "CLI tool for AI agents to interact with TUI applications")]
 #[command(after_long_help = AFTER_LONG_HELP)]
 pub struct Cli {
@@ -90,13 +92,14 @@ EXAMPLES:
     agent-tui run vim -- file.txt
     agent-tui run --cols 80 --rows 24 nano")]
     Run {
+        #[arg(value_name = "COMMAND")]
         command: String,
 
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
 
-        #[arg(short = 'd', long)]
-        cwd: Option<String>,
+        #[arg(short = 'd', long, value_name = "DIR")]
+        cwd: Option<PathBuf>,
 
         #[arg(long, default_value = "120")]
         cols: u16,
@@ -138,7 +141,7 @@ EXAMPLES:
         #[arg(long)]
         interactive_only: bool,
 
-        #[arg(long)]
+        #[arg(long, value_name = "REGION")]
         region: Option<String>,
 
         #[arg(long)]
@@ -210,7 +213,7 @@ EXAMPLES:
     agent-tui input \"hello\"            # Type text char-by-char
     agent-tui input Shift --hold       # Hold Shift down")]
     Input {
-        #[arg(required_unless_present_any = ["hold", "release"])]
+        #[arg(required_unless_present_any = ["hold", "release"], value_name = "KEY|TEXT")]
         value: Option<String>,
 
         #[arg(long, conflicts_with = "release")]
@@ -272,7 +275,7 @@ EXAMPLES:
     agent-tui sessions --cleanup          # Remove dead sessions
     agent-tui sessions --attach abc123    # Attach interactively")]
     Sessions {
-        #[arg(name = "id")]
+        #[arg(name = "id", value_name = "ID")]
         session_id: Option<String>,
 
         #[arg(long)]
@@ -297,8 +300,8 @@ EXAMPLES:
     #[command(name = "record-stop")]
     #[command(hide = true)]
     RecordStop {
-        #[arg(short, long)]
-        output: Option<String>,
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
 
         #[arg(long, value_enum, default_value = "json")]
         record_format: RecordFormat,
@@ -530,8 +533,8 @@ pub enum RecordAction {
     Start,
 
     Stop {
-        #[arg(short, long)]
-        output: Option<String>,
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
 
         #[arg(long, value_enum, default_value = "json")]
         format: RecordFormat,
@@ -575,24 +578,25 @@ impl ScrollDirection {
     }
 }
 
-#[derive(Debug, Clone, Default, Parser)]
+#[derive(Debug, Clone, Default, Args)]
 #[command(group = clap::ArgGroup::new("wait_condition").multiple(false).args(&["element", "focused", "stable", "value"]))]
 pub struct WaitParams {
+    #[arg(value_name = "TEXT")]
     pub text: Option<String>,
 
-    #[arg(short, long, default_value = "30000")]
+    #[arg(short, long, default_value = "30000", value_name = "MILLIS")]
     pub timeout: u64,
 
-    #[arg(short = 'e', long, group = "wait_condition")]
+    #[arg(short = 'e', long, group = "wait_condition", value_name = "REF")]
     pub element: Option<String>,
 
-    #[arg(long, group = "wait_condition")]
+    #[arg(long, group = "wait_condition", value_name = "REF")]
     pub focused: Option<String>,
 
     #[arg(long, group = "wait_condition")]
     pub stable: bool,
 
-    #[arg(long, group = "wait_condition")]
+    #[arg(long, group = "wait_condition", value_name = "REF=VALUE")]
     pub value: Option<String>,
 
     #[arg(short = 'g', long)]
@@ -602,24 +606,24 @@ pub struct WaitParams {
     pub assert: bool,
 }
 
-#[derive(Debug, Clone, Default, Parser)]
+#[derive(Debug, Clone, Default, Args)]
 pub struct FindParams {
-    #[arg(long)]
+    #[arg(long, value_name = "ROLE")]
     pub role: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, value_name = "NAME")]
     pub name: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, value_name = "TEXT")]
     pub text: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, value_name = "TEXT")]
     pub placeholder: Option<String>,
 
     #[arg(long)]
     pub focused: bool,
 
-    #[arg(long)]
+    #[arg(long, value_name = "N")]
     pub nth: Option<usize>,
 
     #[arg(long)]
@@ -1243,7 +1247,7 @@ mod tests {
             panic!("Expected Run command, got {:?}", cli.command);
         };
         assert_eq!(command, "bash");
-        assert_eq!(cwd, Some("/tmp".to_string()));
+        assert_eq!(cwd, Some(PathBuf::from("/tmp")));
     }
 
     #[test]
@@ -1358,7 +1362,7 @@ mod tests {
         let Commands::RecordStop { output, .. } = cli.command else {
             panic!("Expected RecordStop command, got {:?}", cli.command);
         };
-        assert_eq!(output, Some("recording.json".to_string()));
+        assert_eq!(output, Some(PathBuf::from("recording.json")));
     }
 
     #[test]

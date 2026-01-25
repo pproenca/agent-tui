@@ -16,7 +16,12 @@ struct NoDaemonTestEnv {
 
 impl NoDaemonTestEnv {
     fn new() -> Self {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let temp_dir = TempDir::new_in("/tmp").expect("Failed to create temp dir");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o777));
+        }
         let socket_path = temp_dir.path().join("no-daemon.sock");
 
         Self {

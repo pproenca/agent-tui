@@ -2,7 +2,6 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::io::ErrorKind;
 use std::io::Write;
-use std::os::unix::net::UnixStream;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -11,20 +10,14 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::common::Colors;
 use crate::ipc::error::ClientError;
 use crate::ipc::error_codes;
 use crate::ipc::socket::socket_path;
+use crate::ipc::transport::IpcTransport;
+use crate::ipc::transport::default_transport;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
-
-pub mod polling {
-    use std::time::Duration;
-
-    pub const MAX_STARTUP_POLLS: u32 = 50;
-    pub const INITIAL_POLL_INTERVAL: Duration = Duration::from_millis(50);
-    pub const MAX_POLL_INTERVAL: Duration = Duration::from_millis(500);
-    pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
-}
 
 #[derive(Debug, Clone)]
 pub struct DaemonClientConfig {
@@ -107,7 +100,9 @@ pub trait DaemonClient: Send + Sync {
     ) -> Result<Value, ClientError>;
 }
 
-pub struct UnixSocketClient;
+pub struct UnixSocketClient {
+    transport: std::sync::Arc<dyn IpcTransport>,
+}
 
 fn is_retriable_error(error: &ClientError) -> bool {
     match error {
@@ -122,24 +117,20 @@ fn is_retriable_error(error: &ClientError) -> bool {
 
 impl UnixSocketClient {
     pub fn connect() -> Result<Self, ClientError> {
-        let path = socket_path();
-        if !path.exists() {
-            return Err(ClientError::DaemonNotRunning);
-        }
+        Self::connect_with_transport(default_transport())
+    }
 
-        let stream = UnixStream::connect(&path)?;
+    pub fn connect_with_transport(
+        transport: std::sync::Arc<dyn IpcTransport>,
+    ) -> Result<Self, ClientError> {
+        let stream = transport.connect_stream()?;
         drop(stream);
 
-        Ok(Self)
+        Ok(Self { transport })
     }
 
     pub fn is_daemon_running() -> bool {
-        let path = socket_path();
-        if !path.exists() {
-            return false;
-        }
-
-        UnixStream::connect(path).is_ok()
+        default_transport().is_daemon_running()
     }
 }
 
@@ -154,8 +145,7 @@ impl DaemonClient for UnixSocketClient {
         params: Option<Value>,
         config: &DaemonClientConfig,
     ) -> Result<Value, ClientError> {
-        let path = socket_path();
-        let mut stream = UnixStream::connect(&path)?;
+        let mut stream = self.transport.connect_stream()?;
 
         stream.set_read_timeout(Some(config.read_timeout))?;
         stream.set_write_timeout(Some(config.write_timeout))?;
@@ -172,7 +162,8 @@ impl DaemonClient for UnixSocketClient {
         writeln!(stream, "{}", request_json)?;
         stream.flush()?;
 
-        let mut reader = BufReader::new(&stream);
+        let reader_stream = stream.try_clone()?;
+        let mut reader = BufReader::new(reader_stream);
         let mut response_line = String::new();
         reader.read_line(&mut response_line)?;
 
@@ -246,71 +237,23 @@ impl DaemonClient for UnixSocketClient {
     }
 }
 
-pub fn start_daemon_background() -> Result<(), ClientError> {
-    use std::fs::OpenOptions;
-    use std::process::Command;
-    use std::process::Stdio;
-
-    let exe = std::env::current_exe()?;
-    let log_path = socket_path().with_extension("log");
-
-    let log_file = match OpenOptions::new().create(true).append(true).open(&log_path) {
-        Ok(f) => Some(f),
-        Err(e) => {
-            eprintln!(
-                "Warning: Could not open daemon log file {}: {}",
-                log_path.display(),
-                e
-            );
-            None
-        }
-    };
-
-    let stderr = match log_file {
-        Some(f) => Stdio::from(f),
-        None => Stdio::null(),
-    };
-
-    Command::new(exe)
-        .args(["daemon", "start", "--foreground"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(stderr)
-        .spawn()?;
-
-    let mut delay = polling::INITIAL_POLL_INTERVAL;
-    for i in 0..polling::MAX_STARTUP_POLLS {
-        std::thread::sleep(delay);
-        if UnixSocketClient::is_daemon_running() {
-            return Ok(());
-        }
-
-        delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
-
-        if i == polling::MAX_STARTUP_POLLS - 1 {
-            if let Ok(log_content) = std::fs::read_to_string(&log_path) {
-                let last_lines: String = log_content
-                    .lines()
-                    .rev()
-                    .take(5)
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if !last_lines.is_empty() {
-                    eprintln!("Daemon failed to start. Recent log output:\n{}", last_lines);
-                }
-            }
-        }
-    }
-
-    Err(ClientError::DaemonNotRunning)
+pub fn ensure_daemon() -> Result<UnixSocketClient, ClientError> {
+    ensure_daemon_with_transport(default_transport())
 }
 
-pub fn ensure_daemon() -> Result<UnixSocketClient, ClientError> {
-    if !UnixSocketClient::is_daemon_running() {
-        start_daemon_background()?;
+pub fn ensure_daemon_with_transport(
+    transport: std::sync::Arc<dyn IpcTransport>,
+) -> Result<UnixSocketClient, ClientError> {
+    if !transport.is_daemon_running() {
+        if transport.supports_autostart() {
+            eprintln!("{} Starting daemon in background...", Colors::dim("Note:"));
+            transport.start_daemon_background()?;
+        } else {
+            return Err(ClientError::DaemonNotRunning);
+        }
     }
 
-    UnixSocketClient::connect()
+    UnixSocketClient::connect_with_transport(transport)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -346,6 +289,7 @@ pub fn get_daemon_pid() -> PidLookupResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     #[test]
     fn test_request_serializes_to_jsonrpc_2_0() {
@@ -490,5 +434,74 @@ mod tests {
     fn test_is_retriable_error_daemon_not_running() {
         let err = ClientError::DaemonNotRunning;
         assert!(!is_retriable_error(&err));
+    }
+
+    static ENV_MUTEX: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
+
+    #[test]
+    fn test_ensure_daemon_starts_when_not_running() {
+        let _guard = ENV_MUTEX.get_or_init(|| Mutex::new(())).lock().unwrap();
+
+        let temp_dir = tempfile::Builder::new()
+            .prefix("agent-tui-test-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let socket_path = temp_dir.path().join("agent-tui.sock");
+        let _ = std::fs::remove_file(&socket_path);
+
+        std::env::set_var("AGENT_TUI_SOCKET", &socket_path);
+        crate::ipc::transport::USE_DAEMON_START_STUB
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let result = ensure_daemon();
+        match &result {
+            Ok(_) => {
+                assert!(UnixSocketClient::is_daemon_running());
+            }
+            Err(ClientError::ConnectionFailed(io_err))
+                if io_err.kind() == ErrorKind::PermissionDenied =>
+            {
+                eprintln!(
+                    "Skipping ensure_daemon test on restricted socket access: {}",
+                    io_err
+                );
+            }
+            Err(err) => {
+                panic!(
+                    "ensure_daemon failed for socket {}: {}",
+                    socket_path.display(),
+                    err
+                );
+            }
+        }
+        crate::ipc::transport::clear_test_listener();
+        let _ = std::fs::remove_file(&socket_path);
+        crate::ipc::transport::USE_DAEMON_START_STUB
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        std::env::remove_var("AGENT_TUI_SOCKET");
+    }
+
+    #[test]
+    fn test_in_memory_transport_round_trip() {
+        let transport = std::sync::Arc::new(crate::ipc::transport::InMemoryTransport::new(
+            |request| {
+                let value: serde_json::Value =
+                    serde_json::from_str(request.trim()).expect("request json");
+                let id = value
+                    .get("id")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!(1));
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": { "ok": true }
+                })
+                .to_string()
+            },
+        ));
+
+        let mut client = UnixSocketClient::connect_with_transport(transport).unwrap();
+        let result = client.call("health", None).unwrap();
+        assert_eq!(result["ok"], true);
     }
 }

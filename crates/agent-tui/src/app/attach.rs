@@ -177,11 +177,7 @@ fn render_initial_screen<C: DaemonClient>(
             .unwrap_or(true);
 
         let _ = stdout.write_all(format!("\x1b[{row};{col}H").as_bytes());
-        let _ = stdout.write_all(if visible {
-            b"\x1b[?25h"
-        } else {
-            b"\x1b[?25l"
-        });
+        let _ = stdout.write_all(if visible { b"\x1b[?25h" } else { b"\x1b[?25l" });
     }
 
     let _ = stdout.flush();

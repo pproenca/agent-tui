@@ -7,5 +7,7 @@ pub mod sleeper;
 pub use errors::{LivePreviewError, PtyError, SessionError};
 pub use live_preview::{LivePreviewOptions, LivePreviewService};
 pub use metrics::MetricsProvider;
-pub use session_repository::{SessionHandle, SessionOps, SessionRepository};
+pub use session_repository::{
+    LivePreviewOutput, LivePreviewSnapshot, SessionHandle, SessionOps, SessionRepository,
+};
 pub use sleeper::{MockSleeper, Sleeper};

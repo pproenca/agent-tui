@@ -6,7 +6,10 @@ use crate::common::mutex_lock_or_recover;
 use crate::domain::core::Component;
 use crate::domain::core::CursorPosition;
 use crate::domain::core::Element;
-use crate::usecases::ports::{SessionError, SessionHandle, SessionOps, SessionRepository};
+use crate::usecases::ports::{
+    LivePreviewOutput, LivePreviewSnapshot, SessionError, SessionHandle, SessionOps,
+    SessionRepository,
+};
 
 use crate::infra::daemon::session::{Session, SessionId, SessionInfo, SessionManager};
 
@@ -144,6 +147,16 @@ impl SessionOps for SessionHandleImpl {
     fn clear_console(&self) {
         let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.clear_console();
+    }
+
+    fn live_preview_snapshot(&self) -> LivePreviewSnapshot {
+        let session_guard = mutex_lock_or_recover(&self.inner);
+        session_guard.live_preview_snapshot()
+    }
+
+    fn live_preview_drain_output(&self) -> LivePreviewOutput {
+        let mut session_guard = mutex_lock_or_recover(&self.inner);
+        session_guard.live_preview_drain_output()
     }
 }
 

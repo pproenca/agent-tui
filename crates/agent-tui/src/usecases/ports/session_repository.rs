@@ -8,6 +8,19 @@ use crate::domain::session_types::{
 
 use super::SessionError;
 
+#[derive(Debug, Clone)]
+pub struct LivePreviewSnapshot {
+    pub cols: u16,
+    pub rows: u16,
+    pub seq: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LivePreviewOutput {
+    pub seq: String,
+    pub dropped_bytes: u64,
+}
+
 pub trait SessionOps: Send + Sync {
     fn update(&self) -> Result<(), SessionError>;
     fn screen_text(&self) -> String;
@@ -34,6 +47,8 @@ pub trait SessionOps: Send + Sync {
     fn get_errors(&self, count: usize) -> Vec<ErrorEntry>;
     fn clear_errors(&self);
     fn clear_console(&self);
+    fn live_preview_snapshot(&self) -> LivePreviewSnapshot;
+    fn live_preview_drain_output(&self) -> LivePreviewOutput;
 }
 
 pub type SessionHandle = Arc<dyn SessionOps>;

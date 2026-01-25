@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use crate::domain::session_types::{
     ErrorEntry, RecordingFrame, RecordingStatus, SessionId, TraceEntry,
 };
-use crate::usecases::ports::SessionOps;
+use crate::usecases::ports::{LivePreviewOutput, LivePreviewSnapshot, SessionOps};
 use crate::usecases::ports::{PtyError, SessionError};
 
 pub struct MockSession {
@@ -164,6 +164,21 @@ impl SessionOps for MockSession {
     fn clear_errors(&self) {}
 
     fn clear_console(&self) {}
+
+    fn live_preview_snapshot(&self) -> LivePreviewSnapshot {
+        LivePreviewSnapshot {
+            cols: self.cols,
+            rows: self.rows,
+            seq: self.screen_text.clone(),
+        }
+    }
+
+    fn live_preview_drain_output(&self) -> LivePreviewOutput {
+        LivePreviewOutput {
+            seq: String::new(),
+            dropped_bytes: 0,
+        }
+    }
 }
 
 pub struct MockSessionBuilder {

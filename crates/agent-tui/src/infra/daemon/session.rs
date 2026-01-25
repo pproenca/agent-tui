@@ -11,6 +11,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 use std::time::Instant;
 
+use avt::Vt;
 use tracing::warn;
 
 use chrono::DateTime;
@@ -26,6 +27,7 @@ use crate::domain::core::Element;
 use crate::infra::terminal::CursorPosition;
 use crate::infra::terminal::PtyHandle;
 use crate::infra::terminal::key_to_escape_sequence;
+use crate::usecases::ports::{LivePreviewOutput, LivePreviewSnapshot};
 
 use super::pty_session::PtySession;
 use crate::infra::daemon::TerminalState;
@@ -41,6 +43,7 @@ pub use crate::infra::daemon::SessionError;
 const MAX_RECORDING_FRAMES: usize = 1000;
 const MAX_TRACE_ENTRIES: usize = 500;
 const MAX_ERROR_ENTRIES: usize = 500;
+const LIVE_PREVIEW_MAX_BUFFER_BYTES: usize = 4 * 1024 * 1024;
 
 pub fn generate_session_id() -> SessionId {
     SessionId::new(Uuid::new_v4().to_string()[..8].to_string())
@@ -102,6 +105,91 @@ impl ErrorState {
     }
 }
 
+struct LivePreviewBuffer {
+    vt: Vt,
+    cols: u16,
+    rows: u16,
+    pending: VecDeque<String>,
+    pending_bytes: usize,
+    dropped_bytes: u64,
+}
+
+impl LivePreviewBuffer {
+    fn new(cols: u16, rows: u16) -> Self {
+        Self {
+            vt: build_preview_vt(cols, rows),
+            cols,
+            rows,
+            pending: VecDeque::new(),
+            pending_bytes: 0,
+            dropped_bytes: 0,
+        }
+    }
+
+    fn process(&mut self, data: &[u8]) {
+        if data.is_empty() {
+            return;
+        }
+        let text = String::from_utf8_lossy(data);
+        if text.is_empty() {
+            return;
+        }
+        self.vt.feed_str(&text);
+        self.push_text(text.as_ref());
+    }
+
+    fn snapshot(&self) -> (u16, u16, String) {
+        (self.cols, self.rows, self.vt.dump())
+    }
+
+    fn drain_output(&mut self) -> (String, u64) {
+        let mut seq = String::new();
+        if self.pending_bytes > 0 {
+            seq.reserve(self.pending_bytes);
+        }
+        for chunk in self.pending.drain(..) {
+            seq.push_str(&chunk);
+        }
+        self.pending_bytes = 0;
+        let dropped_bytes = std::mem::take(&mut self.dropped_bytes);
+        (seq, dropped_bytes)
+    }
+
+    fn resize(&mut self, cols: u16, rows: u16) {
+        self.cols = cols;
+        self.rows = rows;
+        self.vt.resize(cols as usize, rows as usize);
+    }
+
+    fn clear(&mut self) {
+        self.vt = build_preview_vt(self.cols, self.rows);
+        self.pending.clear();
+        self.pending_bytes = 0;
+        self.dropped_bytes = 0;
+    }
+
+    fn push_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.pending_bytes += text.len();
+        self.pending.push_back(text.to_string());
+        while self.pending_bytes > LIVE_PREVIEW_MAX_BUFFER_BYTES {
+            if let Some(front) = self.pending.pop_front() {
+                self.pending_bytes -= front.len();
+                self.dropped_bytes += front.len() as u64;
+            } else {
+                self.pending_bytes = 0;
+                break;
+            }
+        }
+    }
+}
+
+fn build_preview_vt(cols: u16, rows: u16) -> Vt {
+    Vt::builder().size(cols as usize, rows as usize).build()
+}
+
 #[derive(Clone, Copy)]
 enum ModifierKey {
     Ctrl,
@@ -151,6 +239,7 @@ pub struct Session {
     trace: TraceState,
     held_modifiers: ModifierState,
     errors: ErrorState,
+    live_preview: LivePreviewBuffer,
 }
 
 impl Session {
@@ -165,6 +254,7 @@ impl Session {
             trace: TraceState::new(),
             held_modifiers: ModifierState::default(),
             errors: ErrorState::new(),
+            live_preview: LivePreviewBuffer::new(cols, rows),
         }
     }
 
@@ -188,6 +278,7 @@ impl Session {
                 Ok(0) => break,
                 Ok(n) => {
                     self.terminal.process(&buf[..n]);
+                    self.live_preview.process(&buf[..n]);
                 }
                 Err(e) => {
                     let err_str = e.to_string();
@@ -284,6 +375,7 @@ impl Session {
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), SessionError> {
         self.pty.resize(cols, rows)?;
         self.terminal.resize(cols, rows);
+        self.live_preview.resize(cols, rows);
         Ok(())
     }
 
@@ -412,6 +504,17 @@ impl Session {
 
     pub fn clear_console(&mut self) {
         self.terminal.clear();
+        self.live_preview.clear();
+    }
+
+    pub fn live_preview_snapshot(&self) -> LivePreviewSnapshot {
+        let (cols, rows, seq) = self.live_preview.snapshot();
+        LivePreviewSnapshot { cols, rows, seq }
+    }
+
+    pub fn live_preview_drain_output(&mut self) -> LivePreviewOutput {
+        let (seq, dropped_bytes) = self.live_preview.drain_output();
+        LivePreviewOutput { seq, dropped_bytes }
     }
 
     pub fn analyze_screen(&self) -> Vec<crate::domain::core::Component> {

@@ -35,6 +35,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 axum = { version = "0.7", features = ["ws"] }
 futures-util = { version = "0.3", features = ["sink"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
+avt = "0.16"
 
 # Dev dependencies (used in [dev-dependencies] sections)
 assert_cmd = "2.1"

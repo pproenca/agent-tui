@@ -90,7 +90,7 @@ fn test_parallel_snapshots_with_different_options() {
         },
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["screen", "-i"]))
+            thread::spawn(move || harness.run(&["screen", "-e"]))
         },
         {
             let harness = Arc::clone(&harness);

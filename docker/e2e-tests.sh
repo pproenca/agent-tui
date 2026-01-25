@@ -964,7 +964,7 @@ test_rapid_spawn_kill() {
 
 #######################################
 # Test 14: Screen elements flag.
-# Tests: screen -i shows elements section.
+# Tests: screen -e shows elements section.
 # Returns:
 #   0 if elements displayed, 1 otherwise
 #######################################
@@ -991,10 +991,10 @@ test_screen_elements_flag() {
     agent-tui input Enter --session "$sess" 2>/dev/null
     agent-tui wait "[Y]" --session "$sess" --timeout 3000 2>/dev/null || true
 
-    # Test screen -i
-    log_info "Testing screen -i flag..."
+    # Test screen -e
+    log_info "Testing screen -e flag..."
     local screen_output
-    screen_output=$(agent-tui screen -i --session "$sess" 2>&1)
+    screen_output=$(agent-tui screen -e --session "$sess" 2>&1)
 
     if grep -qi "Elements:\|element\|@e" <<< "$screen_output"; then
         log_pass "Screen -i shows elements section"

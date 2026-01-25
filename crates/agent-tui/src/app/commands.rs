@@ -7,6 +7,15 @@ use clap::ValueHint;
 pub use clap_complete::Shell;
 use std::path::PathBuf;
 
+const AFTER_HELP: &str =
+    "Use --help for full details and examples. Use --format json for machine-readable output.";
+
+const LONG_ABOUT: &str = "\
+Drive TUI (text UI) applications programmatically or interactively.\n\
+\n\
+Common flow: run -> screen -> action/press/input -> wait -> kill.\n\
+Use --format json for automation-friendly output.";
+
 const AFTER_LONG_HELP: &str = r#"WORKFLOW:
     1. Run a TUI application
     2. View the screen and detect elements
@@ -18,6 +27,10 @@ SELECTORS:
     @e1, @e2, @e3  - Element refs (from 'screen -e' output)
     @"Submit"      - Find element by exact text
     :Submit        - Find element by partial text (contains)
+
+OUTPUT:
+    --format json  Machine-readable JSON (recommended for automation)
+    --format text  Human-readable text (default)
 
 EXAMPLES:
     # Start and interact with a TUI app
@@ -46,32 +59,46 @@ EXAMPLES:
 #[command(name = "agent-tui")]
 #[command(author, version, propagate_version = true)]
 #[command(about = "CLI tool for AI agents to interact with TUI applications")]
+#[command(long_about = LONG_ABOUT)]
+#[command(after_help = AFTER_HELP)]
 #[command(after_long_help = AFTER_LONG_HELP)]
 #[command(subcommand_required = true, arg_required_else_help = true)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 
-    #[arg(short, long, global = true, value_name = "ID")]
+    /// Session ID to use (defaults to the most recent session)
+    #[arg(
+        short,
+        long,
+        global = true,
+        value_name = "ID",
+        help_heading = "Session Options"
+    )]
     pub session: Option<String>,
 
+    /// Output format (text or json)
     #[arg(
         short,
         long,
         global = true,
         value_enum,
         value_name = "FORMAT",
-        default_value_t = OutputFormat::Text
+        default_value_t = OutputFormat::Text,
+        help_heading = "Output Options"
     )]
     pub format: OutputFormat,
 
-    #[arg(long, global = true)]
+    /// Shorthand for --format json
+    #[arg(long, global = true, help_heading = "Output Options")]
     pub json: bool,
 
-    #[arg(long, global = true, env = "NO_COLOR")]
+    /// Disable colored output (also respects NO_COLOR)
+    #[arg(long, global = true, env = "NO_COLOR", help_heading = "Output Options")]
     pub no_color: bool,
 
-    #[arg(short, long, global = true)]
+    /// Enable verbose output (shows request timing)
+    #[arg(short, long, global = true, help_heading = "Debug Options")]
     pub verbose: bool,
 }
 
@@ -93,7 +120,8 @@ pub enum Commands {
 Run a new TUI application in a virtual terminal.
 
 Creates a new PTY session with the specified command and returns a session ID.
-The session runs in the background and can be interacted with using other commands.")]
+The session runs in the background and can be interacted with using other commands.
+Use `--` before COMMAND args that start with `-` (e.g., `run -- vim -n`).")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui run bash
@@ -102,19 +130,34 @@ EXAMPLES:
     agent-tui run vim -- file.txt
     agent-tui run --cols 80 --rows 24 nano")]
     Run {
+        /// Command to run inside the virtual terminal
         #[arg(value_name = "COMMAND", value_hint = ValueHint::CommandName)]
         command: String,
 
-        #[arg(trailing_var_arg = true, value_name = "ARGS")]
+        /// Arguments for the command (use -- to pass flags through)
+        #[arg(trailing_var_arg = true, value_name = "ARG")]
         args: Vec<String>,
 
+        /// Working directory for the command
         #[arg(short = 'd', long, value_name = "DIR", value_hint = ValueHint::DirPath)]
         cwd: Option<PathBuf>,
 
-        #[arg(long, default_value_t = 120)]
+        /// Terminal columns (default: 120)
+        #[arg(
+            long,
+            default_value_t = 120,
+            value_name = "COLS",
+            help_heading = "Terminal Size"
+        )]
         cols: u16,
 
-        #[arg(long, default_value_t = 40)]
+        /// Terminal rows (default: 40)
+        #[arg(
+            long,
+            default_value_t = 40,
+            value_name = "ROWS",
+            help_heading = "Terminal Size"
+        )]
         rows: u16,
     },
 
@@ -142,22 +185,28 @@ EXAMPLES:
     agent-tui screen -a --interactive-only  # Only interactive elements
     agent-tui screen --strip-ansi # Plain text without colors")]
     Screen {
-        #[arg(short = 'i', long)]
+        /// Detect interactive elements and include element refs
+        #[arg(short = 'e', long, help_heading = "Element Detection")]
         elements: bool,
 
-        #[arg(short = 'a', long)]
+        /// Output in accessibility-tree format (agent-browser style)
+        #[arg(short = 'a', long, help_heading = "Element Detection")]
         accessibility: bool,
 
-        #[arg(long, requires = "accessibility")]
+        /// Only include interactive elements (requires --accessibility)
+        #[arg(long, requires = "accessibility", help_heading = "Element Detection")]
         interactive_only: bool,
 
-        #[arg(long, value_name = "REGION")]
+        /// Limit capture to a named region (if supported)
+        #[arg(long, value_name = "REGION", help_heading = "Filtering")]
         region: Option<String>,
 
-        #[arg(long)]
+        /// Strip ANSI color codes from output
+        #[arg(long, help_heading = "Output Options")]
         strip_ansi: bool,
 
-        #[arg(long)]
+        /// Include cursor position in output
+        #[arg(long, help_heading = "Output Options")]
         include_cursor: bool,
     },
 
@@ -178,6 +227,7 @@ EXAMPLES:
     agent-tui action @cb1 toggle on
     agent-tui action @e1 scroll up 10")]
     Action {
+        /// Element ref to target (e.g., @e1)
         #[arg(value_name = "REF")]
         element_ref: String,
 
@@ -201,6 +251,7 @@ EXAMPLES:
     /// Type literal text character by character
     Type {
         /// Text to type
+        #[arg(value_name = "TEXT")]
         text: String,
     },
 
@@ -224,13 +275,16 @@ EXAMPLES:
     agent-tui input \"hello\"            # Type text char-by-char
     agent-tui input Shift --hold       # Hold Shift down")]
     Input {
+        /// Key name or text to send
         #[arg(value_name = "KEY|TEXT")]
         value: String,
 
-        #[arg(long, conflicts_with = "release")]
+        /// Hold the key down (for modifier sequences)
+        #[arg(long, conflicts_with = "release", help_heading = "Modifiers")]
         hold: bool,
 
-        #[arg(long, conflicts_with = "hold")]
+        /// Release a held key (for modifier sequences)
+        #[arg(long, conflicts_with = "hold", help_heading = "Modifiers")]
         release: bool,
     },
 
@@ -271,8 +325,9 @@ EXAMPLES:
 Manage sessions - list, cleanup, attach, or show details.
 
 By default, lists all active sessions. Use flags for other operations.
+Only one mode may be specified at a time.
 
-FLAGS:
+MODES:
     <id>           Show details for a specific session
     --cleanup      Remove dead/orphaned sessions
     --cleanup --all    Remove all sessions
@@ -290,18 +345,23 @@ EXAMPLES:
             .args(&["id", "cleanup", "attach", "status"])
     )]
     Sessions {
+        /// Show details for a specific session ID
         #[arg(name = "id", value_name = "ID")]
         session_id: Option<String>,
 
+        /// Remove dead/orphaned sessions
         #[arg(long)]
         cleanup: bool,
 
+        /// With --cleanup, remove all sessions (including active)
         #[arg(long, requires = "cleanup")]
         all: bool,
 
+        /// Attach to a session interactively
         #[arg(long, value_name = "ID")]
         attach: Option<String>,
 
+        /// Include daemon status in output
         #[arg(long)]
         status: bool,
     },
@@ -386,6 +446,7 @@ EXAMPLES:
     agent-tui daemon start              # Start in background
     agent-tui daemon start --foreground # Run in foreground")]
     Start {
+        /// Run in the foreground (debugging)
         #[arg(long)]
         foreground: bool,
     },
@@ -402,6 +463,7 @@ EXAMPLES:
     agent-tui daemon stop          # Graceful stop
     agent-tui daemon stop --force  # Force kill")]
     Stop {
+        /// Force kill the daemon (SIGKILL)
         #[arg(long)]
         force: bool,
     },
@@ -440,18 +502,21 @@ pub enum ActionOperation {
 
     /// Set the input value
     Fill {
+        /// Text to fill into the element
         #[arg(value_name = "VALUE")]
         value: String,
     },
 
     /// Select option(s) from a list
     Select {
+        /// Options to select
         #[arg(required = true, value_name = "OPTION")]
         options: Vec<String>,
     },
 
     /// Toggle checkbox/radio state
     Toggle {
+        /// Desired state (on/off). If omitted, toggle current state.
         #[arg(value_enum)]
         state: Option<ToggleState>,
     },
@@ -468,10 +533,12 @@ pub enum ActionOperation {
 
     /// Scroll viewport in a direction
     Scroll {
+        /// Direction to scroll
         #[arg(value_enum)]
         direction: ScrollDirection,
 
-        #[arg(default_value_t = 5)]
+        /// Number of lines/rows to scroll
+        #[arg(default_value_t = 5, value_name = "AMOUNT")]
         amount: u16,
     },
 }
@@ -485,25 +552,33 @@ pub enum ToggleState {
 #[derive(Debug, Subcommand)]
 #[command(subcommand_required = true, arg_required_else_help = true)]
 pub enum DebugCommand {
+    /// Manage recording (start/stop/status)
     #[command(subcommand)]
     Record(RecordAction),
 
+    /// Show recent interaction trace
     Trace(TraceArgs),
 
+    /// Show console/terminal output
     Console(ConsoleArgs),
 
+    /// Show captured errors (stderr, signals, exit codes)
     Errors(ErrorsArgs),
 
+    /// Show environment diagnostics
     Env,
 }
 
 #[derive(Debug, Subcommand)]
 #[command(subcommand_required = true, arg_required_else_help = true)]
 pub enum RecordAction {
+    /// Start recording the current session
     Start,
 
+    /// Stop recording and write the output file
     Stop(RecordStopArgs),
 
+    /// Check recording status
     Status,
 }
 
@@ -544,9 +619,11 @@ impl ScrollDirection {
 
 #[derive(Debug, Clone, Args)]
 pub struct RecordStopArgs {
+    /// Output file path (defaults to stdout)
     #[arg(short, long, value_name = "FILE", value_hint = ValueHint::FilePath)]
     pub output: Option<PathBuf>,
 
+    /// Recording format to write
     #[arg(
         long = "record-format",
         value_enum,
@@ -558,30 +635,37 @@ pub struct RecordStopArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct TraceArgs {
+    /// Number of recent entries to show
     #[arg(short = 'n', long, default_value_t = 10)]
     pub count: usize,
 
+    /// Start tracing (enables capture)
     #[arg(long)]
     pub start: bool,
 
+    /// Stop tracing (disables capture)
     #[arg(long)]
     pub stop: bool,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct ConsoleArgs {
+    /// Number of lines to show
     #[arg(short = 'n', long, default_value_t = 100)]
     pub lines: usize,
 
+    /// Clear captured console output
     #[arg(long)]
     pub clear: bool,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct ErrorsArgs {
+    /// Number of recent errors to show
     #[arg(short = 'n', long, default_value_t = 10)]
     pub count: usize,
 
+    /// Clear captured errors
     #[arg(long)]
     pub clear: bool,
 }
@@ -595,28 +679,63 @@ pub struct ErrorsArgs {
 )]
 #[command(group = ArgGroup::new("gone_target").args(&["text", "element"]))]
 pub struct WaitParams {
+    /// Text to wait for (positional)
     #[arg(value_name = "TEXT")]
     pub text: Option<String>,
 
-    #[arg(short, long, default_value_t = 30_000, value_name = "MILLIS")]
+    /// Timeout in milliseconds (default: 30000)
+    #[arg(
+        short,
+        long,
+        default_value_t = 30_000,
+        value_name = "MILLIS",
+        help_heading = "Timing"
+    )]
     pub timeout: u64,
 
-    #[arg(short = 'e', long, group = "wait_condition", value_name = "REF")]
+    /// Wait for an element ref to appear
+    #[arg(
+        short = 'e',
+        long,
+        group = "wait_condition",
+        value_name = "REF",
+        help_heading = "Wait Condition"
+    )]
     pub element: Option<String>,
 
-    #[arg(long, group = "wait_condition", value_name = "REF")]
+    /// Wait for an element to be focused
+    #[arg(
+        long,
+        group = "wait_condition",
+        value_name = "REF",
+        help_heading = "Wait Condition"
+    )]
     pub focused: Option<String>,
 
-    #[arg(long, group = "wait_condition")]
+    /// Wait for the screen to stop changing
+    #[arg(long, group = "wait_condition", help_heading = "Wait Condition")]
     pub stable: bool,
 
-    #[arg(long, group = "wait_condition", value_name = "REF=VALUE")]
+    /// Wait for an input to have a specific value
+    #[arg(
+        long,
+        group = "wait_condition",
+        value_name = "REF=VALUE",
+        help_heading = "Wait Condition"
+    )]
     pub value: Option<String>,
 
-    #[arg(short = 'g', long, requires = "gone_target")]
+    /// Wait for the target to disappear (text or element)
+    #[arg(
+        short = 'g',
+        long,
+        requires = "gone_target",
+        help_heading = "Wait Condition"
+    )]
     pub gone: bool,
 
-    #[arg(long)]
+    /// Exit with status 0 if met, 1 on timeout
+    #[arg(long, help_heading = "Behavior")]
     pub assert: bool,
 }
 
@@ -733,7 +852,7 @@ mod tests {
 
     #[test]
     fn test_screen_flags() {
-        let cli = Cli::parse_from(["agent-tui", "screen", "-i"]);
+        let cli = Cli::parse_from(["agent-tui", "screen", "-e"]);
         let Commands::Screen {
             elements,
             region,
@@ -755,7 +874,7 @@ mod tests {
         let cli = Cli::parse_from([
             "agent-tui",
             "screen",
-            "-i",
+            "-e",
             "--region",
             "modal",
             "--strip-ansi",

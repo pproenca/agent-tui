@@ -957,6 +957,7 @@ pub struct HealthOutput {
     pub uptime_ms: u64,
     pub session_count: usize,
     pub version: String,
+    pub commit: String,
     pub active_connections: usize,
     pub total_requests: u64,
     pub error_count: u64,

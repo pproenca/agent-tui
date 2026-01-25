@@ -24,7 +24,7 @@ fn test_sequence_returns_different_responses() {
                 "pid": 12345,
                 "uptime_ms": 1000,
                 "session_count": 0,
-                "version": env!("CARGO_PKG_VERSION")
+                "version": env!("AGENT_TUI_VERSION")
             })),
         ]),
     );
@@ -45,7 +45,7 @@ fn test_sequence_returns_different_responses() {
 fn test_sequence_cycles_through_responses() {
     let harness = TestHarness::new();
 
-    let cli_version = env!("CARGO_PKG_VERSION");
+    let cli_version = env!("AGENT_TUI_VERSION");
 
     harness.set_response(
         "health",
@@ -70,7 +70,7 @@ fn test_sequence_cycles_through_responses() {
 fn test_sequence_with_disconnect() {
     let harness = TestHarness::new();
 
-    let cli_version = env!("CARGO_PKG_VERSION");
+    let cli_version = env!("AGENT_TUI_VERSION");
 
     harness.set_response(
         "health",

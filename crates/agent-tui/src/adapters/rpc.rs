@@ -576,6 +576,7 @@ pub fn health_output_to_response(id: u64, output: HealthOutput) -> RpcResponse {
             "uptime_ms": output.uptime_ms,
             "session_count": output.session_count,
             "version": output.version,
+            "commit": output.commit,
             "active_connections": output.active_connections,
             "total_requests": output.total_requests,
             "error_count": output.error_count
@@ -1431,6 +1432,7 @@ mod tests {
             uptime_ms: 5000,
             session_count: 2,
             version: "0.1.0".to_string(),
+            commit: "abc1234".to_string(),
             active_connections: 1,
             total_requests: 100,
             error_count: 5,

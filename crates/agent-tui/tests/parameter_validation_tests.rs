@@ -9,7 +9,11 @@ fn test_action_requires_ref_and_operation() {
 
     harness.run(&["action"]).failure();
 
-    harness.run(&["action", "@btn1"]).failure();
+    // Default action when only ref is provided should be click.
+    harness
+        .run(&["action", "@btn1"])
+        .success()
+        .stdout(predicate::str::contains("Clicked"));
 }
 
 #[test]

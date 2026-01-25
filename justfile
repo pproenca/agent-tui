@@ -106,23 +106,23 @@ lint-crate crate:
 
 # Release with patch version bump
 release-patch:
-    ./scripts/release.sh patch
+    cargo xtask release patch
 
 # Release with minor version bump
 release-minor:
-    ./scripts/release.sh minor
+    cargo xtask release minor
 
 # Release with major version bump
 release-major:
-    ./scripts/release.sh major
+    cargo xtask release major
 
 # Release with explicit version
 release version:
-    ./scripts/release.sh {{version}}
+    cargo xtask release {{version}}
 
 # Install git hooks (pre-push checks)
 setup-hooks:
-    ./scripts/setup-hooks.sh
+    cargo xtask hooks install
 
 # Run ast-grep rule tests
 ast-grep-test:

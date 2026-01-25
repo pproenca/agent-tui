@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
 
+pub mod ansi_keys;
 mod color;
 pub mod error_codes;
 mod json_ext;

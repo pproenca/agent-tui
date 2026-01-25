@@ -13,6 +13,7 @@ dependencies = [
  "clap_complete",
  "crossterm",
  "libc",
+ "once_cell",
  "portable-pty",
  "predicates",
  "proptest",

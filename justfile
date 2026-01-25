@@ -36,9 +36,16 @@ test-integration:
     cargo test --test concurrent_tests --test connection_failure_tests \
         --test dbl_click_tests --test e2e_daemon_tests \
         --test error_propagation_tests --test lock_timeout_tests \
-        --test parameter_validation_tests --test pty_operations_tests \
+        --test parameter_validation_tests \
         --test response_edge_cases_tests --test retry_mechanism_tests \
         --test session_state_tests
+
+# Prep for nextest tiers (CI hook to be wired later)
+test-fast-nextest:
+    cargo nextest run --workspace --filter-set 'expr(not test-type(system))'
+
+test-system-nextest:
+    cargo nextest run --workspace --filter-set 'expr(test-type(system))'
 
 # Run E2E tests with real daemon (~31s)
 test-e2e:

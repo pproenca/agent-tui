@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::os::fd::RawFd;
@@ -28,6 +29,28 @@ impl Drop for PtyHandle {
     fn drop(&mut self) {
         if self.is_running() {
             let _ = self.kill();
+        }
+    }
+}
+
+struct SigpipeGuard {
+    previous: libc::sighandler_t,
+}
+
+impl SigpipeGuard {
+    fn new() -> Option<Self> {
+        let previous = unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
+        if previous == libc::SIG_ERR {
+            return None;
+        }
+        Some(Self { previous })
+    }
+}
+
+impl Drop for SigpipeGuard {
+    fn drop(&mut self) {
+        unsafe {
+            libc::signal(libc::SIGPIPE, self.previous);
         }
     }
 }
@@ -69,6 +92,7 @@ impl PtyHandle {
 
         cmd.env("TERM", "xterm-256color");
 
+        let _sigpipe_guard = SigpipeGuard::new();
         let child = pair
             .slave
             .spawn_command(cmd)
@@ -83,6 +107,8 @@ impl PtyHandle {
             .master
             .as_raw_fd()
             .ok_or_else(|| PtyError::Open("Failed to get master fd".to_string()))?;
+
+        set_non_blocking(reader_fd)?;
 
         let writer = pair
             .master
@@ -111,11 +137,27 @@ impl PtyHandle {
     }
 
     pub fn write(&self, data: &[u8]) -> Result<(), PtyError> {
+        if data.is_empty() {
+            return Ok(());
+        }
+
         let mut writer = mutex_lock_or_recover(&self.writer);
-        writer
-            .write_all(data)
-            .map_err(|e| PtyError::Write(e.to_string()))?;
-        writer.flush().map_err(|e| PtyError::Write(e.to_string()))?;
+        let mut offset = 0;
+        while offset < data.len() {
+            match writer.write(&data[offset..]) {
+                Ok(0) => {
+                    return Err(PtyError::Write(
+                        "write returned 0 bytes, PTY closed".to_string(),
+                    ));
+                }
+                Ok(n) => offset += n,
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    wait_writable(self.reader_fd)?;
+                }
+                Err(e) => return Err(PtyError::Write(e.to_string())),
+            }
+        }
         Ok(())
     }
 
@@ -124,24 +166,33 @@ impl PtyHandle {
     }
 
     pub fn try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, PtyError> {
-        let mut pollfd = libc::pollfd {
-            fd: self.reader_fd,
-            events: libc::POLLIN,
-            revents: 0,
-        };
-
-        let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
-
-        if result < 0 {
-            return Err(PtyError::Read("poll failed".to_string()));
+        if buf.is_empty() {
+            return Ok(0);
         }
 
-        if result == 0 {
+        let ready = wait_readable(self.reader_fd, timeout_ms)?;
+        if !ready {
             return Ok(0);
         }
 
         let mut reader = mutex_lock_or_recover(&self.reader);
-        reader.read(buf).map_err(|e| PtyError::Read(e.to_string()))
+        let mut total = 0;
+        loop {
+            match reader.read(&mut buf[total..]) {
+                Ok(0) => break,
+                Ok(n) => {
+                    total += n;
+                    if total == buf.len() {
+                        break;
+                    }
+                }
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(PtyError::Read(e.to_string())),
+            }
+        }
+
+        Ok(total)
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), PtyError> {
@@ -165,6 +216,69 @@ impl PtyHandle {
             .kill()
             .map_err(|e| PtyError::Spawn(e.to_string()))
     }
+}
+
+fn set_non_blocking(fd: RawFd) -> Result<(), PtyError> {
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(PtyError::Open(io::Error::last_os_error().to_string()));
+    }
+
+    if flags & libc::O_NONBLOCK != 0 {
+        return Ok(());
+    }
+
+    let result = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
+    if result < 0 {
+        return Err(PtyError::Open(io::Error::last_os_error().to_string()));
+    }
+
+    Ok(())
+}
+
+fn wait_readable(fd: RawFd, timeout_ms: i32) -> Result<bool, PtyError> {
+    let mut pollfd = libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+
+    let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
+    if result < 0 {
+        return Err(PtyError::Read(io::Error::last_os_error().to_string()));
+    }
+    if result == 0 {
+        return Ok(false);
+    }
+
+    if pollfd.revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+        return Err(PtyError::Read("poll error on PTY".to_string()));
+    }
+
+    if pollfd.revents & libc::POLLHUP != 0 && pollfd.revents & libc::POLLIN == 0 {
+        return Ok(false);
+    }
+
+    Ok(pollfd.revents & libc::POLLIN != 0)
+}
+
+fn wait_writable(fd: RawFd) -> Result<(), PtyError> {
+    let mut pollfd = libc::pollfd {
+        fd,
+        events: libc::POLLOUT,
+        revents: 0,
+    };
+
+    let result = unsafe { libc::poll(&mut pollfd, 1, -1) };
+    if result < 0 {
+        return Err(PtyError::Write(io::Error::last_os_error().to_string()));
+    }
+
+    if pollfd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
+        return Err(PtyError::Write("poll error on PTY".to_string()));
+    }
+
+    Ok(())
 }
 
 pub fn key_to_escape_sequence(key: &str) -> Option<Vec<u8>> {

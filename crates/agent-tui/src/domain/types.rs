@@ -921,6 +921,32 @@ pub struct AttachOutput {
     pub message: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct LivePreviewStartInput {
+    pub session_id: Option<SessionId>,
+    pub listen_addr: Option<String>,
+    pub allow_remote: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct LivePreviewStartOutput {
+    pub session_id: SessionId,
+    pub listen_addr: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LivePreviewStopOutput {
+    pub stopped: bool,
+    pub session_id: Option<SessionId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LivePreviewStatusOutput {
+    pub running: bool,
+    pub session_id: Option<SessionId>,
+    pub listen_addr: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct HealthInput;
 

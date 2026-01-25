@@ -1,5 +1,7 @@
 use std::io;
+use std::io::Read;
 use std::io::Write;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use base64::Engine;
@@ -8,7 +10,6 @@ use crossterm::event;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
-use crossterm::execute;
 use crossterm::terminal;
 use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
@@ -20,44 +21,6 @@ use crate::infra::ipc::DaemonClient;
 
 pub use crate::app::error::AttachError;
 
-/// RAII guard that ignores a signal during its lifetime and restores default behavior on drop.
-///
-/// # Thread Safety
-/// Signal handlers are process-global state, not thread-local. Creating multiple `SignalGuard`
-/// instances for the same signal from different threads leads to undefined behavior. This type
-/// should only be used from a single thread (typically the main thread) when controlling signal
-/// disposition for interactive terminal sessions.
-#[must_use = "SignalGuard must be held for the duration of signal ignoring; dropping it restores the default handler"]
-struct SignalGuard {
-    signal: libc::c_int,
-}
-
-impl SignalGuard {
-    /// Creates a new SignalGuard that ignores the specified signal.
-    fn new(signal: libc::c_int) -> Self {
-        // SAFETY: `libc::signal` is safe to call with any valid signal number and SIG_IGN.
-        // SIG_IGN is a valid signal disposition. The previous handler is intentionally
-        // discarded since we restore SIG_DFL on drop, which is the correct default for
-        // most signals. This matches POSIX semantics where ignoring signal return values
-        // is acceptable when setting to SIG_IGN.
-        unsafe {
-            libc::signal(signal, libc::SIG_IGN);
-        }
-        Self { signal }
-    }
-}
-
-impl Drop for SignalGuard {
-    fn drop(&mut self) {
-        // SAFETY: `libc::signal` is safe to call with any valid signal number and SIG_DFL.
-        // SIG_DFL is the default disposition for signals. Restoring to SIG_DFL is always
-        // safe and ensures the process returns to normal signal handling behavior.
-        unsafe {
-            libc::signal(self.signal, libc::SIG_DFL);
-        }
-    }
-}
-
 /// Restores terminal state on drop to avoid leaving the user's shell in a broken mode.
 #[must_use = "TerminalGuard must be held for the duration of the attach session"]
 struct TerminalGuard;
@@ -66,10 +29,7 @@ impl TerminalGuard {
     fn new() -> Result<Self, AttachError> {
         enable_raw_mode().map_err(AttachError::Terminal)?;
         let mut stdout = io::stdout();
-        if let Err(err) = execute!(stdout, terminal::EnterAlternateScreen) {
-            let _ = disable_raw_mode();
-            return Err(AttachError::Terminal(err));
-        }
+        let _ = reset_terminal_modes(&mut stdout);
         Ok(Self)
     }
 }
@@ -78,44 +38,57 @@ impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
         let mut stdout = io::stdout();
-        let _ = execute!(stdout, terminal::LeaveAlternateScreen);
-        let _ = stdout.write_all(b"\x1b[0m\x1b(B\x1b[?25h\x1b[?1l\x1b>");
-        let _ = stdout.flush();
+        let _ = reset_terminal_modes(&mut stdout);
     }
 }
 
-pub fn attach_ipc<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<(), AttachError> {
+#[derive(Debug, Clone, Copy)]
+pub enum AttachMode {
+    Tty,
+    Stream,
+}
+
+pub fn attach_ipc<C: DaemonClient>(
+    client: &mut C,
+    session_id: &str,
+    mode: AttachMode,
+) -> Result<(), AttachError> {
     eprintln!(
         "{} Attaching to session {}...",
         Colors::dim("[attach]"),
         Colors::session_id(session_id)
     );
-    eprintln!(
-        "{} Press {} to detach.",
-        Colors::success("Connected!"),
-        Colors::bold("Ctrl+\\")
-    );
-    eprintln!();
 
-    // Ignore SIGQUIT (Ctrl+\) so we can capture it for detachment
-    let _sigquit_guard = SignalGuard::new(libc::SIGQUIT);
+    match mode {
+        AttachMode::Tty => {
+            eprintln!(
+                "{} Press {} to detach.",
+                Colors::success("Connected!"),
+                Colors::bold("Ctrl-P Ctrl-Q")
+            );
+            eprintln!();
 
-    let term_guard = TerminalGuard::new()?;
+            let term_guard = TerminalGuard::new()?;
 
-    let (cols, rows) = terminal::size().map_err(AttachError::Terminal)?;
-    let resize_params = json!({
-        "cols": cols,
-        "rows": rows,
-        "session": session_id
-    });
-    let _ = client.call("resize", Some(resize_params));
+            let (cols, rows) = terminal::size().map_err(AttachError::Terminal)?;
+            let resize_params = json!({
+                "cols": cols,
+                "rows": rows,
+                "session": session_id
+            });
+            let _ = client.call("resize", Some(resize_params));
 
-    let mut stdout = io::stdout();
-    render_initial_screen(client, session_id, &mut stdout);
+            let mut stdout = io::stdout();
+            render_initial_screen(client, session_id, &mut stdout);
 
-    let result = attach_ipc_loop(client, session_id);
+            let result = attach_ipc_loop(client, session_id);
 
-    drop(term_guard);
+            drop(term_guard);
+
+            result
+        }
+        AttachMode::Stream => attach_stream_loop(client, session_id),
+    }?;
 
     eprintln!();
     eprintln!(
@@ -124,7 +97,7 @@ pub fn attach_ipc<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<(
         Colors::session_id(session_id)
     );
 
-    result
+    Ok(())
 }
 
 fn render_initial_screen<C: DaemonClient>(
@@ -165,12 +138,14 @@ fn render_initial_screen<C: DaemonClient>(
             .get("row")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0)
-            .saturating_add(1);
+            .saturating_add(1)
+            .min(u16::MAX as u64) as u16;
         let col = cursor
             .get("col")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0)
-            .saturating_add(1);
+            .saturating_add(1)
+            .min(u16::MAX as u64) as u16;
         let visible = cursor
             .get("visible")
             .and_then(serde_json::Value::as_bool)
@@ -185,24 +160,27 @@ fn render_initial_screen<C: DaemonClient>(
 
 fn attach_ipc_loop<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<(), AttachError> {
     let mut stdout = io::stdout();
+    let mut detach_detector = DetachDetector::default();
 
     loop {
         if event::poll(Duration::from_millis(10)).unwrap_or(false) {
             match event::read() {
                 Ok(Event::Key(key_event)) => {
                     if let Some(bytes) = key_event_to_bytes(&key_event) {
-                        // Detect Ctrl+\ (ASCII FS / 0x1c) across terminal encodings.
-                        if bytes == [0x1c] {
+                        let (to_send, detach) = detach_detector.consume(&bytes);
+                        if detach {
                             break;
                         }
 
-                        let data_b64 = STANDARD.encode(&bytes);
-                        let params = json!({
-                            "session": session_id,
-                            "data": data_b64
-                        });
-                        if let Err(e) = client.call("pty_write", Some(params)) {
-                            return Err(AttachError::PtyWrite(format_client_error(&e)));
+                        if !to_send.is_empty() {
+                            let data_b64 = STANDARD.encode(&to_send);
+                            let params = json!({
+                                "session": session_id,
+                                "data": data_b64
+                            });
+                            if let Err(e) = client.call("pty_write", Some(params)) {
+                                return Err(AttachError::PtyWrite(format_client_error(&e)));
+                            }
                         }
                     }
                 }
@@ -247,12 +225,146 @@ fn attach_ipc_loop<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<
     Ok(())
 }
 
+fn attach_stream_loop<C: DaemonClient>(
+    client: &mut C,
+    session_id: &str,
+) -> Result<(), AttachError> {
+    let mut stdout = io::stdout();
+    let mut stdin_active = true;
+    let stdin_rx = spawn_stdin_reader();
+
+    loop {
+        if stdin_active {
+            loop {
+                match stdin_rx.try_recv() {
+                    Ok(StdinMessage::Data(data)) => {
+                        if !data.is_empty() {
+                            let data_b64 = STANDARD.encode(&data);
+                            let params = json!({
+                                "session": session_id,
+                                "data": data_b64
+                            });
+                            if let Err(e) = client.call("pty_write", Some(params)) {
+                                return Err(AttachError::PtyWrite(format_client_error(&e)));
+                            }
+                        }
+                    }
+                    Ok(StdinMessage::Eof) => {
+                        stdin_active = false;
+                    }
+                    Ok(StdinMessage::Error) => {
+                        stdin_active = false;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        stdin_active = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        let read_params = json!({
+            "session": session_id,
+            "timeout_ms": 50
+        });
+        match client.call("pty_read", Some(read_params)) {
+            Ok(result) => {
+                if let Some(data_b64) = result.get("data").and_then(serde_json::Value::as_str) {
+                    if let Ok(data) = STANDARD.decode(data_b64) {
+                        if !data.is_empty() {
+                            if stdout.write_all(&data).is_err() {
+                                break;
+                            }
+                            if stdout.flush().is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(AttachError::PtyRead(format_client_error(&e)));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn format_client_error(error: &ClientError) -> String {
     let mut msg = error.to_string();
     if let Some(suggestion) = error.suggestion() {
         msg.push_str(&format!(" ({})", suggestion));
     }
     msg
+}
+
+fn reset_terminal_modes(stdout: &mut impl Write) -> io::Result<()> {
+    stdout.write_all(b"\x1b[0m\x1b(B\x1b[?25h\x1b[?7h\x1b[?6l\x1b[r\x1b[?1l\x1b>\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?2004l")?;
+    stdout.flush()
+}
+
+#[derive(Default, Debug)]
+struct DetachDetector {
+    pending_ctrl_p: bool,
+}
+
+impl DetachDetector {
+    fn consume(&mut self, bytes: &[u8]) -> (Vec<u8>, bool) {
+        let mut output = Vec::new();
+        for &byte in bytes {
+            if self.pending_ctrl_p {
+                if byte == 0x11 {
+                    self.pending_ctrl_p = false;
+                    return (output, true);
+                }
+                output.push(0x10);
+                output.push(byte);
+                self.pending_ctrl_p = false;
+                continue;
+            }
+
+            if byte == 0x10 {
+                self.pending_ctrl_p = true;
+                continue;
+            }
+
+            output.push(byte);
+        }
+        (output, false)
+    }
+}
+
+enum StdinMessage {
+    Data(Vec<u8>),
+    Eof,
+    Error,
+}
+
+fn spawn_stdin_reader() -> mpsc::Receiver<StdinMessage> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut stdin = io::stdin();
+        let mut buf = [0u8; 4096];
+        loop {
+            match stdin.read(&mut buf) {
+                Ok(0) => {
+                    let _ = tx.send(StdinMessage::Eof);
+                    break;
+                }
+                Ok(n) => {
+                    if tx.send(StdinMessage::Data(buf[..n].to_vec())).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    let _ = tx.send(StdinMessage::Error);
+                    break;
+                }
+            }
+        }
+    });
+    rx
 }
 
 fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
@@ -393,5 +505,41 @@ mod tests {
         assert_eq!(params["session"], "sess1");
         assert_eq!(params["include_cursor"], true);
         assert_eq!(params["strip_ansi"], true);
+    }
+
+    #[test]
+    fn test_detach_detector_ctrl_p_ctrl_q_detaches() {
+        let mut detector = DetachDetector::default();
+        let (out, detach) = detector.consume(&[0x10]);
+        assert!(out.is_empty());
+        assert!(!detach);
+
+        let (out, detach) = detector.consume(&[0x11]);
+        assert!(out.is_empty());
+        assert!(detach);
+    }
+
+    #[test]
+    fn test_detach_detector_passes_through_non_sequence() {
+        let mut detector = DetachDetector::default();
+        let (out, detach) = detector.consume(b"ab");
+        assert_eq!(out, b"ab");
+        assert!(!detach);
+    }
+
+    #[test]
+    fn test_detach_detector_ctrl_p_followed_by_key_sends_both() {
+        let mut detector = DetachDetector::default();
+        let (out, detach) = detector.consume(&[0x10, b'a']);
+        assert_eq!(out, vec![0x10, b'a']);
+        assert!(!detach);
+    }
+
+    #[test]
+    fn test_detach_detector_ctrl_p_ctrl_p_sends_two() {
+        let mut detector = DetachDetector::default();
+        let (out, detach) = detector.consume(&[0x10, 0x10]);
+        assert_eq!(out, vec![0x10, 0x10]);
+        assert!(!detach);
     }
 }

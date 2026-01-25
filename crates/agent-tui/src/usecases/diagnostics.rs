@@ -237,6 +237,51 @@ mod tests {
 
     use crate::domain::SessionId;
     use crate::infra::daemon::test_support::{MockError, MockSessionRepository};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[derive(Default)]
+    struct TestMetrics {
+        requests: AtomicU64,
+        errors: AtomicU64,
+        lock_timeouts: AtomicU64,
+        poison_recoveries: AtomicU64,
+    }
+
+    impl TestMetrics {
+        fn record_request(&self) {
+            self.requests.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn record_error(&self) {
+            self.errors.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn record_lock_timeout(&self) {
+            self.lock_timeouts.fetch_add(1, Ordering::Relaxed);
+        }
+
+        fn record_poison_recovery(&self) {
+            self.poison_recoveries.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    impl MetricsProvider for TestMetrics {
+        fn requests(&self) -> u64 {
+            self.requests.load(Ordering::Relaxed)
+        }
+
+        fn errors(&self) -> u64 {
+            self.errors.load(Ordering::Relaxed)
+        }
+
+        fn lock_timeouts(&self) -> u64 {
+            self.lock_timeouts.load(Ordering::Relaxed)
+        }
+
+        fn poison_recoveries(&self) -> u64 {
+            self.poison_recoveries.load(Ordering::Relaxed)
+        }
+    }
 
     #[test]
     fn test_health_usecase_returns_correct_output() {
@@ -245,7 +290,7 @@ mod tests {
                 .with_session_count(5)
                 .build(),
         );
-        let metrics = Arc::new(DaemonMetrics::new());
+        let metrics = Arc::new(TestMetrics::default());
         metrics.record_request();
         metrics.record_request();
         metrics.record_error();
@@ -272,7 +317,7 @@ mod tests {
                 .with_session_count(2)
                 .build(),
         );
-        let metrics = Arc::new(DaemonMetrics::new());
+        let metrics = Arc::new(TestMetrics::default());
         metrics.record_request();
         metrics.record_lock_timeout();
         metrics.record_poison_recovery();

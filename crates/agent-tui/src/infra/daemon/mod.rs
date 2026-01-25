@@ -21,7 +21,7 @@ mod usecase_container;
 pub use config::DaemonConfig;
 pub use error::DaemonError;
 pub use error::DomainError;
-pub use error::SessionError;
+pub use crate::usecases::ports::SessionError;
 pub use file_lock::LockFile;
 pub use file_lock::remove_lock_file;
 pub use lock_helpers::LOCK_TIMEOUT;

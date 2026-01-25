@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 
-mod ansi_keys;
+pub mod ansi_keys;
 mod color;
 pub mod error_codes;
 mod json_ext;
@@ -11,7 +11,6 @@ mod sync;
 pub use color::Colors;
 pub use color::init as color_init;
 pub use color::is_disabled as color_is_disabled;
-pub use ansi_keys as ansi_keys;
 pub use json_ext::ValueExt;
 pub use string_utils::strip_ansi_codes;
 pub use sync::mutex_lock_or_recover;

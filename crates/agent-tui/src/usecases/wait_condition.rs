@@ -48,37 +48,7 @@ impl WaitCondition {
         }
     }
 
-    pub fn description(&self) -> String {
-        match self {
-            WaitCondition::Text(t) => format!("text \"{}\"", t),
-            WaitCondition::Element(e) => format!("element {}", e),
-            WaitCondition::Focused(e) => format!("{} to be focused", e),
-            WaitCondition::NotVisible(e) => format!("{} to disappear", e),
-            WaitCondition::Stable => "screen to stabilize".to_string(),
-            WaitCondition::TextGone(t) => format!("text \"{}\" to disappear", t),
-            WaitCondition::Value { element, expected } => {
-                format!("{} to have value \"{}\"", element, expected)
-            }
-        }
-    }
-
-    pub fn matched_text(&self) -> Option<String> {
-        match self {
-            WaitCondition::Text(t) | WaitCondition::TextGone(t) => Some(t.clone()),
-            WaitCondition::Value { expected, .. } => Some(expected.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn element_ref(&self) -> Option<String> {
-        match self {
-            WaitCondition::Element(e)
-            | WaitCondition::Focused(e)
-            | WaitCondition::NotVisible(e) => Some(e.clone()),
-            WaitCondition::Value { element, .. } => Some(element.clone()),
-            _ => None,
-        }
-    }
+    // Additional helpers can be added here as usecases require them.
 }
 
 #[derive(Default)]

@@ -19,4 +19,7 @@ rg -n "std::process::exit" "$SRC_DIR" \
 rg -n "serde_json" "$SRC_DIR/domain" "$SRC_DIR/usecases" \
   && fail "serde_json usage detected in domain/usecases"
 
+rg -n --pcre2 "crate::infra::(?!daemon::test_support)" "$SRC_DIR/usecases" --glob '!**/ports/errors.rs' \
+  && fail "infra dependency detected in usecases"
+
 echo "Architecture checks passed."

@@ -1,34 +1,9 @@
 use crate::infra::ipc::error_codes::{self, ErrorCategory};
-use crate::infra::terminal::PtyError;
+use crate::infra::terminal::PtyError as InfraPtyError;
+use crate::usecases::ports::{PtyError, SessionError};
 use crate::usecases::SpawnError;
 use serde_json::{Value, json};
 use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum SessionError {
-    #[error("Session not found: {0}")]
-    NotFound(String),
-    #[error("Session already exists: {0}")]
-    AlreadyExists(String),
-    #[error("No active session")]
-    NoActiveSession,
-    #[error("PTY error: {0}")]
-    Pty(#[from] PtyError),
-    #[error("Element not found: {0}")]
-    ElementNotFound(String),
-    #[error("Element {element_ref} is a {actual} not a {expected}")]
-    WrongElementType {
-        element_ref: String,
-        actual: String,
-        expected: String,
-    },
-    #[error("Invalid key: {0}")]
-    InvalidKey(String),
-    #[error("Session limit reached: maximum {0} sessions allowed")]
-    LimitReached(usize),
-    #[error("Persistence error during {operation}: {reason}")]
-    Persistence { operation: String, reason: String },
-}
 
 impl SessionError {
     pub fn code(&self) -> i32 {
@@ -68,7 +43,10 @@ impl SessionError {
             }
             SessionError::InvalidKey(key) => json!({ "key": key }),
             SessionError::LimitReached(max) => json!({ "max_sessions": max }),
-            SessionError::Pty(pty_err) => pty_err.context(),
+            SessionError::Pty(pty_err) => json!({
+                "operation": pty_err.operation(),
+                "reason": pty_err.reason()
+            }),
             SessionError::Persistence { operation, reason } => {
                 json!({ "operation": operation, "reason": reason })
             }
@@ -100,7 +78,32 @@ impl SessionError {
             SessionError::LimitReached(_) => {
                 "Kill unused sessions with 'kill <session_id>' or increase limit with AGENT_TUI_MAX_SESSIONS env var.".to_string()
             }
-            SessionError::Pty(pty_err) => pty_err.suggestion(),
+            SessionError::Pty(pty_err) => match pty_err {
+                PtyError::Open(_) => {
+                    "PTY allocation failed. Check system resource limits (ulimit -n) or try restarting."
+                        .to_string()
+                }
+                PtyError::Spawn(reason) => {
+                    if reason.contains("not found") || reason.contains("No such file") {
+                        "Command not found. Check if the command exists and is in PATH.".to_string()
+                    } else if reason.contains("Permission denied") {
+                        "Permission denied. Check file permissions.".to_string()
+                    } else {
+                        "Process spawn failed. Check command syntax and permissions.".to_string()
+                    }
+                }
+                PtyError::Write(_) => {
+                    "Failed to send input to terminal. The session may have ended. Run 'sessions' to check status."
+                        .to_string()
+                }
+                PtyError::Read(_) => {
+                    "Failed to read terminal output. The session may have ended. Run 'sessions' to check status."
+                        .to_string()
+                }
+                PtyError::Resize(_) => {
+                    "Failed to resize terminal. Try again or restart the session.".to_string()
+                }
+            },
             SessionError::Persistence { .. } => {
                 "Persistence error is non-fatal. Session continues to operate normally.".to_string()
             }
@@ -113,6 +116,12 @@ impl SessionError {
             SessionError::Persistence { .. } => true,
             _ => error_codes::is_retryable(self.code()),
         }
+    }
+}
+
+impl From<InfraPtyError> for SessionError {
+    fn from(err: InfraPtyError) -> Self {
+        SessionError::Pty(err.into())
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::common::error_codes::{self, ErrorCategory};
+use crate::usecases::ports::PtyError as PortPtyError;
 use serde_json::{Value, json};
 use thiserror::Error;
 
@@ -100,6 +101,18 @@ impl PtyError {
             | PtyError::Write(r)
             | PtyError::Read(r)
             | PtyError::Resize(r) => r,
+        }
+    }
+}
+
+impl From<PtyError> for PortPtyError {
+    fn from(err: PtyError) -> Self {
+        match err {
+            PtyError::Open(reason) => PortPtyError::Open(reason),
+            PtyError::Spawn(reason) => PortPtyError::Spawn(reason),
+            PtyError::Write(reason) => PortPtyError::Write(reason),
+            PtyError::Read(reason) => PortPtyError::Read(reason),
+            PtyError::Resize(reason) => PortPtyError::Resize(reason),
         }
     }
 }

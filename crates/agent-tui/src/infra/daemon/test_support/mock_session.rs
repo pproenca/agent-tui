@@ -4,7 +4,7 @@ use crate::domain::core::vom::Component;
 use std::sync::Mutex;
 
 use crate::usecases::ports::SessionOps;
-use crate::usecases::ports::SessionError;
+use crate::usecases::ports::{PtyError, SessionError};
 use crate::domain::session_types::{ErrorEntry, RecordingFrame, RecordingStatus, SessionId, TraceEntry};
 
 pub struct MockSession {
@@ -54,9 +54,7 @@ impl MockSession {
 impl SessionOps for MockSession {
     fn update(&self) -> Result<(), SessionError> {
         if let Some(ref err) = self.update_error {
-            Err(SessionError::Pty(crate::infra::terminal::PtyError::Write(
-                err.to_string(),
-            )))
+            Err(SessionError::Pty(PtyError::Write(err.to_string())))
         } else {
             Ok(())
         }
@@ -79,9 +77,7 @@ impl SessionOps for MockSession {
 
     fn pty_write(&self, data: &[u8]) -> Result<(), SessionError> {
         if let Some(ref err) = self.pty_write_error {
-            Err(SessionError::Pty(crate::infra::terminal::PtyError::Write(
-                err.to_string(),
-            )))
+            Err(SessionError::Pty(PtyError::Write(err.to_string())))
         } else {
             self.written_data.lock().unwrap().push(data.to_vec());
             Ok(())
@@ -262,7 +258,7 @@ mod tests {
     #[test]
     fn test_mock_session_with_elements() {
         let elements = vec![make_element("@e1"), make_element("@e2")];
-        let mut session = MockSession::builder("test").with_elements(elements).build();
+        let session = MockSession::builder("test").with_elements(elements).build();
 
         let detected = session.detect_elements();
         assert_eq!(detected.len(), 2);
@@ -289,14 +285,14 @@ mod tests {
 
     #[test]
     fn test_mock_session_update_succeeds() {
-        let mut session = MockSession::new("test");
+        let session = MockSession::new("test");
         let result = session.update();
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_mock_session_update_with_error() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_update_error(SessionError::NoActiveSession)
             .build();
 
@@ -306,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_mock_session_pty_write_tracks_data() {
-        let mut session = MockSession::new("test");
+        let session = MockSession::new("test");
 
         session.pty_write(b"hello").unwrap();
         session.pty_write(b"world").unwrap();

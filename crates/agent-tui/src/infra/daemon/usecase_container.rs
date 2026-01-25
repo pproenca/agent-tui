@@ -98,6 +98,8 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
         active_connections: Arc<AtomicUsize>,
         shutdown_flag: Arc<AtomicBool>,
     ) -> Self {
+        let metrics_provider: Arc<dyn crate::usecases::ports::MetricsProvider> = metrics.clone();
+
         Self {
             session: SessionUseCases {
                 spawn: SpawnUseCaseImpl::new(Arc::clone(&repository)),
@@ -167,13 +169,13 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 pty_write: PtyWriteUseCaseImpl::new(Arc::clone(&repository)),
                 health: HealthUseCaseImpl::new(
                     Arc::clone(&repository),
-                    Arc::clone(&metrics),
+                    Arc::clone(&metrics_provider),
                     start_time,
                     Arc::clone(&active_connections),
                 ),
                 metrics: MetricsUseCaseImpl::new(
                     Arc::clone(&repository),
-                    metrics,
+                    metrics_provider,
                     start_time,
                     active_connections,
                 ),

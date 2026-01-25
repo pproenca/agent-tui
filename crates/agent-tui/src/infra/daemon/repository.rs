@@ -224,13 +224,13 @@ mod tests {
 
     #[test]
     fn test_session_ops_trait_is_usable_as_generic_bound() {
-        fn assert_generic_bound<S: SessionOps>(_session: &S) {}
+        fn assert_generic_bound<S: SessionOps + ?Sized>(_session: &S) {}
 
         let manager = SessionManager::new();
-        let session = manager
+        let session_handle = manager
             .spawn("bash", &[], None, None, None, 80, 24)
-            .and_then(|(id, _)| manager.get(id.as_str()))
+            .and_then(|(id, _)| SessionRepository::get(&manager, id.as_str()))
             .unwrap();
-        assert_generic_bound(&*session);
+        assert_generic_bound(session_handle.as_ref());
     }
 }

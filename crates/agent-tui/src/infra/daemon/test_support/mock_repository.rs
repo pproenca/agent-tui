@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::infra::terminal::PtyError;
-
-use crate::usecases::ports::{SessionError, SessionHandle, SessionRepository};
+use crate::usecases::ports::{PtyError, SessionError, SessionHandle, SessionRepository};
 use crate::domain::SessionId;
 use crate::domain::SessionInfo;
 use crate::infra::daemon::test_support::MockSession;
@@ -58,7 +56,6 @@ pub struct MockSessionRepository {
     active_id: Option<SessionId>,
     session_count: usize,
     spawn_result: Option<(SessionId, u32)>,
-    session_handle: Option<SessionHandle>,
     session_handle: Option<SessionHandle>,
 
     spawn_calls: AtomicUsize,

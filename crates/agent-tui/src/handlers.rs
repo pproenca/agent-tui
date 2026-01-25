@@ -1129,16 +1129,23 @@ pub fn handle_assert<C: DaemonClient>(
     Ok(())
 }
 
-pub fn handle_daemon_stop<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    force: bool,
-) -> HandlerResult {
-    use crate::ipc::{PidLookupResult, daemon_lifecycle, get_daemon_pid};
+/// Result of the daemon stop operation.
+pub enum StopResult {
+    /// Daemon was stopped successfully.
+    Stopped { pid: u32, warnings: Vec<String> },
+    /// Daemon was already stopped (idempotent success).
+    AlreadyStopped,
+}
+
+/// Core daemon stop logic that doesn't require an active client connection.
+/// Returns `Ok(StopResult)` on success, including when daemon is already stopped (idempotent).
+pub fn stop_daemon_core(force: bool) -> Result<StopResult, Box<dyn std::error::Error>> {
+    use crate::ipc::{PidLookupResult, UnixSocketClient, daemon_lifecycle, get_daemon_pid};
 
     let pid = match get_daemon_pid() {
         PidLookupResult::Found(pid) => pid,
         PidLookupResult::NotRunning => {
-            return Err(Box::new(ClientError::DaemonNotRunning));
+            return Ok(StopResult::AlreadyStopped);
         }
         PidLookupResult::Error(msg) => {
             return Err(Box::new(ClientError::SignalFailed {
@@ -1151,25 +1158,42 @@ pub fn handle_daemon_stop<C: DaemonClient>(
     let socket = socket_path();
 
     if !force {
-        if let Ok(mut result) = daemon_lifecycle::stop_daemon_via_rpc(ctx.client, &socket) {
-            result.pid = pid;
-
-            for warning in &result.warnings {
-                eprintln!("{}", Colors::warning(warning));
+        // Try graceful RPC shutdown first (needs connection but doesn't auto-start)
+        if let Ok(mut client) = UnixSocketClient::connect() {
+            if let Ok(result) = daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket) {
+                return Ok(StopResult::Stopped {
+                    pid,
+                    warnings: result.warnings,
+                });
             }
-            ctx.presenter().present_success("Daemon stopped", None);
-            return Ok(());
         }
     }
 
+    // Fall back to signal-based stop
     let controller = UnixProcessController;
     let result = daemon_lifecycle::stop_daemon(&controller, pid, &socket, force)?;
+    Ok(StopResult::Stopped {
+        pid,
+        warnings: result.warnings,
+    })
+}
 
-    for warning in &result.warnings {
-        eprintln!("{}", Colors::warning(warning));
+pub fn handle_daemon_stop<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    force: bool,
+) -> HandlerResult {
+    match stop_daemon_core(force)? {
+        StopResult::Stopped { warnings, .. } => {
+            for warning in &warnings {
+                eprintln!("{}", Colors::warning(warning));
+            }
+            ctx.presenter().present_success("Daemon stopped", None);
+        }
+        StopResult::AlreadyStopped => {
+            ctx.presenter()
+                .present_success("Daemon is not running (already stopped)", None);
+        }
     }
-
-    ctx.presenter().present_success("Daemon stopped", None);
     Ok(())
 }
 

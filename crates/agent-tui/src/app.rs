@@ -140,11 +140,11 @@ impl Application {
                 Ok(true)
             }
             Commands::Daemon(DaemonCommand::Status) => {
-                self.handle_daemon_status_standalone(cli)?;
+                self.handle_daemon_status_without_autostart(cli)?;
                 Ok(true)
             }
             Commands::Daemon(DaemonCommand::Stop { force }) => {
-                self.handle_daemon_stop_standalone(*force)?;
+                self.handle_daemon_stop_without_autostart(*force)?;
                 Ok(true)
             }
             Commands::Completions { shell } => {
@@ -156,73 +156,68 @@ impl Application {
         }
     }
 
-    fn handle_daemon_status_standalone(&self, cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+    fn handle_daemon_status_without_autostart(
+        &self,
+        cli: &Cli,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         match UnixSocketClient::connect() {
             Ok(mut client) => {
-                // Daemon is running - show status using existing handler
-                let format = cli.effective_format();
-                let mut ctx = HandlerContext::new(&mut client, cli.session.clone(), format);
-                handlers::handle_daemon_status(&mut ctx)
-            }
-            Err(ClientError::DaemonNotRunning) => {
-                // Daemon is NOT running - show appropriate message
-                let cli_version = env!("CARGO_PKG_VERSION");
-                match cli.effective_format() {
-                    OutputFormat::Json => {
-                        println!(
-                            "{}",
-                            serde_json::json!({
-                                "running": false,
-                                "cli_version": cli_version
-                            })
-                        );
+                // Verify daemon is actually responding before showing status
+                match client.call("health", None) {
+                    Ok(_) => {
+                        let format = cli.effective_format();
+                        let mut ctx = HandlerContext::new(&mut client, cli.session.clone(), format);
+                        handlers::handle_daemon_status(&mut ctx)
                     }
-                    _ => {
-                        println!("Daemon is not running");
-                        println!("  CLI version: {}", cli_version);
+                    Err(_) => {
+                        // Connected but daemon not responding - treat as not running
+                        self.print_daemon_not_running_status(cli);
+                        Err(Box::new(DaemonNotRunningError))
                     }
                 }
-                // Return error that maps to LSB exit code 3
+            }
+            Err(ClientError::DaemonNotRunning) => {
+                self.print_daemon_not_running_status(cli);
                 Err(Box::new(DaemonNotRunningError))
             }
             Err(e) => Err(e.into()),
         }
     }
 
-    fn handle_daemon_stop_standalone(&self, force: bool) -> Result<(), Box<dyn std::error::Error>> {
-        use crate::ipc::{
-            PidLookupResult, UnixProcessController, daemon_lifecycle, get_daemon_pid, socket_path,
-        };
-
-        let pid = match get_daemon_pid() {
-            PidLookupResult::Found(pid) => pid,
-            PidLookupResult::NotRunning => {
-                return Err(Box::new(ClientError::DaemonNotRunning));
+    fn print_daemon_not_running_status(&self, cli: &Cli) {
+        let cli_version = env!("CARGO_PKG_VERSION");
+        match cli.effective_format() {
+            OutputFormat::Json => {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "running": false,
+                        "cli_version": cli_version
+                    })
+                );
             }
-            PidLookupResult::Error(msg) => {
-                return Err(Box::new(ClientError::SignalFailed {
-                    pid: 0,
-                    message: msg,
-                }));
-            }
-        };
-
-        let socket = socket_path();
-
-        if !force {
-            // Try graceful RPC shutdown first (needs connection but doesn't auto-start)
-            if let Ok(mut client) = UnixSocketClient::connect() {
-                if daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket).is_ok() {
-                    println!("{}", Colors::success("✓ Daemon stopped"));
-                    return Ok(());
-                }
+            _ => {
+                println!("Daemon is not running");
+                println!("  CLI version: {}", cli_version);
             }
         }
+    }
 
-        // Fall back to signal-based stop
-        let controller = UnixProcessController;
-        daemon_lifecycle::stop_daemon(&controller, pid, &socket, force)?;
-        println!("{}", Colors::success("✓ Daemon stopped"));
+    fn handle_daemon_stop_without_autostart(
+        &self,
+        force: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match handlers::stop_daemon_core(force)? {
+            handlers::StopResult::Stopped { warnings, .. } => {
+                for warning in &warnings {
+                    eprintln!("{}", Colors::warning(warning));
+                }
+                println!("{}", Colors::success("✓ Daemon stopped"));
+            }
+            handlers::StopResult::AlreadyStopped => {
+                println!("Daemon is not running (already stopped)");
+            }
+        }
         Ok(())
     }
 
@@ -783,12 +778,17 @@ mod tests {
                 verbose: false,
             };
 
-            // When daemon is not running, should return error
+            // When daemon is not running, should succeed (idempotent semantics)
+            // The result should be Ok(true), indicating the command was handled
             let result = app.handle_standalone_commands(&cli);
-            assert!(result.is_err());
-            // Should be ClientError::DaemonNotRunning
-            let err = result.unwrap_err();
-            assert!(err.downcast_ref::<ClientError>().is_some());
+            assert!(
+                result.is_ok(),
+                "daemon stop should succeed when daemon not running (idempotent)"
+            );
+            assert!(
+                result.unwrap(),
+                "daemon stop should be handled as standalone"
+            );
         }
 
         #[test]
@@ -803,11 +803,14 @@ mod tests {
                 verbose: false,
             };
 
-            // Just verify the routing logic
-            // We can't actually test start without spawning a daemon
+            // Verify daemon start IS handled as standalone (returns Ok(true) or error)
+            // This test runs without a daemon, so start will either succeed or fail,
+            // but importantly it returns Ok(true) indicating "handled" (not Ok(false))
             let result = app.handle_standalone_commands(&cli);
-            // Should return Ok(true) or error - both indicate it was handled
-            assert!(result.is_ok() || result.is_err());
+            // Error is acceptable (daemon may fail to start), but it was handled
+            if let Ok(handled) = result {
+                assert!(handled, "daemon start should be handled as standalone");
+            }
         }
 
         #[test]

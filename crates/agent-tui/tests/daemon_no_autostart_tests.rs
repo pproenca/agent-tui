@@ -79,12 +79,13 @@ fn daemon_status_does_not_create_socket_file() {
 }
 
 #[test]
-fn daemon_stop_returns_error_when_daemon_not_running() {
+fn daemon_stop_succeeds_when_daemon_not_running() {
     let env = NoDaemonTestEnv::new();
 
+    // Idempotent stop: already stopped = success (exit 0)
     env.run(&["daemon", "stop"])
-        .failure()
-        .stderr(predicate::str::contains("Daemon not running"));
+        .success()
+        .stdout(predicate::str::contains("already stopped"));
 }
 
 #[test]
@@ -94,8 +95,8 @@ fn daemon_stop_does_not_create_socket_file() {
     // Verify socket doesn't exist before
     assert!(!env.socket_path.exists());
 
-    // Run daemon stop (will fail since daemon not running)
-    let _ = env.run(&["daemon", "stop"]);
+    // Should succeed (idempotent) but NOT create socket
+    env.run(&["daemon", "stop"]).success();
 
     // Verify socket still doesn't exist (daemon was NOT auto-started)
     assert!(

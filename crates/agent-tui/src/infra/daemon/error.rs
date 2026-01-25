@@ -1,7 +1,7 @@
 use crate::infra::ipc::error_codes::{self, ErrorCategory};
 use crate::infra::terminal::PtyError as InfraPtyError;
 use crate::usecases::SpawnError;
-use crate::usecases::ports::{PtyError, SessionError};
+use crate::usecases::ports::{LivePreviewError, PtyError, SessionError};
 use serde_json::{Value, json};
 use thiserror::Error;
 
@@ -116,6 +116,56 @@ impl SessionError {
             SessionError::Persistence { .. } => true,
             _ => error_codes::is_retryable(self.code()),
         }
+    }
+}
+
+impl LivePreviewError {
+    pub fn code(&self) -> i32 {
+        match self {
+            LivePreviewError::Session(err) => err.code(),
+            LivePreviewError::AlreadyRunning => error_codes::LIVE_PREVIEW_ALREADY_RUNNING,
+            LivePreviewError::NotRunning => error_codes::LIVE_PREVIEW_NOT_RUNNING,
+            LivePreviewError::InvalidListenAddress(_) => error_codes::LIVE_PREVIEW_INVALID_LISTEN,
+            LivePreviewError::BindFailed { .. } => error_codes::LIVE_PREVIEW_BIND_FAILED,
+        }
+    }
+
+    pub fn category(&self) -> ErrorCategory {
+        error_codes::category_for_code(self.code())
+    }
+
+    pub fn context(&self) -> Value {
+        match self {
+            LivePreviewError::Session(err) => err.context(),
+            LivePreviewError::AlreadyRunning => json!({}),
+            LivePreviewError::NotRunning => json!({}),
+            LivePreviewError::InvalidListenAddress(addr) => json!({ "listen": addr }),
+            LivePreviewError::BindFailed { addr, reason } => {
+                json!({ "listen": addr, "reason": reason })
+            }
+        }
+    }
+
+    pub fn suggestion(&self) -> String {
+        match self {
+            LivePreviewError::Session(err) => err.suggestion(),
+            LivePreviewError::AlreadyRunning => {
+                "Run 'live status' to see the active preview or 'live stop' to stop it.".to_string()
+            }
+            LivePreviewError::NotRunning => {
+                "Run 'live start' to start the live preview.".to_string()
+            }
+            LivePreviewError::InvalidListenAddress(_) => {
+                "Use a valid HOST:PORT or IP:PORT listen address.".to_string()
+            }
+            LivePreviewError::BindFailed { .. } => {
+                "Check if the port is available or choose another --listen address.".to_string()
+            }
+        }
+    }
+
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, LivePreviewError::BindFailed { .. })
     }
 }
 

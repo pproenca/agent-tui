@@ -329,7 +329,7 @@ By default, lists all active sessions.
 MODES:
     list              List active sessions (default)
     show <id>         Show details for a session
-    attach [id]       Attach interactively (defaults to --session or active)
+    attach [id]       Attach with TTY (defaults to --session or active)
     cleanup [--all]   Remove dead/orphaned sessions
     status            Show daemon health")]
     #[command(after_long_help = "\
@@ -337,14 +337,37 @@ EXAMPLES:
     agent-tui sessions                    # List sessions
     agent-tui sessions list               # List sessions (explicit)
     agent-tui sessions show abc123        # Show session details
-    agent-tui sessions attach             # Attach to active session
-    agent-tui sessions attach abc123      # Attach to session by id
+    agent-tui sessions attach             # Attach to active session (TTY)
+    agent-tui sessions attach abc123      # Attach to session by id (TTY)
+    agent-tui sessions attach -T abc123   # Attach without TTY (stream output only)
     agent-tui sessions cleanup            # Remove dead sessions
     agent-tui sessions cleanup --all      # Remove all sessions
     agent-tui sessions status             # Show daemon health")]
     Sessions {
         #[command(subcommand)]
         command: Option<SessionsCommand>,
+    },
+
+    /// Live preview server for the current session
+    #[command(long_about = "\
+Start or manage the live preview server.
+
+By default, starts a live preview for the active session.
+The preview server serves a browser page with a live terminal view.
+
+SECURITY:
+    Only binds to loopback by default. Use --allow-remote to bind to
+    non-loopback addresses.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui live start
+    agent-tui live start -l 127.0.0.1:0
+    agent-tui live start -l 0.0.0.0:9999 --allow-remote
+    agent-tui live status
+    agent-tui live stop")]
+    Live {
+        #[command(subcommand)]
+        command: Option<LiveCommand>,
     },
     #[command(subcommand, hide = true)]
     Debug(DebugCommand),
@@ -424,10 +447,13 @@ pub enum SessionsCommand {
         session_id: String,
     },
 
-    /// Attach to a session interactively
+    /// Attach to a session (TTY by default)
     Attach {
         #[arg(value_name = "ID")]
         session_id: Option<String>,
+        /// Disable TTY mode (stream output only)
+        #[arg(short = 'T', long = "no-tty")]
+        no_tty: bool,
     },
 
     /// Remove dead/orphaned sessions
@@ -439,6 +465,43 @@ pub enum SessionsCommand {
 
     /// Show daemon health status
     Status,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum LiveCommand {
+    /// Start the live preview server
+    Start(LiveStartArgs),
+
+    /// Stop the live preview server
+    Stop,
+
+    /// Show live preview status
+    Status,
+}
+
+#[derive(Debug, Clone, Default, Args)]
+pub struct LiveStartArgs {
+    /// Listen address for the live preview server (default: 127.0.0.1:0)
+    #[arg(
+        short = 'l',
+        long,
+        value_name = "ADDR",
+        num_args = 0..=1,
+        default_missing_value = "127.0.0.1:0"
+    )]
+    pub listen: Option<String>,
+
+    /// Allow binding to non-loopback addresses (e.g., 0.0.0.0)
+    #[arg(long)]
+    pub allow_remote: bool,
+
+    /// Open the preview URL in a browser
+    #[arg(long)]
+    pub open: bool,
+
+    /// Browser command to use (overrides $BROWSER)
+    #[arg(long, value_name = "CMD")]
+    pub browser: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1446,7 +1509,10 @@ mod tests {
         };
         assert!(matches!(
             command,
-            Some(SessionsCommand::Attach { session_id: None })
+            Some(SessionsCommand::Attach {
+                session_id: None,
+                no_tty: false
+            })
         ));
     }
 
@@ -1459,7 +1525,23 @@ mod tests {
         assert!(matches!(
             command,
             Some(SessionsCommand::Attach {
-                session_id: Some(_)
+                session_id: Some(_),
+                no_tty: false
+            })
+        ));
+    }
+
+    #[test]
+    fn test_sessions_attach_no_tty() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "attach", "-T", "my-session"]);
+        let Commands::Sessions { command } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
+        };
+        assert!(matches!(
+            command,
+            Some(SessionsCommand::Attach {
+                session_id: Some(_),
+                no_tty: true
             })
         ));
     }

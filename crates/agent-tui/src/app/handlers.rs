@@ -16,6 +16,7 @@ use crate::infra::ipc::socket_path;
 
 use crate::adapters::presenter::{ElementView, Presenter, create_presenter};
 use crate::app::commands::FindParams;
+use crate::app::commands::LiveStartArgs;
 use crate::app::commands::OutputFormat;
 use crate::app::commands::RecordFormat;
 use crate::app::commands::ScrollDirection;
@@ -575,6 +576,111 @@ pub fn handle_health<C: DaemonClient>(ctx: &mut HandlerContext<C>, verbose: bool
     Ok(())
 }
 
+pub fn handle_live_start<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    args: LiveStartArgs,
+) -> HandlerResult {
+    let params = ctx.params_with(json!({
+        "listen": args.listen,
+        "allow_remote": args.allow_remote
+    }));
+
+    let result = ctx.client.call("live_preview_start", Some(params))?;
+    let listen = result.str_or("listen", "");
+    let session_id = result.str_or("session_id", "");
+    let urls = build_live_preview_urls(listen)
+        .ok_or_else(|| format!("Invalid listen address returned: {}", listen))?;
+
+    match ctx.format {
+        OutputFormat::Json => {
+            let output = json!({
+                "running": true,
+                "session_id": session_id,
+                "listen": listen,
+                "url": urls.http,
+                "ws": {
+                    "alis": urls.ws_alis,
+                    "events": urls.ws_events
+                }
+            });
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        OutputFormat::Text => {
+            println!("{}", urls.http);
+        }
+    }
+
+    if args.open {
+        if let Err(err) = open_in_browser(&urls.http, args.browser.as_deref()) {
+            eprintln!("Warning: failed to open browser: {}", err);
+        }
+    }
+
+    Ok(())
+}
+
+pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+    let result = ctx.client.call("live_preview_stop", None)?;
+    match ctx.format {
+        OutputFormat::Json => ctx.presenter().present_value(&result),
+        OutputFormat::Text => {
+            let session_id = result.get("session_id").and_then(|v| v.as_str());
+            if let Some(session_id) = session_id {
+                println!("Live preview stopped (session {})", session_id);
+            } else {
+                println!("Live preview stopped");
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+    let result = ctx.client.call("live_preview_status", None)?;
+    let running = result.bool_or("running", false);
+    let listen = result.str_or("listen", "");
+    let session_id = result.get("session_id").and_then(|v| v.as_str());
+
+    match ctx.format {
+        OutputFormat::Json => {
+            let mut output = json!({
+                "running": running,
+                "session_id": session_id,
+                "listen": if listen.is_empty() { Value::Null } else { json!(listen) }
+            });
+            if running && !listen.is_empty() {
+                if let Some(urls) = build_live_preview_urls(listen) {
+                    output["url"] = json!(urls.http);
+                    output["ws"] = json!({
+                        "alis": urls.ws_alis,
+                        "events": urls.ws_events
+                    });
+                }
+            }
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        OutputFormat::Text => {
+            if !running {
+                println!("Live preview: not running");
+            } else if let Some(urls) = build_live_preview_urls(listen) {
+                if let Some(session_id) = session_id {
+                    println!(
+                        "Live preview: {} (session {})",
+                        urls.http,
+                        Colors::session_id(session_id)
+                    );
+                } else {
+                    println!("Live preview: {}", urls.http);
+                }
+            } else {
+                println!("Live preview: running");
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn handle_resize<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     cols: u16,
@@ -641,6 +747,60 @@ pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerRe
         }
     }
     Ok(())
+}
+
+struct LivePreviewUrls {
+    http: String,
+    ws_alis: String,
+    ws_events: String,
+}
+
+fn build_live_preview_urls(listen: &str) -> Option<LivePreviewUrls> {
+    let addr: std::net::SocketAddr = listen.parse().ok()?;
+    let host = match addr {
+        std::net::SocketAddr::V4(v4) => v4.ip().to_string(),
+        std::net::SocketAddr::V6(v6) => format!("[{}]", v6.ip()),
+    };
+    let http = format!("http://{}:{}/", host, addr.port());
+    let ws_base = format!("ws://{}:{}", host, addr.port());
+    Some(LivePreviewUrls {
+        http,
+        ws_alis: format!("{}/ws/alis", ws_base),
+        ws_events: format!("{}/ws/events", ws_base),
+    })
+}
+
+fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<(), String> {
+    use std::process::Command;
+
+    let browser = browser_override
+        .map(String::from)
+        .or_else(|| std::env::var("BROWSER").ok());
+
+    let mut cmd = if let Some(browser) = browser {
+        let mut parts = browser.split_whitespace();
+        let program = parts
+            .next()
+            .ok_or_else(|| "Browser command is empty".to_string())?;
+        let mut cmd = Command::new(program);
+        cmd.args(parts);
+        cmd
+    } else if cfg!(target_os = "macos") {
+        Command::new("open")
+    } else if cfg!(target_os = "windows") {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "start"]);
+        cmd
+    } else {
+        Command::new("xdg-open")
+    };
+
+    let status = cmd.arg(url).status().map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("Browser command exited with status {}", status))
+    }
 }
 
 pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -> HandlerResult {
@@ -901,7 +1061,9 @@ pub fn handle_attach<C: DaemonClient>(
         let stdin_tty = io::stdin().is_terminal();
         let stdout_tty = io::stdout().is_terminal();
         if !stdin_tty || !stdout_tty {
-            let err = io::Error::other("interactive attach requires a TTY on stdin and stdout");
+            let err = io::Error::other(
+                "interactive attach requires a TTY on stdin and stdout (use -T to disable TTY)",
+            );
             return Err(AttachError::Terminal(err).into());
         }
     }
@@ -914,7 +1076,12 @@ pub fn handle_attach<C: DaemonClient>(
             return Err(format!("Failed to attach to session: {}", session_id).into());
         }
 
-        attach::attach_ipc(ctx.client, &session_id)?;
+        let mode = if interactive {
+            attach::AttachMode::Tty
+        } else {
+            attach::AttachMode::Stream
+        };
+        attach::attach_ipc(ctx.client, &session_id, mode)?;
     } else {
         match ctx.format {
             OutputFormat::Json => {

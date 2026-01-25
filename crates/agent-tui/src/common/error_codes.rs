@@ -20,6 +20,11 @@ pub const PERSISTENCE_ERROR: i32 = -32017;
 
 pub const GENERIC_ERROR: i32 = -32000;
 
+pub const LIVE_PREVIEW_ALREADY_RUNNING: i32 = -32019;
+pub const LIVE_PREVIEW_NOT_RUNNING: i32 = -32020;
+pub const LIVE_PREVIEW_INVALID_LISTEN: i32 = -32021;
+pub const LIVE_PREVIEW_BIND_FAILED: i32 = -32022;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorCategory {
     NotFound,
@@ -71,12 +76,17 @@ pub fn is_retryable(code: i32) -> bool {
 
 pub fn category_for_code(code: i32) -> ErrorCategory {
     match code {
-        SESSION_NOT_FOUND | NO_ACTIVE_SESSION | ELEMENT_NOT_FOUND => ErrorCategory::NotFound,
-        WRONG_ELEMENT_TYPE | INVALID_KEY | SESSION_ALREADY_EXISTS => ErrorCategory::InvalidInput,
-        SESSION_LIMIT | LOCK_TIMEOUT => ErrorCategory::Busy,
+        SESSION_NOT_FOUND | NO_ACTIVE_SESSION | ELEMENT_NOT_FOUND | LIVE_PREVIEW_NOT_RUNNING => {
+            ErrorCategory::NotFound
+        }
+        WRONG_ELEMENT_TYPE | INVALID_KEY | SESSION_ALREADY_EXISTS | LIVE_PREVIEW_INVALID_LISTEN => {
+            ErrorCategory::InvalidInput
+        }
+        SESSION_LIMIT | LOCK_TIMEOUT | LIVE_PREVIEW_ALREADY_RUNNING => ErrorCategory::Busy,
         PTY_ERROR | COMMAND_NOT_FOUND | PERMISSION_DENIED | DAEMON_ERROR | PERSISTENCE_ERROR => {
             ErrorCategory::External
         }
+        LIVE_PREVIEW_BIND_FAILED => ErrorCategory::External,
         WAIT_TIMEOUT => ErrorCategory::Timeout,
         _ => ErrorCategory::Internal,
     }

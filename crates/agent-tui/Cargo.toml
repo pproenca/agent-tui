@@ -33,6 +33,10 @@ thiserror.workspace = true
 # Async & concurrency
 uuid.workspace = true
 chrono.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+futures-util.workspace = true
+axum.workspace = true
 
 # Terminal emulation
 portable-pty.workspace = true

@@ -11,7 +11,8 @@ use crate::domain::{
     DoubleClickInput, ElementStateInput, ErrorsInput, ErrorsOutput, FillInput, FindInput,
     FindOutput, FocusCheckOutput, FocusInput, GetFocusedOutput, GetTextOutput, GetTitleOutput,
     GetValueOutput, HealthOutput, IsCheckedOutput, IsEnabledOutput, KeydownInput, KeystrokeInput,
-    KeyupInput, KillOutput, MetricsOutput, MultiselectInput, MultiselectOutput, PtyReadInput,
+    KeyupInput, KillOutput, LivePreviewStartInput, LivePreviewStartOutput, LivePreviewStatusOutput,
+    LivePreviewStopOutput, MetricsOutput, MultiselectInput, MultiselectOutput, PtyReadInput,
     PtyReadOutput, PtyWriteInput, PtyWriteOutput, RecordStartInput, RecordStartOutput,
     RecordStatusInput, RecordStatusOutput, RecordStopInput, RecordStopOutput, ResizeInput,
     ResizeOutput, RestartOutput, ScrollInput, ScrollIntoViewInput, ScrollIntoViewOutput,
@@ -19,7 +20,7 @@ use crate::domain::{
     ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, ToggleInput,
     ToggleOutput, TraceInput, TraceOutput, TypeInput, VisibilityOutput, WaitInput, WaitOutput,
 };
-use crate::infra::daemon::{DomainError, SessionError};
+use crate::infra::daemon::{DomainError, LivePreviewError, SessionError};
 
 pub fn parse_session_id(session: Option<String>) -> Option<SessionId> {
     session.and_then(|s| {
@@ -34,6 +35,40 @@ pub fn parse_session_id(session: Option<String>) -> Option<SessionId> {
 pub fn parse_session_input(request: &RpcRequest) -> SessionInput {
     let session_id = parse_session_id(request.param_str("session").map(String::from));
     SessionInput { session_id }
+}
+
+#[allow(clippy::result_large_err)]
+pub fn parse_live_preview_start_input(
+    request: &RpcRequest,
+) -> Result<LivePreviewStartInput, RpcResponse> {
+    let rpc_params: params::LivePreviewStartParams = request
+        .params
+        .as_ref()
+        .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))
+        .and_then(|p| {
+            serde_json::from_value(p.clone()).map_err(|e| {
+                RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", e))
+            })
+        })?;
+
+    let listen_addr = if let Some(addr) = rpc_params.listen {
+        if let Err(e) = addr.parse::<std::net::SocketAddr>() {
+            return Err(RpcResponse::error(
+                request.id,
+                -32602,
+                &format!("Invalid listen address: {}", e),
+            ));
+        }
+        Some(addr)
+    } else {
+        None
+    };
+
+    Ok(LivePreviewStartInput {
+        session_id: parse_session_id(rpc_params.session),
+        listen_addr,
+        allow_remote: rpc_params.allow_remote,
+    })
 }
 
 const MAX_TERMINAL_COLS: u16 = 500;
@@ -74,6 +109,17 @@ pub fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
 
 pub fn session_error_response(id: u64, err: SessionError) -> RpcResponse {
     domain_error_response(id, &DomainError::from(err))
+}
+
+pub fn live_preview_error_response(id: u64, err: LivePreviewError) -> RpcResponse {
+    RpcResponse::domain_error(
+        id,
+        err.code(),
+        &err.to_string(),
+        err.category().as_str(),
+        Some(err.context()),
+        Some(err.suggestion()),
+    )
 }
 
 pub fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
@@ -377,6 +423,44 @@ pub fn attach_output_to_response(id: u64, output: AttachOutput) -> RpcResponse {
             "success": output.success,
             "session_id": output.session_id.as_str(),
             "message": output.message
+        }),
+    )
+}
+
+pub fn live_preview_start_output_to_response(
+    id: u64,
+    output: LivePreviewStartOutput,
+) -> RpcResponse {
+    RpcResponse::success(
+        id,
+        json!({
+            "session_id": output.session_id.as_str(),
+            "listen": output.listen_addr,
+            "running": true
+        }),
+    )
+}
+
+pub fn live_preview_stop_output_to_response(id: u64, output: LivePreviewStopOutput) -> RpcResponse {
+    RpcResponse::success(
+        id,
+        json!({
+            "stopped": output.stopped,
+            "session_id": output.session_id.as_ref().map(|id| id.as_str())
+        }),
+    )
+}
+
+pub fn live_preview_status_output_to_response(
+    id: u64,
+    output: LivePreviewStatusOutput,
+) -> RpcResponse {
+    RpcResponse::success(
+        id,
+        json!({
+            "running": output.running,
+            "session_id": output.session_id.as_ref().map(|id| id.as_str()),
+            "listen": output.listen_addr
         }),
     )
 }

@@ -26,7 +26,7 @@ pub use vom::classify;
 pub use vom::hash_cluster;
 pub use vom::segment_buffer;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CursorPosition {
     pub row: u16,
     pub col: u16,

@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::time::Instant;
 
 use crate::infra::daemon::{DaemonMetrics, RealSleeper};
-use crate::usecases::ports::SessionRepository;
+use crate::usecases::ports::{LivePreviewService, SessionRepository};
 use crate::usecases::{
     AccessibilitySnapshotUseCaseImpl, AssertUseCaseImpl, AttachUseCaseImpl, CleanupUseCaseImpl,
     ClearUseCaseImpl, ClickUseCaseImpl, ConsoleUseCaseImpl, CountUseCaseImpl,
@@ -11,7 +11,8 @@ use crate::usecases::{
     GetFocusedUseCaseImpl, GetTextUseCaseImpl, GetTitleUseCaseImpl, GetValueUseCaseImpl,
     HealthUseCaseImpl, IsCheckedUseCaseImpl, IsEnabledUseCaseImpl, IsFocusedUseCaseImpl,
     IsVisibleUseCaseImpl, KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl,
-    KillUseCaseImpl, MetricsUseCaseImpl, MultiselectUseCaseImpl, PtyReadUseCaseImpl,
+    KillUseCaseImpl, LivePreviewStartUseCaseImpl, LivePreviewStatusUseCaseImpl,
+    LivePreviewStopUseCaseImpl, MetricsUseCaseImpl, MultiselectUseCaseImpl, PtyReadUseCaseImpl,
     PtyWriteUseCaseImpl, RecordStartUseCaseImpl, RecordStatusUseCaseImpl, RecordStopUseCaseImpl,
     ResizeUseCaseImpl, RestartUseCaseImpl, ScrollIntoViewUseCaseImpl, ScrollUseCaseImpl,
     SelectAllUseCaseImpl, SelectUseCaseImpl, SessionsUseCaseImpl, ShutdownUseCaseImpl,
@@ -25,6 +26,7 @@ pub struct UseCaseContainer<R: SessionRepository + 'static> {
     pub input: InputUseCases<R>,
     pub recording: RecordingUseCases<R>,
     pub diagnostics: DiagnosticsUseCases<R>,
+    pub live_preview: LivePreviewUseCases<R>,
     pub wait: WaitUseCaseImpl<R, RealSleeper>,
 }
 
@@ -90,6 +92,12 @@ pub struct DiagnosticsUseCases<R: SessionRepository + 'static> {
     pub shutdown: ShutdownUseCaseImpl,
 }
 
+pub struct LivePreviewUseCases<R: SessionRepository + 'static> {
+    pub start: LivePreviewStartUseCaseImpl<R>,
+    pub stop: LivePreviewStopUseCaseImpl,
+    pub status: LivePreviewStatusUseCaseImpl,
+}
+
 impl<R: SessionRepository + 'static> UseCaseContainer<R> {
     pub fn new(
         repository: Arc<R>,
@@ -97,6 +105,7 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
         start_time: Instant,
         active_connections: Arc<AtomicUsize>,
         shutdown_flag: Arc<AtomicBool>,
+        live_preview: Arc<dyn LivePreviewService>,
     ) -> Self {
         let metrics_provider: Arc<dyn crate::usecases::ports::MetricsProvider> = metrics.clone();
 
@@ -177,6 +186,14 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                     active_connections,
                 ),
                 shutdown: ShutdownUseCaseImpl::new(shutdown_flag),
+            },
+            live_preview: LivePreviewUseCases {
+                start: LivePreviewStartUseCaseImpl::new(
+                    Arc::clone(&repository),
+                    Arc::clone(&live_preview),
+                ),
+                stop: LivePreviewStopUseCaseImpl::new(Arc::clone(&live_preview)),
+                status: LivePreviewStatusUseCaseImpl::new(live_preview),
             },
             wait: WaitUseCaseImpl::with_sleeper(repository, RealSleeper),
         }

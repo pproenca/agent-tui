@@ -1,6 +1,7 @@
 mod diagnostics;
 mod elements;
 mod input;
+mod live_preview;
 mod recording;
 mod select_helpers;
 mod session;
@@ -29,6 +30,10 @@ pub use elements::{
 pub use input::{
     KeydownUseCase, KeydownUseCaseImpl, KeystrokeUseCase, KeystrokeUseCaseImpl, KeyupUseCase,
     KeyupUseCaseImpl, TypeUseCase, TypeUseCaseImpl,
+};
+pub use live_preview::{
+    LivePreviewStartUseCase, LivePreviewStartUseCaseImpl, LivePreviewStatusUseCase,
+    LivePreviewStatusUseCaseImpl, LivePreviewStopUseCase, LivePreviewStopUseCaseImpl,
 };
 pub use recording::{
     RecordStartUseCase, RecordStartUseCaseImpl, RecordStatusUseCase, RecordStatusUseCaseImpl,

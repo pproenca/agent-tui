@@ -8,6 +8,7 @@ use super::signal_handler::SignalHandler;
 use super::usecase_container::UseCaseContainer;
 use crate::infra::daemon::DaemonError;
 use crate::infra::daemon::DaemonMetrics;
+use crate::infra::daemon::LivePreviewManager;
 use crate::infra::daemon::SessionManager;
 use crate::infra::daemon::transport::{
     TransportConnection, TransportError, TransportListener, UnixSocketConnection,
@@ -123,6 +124,7 @@ impl DaemonServer {
     pub fn with_config(config: DaemonConfig, shutdown_flag: Arc<AtomicBool>) -> Self {
         let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
         let metrics = Arc::new(DaemonMetrics::new());
+        let live_preview = Arc::new(LivePreviewManager::new());
         let start_time = Instant::now();
         let active_connections = Arc::new(AtomicUsize::new(0));
         let usecases = UseCaseContainer::new(
@@ -131,6 +133,7 @@ impl DaemonServer {
             start_time,
             Arc::clone(&active_connections),
             shutdown_flag,
+            live_preview,
         );
         Self {
             session_manager,

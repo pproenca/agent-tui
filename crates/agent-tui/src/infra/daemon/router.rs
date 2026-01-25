@@ -37,6 +37,18 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
             "attach" => handlers::session::handle_attach(&self.usecases.session.attach, request),
             "cleanup" => handlers::session::handle_cleanup(&self.usecases.session.cleanup, request),
             "assert" => handlers::session::handle_assert(&self.usecases.session.assert, request),
+            "live_preview_start" => handlers::live_preview::handle_live_preview_start(
+                &self.usecases.live_preview.start,
+                request,
+            ),
+            "live_preview_stop" => handlers::live_preview::handle_live_preview_stop(
+                &self.usecases.live_preview.stop,
+                request,
+            ),
+            "live_preview_status" => handlers::live_preview::handle_live_preview_status(
+                &self.usecases.live_preview.status,
+                request,
+            ),
 
             "snapshot" => {
                 handlers::elements::handle_snapshot_uc(&self.usecases.elements.snapshot, request)
@@ -177,6 +189,7 @@ mod tests {
     fn create_test_usecases() -> UseCaseContainer<SessionManager> {
         let session_manager = Arc::new(SessionManager::new());
         let metrics = Arc::new(DaemonMetrics::new());
+        let live_preview = Arc::new(crate::infra::daemon::LivePreviewManager::new());
         let start_time = Instant::now();
         let active_connections = Arc::new(AtomicUsize::new(0));
         let shutdown_flag = Arc::new(AtomicBool::new(false));
@@ -186,6 +199,7 @@ mod tests {
             start_time,
             active_connections,
             shutdown_flag,
+            live_preview,
         )
     }
 

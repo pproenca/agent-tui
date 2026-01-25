@@ -32,6 +32,9 @@ libc = "0.2"
 signal-hook = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = { version = "0.7", features = ["ws"] }
+futures-util = { version = "0.3", features = ["sink"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # Dev dependencies (used in [dev-dependencies] sections)
 assert_cmd = "2.1"

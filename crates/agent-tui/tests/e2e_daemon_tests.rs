@@ -601,3 +601,216 @@ fn test_completions_bash() {
         .success()
         .stdout(predicate::str::contains("complete"));
 }
+
+// ============================================================================
+// Terminal-native CLI tests (@e1 syntax, press, type)
+// ============================================================================
+
+#[test]
+fn test_element_ref_activate() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response("click", json!({"success": true, "message": null}));
+
+    harness
+        .run(&["@e1"])
+        .success()
+        .stdout(predicate::str::contains("Clicked successfully"));
+
+    harness.assert_method_called("click");
+}
+
+#[test]
+fn test_element_ref_fill_value() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response("fill", json!({"success": true, "message": null}));
+
+    harness
+        .run(&["@e1", "my-project"])
+        .success()
+        .stdout(predicate::str::contains("Filled"));
+
+    harness.assert_method_called("fill");
+}
+
+#[test]
+fn test_element_ref_fill_explicit() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response("fill", json!({"success": true, "message": null}));
+
+    harness
+        .run(&["@e1", "fill", "my-value"])
+        .success()
+        .stdout(predicate::str::contains("Filled"));
+
+    harness.assert_method_called("fill");
+}
+
+#[test]
+fn test_element_ref_toggle() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "toggle",
+        json!({"success": true, "new_state": true, "message": null}),
+    );
+
+    harness.run(&["@e1", "toggle"]).success();
+
+    harness.assert_method_called("toggle");
+}
+
+#[test]
+fn test_element_ref_toggle_on() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "toggle",
+        json!({"success": true, "new_state": true, "message": null}),
+    );
+
+    harness.run(&["@e1", "toggle", "on"]).success();
+
+    harness.assert_method_called("toggle");
+}
+
+#[test]
+fn test_element_ref_choose() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response("select", json!({"success": true, "message": null}));
+
+    harness.run(&["@e1", "choose", "Option 1"]).success();
+
+    harness.assert_method_called("select");
+}
+
+#[test]
+fn test_element_ref_clear() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response("clear", json!({"success": true, "message": null}));
+
+    harness.run(&["@e1", "clear"]).success();
+
+    harness.assert_method_called("clear");
+}
+
+#[test]
+fn test_text_selector_exact() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "find",
+        json!({
+            "elements": [{"ref": "@e5", "text": "Submit"}]
+        }),
+    );
+    harness.set_success_response("click", json!({"success": true, "message": null}));
+
+    harness
+        .run(&["@Submit"])
+        .success()
+        .stdout(predicate::str::contains("Clicked"));
+
+    harness.assert_method_called("find");
+    harness.assert_method_called("click");
+}
+
+#[test]
+fn test_text_selector_partial() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "find",
+        json!({
+            "elements": [{"ref": "@e3", "text": "Submit Form"}]
+        }),
+    );
+    harness.set_success_response("click", json!({"success": true, "message": null}));
+
+    harness
+        .run(&[":Submit"])
+        .success()
+        .stdout(predicate::str::contains("Clicked"));
+
+    harness.assert_method_called("find");
+    harness.assert_method_called("click");
+}
+
+#[test]
+fn test_text_selector_not_found() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "find",
+        json!({
+            "elements": []
+        }),
+    );
+
+    harness
+        .run(&["@NonExistent"])
+        .failure()
+        .stderr(predicate::str::contains("No element found"));
+}
+
+#[test]
+fn test_invalid_element_ref_rejected() {
+    let harness = TestHarness::new();
+
+    // @elephant should be treated as text selector, not element ref
+    harness.set_success_response(
+        "find",
+        json!({
+            "elements": []
+        }),
+    );
+
+    harness
+        .run(&["@elephant"])
+        .failure()
+        .stderr(predicate::str::contains("No element found"));
+}
+
+#[test]
+fn test_press_single_key() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response("keystroke", json!({"success": true, "message": null}));
+
+    harness.run(&["press", "Enter"]).success();
+
+    harness.assert_method_called("keystroke");
+}
+
+#[test]
+fn test_press_key_sequence() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response("keystroke", json!({"success": true, "message": null}));
+
+    harness
+        .run(&["press", "ArrowDown", "ArrowDown", "Enter"])
+        .success();
+
+    // Should call keystroke 3 times
+    assert_eq!(
+        harness.call_count("keystroke"),
+        3,
+        "Expected 3 keystroke calls"
+    );
+}
+
+#[test]
+fn test_type_text() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response("type", json!({"success": true, "message": null}));
+
+    harness.run(&["type", "Hello, World!"]).success();
+
+    harness.assert_method_called("type");
+}

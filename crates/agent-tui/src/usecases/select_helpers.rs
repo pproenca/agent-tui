@@ -18,7 +18,11 @@ pub fn navigate_to_option<Sess: SessionOps + ?Sized, Sl: Sleeper>(
         .unwrap_or(0);
 
     let steps = target_idx as i32 - current_idx as i32;
-    let key = if steps > 0 { ansi_keys::DOWN } else { ansi_keys::UP };
+    let key = if steps > 0 {
+        ansi_keys::DOWN
+    } else {
+        ansi_keys::UP
+    };
 
     for _ in 0..steps.unsigned_abs() {
         sess.pty_write(key)?;

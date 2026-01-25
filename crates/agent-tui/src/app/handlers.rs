@@ -11,12 +11,12 @@ use crate::infra::ipc::UnixProcessController;
 use crate::infra::ipc::params;
 use crate::infra::ipc::socket_path;
 
+use crate::adapters::presenter::{ElementView, Presenter, create_presenter};
 use crate::app::commands::FindParams;
 use crate::app::commands::OutputFormat;
 use crate::app::commands::RecordFormat;
 use crate::app::commands::ScrollDirection;
 use crate::app::commands::WaitParams;
-use crate::adapters::presenter::{ElementView, Presenter, create_presenter};
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -1283,7 +1283,9 @@ pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Han
 }
 
 pub fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
-    use crate::infra::ipc::{PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background};
+    use crate::infra::ipc::{
+        PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background,
+    };
 
     if let OutputFormat::Text = ctx.format {
         ctx.presenter().present_info("Restarting daemon...");

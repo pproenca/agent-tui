@@ -1,0 +1,17 @@
+{
+  "name": "health-basic",
+  "method": "health",
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "status": "healthy",
+      "pid": 12345,
+      "uptime_ms": 1000,
+      "session_count": 0,
+      "version": "1.0.0"
+    }
+  },
+  "expected_stdout": ["Daemon status:", "healthy", "PID:"],
+  "expected_exit": 0
+}

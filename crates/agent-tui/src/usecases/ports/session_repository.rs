@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::domain::core::{Component, CursorPosition, Element};
-use crate::domain::session_types::{ErrorEntry, RecordingFrame, RecordingStatus, SessionId, SessionInfo, TraceEntry};
+use crate::domain::session_types::{
+    ErrorEntry, RecordingFrame, RecordingStatus, SessionId, SessionInfo, TraceEntry,
+};
 
 use super::SessionError;
 

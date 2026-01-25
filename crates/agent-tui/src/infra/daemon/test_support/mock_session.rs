@@ -3,9 +3,11 @@ use crate::domain::core::Element;
 use crate::domain::core::vom::Component;
 use std::sync::Mutex;
 
+use crate::domain::session_types::{
+    ErrorEntry, RecordingFrame, RecordingStatus, SessionId, TraceEntry,
+};
 use crate::usecases::ports::SessionOps;
 use crate::usecases::ports::{PtyError, SessionError};
-use crate::domain::session_types::{ErrorEntry, RecordingFrame, RecordingStatus, SessionId, TraceEntry};
 
 pub struct MockSession {
     pub id: String,

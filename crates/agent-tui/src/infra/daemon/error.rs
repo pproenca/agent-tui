@@ -1,7 +1,7 @@
 use crate::infra::ipc::error_codes::{self, ErrorCategory};
 use crate::infra::terminal::PtyError as InfraPtyError;
-use crate::usecases::ports::{PtyError, SessionError};
 use crate::usecases::SpawnError;
+use crate::usecases::ports::{PtyError, SessionError};
 use serde_json::{Value, json};
 use thiserror::Error;
 

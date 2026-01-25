@@ -261,9 +261,7 @@ mod tests {
 
     #[test]
     fn test_check_condition_focused_element_missing() {
-        let mut session = MockSession::builder("test")
-            .with_elements(vec![])
-            .build();
+        let mut session = MockSession::builder("test").with_elements(vec![]).build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
@@ -293,9 +291,7 @@ mod tests {
 
     #[test]
     fn test_check_condition_not_visible_when_present() {
-        let mut session = MockSession::builder("test")
-            .with_elements(vec![])
-            .build();
+        let mut session = MockSession::builder("test").with_elements(vec![]).build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
@@ -379,9 +375,7 @@ mod tests {
 
     #[test]
     fn test_check_condition_value_element_missing() {
-        let mut session = MockSession::builder("test")
-            .with_elements(vec![])
-            .build();
+        let mut session = MockSession::builder("test").with_elements(vec![]).build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(

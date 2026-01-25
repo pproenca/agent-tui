@@ -263,7 +263,10 @@ pub struct DoubleClickUseCaseImpl<R: SessionRepository, S: Sleeper> {
 
 impl<R: SessionRepository, S: Sleeper> DoubleClickUseCaseImpl<R, S> {
     pub fn with_sleeper(repository: Arc<R>, sleeper: S) -> Self {
-        Self { repository, sleeper }
+        Self {
+            repository,
+            sleeper,
+        }
     }
 }
 
@@ -441,7 +444,10 @@ pub struct SelectUseCaseImpl<R: SessionRepository, S: Sleeper> {
 
 impl<R: SessionRepository, S: Sleeper> SelectUseCaseImpl<R, S> {
     pub fn with_sleeper(repository: Arc<R>, sleeper: S) -> Self {
-        Self { repository, sleeper }
+        Self {
+            repository,
+            sleeper,
+        }
     }
 }
 
@@ -487,7 +493,10 @@ pub struct MultiselectUseCaseImpl<R: SessionRepository, S: Sleeper> {
 
 impl<R: SessionRepository, S: Sleeper> MultiselectUseCaseImpl<R, S> {
     pub fn with_sleeper(repository: Arc<R>, sleeper: S) -> Self {
-        Self { repository, sleeper }
+        Self {
+            repository,
+            sleeper,
+        }
     }
 }
 
@@ -811,7 +820,10 @@ pub struct ScrollIntoViewUseCaseImpl<R: SessionRepository, S: Sleeper> {
 
 impl<R: SessionRepository, S: Sleeper> ScrollIntoViewUseCaseImpl<R, S> {
     pub fn with_sleeper(repository: Arc<R>, sleeper: S) -> Self {
-        Self { repository, sleeper }
+        Self {
+            repository,
+            sleeper,
+        }
     }
 }
 

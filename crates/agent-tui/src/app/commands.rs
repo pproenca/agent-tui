@@ -1,7 +1,9 @@
+use clap::ArgGroup;
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
 use clap::ValueEnum;
+use clap::ValueHint;
 pub use clap_complete::Shell;
 use std::path::PathBuf;
 
@@ -45,14 +47,22 @@ EXAMPLES:
 #[command(author, version, propagate_version = true)]
 #[command(about = "CLI tool for AI agents to interact with TUI applications")]
 #[command(after_long_help = AFTER_LONG_HELP)]
+#[command(subcommand_required = true, arg_required_else_help = true)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 
-    #[arg(short, long, global = true)]
+    #[arg(short, long, global = true, value_name = "ID")]
     pub session: Option<String>,
 
-    #[arg(short, long, global = true, default_value = "text")]
+    #[arg(
+        short,
+        long,
+        global = true,
+        value_enum,
+        value_name = "FORMAT",
+        default_value_t = OutputFormat::Text
+    )]
     pub format: OutputFormat,
 
     #[arg(long, global = true)]
@@ -78,7 +88,7 @@ impl Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Run a TUI application in a virtual terminal
-    #[command(name = "run")]
+    #[command(visible_alias = "spawn")]
     #[command(long_about = "\
 Run a new TUI application in a virtual terminal.
 
@@ -92,24 +102,24 @@ EXAMPLES:
     agent-tui run vim -- file.txt
     agent-tui run --cols 80 --rows 24 nano")]
     Run {
-        #[arg(value_name = "COMMAND")]
+        #[arg(value_name = "COMMAND", value_hint = ValueHint::CommandName)]
         command: String,
 
-        #[arg(trailing_var_arg = true)]
+        #[arg(trailing_var_arg = true, value_name = "ARGS")]
         args: Vec<String>,
 
-        #[arg(short = 'd', long, value_name = "DIR")]
+        #[arg(short = 'd', long, value_name = "DIR", value_hint = ValueHint::DirPath)]
         cwd: Option<PathBuf>,
 
-        #[arg(long, default_value = "120")]
+        #[arg(long, default_value_t = 120)]
         cols: u16,
 
-        #[arg(long, default_value = "40")]
+        #[arg(long, default_value_t = 40)]
         rows: u16,
     },
 
     /// View screen content and detect UI elements
-    #[command(name = "screen")]
+    #[command(visible_alias = "snapshot")]
     #[command(long_about = "\
 View the current screen state.
 
@@ -138,7 +148,7 @@ EXAMPLES:
         #[arg(short = 'a', long)]
         accessibility: bool,
 
-        #[arg(long)]
+        #[arg(long, requires = "accessibility")]
         interactive_only: bool,
 
         #[arg(long, value_name = "REGION")]
@@ -152,28 +162,31 @@ EXAMPLES:
     },
 
     /// Perform an action on an element by reference
+    #[command(visible_alias = "click")]
     #[command(long_about = "\
 Perform an action on an element by reference.
 
 All element interactions are done through this command. Specify the element
-reference and the operation to perform.")]
+reference and the operation to perform. If no operation is specified,
+defaults to click.")]
     #[command(after_long_help = "\
 EXAMPLES:
+    agent-tui action @e1
     agent-tui action @e1 click
     agent-tui action @e1 fill \"my-project\"
     agent-tui action @sel1 select \"Option 2\"
     agent-tui action @cb1 toggle on
     agent-tui action @e1 scroll up 10")]
     Action {
-        #[arg(name = "ref")]
+        #[arg(value_name = "REF")]
         element_ref: String,
 
         #[command(subcommand)]
-        operation: ActionOperation,
+        operation: Option<ActionOperation>,
     },
 
     /// Send key press(es) to the terminal
-    #[command(name = "press")]
+    #[command(visible_alias = "keystroke")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui press Enter
@@ -181,19 +194,17 @@ EXAMPLES:
     agent-tui press ArrowDown ArrowDown Enter")]
     Press {
         /// Keys to press (e.g., Enter, Ctrl+C, ArrowDown)
-        #[arg(required = true)]
+        #[arg(required = true, value_name = "KEY")]
         keys: Vec<String>,
     },
 
     /// Type literal text character by character
-    #[command(name = "type")]
     Type {
         /// Text to type
         text: String,
     },
 
     /// Send keyboard input (keys or text)
-    #[command(name = "input")]
     #[command(long_about = "\
 Send keyboard input - keys or text.
 
@@ -213,8 +224,8 @@ EXAMPLES:
     agent-tui input \"hello\"            # Type text char-by-char
     agent-tui input Shift --hold       # Hold Shift down")]
     Input {
-        #[arg(required_unless_present_any = ["hold", "release"], value_name = "KEY|TEXT")]
-        value: Option<String>,
+        #[arg(value_name = "KEY|TEXT")]
+        value: String,
 
         #[arg(long, conflicts_with = "release")]
         hold: bool,
@@ -256,7 +267,6 @@ EXAMPLES:
     Kill,
 
     /// List and manage sessions
-    #[command(name = "sessions")]
     #[command(long_about = "\
 Manage sessions - list, cleanup, attach, or show details.
 
@@ -274,6 +284,11 @@ EXAMPLES:
     agent-tui sessions abc123             # Show session details
     agent-tui sessions --cleanup          # Remove dead sessions
     agent-tui sessions --attach abc123    # Attach interactively")]
+    #[command(
+        group = ArgGroup::new("sessions_mode")
+            .multiple(false)
+            .args(&["id", "cleanup", "attach", "status"])
+    )]
     Sessions {
         #[arg(name = "id", value_name = "ID")]
         session_id: Option<String>,
@@ -284,7 +299,7 @@ EXAMPLES:
         #[arg(long, requires = "cleanup")]
         all: bool,
 
-        #[arg(long, value_name = "ID", conflicts_with_all = ["cleanup", "id"])]
+        #[arg(long, value_name = "ID")]
         attach: Option<String>,
 
         #[arg(long)]
@@ -293,53 +308,23 @@ EXAMPLES:
     #[command(subcommand, hide = true)]
     Debug(DebugCommand),
 
-    #[command(name = "record-start")]
     #[command(hide = true)]
     RecordStart,
 
-    #[command(name = "record-stop")]
     #[command(hide = true)]
-    RecordStop {
-        #[arg(short, long, value_name = "FILE")]
-        output: Option<PathBuf>,
+    RecordStop(RecordStopArgs),
 
-        #[arg(long, value_enum, default_value = "json")]
-        record_format: RecordFormat,
-    },
-
-    #[command(name = "record-status")]
     #[command(hide = true)]
     RecordStatus,
 
     #[command(hide = true)]
-    Trace {
-        #[arg(short = 'n', long, default_value = "10")]
-        count: usize,
-
-        #[arg(long)]
-        start: bool,
-
-        #[arg(long)]
-        stop: bool,
-    },
+    Trace(TraceArgs),
 
     #[command(hide = true)]
-    Console {
-        #[arg(short = 'n', long, default_value = "100")]
-        lines: usize,
-
-        #[arg(long)]
-        clear: bool,
-    },
+    Console(ConsoleArgs),
 
     #[command(hide = true)]
-    Errors {
-        #[arg(short = 'n', long, default_value = "10")]
-        count: usize,
-
-        #[arg(long)]
-        clear: bool,
-    },
+    Errors(ErrorsArgs),
 
     /// Manage the background daemon
     #[command(subcommand)]
@@ -382,12 +367,13 @@ INSTALLATION:
     # PowerShell - add to $PROFILE
     agent-tui completions powershell | Out-String | Invoke-Expression")]
     Completions {
-        #[arg(value_enum)]
+        #[arg(value_enum, value_name = "SHELL")]
         shell: Shell,
     },
 }
 
 #[derive(Debug, Subcommand)]
+#[command(subcommand_required = true, arg_required_else_help = true)]
 pub enum DaemonCommand {
     /// Start the daemon process
     #[command(long_about = "\
@@ -453,11 +439,14 @@ pub enum ActionOperation {
     DblClick,
 
     /// Set the input value
-    Fill { value: String },
+    Fill {
+        #[arg(value_name = "VALUE")]
+        value: String,
+    },
 
     /// Select option(s) from a list
     Select {
-        #[arg(required = true)]
+        #[arg(required = true, value_name = "OPTION")]
         options: Vec<String>,
     },
 
@@ -482,7 +471,7 @@ pub enum ActionOperation {
         #[arg(value_enum)]
         direction: ScrollDirection,
 
-        #[arg(default_value = "5")]
+        #[arg(default_value_t = 5)]
         amount: u16,
     },
 }
@@ -494,51 +483,26 @@ pub enum ToggleState {
 }
 
 #[derive(Debug, Subcommand)]
+#[command(subcommand_required = true, arg_required_else_help = true)]
 pub enum DebugCommand {
     #[command(subcommand)]
     Record(RecordAction),
 
-    Trace {
-        #[arg(short = 'n', long, default_value = "10")]
-        count: usize,
+    Trace(TraceArgs),
 
-        #[arg(long)]
-        start: bool,
+    Console(ConsoleArgs),
 
-        #[arg(long)]
-        stop: bool,
-    },
-
-    Console {
-        #[arg(short = 'n', long, default_value = "100")]
-        lines: usize,
-
-        #[arg(long)]
-        clear: bool,
-    },
-
-    Errors {
-        #[arg(short = 'n', long, default_value = "10")]
-        count: usize,
-
-        #[arg(long)]
-        clear: bool,
-    },
+    Errors(ErrorsArgs),
 
     Env,
 }
 
 #[derive(Debug, Subcommand)]
+#[command(subcommand_required = true, arg_required_else_help = true)]
 pub enum RecordAction {
     Start,
 
-    Stop {
-        #[arg(short, long, value_name = "FILE")]
-        output: Option<PathBuf>,
-
-        #[arg(long, value_enum, default_value = "json")]
-        format: RecordFormat,
-    },
+    Stop(RecordStopArgs),
 
     Status,
 }
@@ -578,13 +542,63 @@ impl ScrollDirection {
     }
 }
 
+#[derive(Debug, Clone, Args)]
+pub struct RecordStopArgs {
+    #[arg(short, long, value_name = "FILE", value_hint = ValueHint::FilePath)]
+    pub output: Option<PathBuf>,
+
+    #[arg(
+        long = "record-format",
+        value_enum,
+        default_value_t = RecordFormat::Json,
+        value_name = "FORMAT"
+    )]
+    pub record_format: RecordFormat,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct TraceArgs {
+    #[arg(short = 'n', long, default_value_t = 10)]
+    pub count: usize,
+
+    #[arg(long)]
+    pub start: bool,
+
+    #[arg(long)]
+    pub stop: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ConsoleArgs {
+    #[arg(short = 'n', long, default_value_t = 100)]
+    pub lines: usize,
+
+    #[arg(long)]
+    pub clear: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ErrorsArgs {
+    #[arg(short = 'n', long, default_value_t = 10)]
+    pub count: usize,
+
+    #[arg(long)]
+    pub clear: bool,
+}
+
 #[derive(Debug, Clone, Default, Args)]
-#[command(group = clap::ArgGroup::new("wait_condition").multiple(false).args(&["element", "focused", "stable", "value"]))]
+#[command(
+    group = ArgGroup::new("wait_condition")
+        .multiple(false)
+        .required(true)
+        .args(&["text", "element", "focused", "stable", "value"])
+)]
+#[command(group = ArgGroup::new("gone_target").args(&["text", "element"]))]
 pub struct WaitParams {
     #[arg(value_name = "TEXT")]
     pub text: Option<String>,
 
-    #[arg(short, long, default_value = "30000", value_name = "MILLIS")]
+    #[arg(short, long, default_value_t = 30_000, value_name = "MILLIS")]
     pub timeout: u64,
 
     #[arg(short = 'e', long, group = "wait_condition", value_name = "REF")]
@@ -599,7 +613,7 @@ pub struct WaitParams {
     #[arg(long, group = "wait_condition", value_name = "REF=VALUE")]
     pub value: Option<String>,
 
-    #[arg(short = 'g', long)]
+    #[arg(short = 'g', long, requires = "gone_target")]
     pub gone: bool,
 
     #[arg(long)]
@@ -807,7 +821,7 @@ mod tests {
             panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@btn1");
-        assert!(matches!(operation, ActionOperation::Click));
+        assert!(matches!(operation, Some(ActionOperation::Click)));
     }
 
     #[test]
@@ -821,7 +835,7 @@ mod tests {
             panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@btn1");
-        assert!(matches!(operation, ActionOperation::DblClick));
+        assert!(matches!(operation, Some(ActionOperation::DblClick)));
     }
 
     #[test]
@@ -835,7 +849,7 @@ mod tests {
             panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@inp1");
-        let ActionOperation::Fill { value } = operation else {
+        let Some(ActionOperation::Fill { value }) = operation else {
             panic!("Expected Fill operation, got {:?}", operation);
         };
         assert_eq!(value, "test value");
@@ -852,7 +866,7 @@ mod tests {
             panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@sel1");
-        let ActionOperation::Select { options } = operation else {
+        let Some(ActionOperation::Select { options }) = operation else {
             panic!("Expected Select operation, got {:?}", operation);
         };
         assert_eq!(options, vec!["Option 1"]);
@@ -877,7 +891,7 @@ mod tests {
             panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@list1");
-        let ActionOperation::Select { options } = operation else {
+        let Some(ActionOperation::Select { options }) = operation else {
             panic!("Expected Select operation, got {:?}", operation);
         };
         assert_eq!(options, vec!["red", "blue", "green"]);
@@ -894,7 +908,7 @@ mod tests {
             panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@cb1");
-        let ActionOperation::Toggle { state } = operation else {
+        let Some(ActionOperation::Toggle { state }) = operation else {
             panic!("Expected Toggle operation, got {:?}", operation);
         };
         assert!(state.is_none());
@@ -903,7 +917,7 @@ mod tests {
         let Commands::Action { operation, .. } = cli.command else {
             panic!("Expected Action command, got {:?}", cli.command);
         };
-        let ActionOperation::Toggle { state } = operation else {
+        let Some(ActionOperation::Toggle { state }) = operation else {
             panic!("Expected Toggle operation, got {:?}", operation);
         };
         assert!(matches!(state, Some(ToggleState::On)));
@@ -912,7 +926,7 @@ mod tests {
         let Commands::Action { operation, .. } = cli.command else {
             panic!("Expected Action command, got {:?}", cli.command);
         };
-        let ActionOperation::Toggle { state } = operation else {
+        let Some(ActionOperation::Toggle { state }) = operation else {
             panic!("Expected Toggle operation, got {:?}", operation);
         };
         assert!(matches!(state, Some(ToggleState::Off)));
@@ -929,7 +943,7 @@ mod tests {
             panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@inp1");
-        assert!(matches!(operation, ActionOperation::Focus));
+        assert!(matches!(operation, Some(ActionOperation::Focus)));
     }
 
     #[test]
@@ -943,7 +957,7 @@ mod tests {
             panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@inp1");
-        assert!(matches!(operation, ActionOperation::Clear));
+        assert!(matches!(operation, Some(ActionOperation::Clear)));
     }
 
     #[test]
@@ -957,7 +971,7 @@ mod tests {
             panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@inp1");
-        assert!(matches!(operation, ActionOperation::SelectAll));
+        assert!(matches!(operation, Some(ActionOperation::SelectAll)));
     }
 
     #[test]
@@ -971,7 +985,7 @@ mod tests {
             panic!("Expected Action command, got {:?}", cli.command);
         };
         assert_eq!(element_ref, "@e1");
-        let ActionOperation::Scroll { direction, amount } = operation else {
+        let Some(ActionOperation::Scroll { direction, amount }) = operation else {
             panic!("Expected Scroll operation, got {:?}", operation);
         };
         assert!(matches!(direction, ScrollDirection::Up));
@@ -981,7 +995,7 @@ mod tests {
         let Commands::Action { operation, .. } = cli.command else {
             panic!("Expected Action command, got {:?}", cli.command);
         };
-        let ActionOperation::Scroll { direction, amount } = operation else {
+        let Some(ActionOperation::Scroll { direction, amount }) = operation else {
             panic!("Expected Scroll operation, got {:?}", operation);
         };
         assert!(matches!(direction, ScrollDirection::Down));
@@ -1022,7 +1036,7 @@ mod tests {
             else {
                 panic!("Expected Input command for: {k}, got {:?}", cli.command);
             };
-            assert_eq!(value, Some(k.to_string()));
+            assert_eq!(value, k.to_string());
             assert!(!hold);
             assert!(!release);
         }
@@ -1034,13 +1048,13 @@ mod tests {
         let Commands::Input { value, .. } = cli.command else {
             panic!("Expected Input command, got {:?}", cli.command);
         };
-        assert_eq!(value, Some("Hello, World!".to_string()));
+        assert_eq!(value, "Hello, World!".to_string());
 
         let cli = Cli::parse_from(["agent-tui", "input", "hello"]);
         let Commands::Input { value, .. } = cli.command else {
             panic!("Expected Input command, got {:?}", cli.command);
         };
-        assert_eq!(value, Some("hello".to_string()));
+        assert_eq!(value, "hello".to_string());
     }
 
     #[test]
@@ -1054,7 +1068,7 @@ mod tests {
         else {
             panic!("Expected Input command, got {:?}", cli.command);
         };
-        assert_eq!(value, Some("Shift".to_string()));
+        assert_eq!(value, "Shift".to_string());
         assert!(hold);
         assert!(!release);
     }
@@ -1070,7 +1084,7 @@ mod tests {
         else {
             panic!("Expected Input command, got {:?}", cli.command);
         };
-        assert_eq!(value, Some("Shift".to_string()));
+        assert_eq!(value, "Shift".to_string());
         assert!(!hold);
         assert!(release);
     }
@@ -1185,24 +1199,24 @@ mod tests {
     #[test]
     fn test_trace_defaults() {
         let cli = Cli::parse_from(["agent-tui", "trace"]);
-        let Commands::Trace { count, start, stop } = cli.command else {
+        let Commands::Trace(args) = cli.command else {
             panic!("Expected Trace command, got {:?}", cli.command);
         };
 
-        assert_eq!(count, 10, "Default trace count should be 10");
-        assert!(!start);
-        assert!(!stop);
+        assert_eq!(args.count, 10, "Default trace count should be 10");
+        assert!(!args.start);
+        assert!(!args.stop);
     }
 
     #[test]
     fn test_console_defaults() {
         let cli = Cli::parse_from(["agent-tui", "console"]);
-        let Commands::Console { lines, clear } = cli.command else {
+        let Commands::Console(args) = cli.command else {
             panic!("Expected Console command, got {:?}", cli.command);
         };
 
-        assert_eq!(lines, 100, "Default console lines should be 100");
-        assert!(!clear, "Default clear should be false");
+        assert_eq!(args.lines, 100, "Default console lines should be 100");
+        assert!(!args.clear, "Default clear should be false");
     }
 
     #[test]
@@ -1218,7 +1232,16 @@ mod tests {
     #[test]
     fn test_missing_required_args() {
         assert!(Cli::try_parse_from(["agent-tui", "action"]).is_err());
-        assert!(Cli::try_parse_from(["agent-tui", "action", "@e1"]).is_err());
+        let cli = Cli::parse_from(["agent-tui", "action", "@e1"]);
+        let Commands::Action {
+            element_ref,
+            operation,
+        } = cli.command
+        else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@e1");
+        assert!(operation.is_none());
 
         assert!(Cli::try_parse_from(["agent-tui", "run"]).is_err());
     }
@@ -1253,20 +1276,20 @@ mod tests {
     #[test]
     fn test_errors_command_with_count() {
         let cli = Cli::parse_from(["agent-tui", "errors", "-n", "25"]);
-        let Commands::Errors { count, clear } = cli.command else {
+        let Commands::Errors(args) = cli.command else {
             panic!("Expected Errors command, got {:?}", cli.command);
         };
-        assert_eq!(count, 25);
-        assert!(!clear);
+        assert_eq!(args.count, 25);
+        assert!(!args.clear);
     }
 
     #[test]
     fn test_errors_command_with_clear() {
         let cli = Cli::parse_from(["agent-tui", "errors", "--clear"]);
-        let Commands::Errors { clear, .. } = cli.command else {
+        let Commands::Errors(args) = cli.command else {
             panic!("Expected Errors command, got {:?}", cli.command);
         };
-        assert!(clear);
+        assert!(args.clear);
     }
 
     #[test]
@@ -1345,33 +1368,29 @@ mod tests {
     #[test]
     fn test_record_stop_command() {
         let cli = Cli::parse_from(["agent-tui", "record-stop"]);
-        let Commands::RecordStop {
-            output,
-            record_format,
-        } = cli.command
-        else {
+        let Commands::RecordStop(args) = cli.command else {
             panic!("Expected RecordStop command, got {:?}", cli.command);
         };
-        assert!(output.is_none());
-        assert!(matches!(record_format, RecordFormat::Json));
+        assert!(args.output.is_none());
+        assert!(matches!(args.record_format, RecordFormat::Json));
     }
 
     #[test]
     fn test_record_stop_with_output() {
         let cli = Cli::parse_from(["agent-tui", "record-stop", "-o", "recording.json"]);
-        let Commands::RecordStop { output, .. } = cli.command else {
+        let Commands::RecordStop(args) = cli.command else {
             panic!("Expected RecordStop command, got {:?}", cli.command);
         };
-        assert_eq!(output, Some(PathBuf::from("recording.json")));
+        assert_eq!(args.output, Some(PathBuf::from("recording.json")));
     }
 
     #[test]
     fn test_record_stop_asciicast_format() {
         let cli = Cli::parse_from(["agent-tui", "record-stop", "--record-format", "asciicast"]);
-        let Commands::RecordStop { record_format, .. } = cli.command else {
+        let Commands::RecordStop(args) = cli.command else {
             panic!("Expected RecordStop command, got {:?}", cli.command);
         };
-        assert!(matches!(record_format, RecordFormat::Asciicast));
+        assert!(matches!(args.record_format, RecordFormat::Asciicast));
     }
 
     #[test]

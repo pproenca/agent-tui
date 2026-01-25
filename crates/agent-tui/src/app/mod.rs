@@ -229,9 +229,7 @@ impl Application {
         Ok(())
     }
 
-    fn connect_to_daemon_autostart(
-        &self,
-    ) -> Result<UnixSocketClient, Box<dyn std::error::Error>> {
+    fn connect_to_daemon_autostart(&self) -> Result<UnixSocketClient, Box<dyn std::error::Error>> {
         ensure_daemon().map_err(|e| {
             eprintln!(
                 "{} Failed to connect to daemon: {}",
@@ -315,18 +313,20 @@ impl Application {
                 operation,
             } => {
                 use crate::app::commands::{ActionOperation, ToggleState};
-                match operation {
-                    ActionOperation::Click => handlers::handle_click(ctx, element_ref.clone())?,
-                    ActionOperation::DblClick => {
+                match operation.as_ref() {
+                    None | Some(ActionOperation::Click) => {
+                        handlers::handle_click(ctx, element_ref.clone())?
+                    }
+                    Some(ActionOperation::DblClick) => {
                         handlers::handle_dbl_click(ctx, element_ref.clone())?
                     }
-                    ActionOperation::Fill { value } => {
+                    Some(ActionOperation::Fill { value }) => {
                         handlers::handle_fill(ctx, element_ref.clone(), value.clone())?
                     }
-                    ActionOperation::Select { options } => {
+                    Some(ActionOperation::Select { options }) => {
                         handlers::handle_select(ctx, element_ref.clone(), options.clone())?
                     }
-                    ActionOperation::Toggle { state } => {
+                    Some(ActionOperation::Toggle { state }) => {
                         let state_bool = match state {
                             Some(ToggleState::On) => Some(true),
                             Some(ToggleState::Off) => Some(false),
@@ -334,12 +334,16 @@ impl Application {
                         };
                         handlers::handle_toggle(ctx, element_ref.clone(), state_bool)?
                     }
-                    ActionOperation::Focus => handlers::handle_focus(ctx, element_ref.clone())?,
-                    ActionOperation::Clear => handlers::handle_clear(ctx, element_ref.clone())?,
-                    ActionOperation::SelectAll => {
+                    Some(ActionOperation::Focus) => {
+                        handlers::handle_focus(ctx, element_ref.clone())?
+                    }
+                    Some(ActionOperation::Clear) => {
+                        handlers::handle_clear(ctx, element_ref.clone())?
+                    }
+                    Some(ActionOperation::SelectAll) => {
                         handlers::handle_select_all(ctx, element_ref.clone())?
                     }
-                    ActionOperation::Scroll { direction, amount } => {
+                    Some(ActionOperation::Scroll { direction, amount }) => {
                         handlers::handle_scroll(ctx, *direction, *amount)?
                     }
                 }
@@ -358,18 +362,14 @@ impl Application {
                 hold,
                 release,
             } => {
-                if let Some(input) = value {
-                    if *hold {
-                        handlers::handle_keydown(ctx, input.clone())?
-                    } else if *release {
-                        handlers::handle_keyup(ctx, input.clone())?
-                    } else if is_key_name(input) {
-                        handlers::handle_press(ctx, input.clone())?
-                    } else {
-                        handlers::handle_type(ctx, input.clone())?
-                    }
-                } else if *hold || *release {
-                    return Err("--hold and --release require a key name".into());
+                if *hold {
+                    handlers::handle_keydown(ctx, value.clone())?
+                } else if *release {
+                    handlers::handle_keyup(ctx, value.clone())?
+                } else if is_key_name(value) {
+                    handlers::handle_press(ctx, value.clone())?
+                } else {
+                    handlers::handle_type(ctx, value.clone())?
                 }
             }
 
@@ -397,17 +397,16 @@ impl Application {
             }
 
             Commands::RecordStart => handlers::handle_record_start(ctx)?,
-            Commands::RecordStop {
-                output,
-                record_format,
-            } => handlers::handle_record_stop(ctx, output.clone(), *record_format)?,
+            Commands::RecordStop(args) => {
+                handlers::handle_record_stop(ctx, args.output.clone(), args.record_format)?
+            }
             Commands::RecordStatus => handlers::handle_record_status(ctx)?,
 
-            Commands::Trace { count, start, stop } => {
-                handlers::handle_trace(ctx, *count, *start, *stop)?
+            Commands::Trace(args) => {
+                handlers::handle_trace(ctx, args.count, args.start, args.stop)?
             }
-            Commands::Console { lines, clear } => handlers::handle_console(ctx, *lines, *clear)?,
-            Commands::Errors { count, clear } => handlers::handle_errors(ctx, *count, *clear)?,
+            Commands::Console(args) => handlers::handle_console(ctx, args.lines, args.clear)?,
+            Commands::Errors(args) => handlers::handle_errors(ctx, args.count, args.clear)?,
 
             Commands::Version => handlers::handle_version(ctx)?,
             Commands::Env => handlers::handle_env(ctx)?,
@@ -417,20 +416,18 @@ impl Application {
             Commands::Debug(debug_cmd) => match debug_cmd {
                 DebugCommand::Record(action) => match action {
                     RecordAction::Start => handlers::handle_record_start(ctx)?,
-                    RecordAction::Stop { output, format } => {
-                        handlers::handle_record_stop(ctx, output.clone(), *format)?
+                    RecordAction::Stop(args) => {
+                        handlers::handle_record_stop(ctx, args.output.clone(), args.record_format)?
                     }
                     RecordAction::Status => handlers::handle_record_status(ctx)?,
                 },
-                DebugCommand::Trace { count, start, stop } => {
-                    handlers::handle_trace(ctx, *count, *start, *stop)?
+                DebugCommand::Trace(args) => {
+                    handlers::handle_trace(ctx, args.count, args.start, args.stop)?
                 }
-                DebugCommand::Console { lines, clear } => {
-                    handlers::handle_console(ctx, *lines, *clear)?
+                DebugCommand::Console(args) => {
+                    handlers::handle_console(ctx, args.lines, args.clear)?
                 }
-                DebugCommand::Errors { count, clear } => {
-                    handlers::handle_errors(ctx, *count, *clear)?
-                }
+                DebugCommand::Errors(args) => handlers::handle_errors(ctx, args.count, args.clear)?,
                 DebugCommand::Env => handlers::handle_env(ctx)?,
             },
         }
@@ -444,6 +441,14 @@ impl Application {
     ) -> Result<(), Box<dyn std::error::Error>> {
         if args.is_empty() {
             return Err("No element selector provided".into());
+        }
+
+        if !args[0].starts_with('@') && !args[0].starts_with(':') {
+            return Err(format!(
+                "Unknown command: {}. Run 'agent-tui --help' to see available commands.",
+                args[0]
+            )
+            .into());
         }
 
         let element_ref = self.resolve_selector(ctx, &args[0])?;
@@ -768,9 +773,16 @@ mod tests {
     mod daemon_standalone_tests {
         use super::*;
         use crate::app::commands::{Cli, Commands, DaemonCommand, OutputFormat};
+        use std::env;
+        use tempfile::TempDir;
 
         #[test]
         fn handle_standalone_commands_routes_daemon_status() {
+            // Isolate from any real daemon by pointing socket to a temp path.
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            env::set_var("AGENT_TUI_SOCKET", &socket_path);
+
             let app = Application::new();
             let cli = Cli {
                 command: Commands::Daemon(DaemonCommand::Status),

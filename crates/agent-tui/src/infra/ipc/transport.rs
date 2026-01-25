@@ -226,8 +226,9 @@ impl IpcTransport for InMemoryTransport {
 }
 
 #[cfg(test)]
-static TEST_LISTENER: std::sync::OnceLock<std::sync::Mutex<Option<std::os::unix::net::UnixListener>>> =
-    std::sync::OnceLock::new();
+static TEST_LISTENER: std::sync::OnceLock<
+    std::sync::Mutex<Option<std::os::unix::net::UnixListener>>,
+> = std::sync::OnceLock::new();
 #[cfg(test)]
 pub(crate) static USE_DAEMON_START_STUB: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);

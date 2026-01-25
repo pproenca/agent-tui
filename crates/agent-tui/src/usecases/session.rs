@@ -5,9 +5,9 @@ use crate::domain::{
     ResizeInput, ResizeOutput, RestartOutput, SessionInput, SessionsOutput, SpawnInput,
     SpawnOutput,
 };
+use crate::usecases::SpawnError;
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionRepository;
-use crate::usecases::SpawnError;
 
 pub trait SpawnUseCase: Send + Sync {
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SpawnError>;

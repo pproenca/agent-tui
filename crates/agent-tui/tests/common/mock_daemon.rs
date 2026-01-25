@@ -63,6 +63,8 @@ pub enum MockResponse {
     Disconnect,
     Sequence(Vec<MockResponse>),
     Delayed(Duration, Box<MockResponse>),
+    // Inject arbitrary line (not JSON) to simulate protocol-level garbage before a valid frame.
+    JunkThen(Box<MockResponse>, String),
 }
 
 pub struct MockDaemon {
@@ -81,7 +83,8 @@ impl MockDaemon {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o777));
+            let _ =
+                std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o777));
         }
         let pid_path = temp_dir.path().join("agent-tui.pid");
 
@@ -735,6 +738,19 @@ impl MockDaemon {
                 tokio::time::sleep(duration).await;
 
                 Box::pin(Self::generate_response(Some(*inner), request_id, method)).await
+            }
+            Some(MockResponse::JunkThen(next, junk)) => {
+                // send junk first, then the next response
+                let mut out = String::new();
+                out.push_str(&junk);
+                let rest = Box::pin(Self::generate_response(Some(*next), request_id, method)).await;
+                if let Some(rest) = rest {
+                    if !out.is_empty() {
+                        out.push('\n');
+                    }
+                    out.push_str(&rest);
+                }
+                Some(out)
             }
             Some(MockResponse::Sequence(_)) => {
                 unreachable!("Sequence should be resolved before generate_response")

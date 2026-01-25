@@ -1,11 +1,11 @@
 #![deny(clippy::all)]
 
+pub mod adapters;
+pub mod app;
 pub mod common;
 pub mod domain;
-pub mod usecases;
-pub mod adapters;
 pub mod infra;
-pub mod app;
+pub mod usecases;
 
 pub use app::Application;
 

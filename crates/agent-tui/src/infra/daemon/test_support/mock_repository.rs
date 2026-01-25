@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::usecases::ports::{PtyError, SessionError, SessionHandle, SessionRepository};
 use crate::domain::SessionId;
 use crate::domain::SessionInfo;
 use crate::infra::daemon::test_support::MockSession;
+use crate::usecases::ports::{PtyError, SessionError, SessionHandle, SessionRepository};
 
 #[derive(Debug, Clone, Default)]
 pub enum MockError {

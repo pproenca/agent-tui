@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-
 use crate::domain::{
     RecordStartInput, RecordStartOutput, RecordStatusInput, RecordStatusOutput, RecordStopInput,
     RecordStopOutput,

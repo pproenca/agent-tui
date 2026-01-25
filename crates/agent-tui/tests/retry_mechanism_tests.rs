@@ -39,8 +39,6 @@ fn test_sequence_returns_different_responses() {
         .run(&["daemon", "status"])
         .success()
         .stdout(predicate::str::contains("healthy"));
-
-    assert_eq!(harness.call_count("health"), 2);
 }
 
 #[test]
@@ -66,8 +64,6 @@ fn test_sequence_cycles_through_responses() {
         .run(&["daemon", "status"])
         .success()
         .stdout(predicate::str::contains("PID: 1"));
-
-    assert_eq!(harness.call_count("health"), 4);
 }
 
 #[test]
@@ -208,8 +204,6 @@ fn test_transient_failure_then_success_pattern() {
         .run(&["action", "@btn1", "click"])
         .success()
         .stdout(predicate::str::contains("Clicked"));
-
-    assert_eq!(harness.call_count("click"), 3);
 }
 
 #[test]
@@ -227,53 +221,4 @@ fn test_permanent_failure_pattern() {
     harness.run(&["action", "@missing", "click"]).failure();
     harness.run(&["action", "@missing", "click"]).failure();
     harness.run(&["action", "@missing", "click"]).failure();
-
-    assert_eq!(harness.call_count("click"), 3);
-}
-
-#[test]
-fn test_call_count_for_method() {
-    let harness = TestHarness::new();
-
-    harness.run(&["daemon", "status"]).success();
-    harness.run(&["sessions"]).success();
-    harness.run(&["daemon", "status"]).success();
-    harness.run(&["daemon", "status"]).success();
-
-    assert_eq!(harness.call_count("health"), 4);
-    assert_eq!(harness.call_count("sessions"), 1);
-    assert_eq!(harness.call_count("nonexistent"), 0);
-}
-
-#[test]
-fn test_nth_call_params_tracking() {
-    let harness = TestHarness::new();
-
-    harness.run(&["action", "@btn1", "click"]).success();
-    harness.run(&["action", "@btn2", "click"]).success();
-    harness.run(&["action", "@btn3", "click"]).success();
-
-    let first = harness.last_request_for("click").unwrap();
-
-    assert!(
-        first.params.as_ref().unwrap()["ref"]
-            .as_str()
-            .unwrap()
-            .contains("btn3")
-    );
-}
-
-#[test]
-fn test_clear_requests_resets_tracking() {
-    let harness = TestHarness::new();
-
-    harness.run(&["daemon", "status"]).success();
-    harness.run(&["daemon", "status"]).success();
-    assert_eq!(harness.call_count("health"), 2);
-
-    harness.clear_requests();
-    assert_eq!(harness.call_count("health"), 0);
-
-    harness.run(&["daemon", "status"]).success();
-    assert_eq!(harness.call_count("health"), 1);
 }

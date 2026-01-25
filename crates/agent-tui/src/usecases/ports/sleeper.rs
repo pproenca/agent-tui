@@ -17,8 +17,7 @@ impl MockSleeper {
     }
 
     pub fn call_count(&self) -> u64 {
-        self.call_count
-            .load(std::sync::atomic::Ordering::SeqCst)
+        self.call_count.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn total_duration(&self) -> Duration {
@@ -45,8 +44,10 @@ impl Sleeper for MockSleeper {
     fn sleep(&self, duration: Duration) {
         self.call_count
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        self.total_duration_ms
-            .fetch_add(duration.as_millis() as u64, std::sync::atomic::Ordering::SeqCst);
+        self.total_duration_ms.fetch_add(
+            duration.as_millis() as u64,
+            std::sync::atomic::Ordering::SeqCst,
+        );
         self.durations.lock().unwrap().push(duration);
     }
 }

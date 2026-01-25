@@ -129,10 +129,7 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 clear: ClearUseCaseImpl::new(Arc::clone(&repository)),
                 select_all: SelectAllUseCaseImpl::new(Arc::clone(&repository)),
                 toggle: ToggleUseCaseImpl::new(Arc::clone(&repository)),
-                select: SelectUseCaseImpl::with_sleeper(
-                    Arc::clone(&repository),
-                    RealSleeper,
-                ),
+                select: SelectUseCaseImpl::with_sleeper(Arc::clone(&repository), RealSleeper),
                 multiselect: MultiselectUseCaseImpl::with_sleeper(
                     Arc::clone(&repository),
                     RealSleeper,

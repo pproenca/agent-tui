@@ -1,4 +1,6 @@
-use crate::infra::ipc::{AccessibilitySnapshotDto, BoundsDto, ElementRefDto, RefMapDto, SnapshotStatsDto};
+use crate::infra::ipc::{
+    AccessibilitySnapshotDto, BoundsDto, ElementRefDto, RefMapDto, SnapshotStatsDto,
+};
 
 use crate::domain::{
     DomainAccessibilitySnapshot, DomainBounds, DomainElementRef, DomainRefMap, DomainSnapshotStats,

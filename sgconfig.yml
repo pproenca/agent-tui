@@ -1,4 +1,5 @@
 ruleDirs:
-  - rules
+  - rules/clean-architecture
+  - rules/rust-codemods
 testConfigs:
-  - testDir: rule-tests
+  - testDir: rules/tests

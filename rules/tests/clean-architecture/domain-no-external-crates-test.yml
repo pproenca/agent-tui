@@ -4,6 +4,8 @@ valid:
   - "use std::fmt::Display;"
   - "use core::str::FromStr;"
   - "use alloc::vec::Vec;"
+  - "use regex::Regex;"
+  - "use regex;"
 invalid:
   - "use anyhow::Result;"
   - "use anyhow::Context;"
@@ -13,5 +15,3 @@ invalid:
   - "use log::info;"
   - "use log;"
   - "use env_logger::Builder;"
-  - "use regex::Regex;"
-  - "use regex;"

@@ -1,21 +1,19 @@
 id: clean-arch-domain-no-frameworks
 language: rust
 severity: error
-message: "Domain layer must not depend on framework crates. Move serialization/ID generation to adapters/infrastructure."
+message: "Domain layer must not depend on framework crates. Move serialization to adapters/infrastructure."
 note: |
   Clean Architecture: Domain types should be pure Rust with no framework dependencies.
   - serde: Handle serialization in adapter layer
-  - uuid: Generate IDs in infrastructure layer
   - chrono: Handle datetime in infrastructure layer
   - tokio: Async runtime is infrastructure concern
   - tracing: Logging is infrastructure concern
 files:
-  - "crates/agent-tui/src/daemon/domain/**/*.rs"
+  - "crates/agent-tui/src/domain/**/*.rs"
 rule:
   kind: use_declaration
   any:
     - regex: "^use serde(::|;)"
-    - regex: "^use uuid(::|;)"
     - regex: "^use chrono(::|;)"
     - regex: "^use tokio(::|;)"
     - regex: "^use tracing(::|;)"

@@ -1,6 +1,6 @@
 id: clean-arch-usecases-no-presentation
 valid:
-  - "use crate::domain::types::SessionId;"
+  - "use crate::domain::SessionId;"
   - "use serde::Serialize;"
   - "use std::collections::HashMap;"
 invalid:

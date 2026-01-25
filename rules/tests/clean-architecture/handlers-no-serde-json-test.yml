@@ -1,9 +1,0 @@
-id: clean-arch-handlers-no-serde-json
-valid:
-  - "use crate::domain::types::SessionId;"
-  - "use crate::usecases::spawn::SpawnInput;"
-  - "use serde::Serialize;"
-invalid:
-  - "use serde_json::Value;"
-  - "use serde_json::json;"
-  - "use serde_json;"

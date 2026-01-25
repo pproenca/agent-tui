@@ -8,7 +8,7 @@ note: |
   - If you need concurrent execution, the infrastructure layer should handle spawning
   - Use cases return results; infrastructure decides how to execute them
 files:
-  - "crates/agent-tui/src/daemon/usecases/**/*.rs"
+  - "crates/agent-tui/src/usecases/**/*.rs"
 rule:
   any:
     - pattern: tokio::spawn($$$ARGS)

@@ -8,7 +8,7 @@ note: |
   - FromRequest/IntoResponse: Web framework concerns belong in adapters
   - sqlx traits: Database concerns belong in infrastructure
 files:
-  - "crates/agent-tui/src/daemon/domain/**/*.rs"
+  - "crates/agent-tui/src/domain/**/*.rs"
 rule:
   kind: impl_item
   has:

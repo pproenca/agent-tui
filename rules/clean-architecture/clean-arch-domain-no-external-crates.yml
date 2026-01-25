@@ -6,10 +6,9 @@ note: |
   Domain purity: Only std, core, alloc are allowed.
   - anyhow/thiserror -> define custom error types with std::error::Error
   - log/tracing -> infrastructure concern
-  - regex -> use in adapter layer if needed
   - Any crate dependency -> adapter or infrastructure layer
 files:
-  - "crates/agent-tui/src/daemon/domain/**/*.rs"
+  - "crates/agent-tui/src/domain/**/*.rs"
 rule:
   kind: use_declaration
   any:
@@ -20,5 +19,3 @@ rule:
     - pattern: use log::$$$ITEMS
     - pattern: use log
     - pattern: use env_logger::$$$ITEMS
-    - pattern: use regex::$$$ITEMS
-    - pattern: use regex

@@ -10,9 +10,9 @@ note: |
 
   If you need use case types in an adapter, you may need a handler instead.
 files:
-  - "crates/agent-tui/src/daemon/adapters/**/*.rs"
+  - "crates/agent-tui/src/adapters/**/*.rs"
 rule:
   kind: use_declaration
   any:
-    - regex: "^use crate::daemon::usecases::"
+    - regex: "^use crate::usecases::"
     - regex: "^use super::super::usecases::"

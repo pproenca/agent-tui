@@ -802,6 +802,11 @@ mod tests {
 
         #[test]
         fn handle_standalone_commands_routes_daemon_stop() {
+            // Isolate from any real daemon by pointing socket to a temp path.
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            env::set_var("AGENT_TUI_SOCKET", &socket_path);
+
             let app = Application::new();
             let cli = Cli {
                 command: Commands::Daemon(DaemonCommand::Stop { force: false }),
@@ -827,6 +832,11 @@ mod tests {
 
         #[test]
         fn handle_standalone_commands_routes_daemon_start() {
+            // Isolate from any real daemon by pointing socket to a temp path.
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            env::set_var("AGENT_TUI_SOCKET", &socket_path);
+
             let app = Application::new();
             let cli = Cli {
                 command: Commands::Daemon(DaemonCommand::Start { foreground: false }),

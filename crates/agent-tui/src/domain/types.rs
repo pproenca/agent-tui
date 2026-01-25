@@ -881,6 +881,7 @@ pub struct ScrollIntoViewOutput {
 pub struct PtyReadInput {
     pub session_id: Option<SessionId>,
     pub max_bytes: usize,
+    pub timeout_ms: u64,
 }
 
 #[derive(Debug, Clone)]

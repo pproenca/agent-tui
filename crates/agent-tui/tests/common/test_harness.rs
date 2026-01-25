@@ -156,7 +156,7 @@ mod tests {
     fn test_harness_records_requests() {
         let harness = TestHarness::new();
 
-        let _ = harness.run(&["sessions", "--status"]);
+        let _ = harness.run(&["sessions", "status"]);
 
         let requests = harness.get_requests();
         assert!(
@@ -181,7 +181,7 @@ mod tests {
         );
 
         harness
-            .run(&["sessions", "--status"])
+            .run(&["sessions", "status"])
             .success()
             .stdout(predicate::str::contains("degraded"));
     }

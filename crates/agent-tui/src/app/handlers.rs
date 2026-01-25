@@ -468,6 +468,98 @@ pub fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerR
     })
 }
 
+pub fn handle_session_show<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    session_id: String,
+) -> HandlerResult {
+    let result = ctx.client.call("sessions", None)?;
+    let active_id = result.get("active_session").and_then(|v| v.as_str());
+    let sessions = result
+        .get("sessions")
+        .and_then(|v| v.as_array())
+        .ok_or("Invalid sessions response")?;
+
+    let session = sessions
+        .iter()
+        .find(|session| session.str_or("id", "") == session_id.as_str())
+        .ok_or_else(|| format!("Session not found: {}", session_id))?;
+
+    match ctx.format {
+        OutputFormat::Json => {
+            let payload = json!({
+                "session": session,
+                "active_session": active_id
+            });
+            ctx.presenter().present_value(&payload);
+        }
+        OutputFormat::Text => {
+            let id = session.str_or("id", "?");
+            let command = session.str_or("command", "?");
+            let pid = session.u64_or("pid", 0);
+            let running = session.bool_or("running", false);
+            let cols = session
+                .get("size")
+                .and_then(|s| s.get("cols"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let rows = session
+                .get("size")
+                .and_then(|s| s.get("rows"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let created_at = session.get("created_at").and_then(|v| v.as_str());
+
+            let is_active = active_id == Some(id);
+            let active = if is_active {
+                Colors::success(" (active)")
+            } else {
+                String::new()
+            };
+            let status = if running {
+                Colors::success("running")
+            } else {
+                Colors::error("stopped")
+            };
+
+            println!(
+                "{} {}{}",
+                Colors::bold("Session:"),
+                Colors::session_id(id),
+                active
+            );
+            println!("  Command: {}", command);
+            println!("  Status: {}", status);
+            println!("  Size: {}x{}", cols, rows);
+            println!("  PID: {}", pid);
+            if let Some(created) = created_at {
+                println!("  Created: {}", created);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn resolve_attach_session_id<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    session_id: Option<String>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    if let Some(id) = session_id {
+        return Ok(id);
+    }
+
+    if let Some(id) = ctx.session.clone() {
+        return Ok(id);
+    }
+
+    let result = ctx.client.call("sessions", None)?;
+    if let Some(active) = result.get("active_session").and_then(|v| v.as_str()) {
+        return Ok(active.to_string());
+    }
+
+    Err("No active session to attach. Use 'agent-tui sessions list' or pass --session.".into())
+}
+
 pub fn handle_health<C: DaemonClient>(ctx: &mut HandlerContext<C>, verbose: bool) -> HandlerResult {
     use crate::adapters::presenter::HealthResult;
 

@@ -9,7 +9,7 @@ fn test_health_returns_daemon_status() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["sessions", "--status"])
+        .run(&["sessions", "status"])
         .success()
         .stdout(predicate::str::contains("Daemon status:"))
         .stdout(predicate::str::contains("healthy"))
@@ -38,7 +38,7 @@ fn test_health_with_custom_response() {
     );
 
     harness
-        .run(&["sessions", "--status"])
+        .run(&["sessions", "status"])
         .success()
         .stdout(predicate::str::contains("degraded"))
         .stdout(predicate::str::contains("99999"));
@@ -49,7 +49,7 @@ fn test_health_verbose_shows_connection_details() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["sessions", "--status", "-v"])
+        .run(&["sessions", "status", "-v"])
         .success()
         .stdout(predicate::str::contains("Connection:"))
         .stdout(predicate::str::contains("Socket:"))
@@ -104,6 +104,44 @@ fn test_sessions_with_active_sessions() {
         .stdout(predicate::str::contains("session-2"))
         .stdout(predicate::str::contains("vim"))
         .stdout(predicate::str::contains("(active)"));
+}
+
+#[test]
+fn test_sessions_show_details() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "sessions",
+        json!({
+            "sessions": [
+                {
+                    "id": "session-1",
+                    "command": "bash",
+                    "running": true,
+                    "pid": 1234,
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "size": { "cols": 120, "rows": 40 }
+                },
+                {
+                    "id": "session-2",
+                    "command": "vim",
+                    "running": false,
+                    "pid": 5678,
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "size": { "cols": 80, "rows": 24 }
+                }
+            ],
+            "active_session": "session-1"
+        }),
+    );
+
+    harness
+        .run(&["sessions", "show", "session-2"])
+        .success()
+        .stdout(predicate::str::contains("Session:"))
+        .stdout(predicate::str::contains("session-2"))
+        .stdout(predicate::str::contains("Command:"))
+        .stdout(predicate::str::contains("vim"));
 }
 
 #[test]
@@ -449,7 +487,7 @@ fn test_daemon_rpc_error() {
     harness.set_error_response("health", -32603, "Internal daemon error");
 
     harness
-        .run(&["sessions", "--status"])
+        .run(&["sessions", "status"])
         .failure()
         .stderr(predicate::str::contains("Error"))
         .stderr(predicate::str::contains("Internal daemon error"));
@@ -462,7 +500,7 @@ fn test_unknown_method_error() {
     harness.set_error_response("health", -32601, "Method not found");
 
     harness
-        .run(&["sessions", "--status"])
+        .run(&["sessions", "status"])
         .failure()
         .stderr(predicate::str::contains("Method not found"));
 }
@@ -484,9 +522,9 @@ fn test_keydown_keyup_sequence() {
 fn test_multiple_requests_recorded() {
     let harness = TestHarness::new();
 
-    harness.run(&["sessions", "--status"]).success();
+    harness.run(&["sessions", "status"]).success();
     harness.run(&["sessions"]).success();
-    harness.run(&["sessions", "--status"]).success();
+    harness.run(&["sessions", "status"]).success();
 
     // Behavioural check: repeated invocations all succeed and report sessions info (even if empty).
     harness
@@ -499,12 +537,12 @@ fn test_multiple_requests_recorded() {
 fn test_clear_requests_works() {
     let harness = TestHarness::new();
 
-    harness.run(&["sessions", "--status"]).success();
+    harness.run(&["sessions", "status"]).success();
     harness.clear_requests();
 
     // After clearing, subsequent calls still succeed (state unaffected from caller perspective).
     harness
-        .run(&["sessions", "--status"])
+        .run(&["sessions", "status"])
         .success()
         .stdout(predicate::str::contains("Daemon status:"));
 }

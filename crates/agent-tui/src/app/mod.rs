@@ -132,7 +132,7 @@ impl Application {
 
         let format = cli.effective_format();
         let mut ctx = HandlerContext::new(&mut client, cli.session, format);
-        self.dispatch_command(&mut ctx, &cli.command)
+        self.dispatch_command(&mut ctx, &cli.command, cli.verbose)
     }
 
     fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool, Box<dyn std::error::Error>> {
@@ -261,6 +261,7 @@ impl Application {
         &self,
         ctx: &mut HandlerContext<C>,
         command: &Commands,
+        verbose: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         match command {
             Commands::Daemon(daemon_cmd) => match daemon_cmd {
@@ -375,23 +376,23 @@ impl Application {
             Commands::Wait { params } => handlers::handle_wait(ctx, params.clone())?,
             Commands::Kill => handlers::handle_kill(ctx)?,
 
-            Commands::Sessions {
-                session_id,
-                cleanup,
-                all,
-                attach,
-                status,
-            } => {
-                if let Some(attach_id) = attach {
-                    handlers::handle_attach(ctx, attach_id.clone(), true)?
-                } else if *cleanup {
-                    handlers::handle_cleanup(ctx, *all)?
-                } else if session_id.is_some() {
-                    handlers::handle_sessions(ctx)?
-                } else if *status {
-                    handlers::handle_health(ctx, true)?
-                } else {
-                    handlers::handle_sessions(ctx)?
+            Commands::Sessions { command } => {
+                use crate::app::commands::SessionsCommand;
+
+                match command {
+                    None | Some(SessionsCommand::List) => handlers::handle_sessions(ctx)?,
+                    Some(SessionsCommand::Show { session_id }) => {
+                        handlers::handle_session_show(ctx, session_id.clone())?
+                    }
+                    Some(SessionsCommand::Attach { session_id }) => {
+                        let attach_id =
+                            handlers::resolve_attach_session_id(ctx, session_id.clone())?;
+                        handlers::handle_attach(ctx, attach_id, true)?
+                    }
+                    Some(SessionsCommand::Cleanup { all }) => {
+                        handlers::handle_cleanup(ctx, *all)?
+                    }
+                    Some(SessionsCommand::Status) => handlers::handle_health(ctx, verbose)?,
                 }
             }
 

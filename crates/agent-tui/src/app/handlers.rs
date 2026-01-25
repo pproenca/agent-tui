@@ -809,10 +809,7 @@ pub fn handle_attach<C: DaemonClient>(
         let stdin_tty = io::stdin().is_terminal();
         let stdout_tty = io::stdout().is_terminal();
         if !stdin_tty || !stdout_tty {
-            let err = io::Error::new(
-                io::ErrorKind::Other,
-                "interactive attach requires a TTY on stdin and stdout",
-            );
+            let err = io::Error::other("interactive attach requires a TTY on stdin and stdout");
             return Err(AttachError::Terminal(err).into());
         }
     }

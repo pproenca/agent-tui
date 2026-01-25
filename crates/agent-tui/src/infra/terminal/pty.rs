@@ -33,28 +33,6 @@ impl Drop for PtyHandle {
     }
 }
 
-struct SigpipeGuard {
-    previous: libc::sighandler_t,
-}
-
-impl SigpipeGuard {
-    fn new() -> Option<Self> {
-        let previous = unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
-        if previous == libc::SIG_ERR {
-            return None;
-        }
-        Some(Self { previous })
-    }
-}
-
-impl Drop for SigpipeGuard {
-    fn drop(&mut self) {
-        unsafe {
-            libc::signal(libc::SIGPIPE, self.previous);
-        }
-    }
-}
-
 impl PtyHandle {
     pub fn spawn(
         command: &str,
@@ -92,7 +70,6 @@ impl PtyHandle {
 
         cmd.env("TERM", "xterm-256color");
 
-        let _sigpipe_guard = SigpipeGuard::new();
         let child = pair
             .slave
             .spawn_command(cmd)

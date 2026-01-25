@@ -41,15 +41,13 @@ pub fn parse_session_input(request: &RpcRequest) -> SessionInput {
 pub fn parse_live_preview_start_input(
     request: &RpcRequest,
 ) -> Result<LivePreviewStartInput, RpcResponse> {
-    let rpc_params: params::LivePreviewStartParams = request
-        .params
-        .as_ref()
-        .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))
-        .and_then(|p| {
-            serde_json::from_value(p.clone()).map_err(|e| {
-                RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", e))
-            })
-        })?;
+    let rpc_params: params::LivePreviewStartParams = match request.params.as_ref() {
+        None => params::LivePreviewStartParams::default(),
+        Some(params_value) if params_value.is_null() => params::LivePreviewStartParams::default(),
+        Some(params_value) => serde_json::from_value(params_value.clone()).map_err(|e| {
+            RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", e))
+        })?,
+    };
 
     let listen_addr = if let Some(addr) = rpc_params.listen {
         if let Err(e) = addr.parse::<std::net::SocketAddr>() {

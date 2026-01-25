@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::io;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use serde_json::Value;
@@ -18,6 +20,7 @@ use crate::app::commands::OutputFormat;
 use crate::app::commands::RecordFormat;
 use crate::app::commands::ScrollDirection;
 use crate::app::commands::WaitParams;
+use crate::app::error::AttachError;
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -801,6 +804,18 @@ pub fn handle_attach<C: DaemonClient>(
     interactive: bool,
 ) -> HandlerResult {
     use crate::app::attach;
+
+    if interactive {
+        let stdin_tty = io::stdin().is_terminal();
+        let stdout_tty = io::stdout().is_terminal();
+        if !stdin_tty || !stdout_tty {
+            let err = io::Error::new(
+                io::ErrorKind::Other,
+                "interactive attach requires a TTY on stdin and stdout",
+            );
+            return Err(AttachError::Terminal(err).into());
+        }
+    }
 
     let params = json!({ "session": session_id });
     let result = ctx.client.call("attach", Some(params))?;

@@ -389,9 +389,7 @@ impl Application {
                             handlers::resolve_attach_session_id(ctx, session_id.clone())?;
                         handlers::handle_attach(ctx, attach_id, true)?
                     }
-                    Some(SessionsCommand::Cleanup { all }) => {
-                        handlers::handle_cleanup(ctx, *all)?
-                    }
+                    Some(SessionsCommand::Cleanup { all }) => handlers::handle_cleanup(ctx, *all)?,
                     Some(SessionsCommand::Status) => handlers::handle_health(ctx, verbose)?,
                 }
             }

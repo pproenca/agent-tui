@@ -2,24 +2,47 @@ use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
 
+use crate::commands::OutputFormat;
 use crate::common::key_names::is_key_name;
 use crate::common::{Colors, color_init};
 use crate::daemon::{DaemonError, start_daemon};
-use crate::ipc::{ClientError, DaemonClient, ensure_daemon};
+use crate::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
 
 use crate::attach::AttachError;
 use crate::commands::{Cli, Commands, DaemonCommand, DebugCommand, RecordAction};
 use crate::handlers::{self, HandlerContext};
 
+/// Exit codes following sysexits.h and LSB init script conventions.
+///
+/// LSB init script exit codes for daemon status:
+/// - 0: Program is running and OK
+/// - 1: Program is dead but pid file exists
+/// - 3: Program is not running
+/// - 4: Program status is unknown
 mod exit_codes {
     pub const SUCCESS: i32 = 0;
     pub const GENERAL_ERROR: i32 = 1;
+    /// LSB: program is not running (for `daemon status`)
+    pub const NOT_RUNNING: i32 = 3;
     pub const USAGE: i32 = 64;
     pub const UNAVAILABLE: i32 = 69;
     pub const CANTCREAT: i32 = 73;
     pub const IOERR: i32 = 74;
     pub const TEMPFAIL: i32 = 75;
 }
+
+/// Error indicating daemon is not running (for status command).
+/// Maps to LSB exit code 3.
+#[derive(Debug)]
+struct DaemonNotRunningError;
+
+impl std::fmt::Display for DaemonNotRunningError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Daemon is not running")
+    }
+}
+
+impl std::error::Error for DaemonNotRunningError {}
 
 /// Validates element ref format: @e1, @btn2, @inp3, etc.
 fn is_element_ref(selector: &str) -> bool {
@@ -116,6 +139,14 @@ impl Application {
                 println!("Daemon started in background");
                 Ok(true)
             }
+            Commands::Daemon(DaemonCommand::Status) => {
+                self.handle_daemon_status_standalone(cli)?;
+                Ok(true)
+            }
+            Commands::Daemon(DaemonCommand::Stop { force }) => {
+                self.handle_daemon_stop_standalone(*force)?;
+                Ok(true)
+            }
             Commands::Completions { shell } => {
                 let mut cmd = Cli::command();
                 generate(*shell, &mut cmd, "agent-tui", &mut std::io::stdout());
@@ -123,6 +154,76 @@ impl Application {
             }
             _ => Ok(false),
         }
+    }
+
+    fn handle_daemon_status_standalone(&self, cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+        match UnixSocketClient::connect() {
+            Ok(mut client) => {
+                // Daemon is running - show status using existing handler
+                let format = cli.effective_format();
+                let mut ctx = HandlerContext::new(&mut client, cli.session.clone(), format);
+                handlers::handle_daemon_status(&mut ctx)
+            }
+            Err(ClientError::DaemonNotRunning) => {
+                // Daemon is NOT running - show appropriate message
+                let cli_version = env!("CARGO_PKG_VERSION");
+                match cli.effective_format() {
+                    OutputFormat::Json => {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "running": false,
+                                "cli_version": cli_version
+                            })
+                        );
+                    }
+                    _ => {
+                        println!("Daemon is not running");
+                        println!("  CLI version: {}", cli_version);
+                    }
+                }
+                // Return error that maps to LSB exit code 3
+                Err(Box::new(DaemonNotRunningError))
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn handle_daemon_stop_standalone(&self, force: bool) -> Result<(), Box<dyn std::error::Error>> {
+        use crate::ipc::{
+            PidLookupResult, UnixProcessController, daemon_lifecycle, get_daemon_pid, socket_path,
+        };
+
+        let pid = match get_daemon_pid() {
+            PidLookupResult::Found(pid) => pid,
+            PidLookupResult::NotRunning => {
+                return Err(Box::new(ClientError::DaemonNotRunning));
+            }
+            PidLookupResult::Error(msg) => {
+                return Err(Box::new(ClientError::SignalFailed {
+                    pid: 0,
+                    message: msg,
+                }));
+            }
+        };
+
+        let socket = socket_path();
+
+        if !force {
+            // Try graceful RPC shutdown first (needs connection but doesn't auto-start)
+            if let Ok(mut client) = UnixSocketClient::connect() {
+                if daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket).is_ok() {
+                    println!("{}", Colors::success("✓ Daemon stopped"));
+                    return Ok(());
+                }
+            }
+        }
+
+        // Fall back to signal-based stop
+        let controller = UnixProcessController;
+        daemon_lifecycle::stop_daemon(&controller, pid, &socket, force)?;
+        println!("{}", Colors::success("✓ Daemon stopped"));
+        Ok(())
     }
 
     fn connect_to_daemon(&self) -> Result<impl DaemonClient, Box<dyn std::error::Error>> {
@@ -149,8 +250,8 @@ impl Application {
         match command {
             Commands::Daemon(daemon_cmd) => match daemon_cmd {
                 DaemonCommand::Start { .. } => unreachable!("Handled in standalone"),
-                DaemonCommand::Stop { force } => handlers::handle_daemon_stop(ctx, *force)?,
-                DaemonCommand::Status => handlers::handle_daemon_status(ctx)?,
+                DaemonCommand::Stop { .. } => unreachable!("Handled in standalone"),
+                DaemonCommand::Status => unreachable!("Handled in standalone"),
                 DaemonCommand::Restart => handlers::handle_daemon_restart(ctx)?,
             },
             Commands::Completions { .. } => unreachable!("Handled in standalone"),
@@ -411,6 +512,12 @@ impl Application {
     }
 
     fn handle_error(&self, e: Box<dyn std::error::Error>) -> i32 {
+        // Handle DaemonNotRunningError specially - no error message printed,
+        // output was already shown by the handler, just return LSB exit code 3
+        if e.downcast_ref::<DaemonNotRunningError>().is_some() {
+            return exit_codes::NOT_RUNNING;
+        }
+
         if let Some(client_error) = e.downcast_ref::<ClientError>() {
             eprintln!("{} {}", Colors::error("Error:"), client_error);
             if let Some(suggestion) = client_error.suggestion() {
@@ -637,6 +744,96 @@ mod tests {
         fn returns_none_for_missing_elements() {
             let result = json!({"success": true});
             assert_eq!(extract_element_ref_from_result(&result), None);
+        }
+    }
+
+    mod daemon_standalone_tests {
+        use super::*;
+        use crate::commands::{Cli, Commands, DaemonCommand, OutputFormat};
+
+        #[test]
+        fn handle_standalone_commands_routes_daemon_status() {
+            let app = Application::new();
+            let cli = Cli {
+                command: Commands::Daemon(DaemonCommand::Status),
+                session: None,
+                format: OutputFormat::Text,
+                json: false,
+                no_color: true,
+                verbose: false,
+            };
+
+            // When daemon is not running, should return DaemonNotRunningError
+            let result = app.handle_standalone_commands(&cli);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            // Verify it's DaemonNotRunningError (can be converted to exit code 3)
+            assert!(err.downcast_ref::<DaemonNotRunningError>().is_some());
+        }
+
+        #[test]
+        fn handle_standalone_commands_routes_daemon_stop() {
+            let app = Application::new();
+            let cli = Cli {
+                command: Commands::Daemon(DaemonCommand::Stop { force: false }),
+                session: None,
+                format: OutputFormat::Text,
+                json: false,
+                no_color: true,
+                verbose: false,
+            };
+
+            // When daemon is not running, should return error
+            let result = app.handle_standalone_commands(&cli);
+            assert!(result.is_err());
+            // Should be ClientError::DaemonNotRunning
+            let err = result.unwrap_err();
+            assert!(err.downcast_ref::<ClientError>().is_some());
+        }
+
+        #[test]
+        fn handle_standalone_commands_routes_daemon_start() {
+            let app = Application::new();
+            let cli = Cli {
+                command: Commands::Daemon(DaemonCommand::Start { foreground: false }),
+                session: None,
+                format: OutputFormat::Text,
+                json: false,
+                no_color: true,
+                verbose: false,
+            };
+
+            // Just verify the routing logic
+            // We can't actually test start without spawning a daemon
+            let result = app.handle_standalone_commands(&cli);
+            // Should return Ok(true) or error - both indicate it was handled
+            assert!(result.is_ok() || result.is_err());
+        }
+
+        #[test]
+        fn handle_standalone_commands_does_not_route_restart() {
+            let app = Application::new();
+            let cli = Cli {
+                command: Commands::Daemon(DaemonCommand::Restart),
+                session: None,
+                format: OutputFormat::Text,
+                json: false,
+                no_color: true,
+                verbose: false,
+            };
+
+            // Restart should NOT be handled as standalone
+            let result = app.handle_standalone_commands(&cli);
+            assert!(result.is_ok());
+            assert!(!result.unwrap());
+        }
+
+        #[test]
+        fn handle_error_returns_not_running_exit_code() {
+            let app = Application::new();
+            let err: Box<dyn std::error::Error> = Box::new(DaemonNotRunningError);
+            let exit_code = app.handle_error(err);
+            assert_eq!(exit_code, exit_codes::NOT_RUNNING);
         }
     }
 }

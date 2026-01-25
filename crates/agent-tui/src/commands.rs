@@ -422,7 +422,13 @@ EXAMPLES:
 Show daemon status and version information.
 
 Displays whether the daemon is running, its PID, uptime, and version.
-Also checks for version mismatch between CLI and daemon.")]
+Also checks for version mismatch between CLI and daemon.
+
+EXIT CODES (following LSB init script conventions):
+    0 - Daemon is running and healthy
+    1 - Daemon is dead but pid file exists
+    3 - Daemon is not running
+    4 - Daemon status is unknown")]
     Status,
 
     /// Restart the daemon

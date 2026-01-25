@@ -3,16 +3,20 @@ mod common;
 use common::{MockResponse, TestHarness, agent_tui_cmd};
 use predicates::prelude::*;
 
+/// LSB exit code 3: program is not running
+const EXIT_NOT_RUNNING: i32 = 3;
+
 #[test]
 fn test_daemon_socket_not_exists() {
     let mut cmd = agent_tui_cmd();
     cmd.env("XDG_RUNTIME_DIR", "/nonexistent/path/that/does/not/exist");
     cmd.env("TMPDIR", "/nonexistent/path/that/does/not/exist");
 
+    // `daemon status` should show "not running" message and exit with LSB code 3 (no auto-start)
     cmd.args(["daemon", "status"])
         .assert()
-        .failure()
-        .stderr(predicate::str::contains("not running").or(predicate::str::contains("connect")));
+        .code(EXIT_NOT_RUNNING)
+        .stdout(predicate::str::contains("not running"));
 }
 
 #[test]

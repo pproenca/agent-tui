@@ -1,29 +1,23 @@
 #![deny(clippy::all)]
 
 pub mod common;
-pub mod core;
-pub mod daemon;
-pub mod ipc;
-pub mod terminal;
-
+pub mod domain;
+pub mod usecases;
+pub mod adapters;
+pub mod infra;
 pub mod app;
-pub mod attach;
-pub mod commands;
-pub mod error;
-pub mod handlers;
-pub mod presenter;
 
 pub use app::Application;
 
 pub use common::Colors;
-pub use core::Element;
-pub use core::ElementType;
-pub use daemon::Session;
-pub use daemon::SessionError;
-pub use daemon::SessionId;
-pub use daemon::SessionManager;
-pub use ipc::ClientError;
-pub use ipc::DaemonClient;
+pub use domain::core::Element;
+pub use domain::core::ElementType;
+pub use infra::daemon::Session;
+pub use infra::daemon::SessionError;
+pub use infra::daemon::SessionId;
+pub use infra::daemon::SessionManager;
+pub use infra::ipc::ClientError;
+pub use infra::ipc::DaemonClient;
 
-pub use error::AttachError;
-pub use handlers::HandlerResult;
+pub use app::error::AttachError;
+pub use app::handlers::HandlerResult;

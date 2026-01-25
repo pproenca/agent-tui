@@ -17,7 +17,6 @@ use tokio::sync::{broadcast, watch};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{info, warn};
 
-use crate::domain::core::CursorPosition;
 use crate::domain::session_types::SessionId;
 use crate::domain::{LivePreviewStartOutput, LivePreviewStatusOutput, LivePreviewStopOutput};
 use crate::usecases::ports::{
@@ -233,13 +232,9 @@ struct LivePreviewServerState {
 impl LivePreviewServerState {
     fn new(session: SessionHandle) -> Self {
         let _ = session.update();
-        let screen = session.screen_text();
-        let cursor = session.cursor();
-        let size = session.size();
+        let snapshot = session.live_preview_snapshot();
         let snapshot = SnapshotState {
-            screen,
-            cursor,
-            size,
+            size: (snapshot.cols, snapshot.rows),
         };
         let (tx, _) = broadcast::channel(128);
         Self {
@@ -250,22 +245,13 @@ impl LivePreviewServerState {
         }
     }
 
-    fn snapshot(&self) -> SnapshotState {
-        self.snapshot
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-    }
-
     fn now(&self) -> f64 {
         self.start_time.elapsed().as_secs_f64()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct SnapshotState {
-    screen: String,
-    cursor: CursorPosition,
     size: (u16, u16),
 }
 
@@ -290,9 +276,6 @@ async fn pump_events(state: Arc<LivePreviewServerState>, mut shutdown: watch::Re
                     warn!(error = %e, "Live preview session update failed");
                     continue;
                 }
-
-                let screen = state.session.screen_text();
-                let cursor = state.session.cursor();
                 let (cols, rows) = state.session.size();
 
                 let mut snapshot = state.snapshot.lock().unwrap_or_else(|e| e.into_inner());
@@ -305,13 +288,17 @@ async fn pump_events(state: Arc<LivePreviewServerState>, mut shutdown: watch::Re
                     snapshot.size = (cols, rows);
                 }
 
-                if snapshot.screen != screen || snapshot.cursor != cursor {
-                    let seq = build_frame(&screen, &cursor);
+                let output = state.session.live_preview_drain_output();
+                if !output.seq.is_empty() {
+                    if output.dropped_bytes > 0 {
+                        warn!(
+                            dropped_bytes = output.dropped_bytes,
+                            "Live preview output buffer overflow"
+                        );
+                    }
                     let _ = state
                         .broadcaster
-                        .send(LiveEvent::Output { time, seq });
-                    snapshot.screen = screen;
-                    snapshot.cursor = cursor;
+                        .send(LiveEvent::Output { time, seq: output.seq });
                 }
             }
         }
@@ -370,13 +357,12 @@ async fn handle_alis_socket(
 }
 
 fn alis_init_message(state: &LivePreviewServerState) -> ws::Message {
-    let snapshot = state.snapshot();
-    let seq = build_frame(&snapshot.screen, &snapshot.cursor);
+    let snapshot = state.session.live_preview_snapshot();
     let message = json!({
         "time": state.now(),
-        "cols": snapshot.size.0,
-        "rows": snapshot.size.1,
-        "init": seq
+        "cols": snapshot.cols,
+        "rows": snapshot.rows,
+        "init": snapshot.seq
     });
     ws::Message::Text(message.to_string())
 }
@@ -437,16 +423,16 @@ async fn handle_events_socket(
 }
 
 fn event_init_message(state: &LivePreviewServerState) -> ws::Message {
-    let snapshot = state.snapshot();
-    let seq = build_frame(&snapshot.screen, &snapshot.cursor);
+    let snapshot = state.session.live_preview_snapshot();
+    let text = state.session.screen_text();
     let message = json!({
         "type": "init",
         "data": {
-            "cols": snapshot.size.0,
-            "rows": snapshot.size.1,
+            "cols": snapshot.cols,
+            "rows": snapshot.rows,
             "pid": 0,
-            "seq": seq,
-            "text": snapshot.screen
+            "seq": snapshot.seq,
+            "text": text
         }
     });
     ws::Message::Text(message.to_string())
@@ -498,21 +484,4 @@ impl std::str::FromStr for Subscription {
         }
         Ok(sub)
     }
-}
-
-fn build_frame(screen: &str, cursor: &CursorPosition) -> String {
-    let mut seq = String::new();
-    seq.push_str("\u{1b}[2J\u{1b}[H");
-    if !screen.is_empty() {
-        seq.push_str(screen);
-    }
-    let row = cursor.row.saturating_add(1);
-    let col = cursor.col.saturating_add(1);
-    seq.push_str(&format!("\u{1b}[{row};{col}H"));
-    if cursor.visible {
-        seq.push_str("\u{1b}[?25h");
-    } else {
-        seq.push_str("\u{1b}[?25l");
-    }
-    seq
 }

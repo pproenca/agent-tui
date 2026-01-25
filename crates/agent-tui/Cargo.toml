@@ -41,6 +41,7 @@ axum.workspace = true
 # Terminal emulation
 portable-pty.workspace = true
 vt100.workspace = true
+avt.workspace = true
 
 # VOM analysis
 regex.workspace = true

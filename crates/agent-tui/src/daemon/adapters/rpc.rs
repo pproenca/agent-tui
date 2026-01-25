@@ -1,4 +1,6 @@
 use crate::ipc::{RpcRequest, RpcResponse, params};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use serde_json::{Value, json};
 
 use super::recording_adapters::{build_asciicast, build_raw_frames};
@@ -582,7 +584,7 @@ pub fn pty_read_output_to_response(id: u64, output: PtyReadOutput) -> RpcRespons
         id,
         json!({
             "session_id": output.session_id.as_str(),
-            "data": output.data,
+            "data": STANDARD.encode(&output.data),
             "bytes_read": output.bytes_read
         }),
     )
@@ -993,7 +995,14 @@ pub fn parse_pty_read_input(request: &RpcRequest) -> PtyReadInput {
 
 #[allow(clippy::result_large_err)]
 pub fn parse_pty_write_input(request: &RpcRequest) -> Result<PtyWriteInput, RpcResponse> {
-    let data = request.require_str("data")?.to_string();
+    let data_b64 = request.require_str("data")?;
+    let data = STANDARD.decode(data_b64).map_err(|e| {
+        RpcResponse::error(
+            request.id,
+            -32602, // JSON-RPC Invalid Params
+            &format!("Invalid base64 data: {}", e),
+        )
+    })?;
 
     Ok(PtyWriteInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
@@ -1295,14 +1304,26 @@ mod tests {
 
     #[test]
     fn test_parse_pty_write_input() {
-        let request = make_request(1, "pty_write", Some(json!({ "data": "hello" })));
+        // "hello" encoded as base64 is "aGVsbG8="
+        let request = make_request(1, "pty_write", Some(json!({ "data": "aGVsbG8=" })));
         let input = parse_pty_write_input(&request).unwrap();
-        assert_eq!(input.data, "hello");
+        assert_eq!(input.data, b"hello");
     }
 
     #[test]
     fn test_parse_pty_write_input_missing_data() {
         let request = make_request(1, "pty_write", Some(json!({})));
+        let result = parse_pty_write_input(&request);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_pty_write_input_invalid_base64() {
+        let request = make_request(
+            1,
+            "pty_write",
+            Some(json!({ "data": "not-valid-base64!!!" })),
+        );
         let result = parse_pty_write_input(&request);
         assert!(result.is_err());
     }
@@ -1362,13 +1383,15 @@ mod tests {
     fn test_pty_read_output_to_response() {
         let output = PtyReadOutput {
             session_id: SessionId::new("sess1"),
-            data: "output".to_string(),
+            data: b"output".to_vec(),
             bytes_read: 6,
         };
         let response = pty_read_output_to_response(1, output);
         let result = extract_result(response);
         assert_eq!(result["session_id"], "sess1");
         assert_eq!(result["bytes_read"], 6);
+        // "output" encoded as base64 is "b3V0cHV0"
+        assert_eq!(result["data"], "b3V0cHV0");
     }
 
     #[test]

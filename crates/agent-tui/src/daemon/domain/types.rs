@@ -886,14 +886,14 @@ pub struct PtyReadInput {
 #[derive(Debug, Clone)]
 pub struct PtyReadOutput {
     pub session_id: SessionId,
-    pub data: String,
+    pub data: Vec<u8>,
     pub bytes_read: usize,
 }
 
 #[derive(Debug, Clone)]
 pub struct PtyWriteInput {
     pub session_id: Option<SessionId>,
-    pub data: String,
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]

@@ -19,6 +19,32 @@ use crate::ipc::DaemonClient;
 
 pub use crate::error::AttachError;
 
+/// RAII guard that ignores a signal during its lifetime and restores default behavior on drop.
+struct SignalGuard {
+    signal: libc::c_int,
+}
+
+impl SignalGuard {
+    /// Creates a new SignalGuard that ignores the specified signal.
+    ///
+    /// # Safety
+    /// Uses libc signal handling which is inherently unsafe.
+    fn new(signal: libc::c_int) -> Self {
+        unsafe {
+            libc::signal(signal, libc::SIG_IGN);
+        }
+        Self { signal }
+    }
+}
+
+impl Drop for SignalGuard {
+    fn drop(&mut self) {
+        unsafe {
+            libc::signal(self.signal, libc::SIG_DFL);
+        }
+    }
+}
+
 pub fn attach_ipc<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<(), AttachError> {
     eprintln!(
         "{} Attaching to session {}...",
@@ -31,6 +57,9 @@ pub fn attach_ipc<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<(
         Colors::bold("Ctrl+\\")
     );
     eprintln!();
+
+    // Ignore SIGQUIT (Ctrl+\) so we can capture it for detachment
+    let _sigquit_guard = SignalGuard::new(libc::SIGQUIT);
 
     enable_raw_mode().map_err(AttachError::Terminal)?;
 
@@ -63,9 +92,14 @@ fn attach_ipc_loop<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<
         if event::poll(Duration::from_millis(10)).unwrap_or(false) {
             match event::read() {
                 Ok(Event::Key(key_event)) => {
-                    if key_event.modifiers.contains(KeyModifiers::CONTROL)
-                        && key_event.code == KeyCode::Char('\\')
-                    {
+                    // Detect Ctrl+\ for detachment. Handle multiple representations:
+                    // - KeyCode::Char('\\') with CONTROL modifier (standard)
+                    // - KeyCode::Char('\x1c') (raw ASCII 28 = FS, which is Ctrl+\)
+                    let is_ctrl_backslash = key_event.modifiers.contains(KeyModifiers::CONTROL)
+                        && key_event.code == KeyCode::Char('\\');
+                    let is_raw_ctrl_backslash = key_event.code == KeyCode::Char('\x1c');
+
+                    if is_ctrl_backslash || is_raw_ctrl_backslash {
                         break;
                     }
 

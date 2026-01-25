@@ -42,26 +42,11 @@ impl<R: SessionRepository, S: Sleeper> WaitUseCase for WaitUseCaseImpl<R, S> {
         let timeout = Duration::from_millis(input.timeout_ms);
         let start = Instant::now();
 
-        let condition = match (input.condition.as_deref(), input.text.as_ref()) {
-            (Some("stable"), _) => WaitCondition::Stable,
-            (Some("element"), Some(target)) => WaitCondition::Element(target.clone()),
-            (Some("focused"), Some(target)) => WaitCondition::Focused(target.clone()),
-            (Some("not_visible"), Some(target)) => WaitCondition::NotVisible(target.clone()),
-            (Some("text_gone"), Some(target)) => WaitCondition::TextGone(target.clone()),
-            (Some("value"), Some(target)) => {
-                if let Some((element_ref, expected)) = target.split_once('=') {
-                    WaitCondition::Value {
-                        element: element_ref.to_string(),
-                        expected: expected.to_string(),
-                    }
-                } else {
-                    WaitCondition::Text(target.clone())
-                }
-            }
-            (_, Some(text)) => WaitCondition::Text(text.clone()),
-            (None, None) => WaitCondition::Stable,
-            _ => WaitCondition::Stable,
-        };
+        let condition = resolve_wait_condition(
+            input.condition.as_deref(),
+            input.target.as_deref(),
+            input.text.as_deref(),
+        );
 
         let mut stable_tracker = StableTracker::new(3);
         let poll_interval = Duration::from_millis(50);
@@ -88,6 +73,38 @@ impl<R: SessionRepository, S: Sleeper> WaitUseCase for WaitUseCaseImpl<R, S> {
 
             self.sleeper.sleep(poll_interval);
         }
+    }
+}
+
+fn resolve_wait_condition(
+    condition: Option<&str>,
+    target: Option<&str>,
+    text: Option<&str>,
+) -> WaitCondition {
+    match (condition, target, text) {
+        (Some("stable"), _, _) => WaitCondition::Stable,
+        (Some("element"), Some(target), _) => WaitCondition::Element(target.to_string()),
+        (Some("focused"), Some(target), _) => WaitCondition::Focused(target.to_string()),
+        (Some("not_visible"), Some(target), _) => WaitCondition::NotVisible(target.to_string()),
+        (Some("text_gone"), Some(target), _) => WaitCondition::TextGone(target.to_string()),
+        (Some("value"), Some(target), _) => {
+            if let Some((element_ref, expected)) = target.split_once('=') {
+                WaitCondition::Value {
+                    element: element_ref.to_string(),
+                    expected: expected.to_string(),
+                }
+            } else if let Some(expected) = text {
+                WaitCondition::Value {
+                    element: target.to_string(),
+                    expected: expected.to_string(),
+                }
+            } else {
+                WaitCondition::Text(target.to_string())
+            }
+        }
+        (_, _, Some(text)) => WaitCondition::Text(text.to_string()),
+        (None, None, None) => WaitCondition::Stable,
+        _ => WaitCondition::Stable,
     }
 }
 
@@ -181,5 +198,14 @@ mod tests {
 
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_resolve_wait_condition_value_uses_text_when_no_equals() {
+        let condition = resolve_wait_condition(Some("value"), Some("@inp1"), Some("hello"));
+
+        assert!(
+            matches!(condition, WaitCondition::Value { element, expected } if element == "@inp1" && expected == "hello")
+        );
     }
 }

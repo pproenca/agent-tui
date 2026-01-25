@@ -129,10 +129,9 @@ impl<R: SessionRepository> PtyReadUseCase for PtyReadUseCaseImpl<R> {
         match session_guard.pty_try_read(&mut buf, 100) {
             Ok(bytes_read) => {
                 buf.truncate(bytes_read);
-                let data = String::from_utf8_lossy(&buf).to_string();
                 Ok(PtyReadOutput {
                     session_id: session_guard.id.clone(),
-                    data,
+                    data: buf,
                     bytes_read,
                 })
             }
@@ -160,10 +159,11 @@ impl<R: SessionRepository> PtyWriteUseCase for PtyWriteUseCaseImpl<R> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let session_guard = mutex_lock_or_recover(&session);
 
-        match session_guard.pty_write(input.data.as_bytes()) {
+        let bytes_len = input.data.len();
+        match session_guard.pty_write(&input.data) {
             Ok(()) => Ok(PtyWriteOutput {
                 session_id: session_guard.id.clone(),
-                bytes_written: input.data.len(),
+                bytes_written: bytes_len,
                 success: true,
             }),
             Err(e) => Err(SessionError::Pty(PtyError::Write(e.to_string()))),
@@ -458,7 +458,7 @@ mod tests {
 
         let input = PtyWriteInput {
             session_id: None,
-            data: "hello".to_string(),
+            data: b"hello".to_vec(),
         };
 
         let result = usecase.execute(input);
@@ -476,7 +476,7 @@ mod tests {
 
         let input = PtyWriteInput {
             session_id: Some(SessionId::new("missing")),
-            data: "test data".to_string(),
+            data: b"test data".to_vec(),
         };
 
         let result = usecase.execute(input);

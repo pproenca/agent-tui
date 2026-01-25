@@ -2,10 +2,12 @@
 #![allow(unused_imports)]
 
 pub mod mock_daemon;
+pub mod real_test_harness;
 pub mod test_harness;
 
 #[allow(unused_imports)]
 pub use mock_daemon::{MockDaemon, MockResponse, RecordedRequest};
+pub use real_test_harness::RealTestHarness;
 pub use test_harness::TestHarness;
 
 use assert_cmd::Command;

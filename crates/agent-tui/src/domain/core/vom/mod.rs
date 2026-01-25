@@ -4,7 +4,7 @@ pub mod segmentation;
 pub mod snapshot;
 
 #[cfg(test)]
-mod integration_tests;
+mod pipeline_tests;
 
 use std::hash::Hash;
 use std::hash::Hasher;

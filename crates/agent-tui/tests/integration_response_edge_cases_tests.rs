@@ -47,7 +47,7 @@ fn test_empty_elements_array() {
     );
 
     harness
-        .run(&["screen", "-i"])
+        .run(&["screen", "-e"])
         .success()
         .stdout(predicate::str::contains("Empty screen"));
 }
@@ -121,7 +121,7 @@ fn test_many_elements_response() {
     );
 
     harness
-        .run(&["screen", "-i"])
+        .run(&["screen", "-e"])
         .success()
         .stdout(predicate::str::contains("@el0"))
         .stdout(predicate::str::contains("@el99"));
@@ -182,7 +182,7 @@ fn test_unicode_in_element_labels() {
     );
 
     harness
-        .run(&["screen", "-i"])
+        .run(&["screen", "-e"])
         .success()
         .stdout(predicate::str::contains("送信"));
 }
@@ -413,7 +413,7 @@ fn test_unknown_element_type_handled() {
     );
 
     harness
-        .run(&["screen", "-i"])
+        .run(&["screen", "-e"])
         .success()
         .stdout(predicate::str::contains("@unknown1"));
 }

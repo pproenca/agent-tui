@@ -158,19 +158,25 @@ Run with `cargo test`. Tests are co-located in source files.
 
 | File | Purpose |
 |------|---------|
-| `e2e_daemon_tests.rs` | Mock daemon integration tests |
-| `e2e_workflow_tests.rs` | Real daemon E2E workflow tests |
+| `integration_daemon_tests.rs` | Mock daemon integration tests |
+| `integration_contracts_tests.rs` | Contract fixtures runner (mock daemon) |
+| `integration_daemon_no_autostart_tests.rs` | CLI behavior without auto-start |
 | `common/mock_daemon.rs` | Mock JSON-RPC server |
 | `common/test_harness.rs` | Sync wrapper for async mock |
+
+### System/E2E Tests (real daemon)
+
+| File | Purpose |
+|------|---------|
+| `e2e_workflow_tests.rs` | Real daemon E2E workflow tests |
 | `common/real_test_harness.rs` | Real daemon test harness |
 
 Each E2E workflow test spawns an isolated daemon instance on a unique socket, allowing parallel execution.
 
-### E2E Tests (`e2e/`)
+### E2E Scripts (`docker/`)
 
 Shell scripts for full system testing:
-- `test-claude-code.sh` - Test agent-tui controlling Claude Code
-- `demo-claude-code-self-test.sh` - Demo script
+- `docker/e2e-tests.sh` - Real-daemon E2E checks in Docker
 
 ## Code Style
 

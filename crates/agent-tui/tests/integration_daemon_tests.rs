@@ -166,7 +166,7 @@ fn test_snap_with_elements() {
     );
 
     harness
-        .run(&["screen", "-i"])
+        .run(&["screen", "-e"])
         .success()
         .stdout(predicate::str::contains("Elements:"))
         .stdout(predicate::str::contains("@btn1"))
@@ -257,7 +257,7 @@ fn test_snap_with_vom_metadata() {
     );
 
     harness
-        .run(&["screen", "-i"])
+        .run(&["screen", "-e"])
         .success()
         .stdout(predicate::str::contains("@e1"))
         .stdout(predicate::str::contains("button"));

@@ -33,12 +33,13 @@ test-unit:
 
 # Run integration tests with mock daemon (~8s)
 test-integration:
-    cargo test --test concurrent_tests --test connection_failure_tests \
-        --test dbl_click_tests --test e2e_daemon_tests \
-        --test error_propagation_tests --test lock_timeout_tests \
-        --test parameter_validation_tests \
-        --test response_edge_cases_tests --test retry_mechanism_tests \
-        --test session_state_tests
+    cargo test --test integration_concurrent_tests --test integration_connection_failure_tests \
+        --test integration_contracts_tests --test integration_daemon_no_autostart_tests \
+        --test integration_dbl_click_tests --test integration_daemon_tests \
+        --test integration_error_propagation_tests --test integration_lock_timeout_tests \
+        --test integration_parameter_validation_tests \
+        --test integration_response_edge_cases_tests --test integration_retry_mechanism_tests \
+        --test integration_session_state_tests
 
 # Prep for nextest tiers (CI hook to be wired later)
 test-fast-nextest:

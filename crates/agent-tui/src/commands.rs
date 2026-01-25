@@ -105,8 +105,10 @@ EXAMPLES:
         rows: u16,
     },
 
+    /// View screen content and detect UI elements
     #[command(name = "screen")]
-    #[command(long_about = r#"View the current screen state.
+    #[command(long_about = "\
+View the current screen state.
 
 Returns the current terminal screen content and optionally detects
 interactive UI elements like buttons, inputs, and menus.
@@ -117,15 +119,15 @@ text patterns. This provides reliable detection across different TUI frameworks.
 
 ACCESSIBILITY TREE FORMAT (-a):
     Returns an agent-browser style accessibility tree with refs for elements:
-    - button "Submit" [ref=e1]
-    - textbox "Search" [ref=e2]
-
+    - button \"Submit\" [ref=e1]
+    - textbox \"Search\" [ref=e2]")]
+    #[command(after_long_help = "\
 EXAMPLES:
     agent-tui screen              # Just the screen
     agent-tui screen -e           # Screen + detected elements
     agent-tui screen -a           # Accessibility tree format
     agent-tui screen -a --interactive-only  # Only interactive elements
-    agent-tui screen --strip-ansi # Plain text without colors"#)]
+    agent-tui screen --strip-ansi # Plain text without colors")]
     Screen {
         #[arg(short = 'i', long)]
         elements: bool,
@@ -146,34 +148,19 @@ EXAMPLES:
         include_cursor: bool,
     },
 
-    #[command(long_about = r#"Perform an action on an element by reference.
+    /// Perform an action on an element by reference
+    #[command(long_about = "\
+Perform an action on an element by reference.
 
 All element interactions are done through this command. Specify the element
-reference and the operation to perform.
-
-OPERATIONS:
-    click           Click the element
-    dblclick        Double-click the element
-    fill <value>    Set the input value
-    select <opt>    Select an option (multiple for multiselect)
-    toggle [on|off] Toggle checkbox/radio (optionally force state)
-    focus           Set focus to the element
-    clear           Clear the input value
-    selectall       Select all text in input
-    scroll <dir> [n] Scroll viewport (up/down/left/right, default 5)
-
+reference and the operation to perform.")]
+    #[command(after_long_help = "\
 EXAMPLES:
     agent-tui action @e1 click
-    agent-tui action @e1 dblclick
-    agent-tui action @e1 fill "my-project"
-    agent-tui action @sel1 select "Option 2"
-    agent-tui action @list1 select "red" "blue"   # multiselect
-    agent-tui action @cb1 toggle
-    agent-tui action @cb1 toggle on               # force checked
-    agent-tui action @inp1 focus
-    agent-tui action @inp1 clear
-    agent-tui action @inp1 selectall
-    agent-tui action @e1 scroll up 10"#)]
+    agent-tui action @e1 fill \"my-project\"
+    agent-tui action @sel1 select \"Option 2\"
+    agent-tui action @cb1 toggle on
+    agent-tui action @e1 scroll up 10")]
     Action {
         #[arg(name = "ref")]
         element_ref: String,
@@ -184,6 +171,11 @@ EXAMPLES:
 
     /// Send key press(es) to the terminal
     #[command(name = "press")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui press Enter
+    agent-tui press Ctrl+C
+    agent-tui press ArrowDown ArrowDown Enter")]
     Press {
         /// Keys to press (e.g., Enter, Ctrl+C, ArrowDown)
         #[arg(required = true)]
@@ -197,35 +189,26 @@ EXAMPLES:
         text: String,
     },
 
+    /// Send keyboard input (keys or text)
     #[command(name = "input")]
-    #[command(long_about = r#"Send keyboard input - keys or text.
+    #[command(long_about = "\
+Send keyboard input - keys or text.
 
 Unified command for all keyboard input. Automatically detects whether
 the input is a key name or text to type.
 
-SUPPORTED KEYS:
-    Enter, Tab, Escape, Backspace, Delete
-    ArrowUp, ArrowDown, ArrowLeft, ArrowRight
-    Home, End, PageUp, PageDown
-    F1-F12
+SUPPORTED KEYS: Enter, Tab, Escape, Backspace, Delete, Arrow keys, Home, End, PageUp, PageDown, F1-F12
+MODIFIERS: Ctrl+<key>, Alt+<key>, Shift+<key>
 
-MODIFIERS:
-    Ctrl+<key>   - Control modifier (e.g., Ctrl+C, Ctrl+A)
-    Alt+<key>    - Alt modifier (e.g., Alt+F4)
-    Shift+<key>  - Shift modifier
-
-AUTO-DETECTION:
-    If the input matches a known key name, it's sent as a key press.
-    Otherwise, it's typed as text character by character.
-    Use quotes for text that might be mistaken for a key name.
-
+If the input matches a known key name, it's sent as a key press.
+Otherwise, it's typed as text character by character.
+Use quotes for text that might be mistaken for a key name.")]
+    #[command(after_long_help = "\
 EXAMPLES:
     agent-tui input Enter              # Press Enter
     agent-tui input Ctrl+C             # Press Ctrl+C
-    agent-tui input "hello"            # Type text char-by-char
-    agent-tui input "Enter"            # Type literal "Enter" text
-    agent-tui input Shift --hold       # Hold Shift down
-    agent-tui input Shift --release    # Release Shift"#)]
+    agent-tui input \"hello\"            # Type text char-by-char
+    agent-tui input Shift --hold       # Hold Shift down")]
     Input {
         #[arg(required_unless_present_any = ["hold", "release"])]
         value: Option<String>,
@@ -237,7 +220,9 @@ EXAMPLES:
         release: bool,
     },
 
-    #[command(long_about = r#"Wait for a condition to be met before continuing.
+    /// Wait for text, element, or screen stability
+    #[command(long_about = "\
+Wait for a condition to be met before continuing.
 
 Waits for text to appear, elements to change, or the screen to stabilize.
 Returns success if the condition is met within the timeout period.
@@ -251,45 +236,41 @@ WAIT CONDITIONS:
     -g, --gone          Modifier: wait for element/text to disappear
 
 ASSERT MODE:
-    --assert            Exit with code 0 if condition met, 1 if timeout
-                        Useful for scripting/testing without error messages
-
+    --assert            Exit with code 0 if condition met, 1 if timeout")]
+    #[command(after_long_help = "\
 EXAMPLES:
-    agent-tui wait "Continue"           # Wait for text
+    agent-tui wait \"Continue\"           # Wait for text
     agent-tui wait -e @btn1             # Wait for element
     agent-tui wait -e @spinner --gone   # Wait for element to disappear
-    agent-tui wait "Loading" --gone     # Wait for text to disappear
     agent-tui wait --stable             # Wait for screen stability
-    agent-tui wait --focused @inp1      # Wait for focus
-    agent-tui wait -t 5000 "Done"       # 5 second timeout
-    agent-tui wait --assert "Success"   # Exit 0 if found, 1 if not"#)]
+    agent-tui wait -t 5000 \"Done\"       # 5 second timeout")]
     Wait {
         #[command(flatten)]
         params: WaitParams,
     },
 
+    /// Kill the current session
     Kill,
 
+    /// List and manage sessions
     #[command(name = "sessions")]
-    #[command(
-        long_about = r#"Manage sessions - list, cleanup, attach, or show details.
+    #[command(long_about = "\
+Manage sessions - list, cleanup, attach, or show details.
 
 By default, lists all active sessions. Use flags for other operations.
 
-OPERATIONS:
-    sessions              List all active sessions
-    sessions <id>         Show details for a specific session
-    sessions --cleanup    Remove dead/orphaned sessions
-    sessions --cleanup --all  Remove all sessions
-    sessions --attach <id>    Attach to a session (interactive mode)
-    sessions --status     Include daemon health in output
-
+FLAGS:
+    <id>           Show details for a specific session
+    --cleanup      Remove dead/orphaned sessions
+    --cleanup --all    Remove all sessions
+    --attach <id>  Attach to a session (interactive mode)
+    --status       Include daemon health in output")]
+    #[command(after_long_help = "\
 EXAMPLES:
     agent-tui sessions                    # List sessions
     agent-tui sessions abc123             # Show session details
     agent-tui sessions --cleanup          # Remove dead sessions
-    agent-tui sessions --attach abc123    # Attach interactively"#
-    )]
+    agent-tui sessions --attach abc123    # Attach interactively")]
     Sessions {
         #[arg(name = "id")]
         session_id: Option<String>,
@@ -306,7 +287,7 @@ EXAMPLES:
         #[arg(long)]
         status: bool,
     },
-    #[command(subcommand)]
+    #[command(subcommand, hide = true)]
     Debug(DebugCommand),
 
     #[command(name = "record-start")]
@@ -357,36 +338,34 @@ EXAMPLES:
         clear: bool,
     },
 
+    /// Manage the background daemon
     #[command(subcommand)]
     Daemon(DaemonCommand),
 
-    #[command(long_about = r#"Show detailed version information.
+    /// Show version information
+    #[command(long_about = "\
+Show detailed version information.
 
 Shows version info for both the CLI binary and the running daemon.
-Useful for debugging and ensuring CLI/daemon compatibility.
-
-EXAMPLES:
-    agent-tui version
-    agent-tui version -f json"#)]
+Useful for debugging and ensuring CLI/daemon compatibility.")]
     Version,
 
-    #[command(long_about = r#"Show environment diagnostics.
+    /// Show environment diagnostics
+    #[command(long_about = "\
+Show environment diagnostics.
 
 Displays all environment variables and configuration that affect
-agent-tui behavior. Useful for debugging connection issues.
-
-EXAMPLES:
-    agent-tui env
-    agent-tui env -f json"#)]
+agent-tui behavior. Useful for debugging connection issues.")]
     Env,
 
     /// Catch-all for element refs (@e1) and text selectors (:Submit)
     #[command(external_subcommand)]
     External(Vec<String>),
 
-    #[command(
-        long_about = r#"Generate shell completion scripts for bash, zsh, fish, powershell, or elvish.
-
+    /// Generate shell completions
+    #[command(long_about = "\
+Generate shell completion scripts for bash, zsh, fish, powershell, or elvish.")]
+    #[command(after_long_help = "\
 INSTALLATION:
     # Bash - add to ~/.bashrc
     source <(agent-tui completions bash)
@@ -398,12 +377,7 @@ INSTALLATION:
     agent-tui completions fish > ~/.config/fish/completions/agent-tui.fish
 
     # PowerShell - add to $PROFILE
-    agent-tui completions powershell | Out-String | Invoke-Expression
-
-EXAMPLES:
-    agent-tui completions bash
-    agent-tui completions zsh > /usr/local/share/zsh/site-functions/_agent-tui"#
-    )]
+    agent-tui completions powershell | Out-String | Invoke-Expression")]
     Completions {
         #[arg(value_enum)]
         shell: Shell,
@@ -412,82 +386,91 @@ EXAMPLES:
 
 #[derive(Debug, Subcommand)]
 pub enum DaemonCommand {
-    #[command(long_about = r#"Start the daemon process.
+    /// Start the daemon process
+    #[command(long_about = "\
+Start the daemon process.
 
 By default, starts the daemon in the background. Use --foreground to run
-in the current terminal (useful for debugging).
-
+in the current terminal (useful for debugging).")]
+    #[command(after_long_help = "\
 EXAMPLES:
     agent-tui daemon start              # Start in background
-    agent-tui daemon start --foreground # Run in foreground (blocks)"#)]
+    agent-tui daemon start --foreground # Run in foreground")]
     Start {
         #[arg(long)]
         foreground: bool,
     },
 
-    #[command(long_about = r#"Stop the running daemon.
+    /// Stop the running daemon
+    #[command(long_about = "\
+Stop the running daemon.
 
 Sends SIGTERM to gracefully stop the daemon, allowing it to clean up
 sessions and resources. Use --force to send SIGKILL for immediate
-termination (not recommended unless daemon is unresponsive).
-
+termination (not recommended unless daemon is unresponsive).")]
+    #[command(after_long_help = "\
 EXAMPLES:
     agent-tui daemon stop          # Graceful stop
-    agent-tui daemon stop --force  # Force kill (SIGKILL)"#)]
+    agent-tui daemon stop --force  # Force kill")]
     Stop {
         #[arg(long)]
         force: bool,
     },
 
-    #[command(long_about = r#"Show daemon status and version information.
+    /// Show daemon status and version
+    #[command(long_about = "\
+Show daemon status and version information.
 
 Displays whether the daemon is running, its PID, uptime, and version.
-Also checks for version mismatch between CLI and daemon.
-
-EXAMPLES:
-    agent-tui daemon status"#)]
+Also checks for version mismatch between CLI and daemon.")]
     Status,
 
-    #[command(long_about = r#"Restart the daemon.
+    /// Restart the daemon
+    #[command(long_about = "\
+Restart the daemon.
 
 Stops the running daemon and starts a new one. Useful after updating
 the agent-tui binary to ensure the daemon is running the new version.
 
-All active sessions will be terminated during restart.
-
-EXAMPLES:
-    agent-tui daemon restart"#)]
+All active sessions will be terminated during restart.")]
     Restart,
 }
 
 #[derive(Debug, Subcommand, Clone)]
 pub enum ActionOperation {
+    /// Click the element
     Click,
 
+    /// Double-click the element
     #[command(name = "dblclick")]
     DblClick,
 
-    Fill {
-        value: String,
-    },
+    /// Set the input value
+    Fill { value: String },
 
+    /// Select option(s) from a list
     Select {
         #[arg(required = true)]
         options: Vec<String>,
     },
 
+    /// Toggle checkbox/radio state
     Toggle {
         #[arg(value_enum)]
         state: Option<ToggleState>,
     },
 
+    /// Set focus to the element
     Focus,
 
+    /// Clear the input value
     Clear,
 
+    /// Select all text in input
     #[command(name = "selectall")]
     SelectAll,
 
+    /// Scroll viewport in a direction
     Scroll {
         #[arg(value_enum)]
         direction: ScrollDirection,

@@ -15,7 +15,7 @@ struct SessionHandleImpl {
 }
 
 impl SessionHandleImpl {
-    fn new(inner: Arc<Mutex<Session>>) -> SessionHandle {
+    fn new_handle(inner: Arc<Mutex<Session>>) -> SessionHandle {
         Arc::new(Self { inner })
     }
 }
@@ -164,17 +164,17 @@ impl SessionRepository for SessionManager {
 
     fn get(&self, session_id: &str) -> Result<SessionHandle, SessionError> {
         let session = SessionManager::get(self, session_id)?;
-        Ok(SessionHandleImpl::new(session))
+        Ok(SessionHandleImpl::new_handle(session))
     }
 
     fn active(&self) -> Result<SessionHandle, SessionError> {
         let session = SessionManager::active(self)?;
-        Ok(SessionHandleImpl::new(session))
+        Ok(SessionHandleImpl::new_handle(session))
     }
 
     fn resolve(&self, session_id: Option<&str>) -> Result<SessionHandle, SessionError> {
         let session = SessionManager::resolve(self, session_id)?;
-        Ok(SessionHandleImpl::new(session))
+        Ok(SessionHandleImpl::new_handle(session))
     }
 
     fn set_active(&self, session_id: &str) -> Result<(), SessionError> {

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use serde_json::Value;
 use serde_json::json;
@@ -1724,4 +1725,3 @@ mod tests {
         assert_eq!(tgt, None);
     }
 }
-use std::path::PathBuf;

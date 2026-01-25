@@ -165,13 +165,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_text_found() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_screen_text("Hello, World!")
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Text("World".to_string()),
             &mut tracker,
         );
@@ -181,13 +181,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_text_not_found() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_screen_text("Hello, World!")
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Text("Missing".to_string()),
             &mut tracker,
         );
@@ -197,13 +197,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_element_exists() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_elements(vec![make_element("@btn1", false, None)])
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Element("@btn1".to_string()),
             &mut tracker,
         );
@@ -213,13 +213,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_element_not_exists() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_elements(vec![make_element("@btn1", false, None)])
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Element("@missing".to_string()),
             &mut tracker,
         );
@@ -229,13 +229,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_focused_true() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_elements(vec![make_element("@input1", true, None)])
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Focused("@input1".to_string()),
             &mut tracker,
         );
@@ -245,13 +245,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_focused_false() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_elements(vec![make_element("@input1", false, None)])
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Focused("@input1".to_string()),
             &mut tracker,
         );
@@ -261,11 +261,11 @@ mod tests {
 
     #[test]
     fn test_check_condition_focused_element_missing() {
-        let mut session = MockSession::builder("test").with_elements(vec![]).build();
+        let session = MockSession::builder("test").with_elements(vec![]).build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Focused("@missing".to_string()),
             &mut tracker,
         );
@@ -275,13 +275,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_not_visible_when_missing() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_elements(vec![make_element("@modal", true, None)])
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::NotVisible("@modal".to_string()),
             &mut tracker,
         );
@@ -291,11 +291,11 @@ mod tests {
 
     #[test]
     fn test_check_condition_not_visible_when_present() {
-        let mut session = MockSession::builder("test").with_elements(vec![]).build();
+        let session = MockSession::builder("test").with_elements(vec![]).build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::NotVisible("@modal".to_string()),
             &mut tracker,
         );
@@ -305,13 +305,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_text_gone_when_absent() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_screen_text("Ready")
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::TextGone("Loading".to_string()),
             &mut tracker,
         );
@@ -321,13 +321,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_text_gone_when_present() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_screen_text("Loading")
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::TextGone("Loading".to_string()),
             &mut tracker,
         );
@@ -337,13 +337,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_value_matches() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_elements(vec![make_element("@inp1", false, Some("ok".to_string()))])
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Value {
                 element: "@inp1".to_string(),
                 expected: "ok".to_string(),
@@ -356,13 +356,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_value_does_not_match() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_elements(vec![make_element("@inp1", false, Some("no".to_string()))])
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Value {
                 element: "@inp1".to_string(),
                 expected: "ok".to_string(),
@@ -375,11 +375,11 @@ mod tests {
 
     #[test]
     fn test_check_condition_value_element_missing() {
-        let mut session = MockSession::builder("test").with_elements(vec![]).build();
+        let session = MockSession::builder("test").with_elements(vec![]).build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Value {
                 element: "@missing".to_string(),
                 expected: "ok".to_string(),
@@ -392,13 +392,13 @@ mod tests {
 
     #[test]
     fn test_check_condition_value_element_has_no_value() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_elements(vec![make_element("@inp1", false, None)])
             .build();
         let mut tracker = StableTracker::new(3);
 
         let result = check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Value {
                 element: "@inp1".to_string(),
                 expected: "ok".to_string(),
@@ -411,23 +411,23 @@ mod tests {
 
     #[test]
     fn test_check_condition_stable_requires_multiple_same_hashes() {
-        let mut session = MockSession::builder("test")
+        let session = MockSession::builder("test")
             .with_screen_text("first")
             .build();
         let mut tracker = StableTracker::new(3);
 
         assert!(!check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Stable,
             &mut tracker
         ));
         assert!(!check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Stable,
             &mut tracker
         ));
         assert!(check_condition(
-            &mut session,
+            &session,
             &WaitCondition::Stable,
             &mut tracker
         ));

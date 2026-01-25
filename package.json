@@ -25,9 +25,9 @@
   },
   "scripts": {
     "build:native": "cargo build --release -p agent-tui && node scripts/copy-native.js",
-    "version:check": "node scripts/check-version.js",
+    "version:check": "cargo xtask version check",
     "preversion": "just ready",
-    "version": "echo 'ERROR: Use ./scripts/release.sh or just release-* instead' && exit 1",
+    "version": "echo 'ERROR: Use cargo xtask release <version|patch|minor|major> or just release-* instead' && exit 1",
     "postinstall": "node scripts/postinstall.js",
     "prepare": "husky"
   },

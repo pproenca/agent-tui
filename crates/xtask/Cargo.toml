@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+clap.workspace = true
+regex.workspace = true
+serde_json.workspace = true
+semver = "1.0"
+toml_edit = "0.22"
+walkdir = "2.5"
+hex = "0.4"
+sha2 = "0.10"

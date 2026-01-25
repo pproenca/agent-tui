@@ -4,9 +4,24 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.2.0)'
+        required: true
+        type: string
+      ref:
+        description: 'Git ref to release (defaults to refs/tags/v<version>)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run (skip publishing)'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -17,169 +32,208 @@ jobs:
   validate:
     name: Validate Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      dry_run: ${{ steps.version.outputs.dry_run }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      run_id: ${{ steps.ci-run.outputs.run_id }}
+      head_sha: ${{ steps.sha.outputs.head_sha }}
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract and validate versions
-        id: version
+      - name: Resolve release ref
+        id: resolve
         run: |
-          CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-          NPM_VERSION=$(node -p "require('./package.json').version")
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "package.json version: $NPM_VERSION"
-          echo "Git tag version: $TAG_VERSION"
-
-          if [ "$CARGO_VERSION" != "$NPM_VERSION" ]; then
-            echo "::error::Version mismatch between Cargo.toml ($CARGO_VERSION) and package.json ($NPM_VERSION)"
-            exit 1
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            REF_INPUT="${{ inputs.ref }}"
+            if [ -z "$REF_INPUT" ]; then
+              REF_INPUT="refs/tags/v${{ inputs.version }}"
+            fi
+            echo "ref=$REF_INPUT" >> "$GITHUB_OUTPUT"
+            echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Version mismatch between Cargo.toml ($CARGO_VERSION) and git tag ($TAG_VERSION)"
-            exit 1
-          fi
-
-          echo "version=$CARGO_VERSION" >> $GITHUB_OUTPUT
-          echo "All versions match: $CARGO_VERSION"
-
-  build:
-    name: Build ${{ matrix.target }}
-    needs: validate
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Linux glibc
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            artifact: agent-tui-linux-x64
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            artifact: agent-tui-linux-arm64
-            cross: true
-          # Linux musl (static, works on Alpine and older distros)
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            artifact: agent-tui-linux-x64-musl
-            cross: true
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            artifact: agent-tui-linux-arm64-musl
-            cross: true
-          # macOS
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            artifact: agent-tui-darwin-x64
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            artifact: agent-tui-darwin-arm64
-
-    steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.ref }}
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-cargo-release-
-
-      - name: Install cross
-        if: matrix.cross
-        uses: taiki-e/install-action@cross
-
-      - name: Build with cross
-        if: matrix.cross
-        run: cross build --release --target ${{ matrix.target }} -p agent-tui
-
-      - name: Build native
-        if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }} -p agent-tui
-
-      - name: Prepare artifact
+      - name: Resolve head SHA
+        id: sha
         run: |
-          mkdir -p dist
-          cp target/${{ matrix.target }}/release/agent-tui dist/${{ matrix.artifact }}
-          chmod +x dist/${{ matrix.artifact }}
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Resolve CI run
+        id: ci-run
+        uses: actions/github-script@v7
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
-          if-no-files-found: error
+          script: |
+            const headSha = '${{ steps.sha.outputs.head_sha }}';
+            const { owner, repo } = context.repo;
+            const maxAttempts = 20;
+            const delayMs = 30000;
+            let match = null;
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: 'ci.yml',
+                per_page: 100,
+              });
+
+              match = runs.data.workflow_runs.find(run =>
+                run.head_sha === headSha &&
+                run.conclusion === 'success' &&
+                run.event !== 'pull_request'
+              );
+
+              if (match) {
+                break;
+              }
+
+              const inProgress = runs.data.workflow_runs.find(run =>
+                run.head_sha === headSha && run.status !== 'completed'
+              );
+
+              if (!inProgress || attempt === maxAttempts) {
+                break;
+              }
+
+              core.info(`Waiting for CI run for ${headSha}... (attempt ${attempt}/${maxAttempts})`);
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+
+            if (!match) {
+              core.setFailed(`No successful CI run found for ${headSha}. Ensure CI completed on the release tag.`);
+              return;
+            }
+
+            core.setOutput('run_id', match.id.toString());
+
+      - name: Validate versions
+        id: version
+        run: |
+          set -euo pipefail
+          cargo xtask version check --quiet
+          VERSION=$(cargo xtask version current)
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            INPUT_VERSION="${{ inputs.version }}"
+            echo "Input version: $INPUT_VERSION"
+
+            TAG_NAME="v$INPUT_VERSION"
+            if ! git tag --points-at HEAD --list "$TAG_NAME" | grep -q "$TAG_NAME"; then
+              echo "::error::Tag $TAG_NAME does not point at the selected ref"
+              exit 1
+            fi
+
+            cargo xtask version assert-tag "$TAG_NAME"
+            DRY_RUN="${{ steps.resolve.outputs.dry_run }}"
+          else
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            echo "Git tag version: $TAG_NAME"
+
+            cargo xtask version assert-tag "$TAG_NAME"
+
+            DRY_RUN="${{ steps.resolve.outputs.dry_run }}"
+          fi
+
+          if [[ "$VERSION" == *-* ]]; then
+            PRERELEASE=true
+          else
+            PRERELEASE=false
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "All versions match: $VERSION"
 
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [validate]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
       id-token: write
       attestations: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
+          run-id: ${{ needs.validate.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts
 
-      - name: Prepare release assets
-        run: |
-          mkdir release
-          for dir in artifacts/*/; do
-            cp "$dir"* release/
-          done
-          ls -la release/
+      - name: Verify release artifacts
+        run: cargo xtask dist verify --input artifacts --kind release
 
-      - name: Generate checksums
-        run: |
-          cd release
-          sha256sum * > checksums-sha256.txt
-          echo "Generated checksums:"
-          cat checksums-sha256.txt
+      - name: Prepare release assets
+        run: cargo xtask dist release --input artifacts --output release
 
       - name: Generate build provenance attestation
+        if: needs.validate.outputs.dry_run != 'true'
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: release/agent-tui-*
 
       - name: Create Release
+        if: needs.validate.outputs.dry_run != 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.validate.outputs.tag_name }}
           files: release/*
           generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(github.ref, '-') }}
+          prerelease: ${{ needs.validate.outputs.prerelease == 'true' }}
+
+      - name: Dry run summary
+        if: needs.validate.outputs.dry_run == 'true'
+        run: |
+          echo "## Dry Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Would have released version: ${{ needs.validate.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts:" >> $GITHUB_STEP_SUMMARY
+          ls -la release/ >> $GITHUB_STEP_SUMMARY
 
   publish-npm:
     name: Publish to npm
-    needs: release
+    needs: [release, validate, publish-validate]
+    if: needs.validate.outputs.dry_run != 'true' && needs.publish-validate.outputs.npm_skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
       id-token: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -193,20 +247,86 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
+          run-id: ${{ needs.validate.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts
 
-      - name: Prepare npm package
-        run: |
-          mkdir -p bin
-          # Copy binaries with platform-specific names (glibc for npm - most common)
-          cp artifacts/agent-tui-linux-x64/agent-tui-linux-x64 bin/
-          cp artifacts/agent-tui-linux-arm64/agent-tui-linux-arm64 bin/
-          cp artifacts/agent-tui-darwin-x64/agent-tui-darwin-x64 bin/
-          cp artifacts/agent-tui-darwin-arm64/agent-tui-darwin-arm64 bin/
-          chmod +x bin/agent-tui-*
-          ls -la bin/
+      - name: Verify npm artifacts
+        run: cargo xtask dist verify --input artifacts --kind npm
 
-      - name: Check if version already published
+      - name: Prepare npm package
+        run: cargo xtask dist npm --input artifacts --output bin
+
+      - name: Publish to npm with provenance
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: [release, validate, publish-validate]
+    if: needs.validate.outputs.dry_run != 'true' && needs.publish-validate.outputs.crates_skip != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p agent-tui
+
+  publish-validate:
+    name: Publish Dry Runs
+    needs: [release, validate]
+    if: needs.validate.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    outputs:
+      npm_skip: ${{ steps.npm-check.outputs.skip }}
+      crates_skip: ${{ steps.crates-check.outputs.skip }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.validate.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts
+
+      - name: Verify npm artifacts
+        run: cargo xtask dist verify --input artifacts --kind npm
+
+      - name: Prepare npm package
+        run: cargo xtask dist npm --input artifacts --output bin
+
+      - name: Check if version already published (npm)
         id: npm-check
         run: |
           VERSION=$(node -p "require('./package.json').version")
@@ -225,24 +345,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish to npm with provenance
-        if: steps.npm-check.outputs.skip != 'true'
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  publish-crates:
-    name: Publish to crates.io
-    needs: release
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Check if version already published
+      - name: Check if version already published (crates.io)
         id: crates-check
         run: |
           VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
@@ -253,8 +356,6 @@ jobs:
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Publish to crates.io
+      - name: Verify crates publish (dry-run)
         if: steps.crates-check.outputs.skip != 'true'
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p agent-tui
+        run: cargo publish --dry-run -p agent-tui

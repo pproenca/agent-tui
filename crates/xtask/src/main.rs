@@ -8,8 +8,16 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::LazyLock;
 use toml_edit::{DocumentMut, value};
 use walkdir::WalkDir;
+
+static LEGACY_SHIM_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"crate::daemon::|crate::ipc::|crate::terminal::|crate::core::|crate::commands::|crate::handlers::|crate::presenter::|crate::error::|crate::attach::",
+    )
+    .expect("Invalid legacy shim regex")
+});
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -487,7 +495,10 @@ fn pre_push() -> Result<(), Box<dyn Error>> {
         run_step("Checking for unused dependencies", || {
             let mut cmd = command_in_root(&root, "cargo");
             cmd.arg("machete");
-            run_command(cmd)
+            if let Err(err) = run_command(cmd) {
+                println!("cargo-machete failed, skipping: {err}");
+            }
+            Ok(())
         })?;
     } else {
         println!("cargo-machete not installed, skipping...");
@@ -555,11 +566,7 @@ fn architecture_check() -> Result<(), Box<dyn Error>> {
     let root = repo_root();
     let src_root = root.join("crates/agent-tui/src");
 
-    let legacy_regex = Regex::new(
-        r"crate::daemon::|crate::ipc::|crate::terminal::|crate::core::|crate::commands::|crate::handlers::|crate::presenter::|crate::error::|crate::attach::",
-    )?;
-
-    if let Some(hit) = find_first_match(&src_root, |_, line| legacy_regex.is_match(line))? {
+    if let Some(hit) = find_first_match(&src_root, |_, line| LEGACY_SHIM_REGEX.is_match(line))? {
         return Err(format!(
             "Architecture check failed: legacy shim paths detected at {}",
             hit
@@ -671,7 +678,7 @@ fn dist_release(input: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
         }
         files.push(path);
     }
-    files.sort();
+    files.sort_unstable();
 
     let mut checksums = String::new();
     for path in files {

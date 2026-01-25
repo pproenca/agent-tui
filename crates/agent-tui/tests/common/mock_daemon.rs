@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tempfile::TempDir;
+use tokio::fs;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
@@ -79,16 +80,20 @@ pub struct MockDaemon {
 
 impl MockDaemon {
     pub async fn start() -> Self {
-        let temp_dir = TempDir::new_in("/tmp").expect("Failed to create temp dir");
+        let temp_dir = tokio::task::spawn_blocking(|| TempDir::new_in("/tmp"))
+            .await
+            .expect("Temp dir task panicked")
+            .expect("Failed to create temp dir");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let _ =
-                std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o777));
+                fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o777)).await;
         }
         let pid_path = temp_dir.path().join("agent-tui.pid");
 
-        std::fs::write(&pid_path, format!("{}", std::process::id()))
+        fs::write(&pid_path, format!("{}", std::process::id()))
+            .await
             .expect("Failed to create PID file");
 
         let requests = Arc::new(Mutex::new(Vec::new()));

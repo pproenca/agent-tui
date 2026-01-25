@@ -30,3 +30,33 @@ snapshots:
       style: primary
       start: 0
       end: 33
+  use crate::adapters::rpc::RpcRequest;:
+    labels:
+    - source: use crate::adapters::rpc::RpcRequest;
+      style: primary
+      start: 0
+      end: 37
+  use crate::app::commands::Cli;:
+    labels:
+    - source: use crate::app::commands::Cli;
+      style: primary
+      start: 0
+      end: 30
+  use crate::domain::SessionId;:
+    labels:
+    - source: use crate::domain::SessionId;
+      style: primary
+      start: 0
+      end: 29
+  use crate::infra::ipc::DaemonClient;:
+    labels:
+    - source: use crate::infra::ipc::DaemonClient;
+      style: primary
+      start: 0
+      end: 36
+  use crate::usecases::session::SpawnUseCase;:
+    labels:
+    - source: use crate::usecases::session::SpawnUseCase;
+      style: primary
+      start: 0
+      end: 43

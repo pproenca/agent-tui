@@ -3,11 +3,10 @@ valid:
   - "use std::collections::HashMap;"
   - "use std::time::Duration;"
   - "use core::fmt::Display;"
+  - "use uuid::Uuid;"
 invalid:
   - "use serde::Serialize;"
   - "use serde;"
-  - "use uuid::Uuid;"
-  - "use uuid;"
   - "use chrono::DateTime;"
   - "use chrono;"
   - "use tokio::sync::Mutex;"

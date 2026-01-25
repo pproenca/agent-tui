@@ -1,6 +1,8 @@
 use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
+use regex::Regex;
+use std::sync::LazyLock;
 
 pub mod attach;
 pub mod commands;
@@ -16,6 +18,9 @@ use crate::infra::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daem
 use crate::app::attach::AttachError;
 use crate::app::commands::{Cli, Commands, DaemonCommand, DebugCommand, RecordAction};
 use crate::app::handlers::HandlerContext;
+
+static ELEMENT_REF_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^@(e|btn|inp)\d+$").expect("Invalid element ref regex"));
 
 /// Exit codes following sysexits.h and LSB init script conventions.
 ///
@@ -51,12 +56,6 @@ impl std::error::Error for DaemonNotRunningError {}
 
 /// Validates element ref format: @e1, @btn2, @inp3, etc.
 fn is_element_ref(selector: &str) -> bool {
-    use regex::Regex;
-    use std::sync::LazyLock;
-
-    static ELEMENT_REF_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"^@(e|btn|inp)\d+$").unwrap());
-
     ELEMENT_REF_REGEX.is_match(selector)
 }
 

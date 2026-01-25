@@ -1,20 +1,17 @@
 id: clean-arch-common-no-higher-crates
 language: rust
 severity: error
-message: "Common crate must not depend on higher-level crates."
+message: "Common module must not depend on app, adapters, infra, usecases, or domain."
 note: |
-  Workspace dependency direction (lower to higher):
-  common -> core -> terminal -> daemon -> ipc -> agent-tui
-
-  Common is the lowest-level shared crate.
-  It must not import from any other workspace crate.
+  Common is the lowest-level shared module.
+  It must not import from domain, usecases, adapters, app, or infra.
 files:
-  - "crates/agent-tui-common/src/**/*.rs"
+  - "crates/agent-tui/src/common/**/*.rs"
 rule:
   kind: use_declaration
   any:
-    - regex: "^use agent_tui_core::"
-    - regex: "^use agent_tui_daemon::"
-    - regex: "^use agent_tui_terminal::"
-    - regex: "^use agent_tui_ipc::"
-    - regex: "^use agent_tui::"
+    - regex: "^use crate::domain::"
+    - regex: "^use crate::app::"
+    - regex: "^use crate::adapters::"
+    - regex: "^use crate::infra::"
+    - regex: "^use crate::usecases::"

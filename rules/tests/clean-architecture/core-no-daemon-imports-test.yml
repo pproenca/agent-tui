@@ -1,8 +1,0 @@
-id: clean-arch-core-no-daemon-imports
-valid:
-  - "use std::collections::HashMap;"
-  - "use agent_tui_common::types::Error;"
-  - "use agent_tui_terminal::Terminal;"
-invalid:
-  - "use agent_tui_daemon::server::DaemonServer;"
-  - "use agent_tui_daemon;"

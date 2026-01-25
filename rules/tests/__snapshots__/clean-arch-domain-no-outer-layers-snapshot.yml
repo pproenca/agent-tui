@@ -6,12 +6,36 @@ snapshots:
       style: primary
       start: 0
       end: 37
+  use crate::app::handlers::handle_attach;:
+    labels:
+    - source: use crate::app::handlers::handle_attach;
+      style: primary
+      start: 0
+      end: 40
+  use crate::common::Colors;:
+    labels:
+    - source: use crate::common::Colors;
+      style: primary
+      start: 0
+      end: 26
   use crate::handlers::spawn_handler;:
     labels:
     - source: use crate::handlers::spawn_handler;
       style: primary
       start: 0
       end: 35
+  use crate::infra::daemon::Session;:
+    labels:
+    - source: use crate::infra::daemon::Session;
+      style: primary
+      start: 0
+      end: 34
+  use crate::infra::ipc::DaemonClient;:
+    labels:
+    - source: use crate::infra::ipc::DaemonClient;
+      style: primary
+      start: 0
+      end: 36
   use crate::server::DaemonServer;:
     labels:
     - source: use crate::server::DaemonServer;
@@ -36,6 +60,12 @@ snapshots:
       style: primary
       start: 0
       end: 33
+  use crate::usecases::session::SpawnUseCase;:
+    labels:
+    - source: use crate::usecases::session::SpawnUseCase;
+      style: primary
+      start: 0
+      end: 43
   use crate::usecases::spawn::SpawnInput;:
     labels:
     - source: use crate::usecases::spawn::SpawnInput;
@@ -48,12 +78,24 @@ snapshots:
       style: primary
       start: 0
       end: 46
+  use super::super::app::handlers::handle_spawn;:
+    labels:
+    - source: use super::super::app::handlers::handle_spawn;
+      style: primary
+      start: 0
+      end: 46
   use super::super::handlers::snapshot_handler;:
     labels:
     - source: use super::super::handlers::snapshot_handler;
       style: primary
       start: 0
       end: 45
+  use super::super::infra::daemon::server::DaemonServer;:
+    labels:
+    - source: use super::super::infra::daemon::server::DaemonServer;
+      style: primary
+      start: 0
+      end: 54
   use super::super::server::handle_request;:
     labels:
     - source: use super::super::server::handle_request;
@@ -66,3 +108,9 @@ snapshots:
       style: primary
       start: 0
       end: 44
+  use super::super::usecases::session::KillUseCase;:
+    labels:
+    - source: use super::super::usecases::session::KillUseCase;
+      style: primary
+      start: 0
+      end: 49

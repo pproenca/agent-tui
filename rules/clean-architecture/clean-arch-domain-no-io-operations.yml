@@ -8,7 +8,7 @@ note: |
   - Network calls -> infrastructure layer
   - Use repository traits for data access
 files:
-  - "crates/agent-tui/src/daemon/domain/**/*.rs"
+  - "crates/agent-tui/src/domain/**/*.rs"
 rule:
   kind: use_declaration
   any:

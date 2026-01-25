@@ -190,18 +190,12 @@ fn attach_ipc_loop<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<
         if event::poll(Duration::from_millis(10)).unwrap_or(false) {
             match event::read() {
                 Ok(Event::Key(key_event)) => {
-                    // Detect Ctrl+\ for detachment. Handle multiple representations:
-                    // - KeyCode::Char('\\') with CONTROL modifier (standard)
-                    // - KeyCode::Char('\x1c') (raw ASCII 28 = FS, which is Ctrl+\)
-                    let is_ctrl_backslash = key_event.modifiers.contains(KeyModifiers::CONTROL)
-                        && key_event.code == KeyCode::Char('\\');
-                    let is_raw_ctrl_backslash = key_event.code == KeyCode::Char('\x1c');
-
-                    if is_ctrl_backslash || is_raw_ctrl_backslash {
-                        break;
-                    }
-
                     if let Some(bytes) = key_event_to_bytes(&key_event) {
+                        // Detect Ctrl+\ (ASCII FS / 0x1c) across terminal encodings.
+                        if bytes == [0x1c] {
+                            break;
+                        }
+
                         let data_b64 = STANDARD.encode(&bytes);
                         let params = json!({
                             "session": session_id,

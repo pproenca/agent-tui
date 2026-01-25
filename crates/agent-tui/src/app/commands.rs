@@ -322,48 +322,29 @@ EXAMPLES:
 
     /// List and manage sessions
     #[command(long_about = "\
-Manage sessions - list, cleanup, attach, or show details.
+Manage sessions - list, show details, attach, cleanup, or status.
 
-By default, lists all active sessions. Use flags for other operations.
-Only one mode may be specified at a time.
+By default, lists all active sessions.
 
 MODES:
-    <id>           Show details for a specific session
-    --cleanup      Remove dead/orphaned sessions
-    --cleanup --all    Remove all sessions
-    --attach <id>  Attach to a session (interactive mode)
-    --status       Include daemon health in output")]
+    list              List active sessions (default)
+    show <id>         Show details for a session
+    attach [id]       Attach interactively (defaults to --session or active)
+    cleanup [--all]   Remove dead/orphaned sessions
+    status            Show daemon health")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui sessions                    # List sessions
-    agent-tui sessions abc123             # Show session details
-    agent-tui sessions --cleanup          # Remove dead sessions
-    agent-tui sessions --attach abc123    # Attach interactively")]
-    #[command(
-        group = ArgGroup::new("sessions_mode")
-            .multiple(false)
-            .args(&["id", "cleanup", "attach", "status"])
-    )]
+    agent-tui sessions list               # List sessions (explicit)
+    agent-tui sessions show abc123        # Show session details
+    agent-tui sessions attach             # Attach to active session
+    agent-tui sessions attach abc123      # Attach to session by id
+    agent-tui sessions cleanup            # Remove dead sessions
+    agent-tui sessions cleanup --all      # Remove all sessions
+    agent-tui sessions status             # Show daemon health")]
     Sessions {
-        /// Show details for a specific session ID
-        #[arg(name = "id", value_name = "ID")]
-        session_id: Option<String>,
-
-        /// Remove dead/orphaned sessions
-        #[arg(long)]
-        cleanup: bool,
-
-        /// With --cleanup, remove all sessions (including active)
-        #[arg(long, requires = "cleanup")]
-        all: bool,
-
-        /// Attach to a session interactively
-        #[arg(long, value_name = "ID")]
-        attach: Option<String>,
-
-        /// Include daemon status in output
-        #[arg(long)]
-        status: bool,
+        #[command(subcommand)]
+        command: Option<SessionsCommand>,
     },
     #[command(subcommand, hide = true)]
     Debug(DebugCommand),
@@ -430,6 +411,34 @@ INSTALLATION:
         #[arg(value_enum, value_name = "SHELL")]
         shell: Shell,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SessionsCommand {
+    /// List active sessions
+    List,
+
+    /// Show details for a specific session
+    Show {
+        #[arg(value_name = "ID")]
+        session_id: String,
+    },
+
+    /// Attach to a session interactively
+    Attach {
+        #[arg(value_name = "ID")]
+        session_id: Option<String>,
+    },
+
+    /// Remove dead/orphaned sessions
+    Cleanup {
+        /// Remove all sessions (including active)
+        #[arg(long)]
+        all: bool,
+    },
+
+    /// Show daemon health status
+    Status,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1414,68 +1423,90 @@ mod tests {
     #[test]
     fn test_sessions_list() {
         let cli = Cli::parse_from(["agent-tui", "sessions"]);
-        let Commands::Sessions {
-            session_id,
-            cleanup,
-            all,
-            attach,
-            status,
-        } = cli.command
-        else {
+        let Commands::Sessions { command } = cli.command else {
             panic!("Expected Sessions command, got {:?}", cli.command);
         };
-        assert!(session_id.is_none());
-        assert!(!cleanup);
-        assert!(!all);
-        assert!(attach.is_none());
-        assert!(!status);
+        assert!(command.is_none());
     }
 
     #[test]
-    fn test_sessions_attach() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "--attach", "my-session"]);
-        let Commands::Sessions { attach, .. } = cli.command else {
+    fn test_sessions_list_explicit() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "list"]);
+        let Commands::Sessions { command } = cli.command else {
             panic!("Expected Sessions command, got {:?}", cli.command);
         };
-        assert_eq!(attach, Some("my-session".to_string()));
+        assert!(matches!(command, Some(SessionsCommand::List)));
+    }
+
+    #[test]
+    fn test_sessions_attach_default() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "attach"]);
+        let Commands::Sessions { command } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
+        };
+        assert!(matches!(
+            command,
+            Some(SessionsCommand::Attach { session_id: None })
+        ));
+    }
+
+    #[test]
+    fn test_sessions_attach_with_id() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "attach", "my-session"]);
+        let Commands::Sessions { command } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
+        };
+        assert!(matches!(
+            command,
+            Some(SessionsCommand::Attach {
+                session_id: Some(_)
+            })
+        ));
     }
 
     #[test]
     fn test_sessions_cleanup() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "--cleanup"]);
-        let Commands::Sessions { cleanup, all, .. } = cli.command else {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "cleanup"]);
+        let Commands::Sessions { command } = cli.command else {
             panic!("Expected Sessions command, got {:?}", cli.command);
         };
-        assert!(cleanup);
-        assert!(!all);
+        assert!(matches!(
+            command,
+            Some(SessionsCommand::Cleanup { all: false })
+        ));
     }
 
     #[test]
     fn test_sessions_cleanup_all() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "--cleanup", "--all"]);
-        let Commands::Sessions { cleanup, all, .. } = cli.command else {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "cleanup", "--all"]);
+        let Commands::Sessions { command } = cli.command else {
             panic!("Expected Sessions command, got {:?}", cli.command);
         };
-        assert!(cleanup);
-        assert!(all);
+        assert!(matches!(
+            command,
+            Some(SessionsCommand::Cleanup { all: true })
+        ));
     }
 
     #[test]
     fn test_sessions_status() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "--status"]);
-        let Commands::Sessions { status, .. } = cli.command else {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "status"]);
+        let Commands::Sessions { command } = cli.command else {
             panic!("Expected Sessions command, got {:?}", cli.command);
         };
-        assert!(status);
+        assert!(matches!(command, Some(SessionsCommand::Status)));
     }
 
     #[test]
-    fn test_sessions_with_id() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "abc123"]);
-        let Commands::Sessions { session_id, .. } = cli.command else {
+    fn test_sessions_show_with_id() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "show", "abc123"]);
+        let Commands::Sessions { command } = cli.command else {
             panic!("Expected Sessions command, got {:?}", cli.command);
         };
-        assert_eq!(session_id, Some("abc123".to_string()));
+        assert!(matches!(
+            command,
+            Some(SessionsCommand::Show { session_id: _ })
+        ));
     }
 
     #[test]

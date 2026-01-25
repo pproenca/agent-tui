@@ -990,6 +990,7 @@ pub fn parse_pty_read_input(request: &RpcRequest) -> PtyReadInput {
     PtyReadInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
         max_bytes: request.param_u64("max_bytes", 4096) as usize,
+        timeout_ms: request.param_u64("timeout_ms", 100),
     }
 }
 
@@ -1290,9 +1291,14 @@ mod tests {
 
     #[test]
     fn test_parse_pty_read_input() {
-        let request = make_request(1, "pty_read", Some(json!({ "max_bytes": 8192 })));
+        let request = make_request(
+            1,
+            "pty_read",
+            Some(json!({ "max_bytes": 8192, "timeout_ms": 250 })),
+        );
         let input = parse_pty_read_input(&request);
         assert_eq!(input.max_bytes, 8192);
+        assert_eq!(input.timeout_ms, 250);
     }
 
     #[test]
@@ -1300,6 +1306,7 @@ mod tests {
         let request = make_request(1, "pty_read", None);
         let input = parse_pty_read_input(&request);
         assert_eq!(input.max_bytes, 4096);
+        assert_eq!(input.timeout_ms, 100);
     }
 
     #[test]

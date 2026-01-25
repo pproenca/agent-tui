@@ -110,8 +110,14 @@ impl<R: SessionRepository> PtyReadUseCase for PtyReadUseCaseImpl<R> {
         } else {
             input.max_bytes
         };
+        let timeout_ms = if input.timeout_ms == 0 {
+            100
+        } else {
+            input.timeout_ms
+        }
+        .min(i32::MAX as u64) as i32;
         let mut buf = vec![0u8; max_bytes];
-        let bytes_read = session.pty_try_read(&mut buf, 100)?;
+        let bytes_read = session.pty_try_read(&mut buf, timeout_ms)?;
         buf.truncate(bytes_read);
         Ok(PtyReadOutput {
             session_id: session.session_id(),
@@ -449,6 +455,7 @@ mod tests {
         let input = PtyReadInput {
             session_id: None,
             max_bytes: 4096,
+            timeout_ms: 0,
         };
 
         let result = usecase.execute(input);
@@ -467,6 +474,7 @@ mod tests {
         let input = PtyReadInput {
             session_id: Some(SessionId::new("missing")),
             max_bytes: 1024,
+            timeout_ms: 0,
         };
 
         let result = usecase.execute(input);

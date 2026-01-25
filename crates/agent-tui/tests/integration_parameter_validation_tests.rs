@@ -228,13 +228,13 @@ fn test_run_with_cwd_option() {
 }
 
 #[test]
-fn test_sessions_attach_requires_id() {
+fn test_sessions_attach_without_active_session() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["sessions", "--attach"])
+        .run(&["sessions", "attach"])
         .failure()
-        .stderr(predicate::str::contains("required"));
+        .stderr(predicate::str::contains("No active session"));
 }
 
 #[test]
@@ -242,19 +242,19 @@ fn test_sessions_attach_with_id() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["sessions", "--attach", "test-session"])
+        .run(&["sessions", "attach", "test-session"])
         .failure()
         .stderr(predicate::str::contains("Terminal").or(predicate::str::contains("Device")));
 }
 
 #[test]
-fn test_sessions_cleanup_all_requires_cleanup() {
+fn test_sessions_all_requires_cleanup_subcommand() {
     let harness = TestHarness::new();
 
     harness
         .run(&["sessions", "--all"])
         .failure()
-        .stderr(predicate::str::contains("cleanup"));
+        .stderr(predicate::str::contains("unexpected").or(predicate::str::contains("unknown")));
 }
 
 #[test]

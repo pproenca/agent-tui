@@ -21,6 +21,57 @@ mod exit_codes {
     pub const TEMPFAIL: i32 = 75;
 }
 
+/// Validates element ref format: @e1, @btn2, @inp3, etc.
+fn is_element_ref(selector: &str) -> bool {
+    use regex::Regex;
+    use std::sync::LazyLock;
+
+    static ELEMENT_REF_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^@(e|btn|inp)\d+$").unwrap());
+
+    ELEMENT_REF_REGEX.is_match(selector)
+}
+
+/// Extracts text from a text selector like @"Yes, proceed" or @Submit.
+/// Returns an error for malformed quoted selectors.
+fn extract_text_selector(selector: &str) -> Result<Option<&str>, Box<dyn std::error::Error>> {
+    let Some(after_at) = selector.strip_prefix('@') else {
+        return Ok(None);
+    };
+
+    if after_at.starts_with('"') {
+        if !after_at.ends_with('"') || after_at.len() < 2 {
+            return Err(format!(
+                "Malformed quoted selector: {}. Missing closing quote.",
+                selector
+            )
+            .into());
+        }
+        let text = &after_at[1..after_at.len() - 1];
+        if text.is_empty() {
+            return Err("Text selector cannot be empty".into());
+        }
+        return Ok(Some(text));
+    }
+
+    if after_at.is_empty() {
+        return Err("Text selector cannot be empty".into());
+    }
+
+    Ok(Some(after_at))
+}
+
+/// Extracts element ref from find RPC result.
+fn extract_element_ref_from_result(result: &serde_json::Value) -> Option<String> {
+    result
+        .get("elements")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|el| el.get("ref"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+}
+
 pub struct Application;
 
 impl Application {
@@ -177,11 +228,11 @@ impl Application {
 
             Commands::Press { keys } => {
                 for key in keys {
-                    handlers::handle_press(ctx, key.clone())?;
+                    handlers::handle_press(ctx, key.to_string())?;
                 }
             }
 
-            Commands::Type { text } => handlers::handle_type(ctx, text.clone())?,
+            Commands::Type { text } => handlers::handle_type(ctx, text.to_string())?,
 
             Commands::Input {
                 value,
@@ -242,7 +293,7 @@ impl Application {
             Commands::Version => handlers::handle_version(ctx)?,
             Commands::Env => handlers::handle_env(ctx)?,
 
-            Commands::External(args) => self.handle_element_ref(ctx, args.clone())?,
+            Commands::External(args) => self.dispatch_selector_action(ctx, args)?,
 
             Commands::Debug(debug_cmd) => match debug_cmd {
                 DebugCommand::Record(action) => match action {
@@ -267,26 +318,19 @@ impl Application {
         Ok(())
     }
 
-    fn handle_element_ref<C: DaemonClient>(
+    fn dispatch_selector_action<C: DaemonClient>(
         &self,
         ctx: &mut HandlerContext<C>,
-        args: Vec<String>,
+        args: &[String],
     ) -> Result<(), Box<dyn std::error::Error>> {
         if args.is_empty() {
             return Err("No element selector provided".into());
         }
 
-        let selector = &args[0];
+        let element_ref = self.resolve_selector(ctx, &args[0])?;
 
-        // Parse the selector type and resolve to element ref
-        let element_ref = self.resolve_selector(ctx, selector)?;
-
-        // Dispatch based on action
         match args.get(1).map(|s| s.as_str()) {
-            None => {
-                // Default action: activate (click)
-                handlers::handle_click(ctx, element_ref)?
-            }
+            None => handlers::handle_click(ctx, element_ref)?,
             Some("toggle") => {
                 let state = match args.get(2).map(|s| s.as_str()) {
                     Some("on") => Some(true),
@@ -304,10 +348,11 @@ impl Application {
             }
             Some("clear") => handlers::handle_clear(ctx, element_ref)?,
             Some("focus") => handlers::handle_focus(ctx, element_ref)?,
-            Some(value) => {
-                // Value provided - treat as fill
+            Some("fill") => {
+                let value = args.get(2).ok_or("fill requires a value")?;
                 handlers::handle_fill(ctx, element_ref, value.to_string())?
             }
+            Some(value) => handlers::handle_fill(ctx, element_ref, value.to_string())?,
         }
         Ok(())
     }
@@ -317,26 +362,18 @@ impl Application {
         ctx: &mut HandlerContext<C>,
         selector: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        // Standard element refs: @e1, @btn1, @inp1
-        if selector.starts_with("@e")
-            || selector.starts_with("@btn")
-            || selector.starts_with("@inp")
-        {
+        if is_element_ref(selector) {
             return Ok(selector.to_string());
         }
 
-        // Partial text selector: :Submit
         if let Some(text) = selector.strip_prefix(':') {
+            if text.is_empty() {
+                return Err("Partial text selector cannot be empty".into());
+            }
             return self.find_element_by_text(ctx, text, false);
         }
 
-        // Text selector: @"text" or @text
-        if let Some(after_at) = selector.strip_prefix('@') {
-            // Check for quoted text: @"Yes, proceed"
-            let text = after_at
-                .strip_prefix('"')
-                .and_then(|s| s.strip_suffix('"'))
-                .unwrap_or(after_at);
+        if let Some(text) = extract_text_selector(selector)? {
             return self.find_element_by_text(ctx, text, true);
         }
 
@@ -365,13 +402,8 @@ impl Application {
         let params_json = serde_json::to_value(find_params)?;
         let result = ctx.client.call("find", Some(params_json))?;
 
-        // Extract element ref from result
-        if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
-            if let Some(first) = elements.first() {
-                if let Some(ref_str) = first.get("ref").and_then(|v| v.as_str()) {
-                    return Ok(ref_str.to_string());
-                }
-            }
+        if let Some(ref_str) = extract_element_ref_from_result(&result) {
+            return Ok(ref_str);
         }
 
         let match_type = if exact { "exact" } else { "partial" };
@@ -472,5 +504,139 @@ fn exit_code_for_client_error(error: &ClientError) -> i32 {
         Some(ErrorCategory::Internal) => exit_codes::IOERR,
         Some(ErrorCategory::Timeout) => exit_codes::TEMPFAIL,
         None => exit_codes::GENERAL_ERROR,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod is_element_ref_tests {
+        use super::*;
+
+        #[test]
+        fn valid_element_refs() {
+            assert!(is_element_ref("@e1"));
+            assert!(is_element_ref("@e42"));
+            assert!(is_element_ref("@btn1"));
+            assert!(is_element_ref("@btn999"));
+            assert!(is_element_ref("@inp1"));
+            assert!(is_element_ref("@inp123"));
+        }
+
+        #[test]
+        fn invalid_element_refs() {
+            assert!(!is_element_ref("@e"));
+            assert!(!is_element_ref("@btn"));
+            assert!(!is_element_ref("@inp"));
+            assert!(!is_element_ref("@elephant"));
+            assert!(!is_element_ref("@button"));
+            assert!(!is_element_ref("@e1a"));
+            assert!(!is_element_ref("e1"));
+            assert!(!is_element_ref("@E1"));
+            assert!(!is_element_ref("@Submit"));
+            assert!(!is_element_ref(":Submit"));
+        }
+    }
+
+    mod extract_text_selector_tests {
+        use super::*;
+
+        #[test]
+        fn quoted_text_selector() {
+            assert_eq!(
+                extract_text_selector("@\"Yes, proceed\"").unwrap(),
+                Some("Yes, proceed")
+            );
+            assert_eq!(
+                extract_text_selector("@\"Submit\"").unwrap(),
+                Some("Submit")
+            );
+        }
+
+        #[test]
+        fn unquoted_text_selector() {
+            assert_eq!(extract_text_selector("@Submit").unwrap(), Some("Submit"));
+            assert_eq!(
+                extract_text_selector("@Yes, proceed").unwrap(),
+                Some("Yes, proceed")
+            );
+        }
+
+        #[test]
+        fn malformed_quoted_selector_missing_end_quote() {
+            let result = extract_text_selector("@\"Missing end");
+            assert!(result.is_err());
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Missing closing quote")
+            );
+        }
+
+        #[test]
+        fn empty_quoted_selector() {
+            let result = extract_text_selector("@\"\"");
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("cannot be empty"));
+        }
+
+        #[test]
+        fn empty_unquoted_selector() {
+            let result = extract_text_selector("@");
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("cannot be empty"));
+        }
+
+        #[test]
+        fn non_at_prefix_returns_none() {
+            assert_eq!(extract_text_selector(":Submit").unwrap(), None);
+            assert_eq!(extract_text_selector("Submit").unwrap(), None);
+        }
+    }
+
+    mod extract_element_ref_from_result_tests {
+        use super::*;
+        use serde_json::json;
+
+        #[test]
+        fn extracts_ref_from_valid_result() {
+            let result = json!({
+                "elements": [{"ref": "@e1", "text": "Submit"}]
+            });
+            assert_eq!(
+                extract_element_ref_from_result(&result),
+                Some("@e1".to_string())
+            );
+        }
+
+        #[test]
+        fn returns_none_for_empty_elements() {
+            let result = json!({"elements": []});
+            assert_eq!(extract_element_ref_from_result(&result), None);
+        }
+
+        #[test]
+        fn returns_none_for_missing_ref() {
+            let result = json!({
+                "elements": [{"text": "Submit"}]
+            });
+            assert_eq!(extract_element_ref_from_result(&result), None);
+        }
+
+        #[test]
+        fn returns_none_for_null_ref() {
+            let result = json!({
+                "elements": [{"ref": null}]
+            });
+            assert_eq!(extract_element_ref_from_result(&result), None);
+        }
+
+        #[test]
+        fn returns_none_for_missing_elements() {
+            let result = json!({"success": true});
+            assert_eq!(extract_element_ref_from_result(&result), None);
+        }
     }
 }

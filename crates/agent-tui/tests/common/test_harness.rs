@@ -108,6 +108,24 @@ impl TestHarness {
             .filter(|r| r.method == method)
             .count()
     }
+
+    pub fn assert_param(&self, param_name: &str, expected_value: Value) {
+        let requests = self.get_requests();
+        let last_request = requests.last().expect("No requests recorded");
+        let params = last_request.params.as_ref().expect("Request has no params");
+        let actual = params
+            .get(param_name)
+            .unwrap_or_else(|| panic!("Param '{}' not found. Params: {:?}", param_name, params));
+        assert_eq!(
+            actual, &expected_value,
+            "Param '{}' mismatch. Expected: {:?}, Actual: {:?}",
+            param_name, expected_value, actual
+        );
+    }
+
+    pub fn get_all_calls(&self) -> Vec<RecordedRequest> {
+        self.get_requests()
+    }
 }
 
 impl Default for TestHarness {

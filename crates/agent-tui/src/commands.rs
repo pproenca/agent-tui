@@ -3,9 +3,7 @@ use clap::Subcommand;
 use clap::ValueEnum;
 pub use clap_complete::Shell;
 
-const LONG_ABOUT: &str = r#"agent-tui enables AI agents to interact with TUI (Text User Interface) applications.
-
-WORKFLOW:
+const AFTER_LONG_HELP: &str = r#"WORKFLOW:
     1. Run a TUI application
     2. View the screen and detect elements
     3. Interact with elements or press keys
@@ -44,7 +42,7 @@ EXAMPLES:
 #[command(name = "agent-tui")]
 #[command(author, version)]
 #[command(about = "CLI tool for AI agents to interact with TUI applications")]
-#[command(long_about = LONG_ABOUT)]
+#[command(after_long_help = AFTER_LONG_HELP)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -77,18 +75,20 @@ impl Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    /// Run a TUI application in a virtual terminal
     #[command(name = "run")]
-    #[command(long_about = r#"Run a new TUI application in a virtual terminal.
+    #[command(long_about = "\
+Run a new TUI application in a virtual terminal.
 
 Creates a new PTY session with the specified command and returns a session ID.
-The session runs in the background and can be interacted with using other commands.
-
+The session runs in the background and can be interacted with using other commands.")]
+    #[command(after_long_help = "\
 EXAMPLES:
     agent-tui run bash
     agent-tui run htop
-    agent-tui run "npx create-next-app"
+    agent-tui run \"npx create-next-app\"
     agent-tui run vim -- file.txt
-    agent-tui run --cols 80 --rows 24 nano"#)]
+    agent-tui run --cols 80 --rows 24 nano")]
     Run {
         command: String,
 

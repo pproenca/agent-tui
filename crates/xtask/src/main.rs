@@ -1,14 +1,14 @@
 use clap::{Args, Parser, Subcommand};
 use regex::Regex;
-use sha2::{Digest, Sha256};
 use semver::Version;
+use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use toml_edit::{value, DocumentMut};
+use toml_edit::{DocumentMut, value};
 use walkdir::WalkDir;
 
 #[derive(Parser)]
@@ -215,9 +215,7 @@ fn write_cargo_version(path: &Path, version: &str) -> Result<(), Box<dyn Error>>
     let contents = fs::read_to_string(path)?;
     let mut doc = contents.parse::<DocumentMut>()?;
 
-    if doc["workspace"]["package"]["version"].is_none()
-        && doc["package"]["version"].is_none()
-    {
+    if doc["workspace"]["package"]["version"].is_none() && doc["package"]["version"].is_none() {
         return Err("Could not find version in Cargo.toml".into());
     }
 
@@ -248,7 +246,10 @@ fn write_package_version(path: &Path, version: &str) -> Result<(), Box<dyn Error
         .as_object_mut()
         .ok_or("Expected package.json to be an object")?;
 
-    object.insert("version".to_string(), serde_json::Value::String(version.to_string()));
+    object.insert(
+        "version".to_string(),
+        serde_json::Value::String(version.to_string()),
+    );
     let output = serde_json::to_string_pretty(&json)?;
     fs::write(path, format!("{output}\n"))?;
     Ok(())
@@ -559,7 +560,11 @@ fn architecture_check() -> Result<(), Box<dyn Error>> {
     )?;
 
     if let Some(hit) = find_first_match(&src_root, |_, line| legacy_regex.is_match(line))? {
-        return Err(format!("Architecture check failed: legacy shim paths detected at {}", hit).into());
+        return Err(format!(
+            "Architecture check failed: legacy shim paths detected at {}",
+            hit
+        )
+        .into());
     }
 
     if let Some(hit) = find_first_match(&src_root, |path, line| {
@@ -620,11 +625,7 @@ fn dist_verify(input: &Path, kind: DistKind) -> Result<(), Box<dyn Error>> {
     }
 
     if !missing.is_empty() {
-        return Err(format!(
-            "Missing required artifacts:\n{}",
-            missing.join("\n")
-        )
-        .into());
+        return Err(format!("Missing required artifacts:\n{}", missing.join("\n")).into());
     }
 
     println!("All required artifacts present for {:?}.", kind);

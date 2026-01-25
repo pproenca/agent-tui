@@ -16,9 +16,7 @@ use crate::infra::daemon::{DaemonError, start_daemon};
 use crate::infra::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
 
 use crate::app::attach::AttachError;
-use crate::app::commands::{
-    Cli, Commands, DaemonCommand, DebugCommand, LiveCommand, LiveStartArgs, RecordAction,
-};
+use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs};
 use crate::app::handlers::HandlerContext;
 
 static ELEMENT_REF_REGEX: LazyLock<Regex> =
@@ -292,7 +290,7 @@ impl Application {
                 *rows,
             )?,
 
-            Commands::Screen {
+            Commands::Screenshot {
                 elements,
                 accessibility,
                 interactive_only,
@@ -406,40 +404,10 @@ impl Application {
                 Some(LiveCommand::Status) => handlers::handle_live_status(ctx)?,
             },
 
-            Commands::RecordStart => handlers::handle_record_start(ctx)?,
-            Commands::RecordStop(args) => {
-                handlers::handle_record_stop(ctx, args.output.clone(), args.record_format)?
-            }
-            Commands::RecordStatus => handlers::handle_record_status(ctx)?,
-
-            Commands::Trace(args) => {
-                handlers::handle_trace(ctx, args.count, args.start, args.stop)?
-            }
-            Commands::Console(args) => handlers::handle_console(ctx, args.lines, args.clear)?,
-            Commands::Errors(args) => handlers::handle_errors(ctx, args.count, args.clear)?,
-
             Commands::Version => handlers::handle_version(ctx)?,
             Commands::Env => handlers::handle_env(ctx)?,
 
             Commands::External(args) => self.dispatch_selector_action(ctx, args)?,
-
-            Commands::Debug(debug_cmd) => match debug_cmd {
-                DebugCommand::Record(action) => match action {
-                    RecordAction::Start => handlers::handle_record_start(ctx)?,
-                    RecordAction::Stop(args) => {
-                        handlers::handle_record_stop(ctx, args.output.clone(), args.record_format)?
-                    }
-                    RecordAction::Status => handlers::handle_record_status(ctx)?,
-                },
-                DebugCommand::Trace(args) => {
-                    handlers::handle_trace(ctx, args.count, args.start, args.stop)?
-                }
-                DebugCommand::Console(args) => {
-                    handlers::handle_console(ctx, args.lines, args.clear)?
-                }
-                DebugCommand::Errors(args) => handlers::handle_errors(ctx, args.count, args.clear)?,
-                DebugCommand::Env => handlers::handle_env(ctx)?,
-            },
         }
         Ok(())
     }

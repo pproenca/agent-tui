@@ -275,7 +275,7 @@ mod tests {
             category: "not_found".to_string(),
             retryable: false,
             context: Some(json!({"element_ref": "@btn1"})),
-            suggestion: Some("Run 'snapshot -i' to see elements.".to_string()),
+            suggestion: Some("Run 'screenshot -e' to see elements.".to_string()),
         };
         let resp = RpcResponse::error_with_data(42, -32003, "Element not found", error_data);
         let json_str = serde_json::to_string(&resp).unwrap();

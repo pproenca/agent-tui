@@ -18,7 +18,6 @@ use crate::adapters::presenter::{ElementView, Presenter, create_presenter};
 use crate::app::commands::FindParams;
 use crate::app::commands::LiveStartArgs;
 use crate::app::commands::OutputFormat;
-use crate::app::commands::RecordFormat;
 use crate::app::commands::ScrollDirection;
 use crate::app::commands::WaitParams;
 use crate::app::error::AttachError;
@@ -277,9 +276,9 @@ pub fn handle_snapshot<C: DaemonClient>(
                     println!();
                 }
             }
-            println!("{}", Colors::bold("Screen:"));
-            if let Some(screen) = result.get("screen").and_then(|v| v.as_str()) {
-                println!("{}", screen);
+            println!("{}", Colors::bold("Screenshot:"));
+            if let Some(screenshot) = result.get("screenshot").and_then(|v| v.as_str()) {
+                println!("{}", screenshot);
             }
             if include_cursor {
                 if let Some(cursor) = result.get("cursor") {
@@ -1113,191 +1112,6 @@ pub fn handle_attach<C: DaemonClient>(
     Ok(())
 }
 
-pub fn handle_record_start<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let result = ctx
-        .client
-        .call("record_start", Some(ctx.session_params()))?;
-
-    ctx.output_json_or(&result, || {
-        println!(
-            "{} Recording started for session {}",
-            Colors::success("●"),
-            Colors::session_id(result.str_or("session_id", "?"))
-        );
-    })
-}
-
-pub fn handle_record_stop<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    output: Option<PathBuf>,
-    record_format: RecordFormat,
-) -> HandlerResult {
-    let format_str = record_format.as_str();
-    let params = ctx.params_with(json!({ "format": format_str }));
-    let result = ctx.client.call("record_stop", Some(params))?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        OutputFormat::Text => {
-            println!(
-                "{} Recording stopped ({} frames captured)",
-                Colors::success("■"),
-                result.u64_or("frame_count", 0)
-            );
-
-            if let Some(output_path) = output {
-                if let Some(data) = result.get("data") {
-                    let content = if format_str == "asciicast" {
-                        data.str_or("data", "").to_string()
-                    } else {
-                        serde_json::to_string_pretty(data).unwrap_or_default()
-                    };
-                    std::fs::write(&output_path, content)?;
-                    println!("Saved to: {}", output_path.display());
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-pub fn handle_record_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let result = ctx
-        .client
-        .call("record_status", Some(ctx.session_params()))?;
-
-    ctx.output_json_or(&result, || {
-        if result.bool_or("recording", false) {
-            let duration_secs = result.u64_or("duration_ms", 0) / 1000;
-            println!("{} Recording in progress", Colors::success("●"));
-            println!("  Frames: {}", result.u64_or("frame_count", 0));
-            println!("  Duration: {}s", duration_secs);
-        } else {
-            println!("{}", Colors::dim("Not recording"));
-        }
-    })
-}
-
-pub fn handle_trace<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    count: usize,
-    start: bool,
-    stop: bool,
-) -> HandlerResult {
-    let rpc_params = params::TraceParams {
-        session: ctx.session.clone(),
-        start,
-        stop,
-        count,
-    };
-    let params = serde_json::to_value(rpc_params)?;
-
-    let result = ctx.client.call("trace", Some(params))?;
-
-    ctx.output_json_or(&result, || {
-        if start {
-            println!("{} Tracing started", Colors::success("●"));
-        } else if stop {
-            println!("{} Tracing stopped", Colors::dim("■"));
-        } else {
-            let status = if result.bool_or("tracing", false) {
-                Colors::success("(active)")
-            } else {
-                Colors::dim("(inactive)")
-            };
-            println!("{} Trace {}", Colors::bold("Trace:"), status);
-
-            if let Some(entries) = result.get("entries").and_then(|v| v.as_array()) {
-                if entries.is_empty() {
-                    println!("{}", Colors::dim("  No trace entries"));
-                } else {
-                    for entry in entries {
-                        let details = entry.get("details").and_then(|v| v.as_str());
-                        let details_str = details.map(|d| format!(" {}", d)).unwrap_or_default();
-                        println!(
-                            "  [{}ms] {}{}",
-                            entry.u64_or("timestamp_ms", 0),
-                            entry.str_or("action", "?"),
-                            Colors::dim(&details_str)
-                        );
-                    }
-                }
-            }
-        }
-    })
-}
-
-pub fn handle_console<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    lines: usize,
-    clear: bool,
-) -> HandlerResult {
-    let rpc_params = params::ConsoleParams {
-        session: ctx.session.clone(),
-        count: lines,
-        clear,
-    };
-    let params = serde_json::to_value(rpc_params)?;
-
-    let result = ctx.client.call("console", Some(params))?;
-
-    ctx.output_json_or(&result, || {
-        if clear {
-            println!("{}", Colors::success("Console cleared"));
-        }
-        if let Some(output_lines) = result.get("lines").and_then(|v| v.as_array()) {
-            for line in output_lines {
-                if let Some(s) = line.as_str() {
-                    println!("{}", s);
-                }
-            }
-        }
-    })
-}
-
-pub fn handle_errors<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    count: usize,
-    clear: bool,
-) -> HandlerResult {
-    let rpc_params = params::ErrorsParams {
-        session: ctx.session.clone(),
-        count,
-        clear,
-    };
-    let params = serde_json::to_value(rpc_params)?;
-
-    let result = ctx.client.call("errors", Some(params))?;
-
-    ctx.output_json_or(&result, || {
-        if clear {
-            println!("{}", Colors::success("Errors cleared"));
-        }
-        if let Some(errors) = result.get("errors").and_then(|v| v.as_array()) {
-            if errors.is_empty() {
-                println!("{}", Colors::dim("No errors captured"));
-            } else {
-                println!(
-                    "{} {} error(s) (showing last {}):",
-                    Colors::bold("Errors:"),
-                    result.u64_or("total_count", 0),
-                    errors.len()
-                );
-                for err in errors {
-                    println!(
-                        "  {} [{}] {}",
-                        Colors::dim(err.str_or("timestamp", "?")),
-                        Colors::error(err.str_or("source", "?")),
-                        err.str_or("message", "?")
-                    );
-                }
-            }
-        }
-    })
-}
-
 pub fn handle_env<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
     let vars = [
         (
@@ -1372,7 +1186,7 @@ pub fn handle_assert<C: DaemonClient>(
                 "strip_ansi": true
             });
             let result = ctx.client.call("snapshot", Some(params))?;
-            result.str_or("screen", "").contains(cond_value)
+            result.str_or("screenshot", "").contains(cond_value)
         }
         "element" => {
             let params = json!({ "ref": cond_value, "session": ctx.session });

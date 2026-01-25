@@ -39,7 +39,7 @@ fn test_empty_elements_array() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Empty screen\n",
+            "screenshot": "Empty screen\n",
             "elements": [],
             "cursor": { "row": 0, "col": 0, "visible": true },
             "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
@@ -47,7 +47,7 @@ fn test_empty_elements_array() {
     );
 
     harness
-        .run(&["screen", "-e"])
+        .run(&["screenshot", "-e"])
         .success()
         .stdout(predicate::str::contains("Empty screen"));
 }
@@ -60,14 +60,14 @@ fn test_empty_screen_content() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "",
+            "screenshot": "",
             "elements": [],
             "cursor": { "row": 0, "col": 0, "visible": true },
             "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
         }),
     );
 
-    harness.run(&["screen"]).success();
+    harness.run(&["screenshot"]).success();
 }
 
 #[test]
@@ -82,14 +82,14 @@ fn test_large_screen_response() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": large_screen,
+            "screenshot": large_screen,
             "elements": [],
             "cursor": { "row": 0, "col": 0, "visible": true },
             "size": { "cols": 500, "rows": 200 }
         }),
     );
 
-    harness.run(&["screen"]).success();
+    harness.run(&["screenshot"]).success();
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn test_many_elements_response() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Test screen\n",
+            "screenshot": "Test screen\n",
             "elements": elements,
             "cursor": { "row": 0, "col": 0, "visible": true },
             "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
@@ -121,7 +121,7 @@ fn test_many_elements_response() {
     );
 
     harness
-        .run(&["screen", "-e"])
+        .run(&["screenshot", "-e"])
         .success()
         .stdout(predicate::str::contains("@el0"))
         .stdout(predicate::str::contains("@el99"));
@@ -135,7 +135,7 @@ fn test_unicode_in_screen_content() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Hello 世界! こんにちは 🎉 émojis\n",
+            "screenshot": "Hello 世界! こんにちは 🎉 émojis\n",
             "elements": [],
             "cursor": { "row": 0, "col": 0, "visible": true },
             "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
@@ -143,7 +143,7 @@ fn test_unicode_in_screen_content() {
     );
 
     harness
-        .run(&["screen"])
+        .run(&["screenshot"])
         .success()
         .stdout(predicate::str::contains("世界"))
         .stdout(predicate::str::contains("こんにちは"));
@@ -157,7 +157,7 @@ fn test_unicode_in_element_labels() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Test screen\n",
+            "screenshot": "Test screen\n",
             "elements": [
                 {
                     "ref": "@btn1",
@@ -182,7 +182,7 @@ fn test_unicode_in_element_labels() {
     );
 
     harness
-        .run(&["screen", "-e"])
+        .run(&["screenshot", "-e"])
         .success()
         .stdout(predicate::str::contains("送信"));
 }
@@ -289,14 +289,14 @@ fn test_null_cursor_position() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Test\n",
+            "screenshot": "Test\n",
             "elements": [],
             "cursor": null,
             "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
         }),
     );
 
-    harness.run(&["screen"]).success();
+    harness.run(&["screenshot"]).success();
 }
 
 #[test]
@@ -307,7 +307,7 @@ fn test_newlines_in_screen_preserved() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Line 1\nLine 2\nLine 3\n",
+            "screenshot": "Line 1\nLine 2\nLine 3\n",
             "elements": [],
             "cursor": { "row": 0, "col": 0, "visible": true },
             "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
@@ -315,7 +315,7 @@ fn test_newlines_in_screen_preserved() {
     );
 
     harness
-        .run(&["screen"])
+        .run(&["screenshot"])
         .success()
         .stdout(predicate::str::contains("Line 1"))
         .stdout(predicate::str::contains("Line 2"))
@@ -330,7 +330,7 @@ fn test_tabs_in_screen_content() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Column1\tColumn2\tColumn3\n",
+            "screenshot": "Column1\tColumn2\tColumn3\n",
             "elements": [],
             "cursor": { "row": 0, "col": 0, "visible": true },
             "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
@@ -338,7 +338,7 @@ fn test_tabs_in_screen_content() {
     );
 
     harness
-        .run(&["screen"])
+        .run(&["screenshot"])
         .success()
         .stdout(predicate::str::contains("Column1"));
 }
@@ -351,7 +351,7 @@ fn test_ansi_escape_sequences_stripped_when_requested() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Normal \u{1b}[31mred\u{1b}[0m text\n",
+            "screenshot": "Normal \u{1b}[31mred\u{1b}[0m text\n",
             "elements": [],
             "cursor": { "row": 0, "col": 0, "visible": true },
             "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
@@ -359,7 +359,7 @@ fn test_ansi_escape_sequences_stripped_when_requested() {
     );
 
     harness
-        .run(&["screen", "--strip-ansi"])
+        .run(&["screenshot", "--strip-ansi"])
         .success()
         .stdout(predicate::str::contains("Normal"))
         .stdout(predicate::str::contains("red"));
@@ -396,7 +396,7 @@ fn test_unknown_element_type_handled() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Test\n",
+            "screenshot": "Test\n",
             "elements": [
                 {
                     "ref": "@unknown1",
@@ -413,7 +413,7 @@ fn test_unknown_element_type_handled() {
     );
 
     harness
-        .run(&["screen", "-e"])
+        .run(&["screenshot", "-e"])
         .success()
         .stdout(predicate::str::contains("@unknown1"));
 }
@@ -426,7 +426,7 @@ fn test_json_output_preserves_structure() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Test\n",
+            "screenshot": "Test\n",
             "elements": [
                 {
                     "ref": "@btn1",
@@ -440,7 +440,7 @@ fn test_json_output_preserves_structure() {
     );
 
     harness
-        .run(&["-f", "json", "screen"])
+        .run(&["-f", "json", "screenshot"])
         .success()
         .stdout(predicate::str::contains("\"session_id\""))
         .stdout(predicate::str::contains("\"elements\""))

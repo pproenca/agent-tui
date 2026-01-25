@@ -29,7 +29,7 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
 
         session.update()?;
 
-        let screen = session.screen_text();
+        let screenshot = session.screen_text();
         let session_id = session.session_id();
 
         let elements = if input.include_elements {
@@ -46,7 +46,7 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
 
         Ok(SnapshotOutput {
             session_id,
-            screen,
+            screenshot,
             elements,
             cursor,
         })

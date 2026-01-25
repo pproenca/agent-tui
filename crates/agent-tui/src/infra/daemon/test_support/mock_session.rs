@@ -3,9 +3,7 @@ use crate::domain::core::Element;
 use crate::domain::core::vom::Component;
 use std::sync::Mutex;
 
-use crate::domain::session_types::{
-    ErrorEntry, RecordingFrame, RecordingStatus, SessionId, TraceEntry,
-};
+use crate::domain::session_types::SessionId;
 use crate::usecases::ports::{LivePreviewOutput, LivePreviewSnapshot, SessionOps};
 use crate::usecases::ports::{PtyError, SessionError};
 
@@ -138,32 +136,6 @@ impl SessionOps for MockSession {
     fn size(&self) -> (u16, u16) {
         (self.cols, self.rows)
     }
-
-    fn start_recording(&self) {}
-
-    fn stop_recording(&self) -> Vec<RecordingFrame> {
-        Vec::new()
-    }
-
-    fn recording_status(&self) -> RecordingStatus {
-        RecordingStatus {
-            is_recording: false,
-            frame_count: 0,
-            duration_ms: 0,
-        }
-    }
-
-    fn get_trace_entries(&self, _count: usize) -> Vec<TraceEntry> {
-        Vec::new()
-    }
-
-    fn get_errors(&self, _count: usize) -> Vec<ErrorEntry> {
-        Vec::new()
-    }
-
-    fn clear_errors(&self) {}
-
-    fn clear_console(&self) {}
 
     fn live_preview_snapshot(&self) -> LivePreviewSnapshot {
         LivePreviewSnapshot {

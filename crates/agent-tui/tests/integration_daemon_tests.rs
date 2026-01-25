@@ -158,13 +158,13 @@ fn test_kill_session() {
 }
 
 #[test]
-fn test_snap_returns_screen_content() {
+fn test_snap_returns_screenshot_content() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["screen"])
+        .run(&["screenshot"])
         .success()
-        .stdout(predicate::str::contains("Screen:"))
+        .stdout(predicate::str::contains("Screenshot:"))
         .stdout(predicate::str::contains("Test screen content"));
 
     harness.assert_method_called("snapshot");
@@ -178,7 +178,7 @@ fn test_snap_with_elements() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Test screen\n",
+            "screenshot": "Test screen\n",
             "elements": [
                 {
                     "ref": "@btn1",
@@ -204,7 +204,7 @@ fn test_snap_with_elements() {
     );
 
     harness
-        .run(&["screen", "-e"])
+        .run(&["screenshot", "-e"])
         .success()
         .stdout(predicate::str::contains("Elements:"))
         .stdout(predicate::str::contains("@btn1"))
@@ -217,10 +217,10 @@ fn test_snap_json_format() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["-f", "json", "screen"])
+        .run(&["-f", "json", "screenshot"])
         .success()
         .stdout(predicate::str::contains("\"session_id\":"))
-        .stdout(predicate::str::contains("\"screen\":"))
+        .stdout(predicate::str::contains("\"screenshot\":"))
         .stdout(predicate::str::contains("\"size\":"));
 }
 
@@ -232,14 +232,14 @@ fn test_snap_include_cursor() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Test screen\n",
+            "screenshot": "Test screen\n",
             "cursor": { "row": 5, "col": 10, "visible": true },
             "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
         }),
     );
 
     harness
-        .run(&["screen", "--include-cursor"])
+        .run(&["screenshot", "--include-cursor"])
         .success()
         .stdout(predicate::str::contains("Cursor: row=5, col=10"));
 }
@@ -252,14 +252,14 @@ fn test_snap_include_cursor_hidden() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Test screen\n",
+            "screenshot": "Test screen\n",
             "cursor": { "row": 0, "col": 0, "visible": false },
             "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
         }),
     );
 
     harness
-        .run(&["screen", "--include-cursor"])
+        .run(&["screenshot", "--include-cursor"])
         .success()
         .stdout(predicate::str::contains("(hidden)"));
 }
@@ -272,7 +272,7 @@ fn test_snap_with_vom_metadata() {
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Test screen\n",
+            "screenshot": "Test screen\n",
             "elements": [
                 {
                     "ref": "@e1",
@@ -295,7 +295,7 @@ fn test_snap_with_vom_metadata() {
     );
 
     harness
-        .run(&["screen", "-e"])
+        .run(&["screenshot", "-e"])
         .success()
         .stdout(predicate::str::contains("@e1"))
         .stdout(predicate::str::contains("button"));
@@ -323,7 +323,7 @@ fn test_accessibility_snapshot_returns_tree_format() {
     );
 
     harness
-        .run(&["screen", "-a"])
+        .run(&["screenshot", "-a"])
         .success()
         .stdout(predicate::str::contains("button \"Submit\" [ref=e1]"))
         .stdout(predicate::str::contains("textbox \"Search\" [ref=e2]"))
@@ -353,7 +353,7 @@ fn test_accessibility_snapshot_json_format() {
     );
 
     harness
-        .run(&["-f", "json", "screen", "-a"])
+        .run(&["-f", "json", "screenshot", "-a"])
         .success()
         .stdout(predicate::str::contains("\"tree\":"))
         .stdout(predicate::str::contains("\"refs\":"))
@@ -381,7 +381,7 @@ fn test_accessibility_snapshot_interactive_only() {
     );
 
     harness
-        .run(&["screen", "-a", "--interactive-only"])
+        .run(&["screenshot", "-a", "--interactive-only"])
         .success()
         .stdout(predicate::str::contains("button \"Submit\""));
 
@@ -457,7 +457,7 @@ fn test_fill_warning_for_non_input() {
             "success": true,
             "ref": "@btn1",
             "value": "value",
-            "warning": "Warning: '@btn1' is a button not an input field. Fill may not work as expected. Use 'snapshot -i' to see element types."
+            "warning": "Warning: '@btn1' is a button not an input field. Fill may not work as expected. Use 'screenshot -a' to see element types."
         }),
     );
 
@@ -569,27 +569,6 @@ fn test_env_shows_configuration() {
         .stdout(predicate::str::contains("Environment Configuration:"))
         .stdout(predicate::str::contains("Transport:"))
         .stdout(predicate::str::contains("Socket:"));
-}
-
-#[test]
-fn test_record_stop_with_frame_count() {
-    let harness = TestHarness::new();
-
-    harness.set_success_response(
-        "record_stop",
-        json!({
-            "success": true,
-            "session_id": TEST_SESSION_ID,
-            "frame_count": 100,
-            "duration_ms": 5000
-        }),
-    );
-
-    harness
-        .run(&["record-stop"])
-        .success()
-        .stdout(predicate::str::contains("Recording stopped"))
-        .stdout(predicate::str::contains("100 frames"));
 }
 
 #[test]

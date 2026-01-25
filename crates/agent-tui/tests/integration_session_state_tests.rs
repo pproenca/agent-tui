@@ -13,7 +13,7 @@ fn test_killed_session_returns_not_found_on_snapshot() {
     harness.set_error_response("snapshot", -32001, "Session not found");
 
     harness
-        .run(&["screen"])
+        .run(&["screenshot"])
         .failure()
         .stderr(predicate::str::contains("not found"));
 }
@@ -49,7 +49,7 @@ fn test_snap_without_active_session() {
     harness.set_error_response("snapshot", -32002, "No active session");
 
     harness
-        .run(&["screen"])
+        .run(&["screenshot"])
         .failure()
         .stderr(predicate::str::contains("No active session"));
 }
@@ -241,7 +241,9 @@ fn test_kill_nonexistent_session_fails() {
 fn test_snap_with_session_option() {
     let harness = TestHarness::new();
 
-    harness.run(&["-s", "specific-session", "screen"]).success();
+    harness
+        .run(&["-s", "specific-session", "screenshot"])
+        .success();
     harness.assert_method_called("snapshot");
 }
 

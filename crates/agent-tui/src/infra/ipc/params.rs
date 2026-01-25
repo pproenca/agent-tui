@@ -191,58 +191,6 @@ pub struct ToggleParams {
     pub session: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct RecordStopParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct TraceParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-    #[serde(default)]
-    pub start: bool,
-    #[serde(default)]
-    pub stop: bool,
-    #[serde(default = "default_trace_count")]
-    pub count: usize,
-}
-
-fn default_trace_count() -> usize {
-    100
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ConsoleParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-    #[serde(default = "default_console_count")]
-    pub count: usize,
-    #[serde(default)]
-    pub clear: bool,
-}
-
-fn default_console_count() -> usize {
-    50
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ErrorsParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-    #[serde(default = "default_errors_count")]
-    pub count: usize,
-    #[serde(default)]
-    pub clear: bool,
-}
-
-fn default_errors_count() -> usize {
-    10
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PtyReadParams {
     #[serde(skip_serializing_if = "Option::is_none")]

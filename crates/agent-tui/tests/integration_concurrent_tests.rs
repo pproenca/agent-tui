@@ -56,13 +56,13 @@ fn test_parallel_snapshots_same_session() {
     let handles: Vec<_> = (0..4)
         .map(|_| {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["screen"]).success())
+            thread::spawn(move || harness.run(&["screenshot"]).success())
         })
         .collect();
 
     for handle in handles {
         let result = handle.join().expect("Thread panicked");
-        result.stdout(predicate::str::contains("Screen"));
+        result.stdout(predicate::str::contains("Screenshot"));
     }
 }
 
@@ -71,10 +71,10 @@ fn test_parallel_snapshots_with_different_options() {
     let harness = Arc::new(TestHarness::new());
 
     harness.set_success_response(
-        "screen",
+        "screenshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screen": "Test screen content\n",
+            "screenshot": "Test screen content\n",
             "elements": [
                 {"ref": "@btn1", "type": "button", "label": "OK"}
             ],
@@ -86,19 +86,19 @@ fn test_parallel_snapshots_with_different_options() {
     let handles = vec![
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["screen"]))
+            thread::spawn(move || harness.run(&["screenshot"]))
         },
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["screen", "-e"]))
+            thread::spawn(move || harness.run(&["screenshot", "-e"]))
         },
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["screen", "--include-cursor"]))
+            thread::spawn(move || harness.run(&["screenshot", "--include-cursor"]))
         },
         {
             let harness = Arc::clone(&harness);
-            thread::spawn(move || harness.run(&["-f", "json", "screen"]))
+            thread::spawn(move || harness.run(&["-f", "json", "screenshot"]))
         },
     ];
 
@@ -194,7 +194,7 @@ fn test_mixed_commands_parallel() {
         },
         {
             let h = Arc::clone(&harness);
-            thread::spawn(move || h.run(&["screen"]))
+            thread::spawn(move || h.run(&["screenshot"]))
         },
         {
             let h = Arc::clone(&harness);
@@ -269,7 +269,7 @@ fn test_concurrent_with_delays() {
             },
             {
                 let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["screen"]).success())
+                thread::spawn(move || h.run(&["screenshot"]).success())
             },
         ];
 

@@ -26,7 +26,7 @@ fn test_session_not_found_structured_error() {
     );
 
     harness
-        .run(&["screen"])
+        .run(&["screenshot"])
         .failure()
         .stderr(predicate::str::contains("Session not found"));
 }
@@ -48,7 +48,7 @@ fn test_no_active_session_error() {
     );
 
     harness
-        .run(&["screen"])
+        .run(&["screenshot"])
         .failure()
         .stderr(predicate::str::contains("No active session"));
 }
@@ -68,7 +68,7 @@ fn test_element_not_found_includes_ref() {
                 "element_ref": "@missing-button",
                 "available_elements": ["@btn1", "@inp1", "@tab1"]
             })),
-            suggestion: Some("Use 'snapshot -i' to see available elements".to_string()),
+            suggestion: Some("Use 'screenshot -e' to see available elements".to_string()),
         },
     );
 
@@ -320,7 +320,7 @@ fn test_error_with_all_fields() {
                 "element_ref": "@nonexistent",
                 "session_id": "test-session"
             })),
-            suggestion: Some("Use 'snapshot -i' to view available elements".to_string()),
+            suggestion: Some("Use 'screenshot -e' to view available elements".to_string()),
         },
     );
 
@@ -353,7 +353,7 @@ fn test_not_found_category_errors() {
             },
         );
 
-        harness.run(&["screen"]).failure();
+        harness.run(&["screenshot"]).failure();
     }
 }
 

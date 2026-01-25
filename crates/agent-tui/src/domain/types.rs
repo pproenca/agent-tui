@@ -2,12 +2,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
-use super::session_types::ErrorEntry;
-use super::session_types::RecordingFrame;
-use super::session_types::RecordingStatus;
 use super::session_types::SessionId;
 use super::session_types::SessionInfo;
-use super::session_types::TraceEntry;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScrollDirectionError {
@@ -309,7 +305,7 @@ pub struct SnapshotInput {
 #[derive(Debug, Clone)]
 pub struct SnapshotOutput {
     pub session_id: SessionId,
-    pub screen: String,
+    pub screenshot: String,
     pub elements: Option<Vec<DomainElement>>,
     pub cursor: Option<DomainCursorPosition>,
 }
@@ -770,79 +766,6 @@ pub struct MultiselectOutput {
     pub success: bool,
     pub selected_options: Vec<String>,
     pub message: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RecordStartInput {
-    pub session_id: Option<SessionId>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RecordStopInput {
-    pub session_id: Option<SessionId>,
-    pub format: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RecordStatusInput {
-    pub session_id: Option<SessionId>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RecordStartOutput {
-    pub session_id: SessionId,
-    pub success: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct RecordStopOutput {
-    pub session_id: SessionId,
-    pub frame_count: usize,
-    pub frames: Vec<RecordingFrame>,
-    pub format: String,
-    pub cols: u16,
-    pub rows: u16,
-}
-
-pub type RecordStatusOutput = RecordingStatus;
-
-#[derive(Debug, Clone)]
-pub struct TraceInput {
-    pub session_id: Option<SessionId>,
-    pub start: bool,
-    pub stop: bool,
-    pub count: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct TraceOutput {
-    pub tracing: bool,
-    pub entries: Vec<TraceEntry>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ConsoleInput {
-    pub session_id: Option<SessionId>,
-    pub count: usize,
-    pub clear: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct ConsoleOutput {
-    pub lines: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ErrorsInput {
-    pub session_id: Option<SessionId>,
-    pub count: usize,
-    pub clear: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct ErrorsOutput {
-    pub errors: Vec<ErrorEntry>,
-    pub total_count: usize,
 }
 
 #[derive(Debug, Clone)]

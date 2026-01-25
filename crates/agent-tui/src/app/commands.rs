@@ -13,18 +13,18 @@ const AFTER_HELP: &str =
 const LONG_ABOUT: &str = "\
 Drive TUI (text UI) applications programmatically or interactively.\n\
 \n\
-Common flow: run -> screen -> action/press/input -> wait -> kill.\n\
+Common flow: run -> screenshot -> action/press/input -> wait -> kill.\n\
 Use --format json for automation-friendly output.";
 
 const AFTER_LONG_HELP: &str = r#"WORKFLOW:
     1. Run a TUI application
-    2. View the screen and detect elements
+    2. View the screenshot and detect elements
     3. Interact with elements or press keys
     4. Wait for UI changes
     5. Kill the session when done
 
 SELECTORS:
-    @e1, @e2, @e3  - Element refs (from 'screen -e' output)
+    @e1, @e2, @e3  - Element refs (from 'screenshot -e' output)
     @"Submit"      - Find element by exact text
     :Submit        - Find element by partial text (contains)
 
@@ -35,7 +35,7 @@ OUTPUT:
 EXAMPLES:
     # Start and interact with a TUI app
     agent-tui run "npx create-next-app"
-    agent-tui screen -e
+    agent-tui screenshot -e
     agent-tui @e1 "my-project"           # Fill input with value
     agent-tui press Enter                 # Press Enter key
     agent-tui wait "success"
@@ -44,7 +44,7 @@ EXAMPLES:
     # Navigate menus efficiently
     agent-tui run htop
     agent-tui press F10
-    agent-tui screen -e
+    agent-tui screenshot -e
     agent-tui @e1                         # Activate element (click)
     agent-tui press ArrowDown ArrowDown Enter
 
@@ -115,7 +115,6 @@ impl Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Run a TUI application in a virtual terminal
-    #[command(visible_alias = "spawn")]
     #[command(long_about = "\
 Run a new TUI application in a virtual terminal.
 
@@ -161,12 +160,11 @@ EXAMPLES:
         rows: u16,
     },
 
-    /// View screen content and detect UI elements
-    #[command(visible_alias = "snapshot")]
+    /// Capture a screenshot and detect UI elements
     #[command(long_about = "\
-View the current screen state.
+View the current screenshot state.
 
-Returns the current terminal screen content and optionally detects
+Returns the current terminal screenshot content and optionally detects
 interactive UI elements like buttons, inputs, and menus.
 
 Element detection uses the Visual Object Model (VOM) which identifies
@@ -179,12 +177,12 @@ ACCESSIBILITY TREE FORMAT (-a):
     - textbox \"Search\" [ref=e2]")]
     #[command(after_long_help = "\
 EXAMPLES:
-    agent-tui screen              # Just the screen
-    agent-tui screen -e           # Screen + detected elements
-    agent-tui screen -a           # Accessibility tree format
-    agent-tui screen -a --interactive-only  # Only interactive elements
-    agent-tui screen --strip-ansi # Plain text without colors")]
-    Screen {
+    agent-tui screenshot              # Just the screenshot
+    agent-tui screenshot -e           # Screenshot + detected elements
+    agent-tui screenshot -a           # Accessibility tree format
+    agent-tui screenshot -a --interactive-only  # Only interactive elements
+    agent-tui screenshot --strip-ansi # Plain text without colors")]
+    Screenshot {
         /// Detect interactive elements and include element refs
         #[arg(short = 'e', long, help_heading = "Element Detection")]
         elements: bool,
@@ -211,7 +209,6 @@ EXAMPLES:
     },
 
     /// Perform an action on an element by reference
-    #[command(visible_alias = "click")]
     #[command(long_about = "\
 Perform an action on an element by reference.
 
@@ -236,7 +233,6 @@ EXAMPLES:
     },
 
     /// Send key press(es) to the terminal
-    #[command(visible_alias = "keystroke")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui press Enter
@@ -288,18 +284,18 @@ EXAMPLES:
         release: bool,
     },
 
-    /// Wait for text, element, or screen stability
+    /// Wait for text, element, or screenshot stability
     #[command(long_about = "\
 Wait for a condition to be met before continuing.
 
-Waits for text to appear, elements to change, or the screen to stabilize.
+Waits for text to appear, elements to change, or the screenshot to stabilize.
 Returns success if the condition is met within the timeout period.
 
 WAIT CONDITIONS:
-    <text>              Wait for text to appear on screen
+    <text>              Wait for text to appear on screenshot
     -e, --element <ref> Wait for element to appear
     --focused <ref>     Wait for element to be focused
-    --stable            Wait for screen to stop changing
+    --stable            Wait for screenshot to stop changing
     --value <ref>=<val> Wait for input to have specific value
     -g, --gone          Modifier: wait for element/text to disappear
 
@@ -310,7 +306,7 @@ EXAMPLES:
     agent-tui wait \"Continue\"           # Wait for text
     agent-tui wait -e @btn1             # Wait for element
     agent-tui wait -e @spinner --gone   # Wait for element to disappear
-    agent-tui wait --stable             # Wait for screen stability
+    agent-tui wait --stable             # Wait for screenshot stability
     agent-tui wait -t 5000 \"Done\"       # 5 second timeout")]
     Wait {
         #[command(flatten)]
@@ -369,27 +365,6 @@ EXAMPLES:
         #[command(subcommand)]
         command: Option<LiveCommand>,
     },
-    #[command(subcommand, hide = true)]
-    Debug(DebugCommand),
-
-    #[command(hide = true)]
-    RecordStart,
-
-    #[command(hide = true)]
-    RecordStop(RecordStopArgs),
-
-    #[command(hide = true)]
-    RecordStatus,
-
-    #[command(hide = true)]
-    Trace(TraceArgs),
-
-    #[command(hide = true)]
-    Console(ConsoleArgs),
-
-    #[command(hide = true)]
-    Errors(ErrorsArgs),
-
     /// Manage the background daemon
     #[command(subcommand)]
     Daemon(DaemonCommand),
@@ -621,55 +596,6 @@ pub enum ToggleState {
     Off,
 }
 
-#[derive(Debug, Subcommand)]
-#[command(subcommand_required = true, arg_required_else_help = true)]
-pub enum DebugCommand {
-    /// Manage recording (start/stop/status)
-    #[command(subcommand)]
-    Record(RecordAction),
-
-    /// Show recent interaction trace
-    Trace(TraceArgs),
-
-    /// Show console/terminal output
-    Console(ConsoleArgs),
-
-    /// Show captured errors (stderr, signals, exit codes)
-    Errors(ErrorsArgs),
-
-    /// Show environment diagnostics
-    Env,
-}
-
-#[derive(Debug, Subcommand)]
-#[command(subcommand_required = true, arg_required_else_help = true)]
-pub enum RecordAction {
-    /// Start recording the current session
-    Start,
-
-    /// Stop recording and write the output file
-    Stop(RecordStopArgs),
-
-    /// Check recording status
-    Status,
-}
-
-#[derive(Clone, Copy, Debug, ValueEnum, Default)]
-pub enum RecordFormat {
-    #[default]
-    Json,
-    Asciicast,
-}
-
-impl RecordFormat {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            RecordFormat::Json => "json",
-            RecordFormat::Asciicast => "asciicast",
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum ScrollDirection {
     Up,
@@ -687,59 +613,6 @@ impl ScrollDirection {
             ScrollDirection::Right => "right",
         }
     }
-}
-
-#[derive(Debug, Clone, Args)]
-pub struct RecordStopArgs {
-    /// Output file path (defaults to stdout)
-    #[arg(short, long, value_name = "FILE", value_hint = ValueHint::FilePath)]
-    pub output: Option<PathBuf>,
-
-    /// Recording format to write
-    #[arg(
-        long = "record-format",
-        value_enum,
-        default_value_t = RecordFormat::Json,
-        value_name = "FORMAT"
-    )]
-    pub record_format: RecordFormat,
-}
-
-#[derive(Debug, Clone, Args)]
-pub struct TraceArgs {
-    /// Number of recent entries to show
-    #[arg(short = 'n', long, default_value_t = 10)]
-    pub count: usize,
-
-    /// Start tracing (enables capture)
-    #[arg(long)]
-    pub start: bool,
-
-    /// Stop tracing (disables capture)
-    #[arg(long)]
-    pub stop: bool,
-}
-
-#[derive(Debug, Clone, Args)]
-pub struct ConsoleArgs {
-    /// Number of lines to show
-    #[arg(short = 'n', long, default_value_t = 100)]
-    pub lines: usize,
-
-    /// Clear captured console output
-    #[arg(long)]
-    pub clear: bool,
-}
-
-#[derive(Debug, Clone, Args)]
-pub struct ErrorsArgs {
-    /// Number of recent errors to show
-    #[arg(short = 'n', long, default_value_t = 10)]
-    pub count: usize,
-
-    /// Clear captured errors
-    #[arg(long)]
-    pub clear: bool,
 }
 
 #[derive(Debug, Clone, Default, Args)]
@@ -784,7 +657,7 @@ pub struct WaitParams {
     )]
     pub focused: Option<String>,
 
-    /// Wait for the screen to stop changing
+    /// Wait for the screenshot to stop changing
     #[arg(long, group = "wait_condition", help_heading = "Wait Condition")]
     pub stable: bool,
 
@@ -923,9 +796,9 @@ mod tests {
     }
 
     #[test]
-    fn test_screen_flags() {
-        let cli = Cli::parse_from(["agent-tui", "screen", "-e"]);
-        let Commands::Screen {
+    fn test_screenshot_flags() {
+        let cli = Cli::parse_from(["agent-tui", "screenshot", "-e"]);
+        let Commands::Screenshot {
             elements,
             region,
             strip_ansi,
@@ -933,7 +806,7 @@ mod tests {
             ..
         } = cli.command
         else {
-            panic!("Expected Screen command, got {:?}", cli.command);
+            panic!("Expected Screenshot command, got {:?}", cli.command);
         };
         assert!(elements, "-i should enable elements");
         assert!(region.is_none());
@@ -942,17 +815,17 @@ mod tests {
     }
 
     #[test]
-    fn test_screen_all_flags() {
+    fn test_screenshot_all_flags() {
         let cli = Cli::parse_from([
             "agent-tui",
-            "screen",
+            "screenshot",
             "-e",
             "--region",
             "modal",
             "--strip-ansi",
             "--include-cursor",
         ]);
-        let Commands::Screen {
+        let Commands::Screenshot {
             elements,
             region,
             strip_ansi,
@@ -960,7 +833,7 @@ mod tests {
             ..
         } = cli.command
         else {
-            panic!("Expected Screen command, got {:?}", cli.command);
+            panic!("Expected Screenshot command, got {:?}", cli.command);
         };
         assert!(elements);
         assert_eq!(region, Some("modal".to_string()));
@@ -969,30 +842,30 @@ mod tests {
     }
 
     #[test]
-    fn test_screen_accessibility_flag() {
-        let cli = Cli::parse_from(["agent-tui", "screen", "-a"]);
-        let Commands::Screen {
+    fn test_screenshot_accessibility_flag() {
+        let cli = Cli::parse_from(["agent-tui", "screenshot", "-a"]);
+        let Commands::Screenshot {
             accessibility,
             elements,
             ..
         } = cli.command
         else {
-            panic!("Expected Screen command, got {:?}", cli.command);
+            panic!("Expected Screenshot command, got {:?}", cli.command);
         };
         assert!(accessibility, "-a should enable accessibility tree format");
         assert!(!elements, "elements should be false by default");
     }
 
     #[test]
-    fn test_screen_accessibility_interactive_only() {
-        let cli = Cli::parse_from(["agent-tui", "screen", "-a", "--interactive-only"]);
-        let Commands::Screen {
+    fn test_screenshot_accessibility_interactive_only() {
+        let cli = Cli::parse_from(["agent-tui", "screenshot", "-a", "--interactive-only"]);
+        let Commands::Screenshot {
             accessibility,
             interactive_only,
             ..
         } = cli.command
         else {
-            panic!("Expected Screen command, got {:?}", cli.command);
+            panic!("Expected Screenshot command, got {:?}", cli.command);
         };
         assert!(accessibility, "--accessibility should be set");
         assert!(
@@ -1388,29 +1261,6 @@ mod tests {
     }
 
     #[test]
-    fn test_trace_defaults() {
-        let cli = Cli::parse_from(["agent-tui", "trace"]);
-        let Commands::Trace(args) = cli.command else {
-            panic!("Expected Trace command, got {:?}", cli.command);
-        };
-
-        assert_eq!(args.count, 10, "Default trace count should be 10");
-        assert!(!args.start);
-        assert!(!args.stop);
-    }
-
-    #[test]
-    fn test_console_defaults() {
-        let cli = Cli::parse_from(["agent-tui", "console"]);
-        let Commands::Console(args) = cli.command else {
-            panic!("Expected Console command, got {:?}", cli.command);
-        };
-
-        assert_eq!(args.lines, 100, "Default console lines should be 100");
-        assert!(!args.clear, "Default clear should be false");
-    }
-
-    #[test]
     fn test_wait_assert_flag() {
         let cli = Cli::parse_from(["agent-tui", "wait", "--assert", "Success"]);
         let Commands::Wait { params } = cli.command else {
@@ -1462,25 +1312,6 @@ mod tests {
         };
         assert_eq!(command, "bash");
         assert_eq!(cwd, Some(PathBuf::from("/tmp")));
-    }
-
-    #[test]
-    fn test_errors_command_with_count() {
-        let cli = Cli::parse_from(["agent-tui", "errors", "-n", "25"]);
-        let Commands::Errors(args) = cli.command else {
-            panic!("Expected Errors command, got {:?}", cli.command);
-        };
-        assert_eq!(args.count, 25);
-        assert!(!args.clear);
-    }
-
-    #[test]
-    fn test_errors_command_with_clear() {
-        let cli = Cli::parse_from(["agent-tui", "errors", "--clear"]);
-        let Commands::Errors(args) = cli.command else {
-            panic!("Expected Errors command, got {:?}", cli.command);
-        };
-        assert!(args.clear);
     }
 
     #[test]
@@ -1589,46 +1420,6 @@ mod tests {
             command,
             Some(SessionsCommand::Show { session_id: _ })
         ));
-    }
-
-    #[test]
-    fn test_record_start_command() {
-        let cli = Cli::parse_from(["agent-tui", "record-start"]);
-        assert!(matches!(cli.command, Commands::RecordStart));
-    }
-
-    #[test]
-    fn test_record_stop_command() {
-        let cli = Cli::parse_from(["agent-tui", "record-stop"]);
-        let Commands::RecordStop(args) = cli.command else {
-            panic!("Expected RecordStop command, got {:?}", cli.command);
-        };
-        assert!(args.output.is_none());
-        assert!(matches!(args.record_format, RecordFormat::Json));
-    }
-
-    #[test]
-    fn test_record_stop_with_output() {
-        let cli = Cli::parse_from(["agent-tui", "record-stop", "-o", "recording.json"]);
-        let Commands::RecordStop(args) = cli.command else {
-            panic!("Expected RecordStop command, got {:?}", cli.command);
-        };
-        assert_eq!(args.output, Some(PathBuf::from("recording.json")));
-    }
-
-    #[test]
-    fn test_record_stop_asciicast_format() {
-        let cli = Cli::parse_from(["agent-tui", "record-stop", "--record-format", "asciicast"]);
-        let Commands::RecordStop(args) = cli.command else {
-            panic!("Expected RecordStop command, got {:?}", cli.command);
-        };
-        assert!(matches!(args.record_format, RecordFormat::Asciicast));
-    }
-
-    #[test]
-    fn test_record_status_command() {
-        let cli = Cli::parse_from(["agent-tui", "record-status"]);
-        assert!(matches!(cli.command, Commands::RecordStatus));
     }
 
     #[test]

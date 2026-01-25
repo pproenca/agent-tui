@@ -63,7 +63,7 @@ impl SessionError {
             }
             SessionError::ElementNotFound(element_ref) => {
                 format!(
-                    "Element '{}' not found. Run 'snapshot -i' to see current elements and their refs.",
+                    "Element '{}' not found. Run 'screenshot -e' to see current elements and their refs.",
                     element_ref
                 )
             }
@@ -396,7 +396,7 @@ impl DomainError {
             }
             DomainError::ElementNotFound { element_ref, .. } => {
                 format!(
-                    "Element '{}' not found. Run 'snapshot -i' to see current elements and their refs.",
+                    "Element '{}' not found. Run 'screenshot -e' to see current elements and their refs.",
                     element_ref
                 )
             }
@@ -437,7 +437,7 @@ impl DomainError {
                 )
             }
             DomainError::Generic { .. } => {
-                "Run 'snapshot -i' to see current screen state.".to_string()
+                "Run 'screenshot' to see current screen state.".to_string()
             }
         }
     }
@@ -449,7 +449,7 @@ fn suggest_command_for_type(element_type: &str, element_ref: &str) -> String {
         "checkbox" | "radio" => format!("Try: toggle {} or click {}", element_ref, element_ref),
         "input" => format!("Try: fill {} <value>", element_ref),
         "select" => format!("Try: select {} <option>", element_ref),
-        _ => "Run 'snapshot -i' to see element types.".to_string(),
+        _ => "Run 'screenshot -a' to see element types.".to_string(),
     };
     hint
 }
@@ -662,7 +662,7 @@ mod tests {
         assert!(err.suggestion().contains("sessions"));
 
         let err = SessionError::ElementNotFound("@btn1".into());
-        assert!(err.suggestion().contains("snapshot"));
+        assert!(err.suggestion().contains("screenshot"));
 
         let err = SessionError::InvalidKey("x".into());
         assert!(err.suggestion().contains("Enter"));

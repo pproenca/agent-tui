@@ -44,7 +44,7 @@ fn test_lock_timeout_has_correct_category() {
     );
 
     harness
-        .run(&["-f", "json", "screen"])
+        .run(&["-f", "json", "screenshot"])
         .failure()
         .stderr(predicate::str::contains("lock"));
 }
@@ -75,7 +75,7 @@ fn test_lock_timeout_includes_session_context() {
 fn test_lock_timeout_different_operations() {
     let harness = TestHarness::new();
 
-    let operations = vec!["click", "type", "fill", "screen"];
+    let operations = vec!["click", "type", "fill", "screenshot"];
 
     for op in operations {
         harness.set_response(
@@ -154,7 +154,7 @@ fn test_persistent_lock_timeout() {
 
     for _ in 0..3 {
         harness
-            .run(&["screen"])
+            .run(&["screenshot"])
             .failure()
             .stderr(predicate::str::contains("lock timeout"));
     }

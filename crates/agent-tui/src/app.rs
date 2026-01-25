@@ -175,6 +175,14 @@ impl Application {
                 }
             }
 
+            Commands::Press { keys } => {
+                for key in keys {
+                    handlers::handle_press(ctx, key.clone())?;
+                }
+            }
+
+            Commands::Type { text } => handlers::handle_type(ctx, text.clone())?,
+
             Commands::Input {
                 value,
                 hold,
@@ -234,6 +242,8 @@ impl Application {
             Commands::Version => handlers::handle_version(ctx)?,
             Commands::Env => handlers::handle_env(ctx)?,
 
+            Commands::External(args) => self.handle_element_ref(ctx, args.clone())?,
+
             Commands::Debug(debug_cmd) => match debug_cmd {
                 DebugCommand::Record(action) => match action {
                     RecordAction::Start => handlers::handle_record_start(ctx)?,
@@ -255,6 +265,117 @@ impl Application {
             },
         }
         Ok(())
+    }
+
+    fn handle_element_ref<C: DaemonClient>(
+        &self,
+        ctx: &mut HandlerContext<C>,
+        args: Vec<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if args.is_empty() {
+            return Err("No element selector provided".into());
+        }
+
+        let selector = &args[0];
+
+        // Parse the selector type and resolve to element ref
+        let element_ref = self.resolve_selector(ctx, selector)?;
+
+        // Dispatch based on action
+        match args.get(1).map(|s| s.as_str()) {
+            None => {
+                // Default action: activate (click)
+                handlers::handle_click(ctx, element_ref)?
+            }
+            Some("toggle") => {
+                let state = match args.get(2).map(|s| s.as_str()) {
+                    Some("on") => Some(true),
+                    Some("off") => Some(false),
+                    _ => None,
+                };
+                handlers::handle_toggle(ctx, element_ref, state)?
+            }
+            Some("choose") => {
+                let options: Vec<String> = args[2..].to_vec();
+                if options.is_empty() {
+                    return Err("choose requires at least one option".into());
+                }
+                handlers::handle_select(ctx, element_ref, options)?
+            }
+            Some("clear") => handlers::handle_clear(ctx, element_ref)?,
+            Some("focus") => handlers::handle_focus(ctx, element_ref)?,
+            Some(value) => {
+                // Value provided - treat as fill
+                handlers::handle_fill(ctx, element_ref, value.to_string())?
+            }
+        }
+        Ok(())
+    }
+
+    fn resolve_selector<C: DaemonClient>(
+        &self,
+        ctx: &mut HandlerContext<C>,
+        selector: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        // Standard element refs: @e1, @btn1, @inp1
+        if selector.starts_with("@e")
+            || selector.starts_with("@btn")
+            || selector.starts_with("@inp")
+        {
+            return Ok(selector.to_string());
+        }
+
+        // Partial text selector: :Submit
+        if let Some(text) = selector.strip_prefix(':') {
+            return self.find_element_by_text(ctx, text, false);
+        }
+
+        // Text selector: @"text" or @text
+        if let Some(after_at) = selector.strip_prefix('@') {
+            // Check for quoted text: @"Yes, proceed"
+            let text = after_at
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+                .unwrap_or(after_at);
+            return self.find_element_by_text(ctx, text, true);
+        }
+
+        Err(format!(
+            "Invalid selector: {}. Use @e1, @\"text\", or :partial",
+            selector
+        )
+        .into())
+    }
+
+    fn find_element_by_text<C: DaemonClient>(
+        &self,
+        ctx: &mut HandlerContext<C>,
+        text: &str,
+        exact: bool,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        use crate::ipc::params;
+
+        let find_params = params::FindParams {
+            session: ctx.session.clone(),
+            text: Some(text.to_string()),
+            exact,
+            nth: Some(0),
+            ..Default::default()
+        };
+        let params_json = serde_json::to_value(find_params)?;
+        let result = ctx.client.call("find", Some(params_json))?;
+
+        // Extract element ref from result
+        if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
+            if let Some(first) = elements.first() {
+                if let Some(ref_str) = first.get("ref").and_then(|v| v.as_str()) {
+                    return Ok(ref_str.to_string());
+                }
+            }
+        }
+
+        let match_type = if exact { "exact" } else { "partial" };
+        Err(format!("No element found with {} text: {}", match_type, text).into())
     }
 
     fn handle_error(&self, e: Box<dyn std::error::Error>) -> i32 {

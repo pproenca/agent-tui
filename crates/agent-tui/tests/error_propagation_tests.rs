@@ -4,6 +4,9 @@ use common::{MockResponse, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
 
+/// LSB exit code 3: program is not running
+const EXIT_NOT_RUNNING: i32 = 3;
+
 #[test]
 fn test_session_not_found_structured_error() {
     let harness = TestHarness::new();
@@ -296,7 +299,10 @@ fn test_error_json_format_includes_code() {
 
     let output = harness.run(&["-f", "json", "daemon", "status"]);
 
-    output.success();
+    // When health check returns an error, daemon status shows "not running"
+    output
+        .code(EXIT_NOT_RUNNING)
+        .stdout(predicate::str::contains("\"running\":false"));
 }
 
 #[test]
@@ -363,8 +369,9 @@ fn test_simple_error_without_structured_data() {
         },
     );
 
+    // When health check returns an error, daemon status shows "not running"
     harness
         .run(&["daemon", "status"])
-        .success()
-        .stdout(predicate::str::contains("Invalid request"));
+        .code(EXIT_NOT_RUNNING)
+        .stdout(predicate::str::contains("not running"));
 }

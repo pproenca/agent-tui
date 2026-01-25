@@ -2,19 +2,23 @@
 
 use super::mock_daemon::{MockDaemon, MockResponse, RecordedRequest};
 use assert_cmd::Command;
+use once_cell::sync::Lazy;
 use serde_json::Value;
+use std::time::Duration;
 use tokio::runtime::Runtime;
+
+// Shared runtime to avoid per-test spin-up overhead and reduce flakiness from repeated scheduler init.
+static RUNTIME: Lazy<Runtime> =
+    Lazy::new(|| Runtime::new().expect("Failed to create tokio runtime"));
 
 pub struct TestHarness {
     daemon: MockDaemon,
-    runtime: Runtime,
 }
 
 impl TestHarness {
     pub fn new() -> Self {
-        let runtime = Runtime::new().expect("Failed to create tokio runtime");
-        let daemon = runtime.block_on(MockDaemon::start());
-        Self { daemon, runtime }
+        let daemon = RUNTIME.block_on(MockDaemon::start());
+        Self { daemon }
     }
 
     pub fn cli_command(&self) -> Command {
@@ -56,6 +60,17 @@ impl TestHarness {
                 code,
                 message: message.to_string(),
             },
+        );
+    }
+
+    pub fn set_delayed_response(&self, method: &str, delay: Duration, next: MockResponse) {
+        self.set_response(method, MockResponse::Delayed(delay, Box::new(next)));
+    }
+
+    pub fn set_junk_then_response(&self, method: &str, junk: &str, next: MockResponse) {
+        self.set_response(
+            method,
+            MockResponse::JunkThen(Box::new(next), junk.to_string()),
         );
     }
 
@@ -102,13 +117,6 @@ impl TestHarness {
         }
     }
 
-    pub fn call_count(&self, method: &str) -> usize {
-        self.get_requests()
-            .iter()
-            .filter(|r| r.method == method)
-            .count()
-    }
-
     pub fn assert_param(&self, param_name: &str, expected_value: Value) {
         let requests = self.get_requests();
         let last_request = requests.last().expect("No requests recorded");
@@ -121,10 +129,6 @@ impl TestHarness {
             "Param '{}' mismatch. Expected: {:?}, Actual: {:?}",
             param_name, expected_value, actual
         );
-    }
-
-    pub fn get_all_calls(&self) -> Vec<RecordedRequest> {
-        self.get_requests()
     }
 }
 

@@ -32,77 +32,14 @@ use crate::usecases::ports::{LivePreviewOutput, LivePreviewSnapshot};
 use super::pty_session::PtySession;
 use crate::infra::daemon::TerminalState;
 
-pub use crate::domain::session_types::ErrorEntry;
-pub use crate::domain::session_types::RecordingFrame;
-pub use crate::domain::session_types::RecordingStatus;
 pub use crate::domain::session_types::SessionId;
 pub use crate::domain::session_types::SessionInfo;
-pub use crate::domain::session_types::TraceEntry;
 pub use crate::infra::daemon::SessionError;
 
-const MAX_RECORDING_FRAMES: usize = 1000;
-const MAX_TRACE_ENTRIES: usize = 500;
-const MAX_ERROR_ENTRIES: usize = 500;
 const LIVE_PREVIEW_MAX_BUFFER_BYTES: usize = 4 * 1024 * 1024;
 
 pub fn generate_session_id() -> SessionId {
     SessionId::new(Uuid::new_v4().to_string()[..8].to_string())
-}
-
-fn get_last_n<T: Clone>(queue: &VecDeque<T>, count: usize) -> Vec<T> {
-    let start = queue.len().saturating_sub(count);
-    queue.iter().skip(start).cloned().collect()
-}
-
-fn push_bounded<T>(queue: &mut VecDeque<T>, item: T, max_size: usize) {
-    if queue.len() >= max_size {
-        queue.pop_front();
-    }
-    queue.push_back(item);
-}
-
-struct RecordingState {
-    is_recording: bool,
-    start_time: Instant,
-    frames: VecDeque<RecordingFrame>,
-}
-
-impl RecordingState {
-    fn new() -> Self {
-        Self {
-            is_recording: false,
-            start_time: Instant::now(),
-            frames: VecDeque::new(),
-        }
-    }
-}
-
-struct TraceState {
-    is_tracing: bool,
-    start_time: Instant,
-    entries: VecDeque<TraceEntry>,
-}
-
-impl TraceState {
-    fn new() -> Self {
-        Self {
-            is_tracing: false,
-            start_time: Instant::now(),
-            entries: VecDeque::new(),
-        }
-    }
-}
-
-struct ErrorState {
-    entries: VecDeque<ErrorEntry>,
-}
-
-impl ErrorState {
-    fn new() -> Self {
-        Self {
-            entries: VecDeque::new(),
-        }
-    }
 }
 
 struct LivePreviewBuffer {
@@ -159,13 +96,6 @@ impl LivePreviewBuffer {
         self.cols = cols;
         self.rows = rows;
         self.vt.resize(cols as usize, rows as usize);
-    }
-
-    fn clear(&mut self) {
-        self.vt = build_preview_vt(self.cols, self.rows);
-        self.pending.clear();
-        self.pending_bytes = 0;
-        self.dropped_bytes = 0;
     }
 
     fn push_text(&mut self, text: &str) {
@@ -235,10 +165,7 @@ pub struct Session {
     pub created_at: DateTime<Utc>,
     pty: PtySession,
     terminal: TerminalState,
-    recording: RecordingState,
-    trace: TraceState,
     held_modifiers: ModifierState,
-    errors: ErrorState,
     live_preview: LivePreviewBuffer,
 }
 
@@ -250,10 +177,7 @@ impl Session {
             created_at: Utc::now(),
             pty: PtySession::new(pty),
             terminal: TerminalState::new(cols, rows),
-            recording: RecordingState::new(),
-            trace: TraceState::new(),
             held_modifiers: ModifierState::default(),
-            errors: ErrorState::new(),
             live_preview: LivePreviewBuffer::new(cols, rows),
         }
     }
@@ -391,120 +315,6 @@ impl Session {
 
     pub fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
         self.pty.try_read(buf, timeout_ms)
-    }
-
-    pub fn start_recording(&mut self) {
-        self.recording.is_recording = true;
-        self.recording.start_time = Instant::now();
-        self.recording.frames.clear();
-
-        let screen = self.terminal.screen_text();
-        push_bounded(
-            &mut self.recording.frames,
-            RecordingFrame {
-                timestamp_ms: 0,
-                screen,
-            },
-            MAX_RECORDING_FRAMES,
-        );
-    }
-
-    pub fn stop_recording(&mut self) -> Vec<RecordingFrame> {
-        self.recording.is_recording = false;
-        std::mem::take(&mut self.recording.frames)
-            .into_iter()
-            .collect()
-    }
-
-    pub fn add_recording_frame(&mut self, screen: String) {
-        if !self.recording.is_recording {
-            return;
-        }
-        let timestamp_ms = self.recording.start_time.elapsed().as_millis() as u64;
-        push_bounded(
-            &mut self.recording.frames,
-            RecordingFrame {
-                timestamp_ms,
-                screen,
-            },
-            MAX_RECORDING_FRAMES,
-        );
-    }
-
-    pub fn recording_status(&self) -> RecordingStatus {
-        RecordingStatus {
-            is_recording: self.recording.is_recording,
-            frame_count: self.recording.frames.len(),
-            duration_ms: if self.recording.is_recording {
-                self.recording.start_time.elapsed().as_millis() as u64
-            } else {
-                0
-            },
-        }
-    }
-
-    pub fn start_trace(&mut self) {
-        self.trace.is_tracing = true;
-        self.trace.start_time = Instant::now();
-        self.trace.entries.clear();
-    }
-
-    pub fn stop_trace(&mut self) {
-        self.trace.is_tracing = false;
-    }
-
-    pub fn is_tracing(&self) -> bool {
-        self.trace.is_tracing
-    }
-
-    pub fn get_trace_entries(&self, count: usize) -> Vec<TraceEntry> {
-        get_last_n(&self.trace.entries, count)
-    }
-
-    pub fn add_trace_entry(&mut self, action: String, details: Option<String>) {
-        if !self.trace.is_tracing {
-            return;
-        }
-        let timestamp_ms = self.trace.start_time.elapsed().as_millis() as u64;
-        push_bounded(
-            &mut self.trace.entries,
-            TraceEntry {
-                timestamp_ms,
-                action,
-                details,
-            },
-            MAX_TRACE_ENTRIES,
-        );
-    }
-
-    pub fn get_errors(&self, count: usize) -> Vec<ErrorEntry> {
-        get_last_n(&self.errors.entries, count)
-    }
-
-    pub fn add_error(&mut self, message: String, source: String) {
-        let timestamp = Utc::now().to_rfc3339();
-        push_bounded(
-            &mut self.errors.entries,
-            ErrorEntry {
-                timestamp,
-                message,
-                source,
-            },
-            MAX_ERROR_ENTRIES,
-        );
-    }
-
-    pub fn error_count(&self) -> usize {
-        self.errors.entries.len()
-    }
-
-    pub fn clear_errors(&mut self) {
-        self.errors.entries.clear();
-    }
-
-    pub fn clear_console(&mut self) {
-        self.terminal.clear();
-        self.live_preview.clear();
     }
 
     pub fn live_preview_snapshot(&self) -> LivePreviewSnapshot {

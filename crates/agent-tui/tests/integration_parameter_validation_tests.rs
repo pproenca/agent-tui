@@ -289,7 +289,7 @@ fn test_session_option_with_command() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["-s", "my-session", "screen"])
+        .run(&["-s", "my-session", "screenshot"])
         .success()
-        .stdout(predicate::str::contains("Screen").or(predicate::str::contains("my-session")));
+        .stdout(predicate::str::contains("Screenshot").or(predicate::str::contains("my-session")));
 }

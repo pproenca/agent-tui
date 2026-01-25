@@ -2,7 +2,6 @@ mod diagnostics;
 mod elements;
 mod input;
 mod live_preview;
-mod recording;
 mod select_helpers;
 mod session;
 mod shutdown;
@@ -12,9 +11,8 @@ mod wait;
 mod wait_condition;
 
 pub use diagnostics::{
-    ConsoleUseCase, ConsoleUseCaseImpl, ErrorsUseCase, ErrorsUseCaseImpl, HealthUseCase,
-    HealthUseCaseImpl, MetricsUseCase, MetricsUseCaseImpl, PtyReadUseCase, PtyReadUseCaseImpl,
-    PtyWriteUseCase, PtyWriteUseCaseImpl, TraceUseCase, TraceUseCaseImpl,
+    HealthUseCase, HealthUseCaseImpl, MetricsUseCase, MetricsUseCaseImpl, PtyReadUseCase,
+    PtyReadUseCaseImpl, PtyWriteUseCase, PtyWriteUseCaseImpl,
 };
 pub use elements::{
     ClearUseCase, ClearUseCaseImpl, ClickUseCase, ClickUseCaseImpl, CountUseCase, CountUseCaseImpl,
@@ -34,10 +32,6 @@ pub use input::{
 pub use live_preview::{
     LivePreviewStartUseCase, LivePreviewStartUseCaseImpl, LivePreviewStatusUseCase,
     LivePreviewStatusUseCaseImpl, LivePreviewStopUseCase, LivePreviewStopUseCaseImpl,
-};
-pub use recording::{
-    RecordStartUseCase, RecordStartUseCaseImpl, RecordStatusUseCase, RecordStatusUseCaseImpl,
-    RecordStopUseCase, RecordStopUseCaseImpl,
 };
 pub use session::{
     AssertUseCase, AssertUseCaseImpl, AttachUseCase, AttachUseCaseImpl, CleanupUseCase,

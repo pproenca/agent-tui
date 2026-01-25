@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::domain::core::{Component, CursorPosition, Element};
-use crate::domain::session_types::{
-    ErrorEntry, RecordingFrame, RecordingStatus, SessionId, SessionInfo, TraceEntry,
-};
+use crate::domain::session_types::{SessionId, SessionInfo};
 
 use super::SessionError;
 
@@ -40,13 +38,6 @@ pub trait SessionOps: Send + Sync {
     fn session_id(&self) -> SessionId;
     fn command(&self) -> String;
     fn size(&self) -> (u16, u16);
-    fn start_recording(&self);
-    fn stop_recording(&self) -> Vec<RecordingFrame>;
-    fn recording_status(&self) -> RecordingStatus;
-    fn get_trace_entries(&self, count: usize) -> Vec<TraceEntry>;
-    fn get_errors(&self, count: usize) -> Vec<ErrorEntry>;
-    fn clear_errors(&self);
-    fn clear_console(&self);
     fn live_preview_snapshot(&self) -> LivePreviewSnapshot;
     fn live_preview_drain_output(&self) -> LivePreviewOutput;
 }

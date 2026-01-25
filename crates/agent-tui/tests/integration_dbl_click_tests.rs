@@ -39,7 +39,7 @@ fn test_dbl_click_fails_nonexistent_element() {
                 "element_ref": "@missing",
                 "session_id": "test-session"
             })),
-            suggestion: Some("Use 'snapshot -i' to see available elements".to_string()),
+            suggestion: Some("Use 'screenshot -e' to see available elements".to_string()),
         },
     );
 

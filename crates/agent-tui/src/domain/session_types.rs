@@ -137,32 +137,6 @@ impl Default for TerminalSize {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct RecordingFrame {
-    pub timestamp_ms: u64,
-    pub screen: String,
-}
-
-pub struct RecordingStatus {
-    pub is_recording: bool,
-    pub frame_count: usize,
-    pub duration_ms: u64,
-}
-
-#[derive(Clone, Debug)]
-pub struct TraceEntry {
-    pub timestamp_ms: u64,
-    pub action: String,
-    pub details: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ErrorEntry {
-    pub timestamp: String,
-    pub message: String,
-    pub source: String,
-}
-
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
     pub id: SessionId,
@@ -228,52 +202,6 @@ mod tests {
         let id = SessionId::new("test");
         let s: &str = id.as_ref();
         assert_eq!(s, "test");
-    }
-
-    #[test]
-    fn test_recording_frame_creation() {
-        let frame = RecordingFrame {
-            timestamp_ms: 100,
-            screen: "test screen".to_string(),
-        };
-        assert_eq!(frame.timestamp_ms, 100);
-        assert_eq!(frame.screen, "test screen");
-    }
-
-    #[test]
-    fn test_recording_status_creation() {
-        let status = RecordingStatus {
-            is_recording: true,
-            frame_count: 10,
-            duration_ms: 5000,
-        };
-        assert!(status.is_recording);
-        assert_eq!(status.frame_count, 10);
-        assert_eq!(status.duration_ms, 5000);
-    }
-
-    #[test]
-    fn test_trace_entry_creation() {
-        let entry = TraceEntry {
-            timestamp_ms: 200,
-            action: "click".to_string(),
-            details: Some("button1".to_string()),
-        };
-        assert_eq!(entry.timestamp_ms, 200);
-        assert_eq!(entry.action, "click");
-        assert_eq!(entry.details, Some("button1".to_string()));
-    }
-
-    #[test]
-    fn test_error_entry_creation() {
-        let entry = ErrorEntry {
-            timestamp: "2024-01-01T00:00:00Z".to_string(),
-            message: "test error".to_string(),
-            source: "test".to_string(),
-        };
-        assert_eq!(entry.timestamp, "2024-01-01T00:00:00Z");
-        assert_eq!(entry.message, "test error");
-        assert_eq!(entry.source, "test");
     }
 
     #[test]

@@ -114,41 +114,6 @@ impl SessionOps for SessionHandleImpl {
         session_guard.size()
     }
 
-    fn start_recording(&self) {
-        let mut session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.start_recording();
-    }
-
-    fn stop_recording(&self) -> Vec<crate::domain::session_types::RecordingFrame> {
-        let mut session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.stop_recording()
-    }
-
-    fn recording_status(&self) -> crate::domain::session_types::RecordingStatus {
-        let session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.recording_status()
-    }
-
-    fn get_trace_entries(&self, count: usize) -> Vec<crate::domain::session_types::TraceEntry> {
-        let session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.get_trace_entries(count)
-    }
-
-    fn get_errors(&self, count: usize) -> Vec<crate::domain::session_types::ErrorEntry> {
-        let session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.get_errors(count)
-    }
-
-    fn clear_errors(&self) {
-        let mut session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.clear_errors();
-    }
-
-    fn clear_console(&self) {
-        let mut session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.clear_console();
-    }
-
     fn live_preview_snapshot(&self) -> LivePreviewSnapshot {
         let session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.live_preview_snapshot()

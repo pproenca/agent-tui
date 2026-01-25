@@ -62,7 +62,7 @@ fn test_daemon_disconnect_on_snapshot() {
     harness.set_response("snapshot", MockResponse::Disconnect);
 
     harness
-        .run(&["screen"])
+        .run(&["screenshot"])
         .failure()
         .stderr(predicate::str::contains("error").or(predicate::str::contains("Error")));
 }

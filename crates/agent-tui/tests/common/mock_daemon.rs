@@ -136,7 +136,7 @@ impl MockDaemon {
                 "snapshot".to_string(),
                 MockResponse::Success(serde_json::json!({
                     "session_id": super::TEST_SESSION_ID,
-                    "screen": "Test screen content\n",
+                    "screenshot": "Test screen content\n",
                     "elements": [],
                     "cursor": { "row": 0, "col": 0, "visible": true },
                     "size": { "cols": super::TEST_COLS, "rows": super::TEST_ROWS }
@@ -159,13 +159,6 @@ impl MockDaemon {
                 })),
             );
 
-            h.insert(
-                "screen".to_string(),
-                MockResponse::Error {
-                    code: -32601,
-                    message: "Method 'screen' is deprecated. Use 'snapshot' with strip_ansi=true instead.".to_string(),
-                },
-            );
             h.insert(
                 "click".to_string(),
                 MockResponse::Success(serde_json::json!({
@@ -313,50 +306,6 @@ impl MockDaemon {
                 })),
             );
             h.insert(
-                "record_start".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "session_id": super::TEST_SESSION_ID,
-                    "message": null
-                })),
-            );
-            h.insert(
-                "record_stop".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "session_id": super::TEST_SESSION_ID,
-                    "frame_count": 100,
-                    "duration_ms": 5000,
-                    "output_file": null
-                })),
-            );
-            h.insert(
-                "record_status".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "session_id": super::TEST_SESSION_ID,
-                    "is_recording": false,
-                    "frame_count": null,
-                    "duration_ms": null
-                })),
-            );
-            h.insert(
-                "trace".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "session_id": super::TEST_SESSION_ID,
-                    "is_tracing": false,
-                    "entries": [],
-                    "formatted": null
-                })),
-            );
-            h.insert(
-                "console".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "session_id": super::TEST_SESSION_ID,
-                    "lines": ["line 1", "line 2"],
-                    "total_lines": 2
-                })),
-            );
-            h.insert(
                 "find".to_string(),
                 MockResponse::Success(serde_json::json!({
                     "elements": [],
@@ -428,14 +377,6 @@ impl MockDaemon {
                 MockResponse::Success(serde_json::json!({
                     "title": "bash",
                     "session_id": super::TEST_SESSION_ID
-                })),
-            );
-            h.insert(
-                "errors".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "session_id": super::TEST_SESSION_ID,
-                    "errors": [],
-                    "total_count": 0
                 })),
             );
             h.insert(

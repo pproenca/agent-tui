@@ -126,29 +126,6 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
 
             "wait" => handlers::wait::handle_wait_uc(&self.usecases.wait, request),
 
-            "record_start" => handlers::recording::handle_record_start_uc(
-                &self.usecases.recording.record_start,
-                request,
-            ),
-            "record_stop" => handlers::recording::handle_record_stop_uc(
-                &self.usecases.recording.record_stop,
-                request,
-            ),
-            "record_status" => handlers::recording::handle_record_status_uc(
-                &self.usecases.recording.record_status,
-                request,
-            ),
-
-            "trace" => {
-                handlers::diagnostics::handle_trace_uc(&self.usecases.diagnostics.trace, request)
-            }
-            "console" => handlers::diagnostics::handle_console_uc(
-                &self.usecases.diagnostics.console,
-                request,
-            ),
-            "errors" => {
-                handlers::diagnostics::handle_errors_uc(&self.usecases.diagnostics.errors, request)
-            }
             "pty_read" => handlers::diagnostics::handle_pty_read_uc(
                 &self.usecases.diagnostics.pty_read,
                 request,
@@ -160,12 +137,6 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
             "shutdown" => handlers::diagnostics::handle_shutdown_uc(
                 &self.usecases.diagnostics.shutdown,
                 request,
-            ),
-
-            "screen" => RpcResponse::error(
-                request.id,
-                -32601,
-                "Method 'screen' is deprecated. Use 'snapshot' with strip_ansi=true instead.",
             ),
 
             _ => RpcResponse::error(
@@ -236,27 +207,6 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("nonexistent_method")
-        );
-    }
-
-    #[test]
-    fn test_router_deprecated_screen_returns_error() {
-        let usecases = create_test_usecases();
-        let router = Router::new(&usecases);
-
-        let request = RpcRequest::new(1, "screen".to_string(), None);
-        let response = router.route(request);
-
-        let json_str = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
-
-        assert!(parsed.get("error").is_some());
-        assert_eq!(parsed["error"]["code"], -32601);
-        assert!(
-            parsed["error"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("deprecated")
         );
     }
 

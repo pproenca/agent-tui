@@ -6,25 +6,22 @@ use crate::infra::daemon::{DaemonMetrics, RealSleeper};
 use crate::usecases::ports::{LivePreviewService, SessionRepository};
 use crate::usecases::{
     AccessibilitySnapshotUseCaseImpl, AssertUseCaseImpl, AttachUseCaseImpl, CleanupUseCaseImpl,
-    ClearUseCaseImpl, ClickUseCaseImpl, ConsoleUseCaseImpl, CountUseCaseImpl,
-    DoubleClickUseCaseImpl, ErrorsUseCaseImpl, FillUseCaseImpl, FindUseCaseImpl, FocusUseCaseImpl,
-    GetFocusedUseCaseImpl, GetTextUseCaseImpl, GetTitleUseCaseImpl, GetValueUseCaseImpl,
-    HealthUseCaseImpl, IsCheckedUseCaseImpl, IsEnabledUseCaseImpl, IsFocusedUseCaseImpl,
-    IsVisibleUseCaseImpl, KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl,
-    KillUseCaseImpl, LivePreviewStartUseCaseImpl, LivePreviewStatusUseCaseImpl,
-    LivePreviewStopUseCaseImpl, MetricsUseCaseImpl, MultiselectUseCaseImpl, PtyReadUseCaseImpl,
-    PtyWriteUseCaseImpl, RecordStartUseCaseImpl, RecordStatusUseCaseImpl, RecordStopUseCaseImpl,
-    ResizeUseCaseImpl, RestartUseCaseImpl, ScrollIntoViewUseCaseImpl, ScrollUseCaseImpl,
-    SelectAllUseCaseImpl, SelectUseCaseImpl, SessionsUseCaseImpl, ShutdownUseCaseImpl,
-    SnapshotUseCaseImpl, SpawnUseCaseImpl, ToggleUseCaseImpl, TraceUseCaseImpl, TypeUseCaseImpl,
-    WaitUseCaseImpl,
+    ClearUseCaseImpl, ClickUseCaseImpl, CountUseCaseImpl, DoubleClickUseCaseImpl, FillUseCaseImpl,
+    FindUseCaseImpl, FocusUseCaseImpl, GetFocusedUseCaseImpl, GetTextUseCaseImpl,
+    GetTitleUseCaseImpl, GetValueUseCaseImpl, HealthUseCaseImpl, IsCheckedUseCaseImpl,
+    IsEnabledUseCaseImpl, IsFocusedUseCaseImpl, IsVisibleUseCaseImpl, KeydownUseCaseImpl,
+    KeystrokeUseCaseImpl, KeyupUseCaseImpl, KillUseCaseImpl, LivePreviewStartUseCaseImpl,
+    LivePreviewStatusUseCaseImpl, LivePreviewStopUseCaseImpl, MetricsUseCaseImpl,
+    MultiselectUseCaseImpl, PtyReadUseCaseImpl, PtyWriteUseCaseImpl, ResizeUseCaseImpl,
+    RestartUseCaseImpl, ScrollIntoViewUseCaseImpl, ScrollUseCaseImpl, SelectAllUseCaseImpl,
+    SelectUseCaseImpl, SessionsUseCaseImpl, ShutdownUseCaseImpl, SnapshotUseCaseImpl,
+    SpawnUseCaseImpl, ToggleUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
 };
 
 pub struct UseCaseContainer<R: SessionRepository + 'static> {
     pub session: SessionUseCases<R>,
     pub elements: ElementUseCases<R>,
     pub input: InputUseCases<R>,
-    pub recording: RecordingUseCases<R>,
     pub diagnostics: DiagnosticsUseCases<R>,
     pub live_preview: LivePreviewUseCases<R>,
     pub wait: WaitUseCaseImpl<R, RealSleeper>,
@@ -75,16 +72,7 @@ pub struct InputUseCases<R: SessionRepository + 'static> {
     pub keyup: KeyupUseCaseImpl<R>,
 }
 
-pub struct RecordingUseCases<R: SessionRepository + 'static> {
-    pub record_start: RecordStartUseCaseImpl<R>,
-    pub record_stop: RecordStopUseCaseImpl<R>,
-    pub record_status: RecordStatusUseCaseImpl<R>,
-}
-
 pub struct DiagnosticsUseCases<R: SessionRepository + 'static> {
-    pub trace: TraceUseCaseImpl<R>,
-    pub console: ConsoleUseCaseImpl<R>,
-    pub errors: ErrorsUseCaseImpl<R>,
     pub pty_read: PtyReadUseCaseImpl<R>,
     pub pty_write: PtyWriteUseCaseImpl<R>,
     pub health: HealthUseCaseImpl<R>,
@@ -162,15 +150,7 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 keydown: KeydownUseCaseImpl::new(Arc::clone(&repository)),
                 keyup: KeyupUseCaseImpl::new(Arc::clone(&repository)),
             },
-            recording: RecordingUseCases {
-                record_start: RecordStartUseCaseImpl::new(Arc::clone(&repository)),
-                record_stop: RecordStopUseCaseImpl::new(Arc::clone(&repository)),
-                record_status: RecordStatusUseCaseImpl::new(Arc::clone(&repository)),
-            },
             diagnostics: DiagnosticsUseCases {
-                trace: TraceUseCaseImpl::new(Arc::clone(&repository)),
-                console: ConsoleUseCaseImpl::new(Arc::clone(&repository)),
-                errors: ErrorsUseCaseImpl::new(Arc::clone(&repository)),
                 pty_read: PtyReadUseCaseImpl::new(Arc::clone(&repository)),
                 pty_write: PtyWriteUseCaseImpl::new(Arc::clone(&repository)),
                 health: HealthUseCaseImpl::new(

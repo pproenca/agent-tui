@@ -3,22 +3,19 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde_json::{Value, json};
 
-use super::recording_adapters::{build_asciicast, build_raw_frames};
 use super::snapshot_adapters::session_info_to_json;
 use crate::domain::{
     AccessibilitySnapshotInput, AttachInput, AttachOutput, CleanupInput, CleanupOutput, ClearInput,
-    ClickInput, ConsoleInput, ConsoleOutput, CountInput, CountOutput, DomainElement,
-    DoubleClickInput, ElementStateInput, ErrorsInput, ErrorsOutput, FillInput, FindInput,
-    FindOutput, FocusCheckOutput, FocusInput, GetFocusedOutput, GetTextOutput, GetTitleOutput,
-    GetValueOutput, HealthOutput, IsCheckedOutput, IsEnabledOutput, KeydownInput, KeystrokeInput,
-    KeyupInput, KillOutput, LivePreviewStartInput, LivePreviewStartOutput, LivePreviewStatusOutput,
-    LivePreviewStopOutput, MetricsOutput, MultiselectInput, MultiselectOutput, PtyReadInput,
-    PtyReadOutput, PtyWriteInput, PtyWriteOutput, RecordStartInput, RecordStartOutput,
-    RecordStatusInput, RecordStatusOutput, RecordStopInput, RecordStopOutput, ResizeInput,
-    ResizeOutput, RestartOutput, ScrollInput, ScrollIntoViewInput, ScrollIntoViewOutput,
-    ScrollOutput, SelectAllInput, SelectInput, SessionId, SessionInput, SessionsOutput,
-    ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, ToggleInput,
-    ToggleOutput, TraceInput, TraceOutput, TypeInput, VisibilityOutput, WaitInput, WaitOutput,
+    ClickInput, CountInput, CountOutput, DomainElement, DoubleClickInput, ElementStateInput,
+    FillInput, FindInput, FindOutput, FocusCheckOutput, FocusInput, GetFocusedOutput,
+    GetTextOutput, GetTitleOutput, GetValueOutput, HealthOutput, IsCheckedOutput, IsEnabledOutput,
+    KeydownInput, KeystrokeInput, KeyupInput, KillOutput, LivePreviewStartInput,
+    LivePreviewStartOutput, LivePreviewStatusOutput, LivePreviewStopOutput, MetricsOutput,
+    MultiselectInput, MultiselectOutput, PtyReadInput, PtyReadOutput, PtyWriteInput,
+    PtyWriteOutput, ResizeInput, ResizeOutput, RestartOutput, ScrollInput, ScrollIntoViewInput,
+    ScrollIntoViewOutput, ScrollOutput, SelectAllInput, SelectInput, SessionId, SessionInput,
+    SessionsOutput, ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput,
+    ToggleInput, ToggleOutput, TypeInput, VisibilityOutput, WaitInput, WaitOutput,
 };
 use crate::infra::daemon::{DomainError, LivePreviewError, SessionError};
 
@@ -189,15 +186,15 @@ pub fn snapshot_output_to_response(
 ) -> RpcResponse {
     use crate::common::strip_ansi_codes;
 
-    let screen = if strip_ansi {
-        strip_ansi_codes(&output.screen)
+    let screenshot = if strip_ansi {
+        strip_ansi_codes(&output.screenshot)
     } else {
-        output.screen
+        output.screenshot
     };
 
     let mut result = json!({
         "session_id": output.session_id.as_str(),
-        "screen": screen
+        "screenshot": screenshot
     });
 
     if let Some(elements) = output.elements {
@@ -608,60 +605,6 @@ pub fn shutdown_output_to_response(id: u64, output: ShutdownOutput) -> RpcRespon
     )
 }
 
-pub fn trace_output_to_response(id: u64, output: TraceOutput) -> RpcResponse {
-    let trace_json: Vec<_> = output
-        .entries
-        .iter()
-        .map(|t| {
-            json!({
-                "timestamp_ms": t.timestamp_ms,
-                "action": t.action,
-                "details": t.details
-            })
-        })
-        .collect();
-
-    RpcResponse::success(
-        id,
-        json!({
-            "trace": trace_json,
-            "count": trace_json.len()
-        }),
-    )
-}
-
-pub fn console_output_to_response(id: u64, output: ConsoleOutput) -> RpcResponse {
-    RpcResponse::success(
-        id,
-        json!({
-            "output": output.lines,
-            "line_count": output.lines.len()
-        }),
-    )
-}
-
-pub fn errors_output_to_response(id: u64, output: ErrorsOutput) -> RpcResponse {
-    let errors_json: Vec<_> = output
-        .errors
-        .iter()
-        .map(|e| {
-            json!({
-                "timestamp": e.timestamp,
-                "message": e.message,
-                "source": e.source
-            })
-        })
-        .collect();
-
-    RpcResponse::success(
-        id,
-        json!({
-            "errors": errors_json,
-            "count": errors_json.len()
-        }),
-    )
-}
-
 pub fn pty_read_output_to_response(id: u64, output: PtyReadOutput) -> RpcResponse {
     RpcResponse::success(
         id,
@@ -680,51 +623,6 @@ pub fn pty_write_output_to_response(id: u64, output: PtyWriteOutput) -> RpcRespo
             "session_id": output.session_id.as_str(),
             "bytes_written": output.bytes_written,
             "success": output.success
-        }),
-    )
-}
-
-pub fn record_start_output_to_response(id: u64, output: RecordStartOutput) -> RpcResponse {
-    RpcResponse::success(
-        id,
-        json!({
-            "success": output.success,
-            "session_id": output.session_id.as_str(),
-            "recording": true
-        }),
-    )
-}
-
-pub fn record_status_output_to_response(id: u64, output: RecordStatusOutput) -> RpcResponse {
-    RpcResponse::success(
-        id,
-        json!({
-            "recording": output.is_recording,
-            "frame_count": output.frame_count,
-            "duration_ms": output.duration_ms
-        }),
-    )
-}
-
-pub fn record_stop_output_to_response(id: u64, output: RecordStopOutput) -> RpcResponse {
-    let recording_data = if output.format == "asciicast" {
-        build_asciicast(
-            output.session_id.as_ref(),
-            output.cols,
-            output.rows,
-            &output.frames,
-        )
-    } else {
-        build_raw_frames(&output.frames)
-    };
-
-    RpcResponse::success(
-        id,
-        json!({
-            "success": true,
-            "session_id": output.session_id.as_str(),
-            "frame_count": output.frame_count,
-            "recording": recording_data
         }),
     )
 }
@@ -1018,54 +916,10 @@ pub fn parse_keyup_input(request: &RpcRequest) -> Result<KeyupInput, RpcResponse
     })
 }
 
-pub fn parse_record_start_input(request: &RpcRequest) -> RecordStartInput {
-    RecordStartInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
-    }
-}
-
-pub fn parse_record_stop_input(request: &RpcRequest) -> RecordStopInput {
-    RecordStopInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
-        format: request.param_str("format").map(String::from),
-    }
-}
-
-pub fn parse_record_status_input(request: &RpcRequest) -> RecordStatusInput {
-    RecordStatusInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
-    }
-}
-
 pub fn parse_accessibility_snapshot_input(request: &RpcRequest) -> AccessibilitySnapshotInput {
     AccessibilitySnapshotInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
         interactive_only: request.param_bool("interactive", false),
-    }
-}
-
-pub fn parse_trace_input(request: &RpcRequest) -> TraceInput {
-    TraceInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
-        start: false,
-        stop: false,
-        count: request.param_u64("count", 1000) as usize,
-    }
-}
-
-pub fn parse_console_input(request: &RpcRequest) -> ConsoleInput {
-    ConsoleInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
-        count: 0,
-        clear: false,
-    }
-}
-
-pub fn parse_errors_input(request: &RpcRequest) -> ErrorsInput {
-    ErrorsInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
-        count: request.param_u64("count", 1000) as usize,
-        clear: false,
     }
 }
 
@@ -1312,27 +1166,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_record_start_input() {
-        let request = make_request(1, "record_start", Some(json!({ "session": "rec-session" })));
-        let input = parse_record_start_input(&request);
-        assert_eq!(input.session_id, Some(SessionId::new("rec-session")));
-    }
-
-    #[test]
-    fn test_parse_record_stop_input() {
-        let request = make_request(1, "record_stop", Some(json!({ "format": "asciicast" })));
-        let input = parse_record_stop_input(&request);
-        assert_eq!(input.format, Some("asciicast".to_string()));
-    }
-
-    #[test]
-    fn test_parse_record_status_input() {
-        let request = make_request(1, "record_status", None);
-        let input = parse_record_status_input(&request);
-        assert!(input.session_id.is_none());
-    }
-
-    #[test]
     fn test_parse_accessibility_snapshot_input() {
         let request = make_request(
             1,
@@ -1341,35 +1174,6 @@ mod tests {
         );
         let input = parse_accessibility_snapshot_input(&request);
         assert!(input.interactive_only);
-    }
-
-    #[test]
-    fn test_parse_trace_input() {
-        let request = make_request(1, "trace", Some(json!({ "count": 500 })));
-        let input = parse_trace_input(&request);
-        assert_eq!(input.count, 500);
-    }
-
-    #[test]
-    fn test_parse_trace_input_defaults() {
-        let request = make_request(1, "trace", None);
-        let input = parse_trace_input(&request);
-        assert_eq!(input.count, 1000);
-    }
-
-    #[test]
-    fn test_parse_console_input() {
-        let request = make_request(1, "console", None);
-        let input = parse_console_input(&request);
-        assert_eq!(input.count, 0);
-        assert!(!input.clear);
-    }
-
-    #[test]
-    fn test_parse_errors_input() {
-        let request = make_request(1, "errors", Some(json!({ "count": 50 })));
-        let input = parse_errors_input(&request);
-        assert_eq!(input.count, 50);
     }
 
     #[test]
@@ -1461,16 +1265,6 @@ mod tests {
     }
 
     #[test]
-    fn test_console_output_to_response() {
-        let output = ConsoleOutput {
-            lines: vec!["line1".to_string(), "line2".to_string()],
-        };
-        let response = console_output_to_response(1, output);
-        let result = extract_result(response);
-        assert_eq!(result["line_count"], 2);
-    }
-
-    #[test]
     fn test_pty_read_output_to_response() {
         let output = PtyReadOutput {
             session_id: SessionId::new("sess1"),
@@ -1496,17 +1290,6 @@ mod tests {
         let result = extract_result(response);
         assert!(result["success"].as_bool().unwrap());
         assert_eq!(result["bytes_written"], 5);
-    }
-
-    #[test]
-    fn test_record_start_output_to_response() {
-        let output = RecordStartOutput {
-            session_id: SessionId::new("rec1"),
-            success: true,
-        };
-        let response = record_start_output_to_response(1, output);
-        let result = extract_result(response);
-        assert!(result["recording"].as_bool().unwrap());
     }
 
     #[test]

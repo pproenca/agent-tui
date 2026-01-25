@@ -116,12 +116,15 @@ fn render_initial_screen<C: DaemonClient>(
         Err(_) => return,
     };
 
-    let screen = match snapshot.get("screen").and_then(serde_json::Value::as_str) {
-        Some(screen) => screen,
+    let screenshot = match snapshot
+        .get("screenshot")
+        .and_then(serde_json::Value::as_str)
+    {
+        Some(screenshot) => screenshot,
         None => return,
     };
 
-    if screen.is_empty() {
+    if screenshot.is_empty() {
         return;
     }
 
@@ -129,7 +132,7 @@ fn render_initial_screen<C: DaemonClient>(
         return;
     }
 
-    if stdout.write_all(screen.as_bytes()).is_err() {
+    if stdout.write_all(screenshot.as_bytes()).is_err() {
         return;
     }
 
@@ -484,7 +487,7 @@ mod tests {
         client.set_response(
             "snapshot",
             json!({
-                "screen": "hello\nworld",
+                "screenshot": "hello\nworld",
                 "cursor": { "row": 1, "col": 2, "visible": true }
             }),
         );

@@ -2,15 +2,13 @@ use crate::infra::ipc::{RpcRequest, RpcResponse};
 
 use super::common::session_error_response;
 use crate::adapters::{
-    console_output_to_response, errors_output_to_response, health_output_to_response,
-    metrics_output_to_response, parse_console_input, parse_errors_input, parse_pty_read_input,
-    parse_pty_write_input, parse_trace_input, pty_read_output_to_response,
-    pty_write_output_to_response, shutdown_output_to_response, trace_output_to_response,
+    health_output_to_response, metrics_output_to_response, parse_pty_read_input,
+    parse_pty_write_input, pty_read_output_to_response, pty_write_output_to_response,
+    shutdown_output_to_response,
 };
 use crate::domain::{HealthInput, MetricsInput, ShutdownInput};
 use crate::usecases::{
-    ConsoleUseCase, ErrorsUseCase, HealthUseCase, MetricsUseCase, PtyReadUseCase, PtyWriteUseCase,
-    ShutdownUseCase, TraceUseCase,
+    HealthUseCase, MetricsUseCase, PtyReadUseCase, PtyWriteUseCase, ShutdownUseCase,
 };
 
 pub fn handle_health_uc<U: HealthUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
@@ -29,36 +27,6 @@ pub fn handle_metrics_uc<U: MetricsUseCase>(usecase: &U, request: RpcRequest) ->
 
     match usecase.execute(input) {
         Ok(output) => metrics_output_to_response(req_id, output),
-        Err(e) => session_error_response(req_id, e),
-    }
-}
-
-pub fn handle_trace_uc<U: TraceUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let req_id = request.id;
-    let input = parse_trace_input(&request);
-
-    match usecase.execute(input) {
-        Ok(output) => trace_output_to_response(req_id, output),
-        Err(e) => session_error_response(req_id, e),
-    }
-}
-
-pub fn handle_console_uc<U: ConsoleUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let req_id = request.id;
-    let input = parse_console_input(&request);
-
-    match usecase.execute(input) {
-        Ok(output) => console_output_to_response(req_id, output),
-        Err(e) => session_error_response(req_id, e),
-    }
-}
-
-pub fn handle_errors_uc<U: ErrorsUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let req_id = request.id;
-    let input = parse_errors_input(&request);
-
-    match usecase.execute(input) {
-        Ok(output) => errors_output_to_response(req_id, output),
         Err(e) => session_error_response(req_id, e),
     }
 }

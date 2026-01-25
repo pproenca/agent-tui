@@ -493,8 +493,8 @@ fn pre_push() -> Result<(), Box<dyn Error>> {
 
     if has_command("cargo-machete") {
         run_step("Checking for unused dependencies", || {
-            let mut cmd = command_in_root(&root, "cargo");
-            cmd.arg("machete");
+            let mut cmd = command_in_root(&root, "cargo-machete");
+            cmd.arg("--skip-target-dir").arg(".");
             if let Err(err) = run_command(cmd) {
                 println!("cargo-machete failed, skipping: {err}");
             }

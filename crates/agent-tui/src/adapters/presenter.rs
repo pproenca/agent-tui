@@ -65,6 +65,7 @@ pub struct HealthResult {
     pub uptime_ms: u64,
     pub session_count: u64,
     pub version: String,
+    pub commit: String,
     pub socket_path: Option<String>,
     pub pid_file_path: Option<String>,
 }
@@ -90,6 +91,7 @@ impl HealthResult {
             uptime_ms: value.u64_or("uptime_ms", 0),
             session_count: value.u64_or("session_count", 0),
             version: value.str_or("version", "?").to_string(),
+            commit: value.str_or("commit", "unknown").to_string(),
             socket_path: socket,
             pid_file_path: pid_file,
         }
@@ -256,6 +258,7 @@ impl Presenter for TextPresenter {
         println!("  Uptime: {}", format_uptime_ms(health.uptime_ms));
         println!("  Sessions: {}", health.session_count);
         println!("  Version: {}", Colors::dim(&health.version));
+        println!("  Commit: {}", Colors::dim(&health.commit));
 
         if let (Some(socket), Some(pid_file)) = (&health.socket_path, &health.pid_file_path) {
             println!();
@@ -456,7 +459,8 @@ impl Presenter for JsonPresenter {
             "pid": health.pid,
             "uptime_ms": health.uptime_ms,
             "session_count": health.session_count,
-            "version": health.version
+            "version": health.version,
+            "commit": health.commit
         });
         if let Some(socket) = &health.socket_path {
             output["socket_path"] = serde_json::json!(socket);
@@ -726,6 +730,7 @@ mod tests {
             uptime_ms: 60000,
             session_count: 5,
             version: "0.3.0".to_string(),
+            commit: "abc1234".to_string(),
             socket_path: Some("/tmp/agent-tui.sock".to_string()),
             pid_file_path: None,
         };
@@ -801,6 +806,7 @@ mod tests {
             uptime_ms: 60000,
             session_count: 2,
             version: "0.3.0".to_string(),
+            commit: "abc1234".to_string(),
             socket_path: None,
             pid_file_path: None,
         };

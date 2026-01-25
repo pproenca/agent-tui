@@ -706,25 +706,37 @@ pub fn handle_resize<C: DaemonClient>(
 }
 
 pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let cli_version = env!("CARGO_PKG_VERSION");
+    let cli_version = env!("AGENT_TUI_VERSION");
+    let cli_commit = env!("AGENT_TUI_GIT_SHA");
 
-    let (daemon_version, daemon_error) = match ctx.client.call("health", None) {
+    let (daemon_version, daemon_commit, daemon_error) = match ctx.client.call("health", None) {
         Ok(result) => (
             result
                 .get("version")
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown")
                 .to_string(),
+            result
+                .get("commit")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
             None,
         ),
-        Err(e) => ("unavailable".to_string(), Some(e.to_string())),
+        Err(e) => (
+            "unavailable".to_string(),
+            "unknown".to_string(),
+            Some(e.to_string()),
+        ),
     };
 
     match ctx.format {
         OutputFormat::Json => {
             let mut output = json!({
                 "cli_version": cli_version,
+                "cli_commit": cli_commit,
                 "daemon_version": daemon_version,
+                "daemon_commit": daemon_commit,
                 "mode": "daemon"
             });
             if let Some(err) = &daemon_error {
@@ -735,6 +747,7 @@ pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerRe
         OutputFormat::Text => {
             println!("{}", Colors::bold("agent-tui"));
             println!("  CLI version: {}", cli_version);
+            println!("  CLI commit: {}", cli_commit);
             if let Some(err) = &daemon_error {
                 println!(
                     "  Daemon version: {} ({})",
@@ -743,6 +756,7 @@ pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerRe
                 );
             } else {
                 println!("  Daemon version: {}", daemon_version);
+                println!("  Daemon commit: {}", daemon_commit);
             }
         }
     }
@@ -1476,14 +1490,18 @@ pub fn handle_daemon_stop<C: DaemonClient>(
 }
 
 pub fn print_daemon_status_from_result(result: &serde_json::Value, format: OutputFormat) {
-    let cli_version = env!("CARGO_PKG_VERSION");
+    let cli_version = env!("AGENT_TUI_VERSION");
+    let cli_commit = env!("AGENT_TUI_GIT_SHA");
     let daemon_version = result.str_or("version", "unknown");
+    let daemon_commit = result.str_or("commit", "unknown");
     let status = result.str_or("status", "unknown");
     let pid = result.u64_or("pid", 0);
     let uptime_ms = result.u64_or("uptime_ms", 0);
     let session_count = result.u64_or("session_count", 0);
 
     let version_mismatch = cli_version != daemon_version;
+    let commit_mismatch =
+        cli_commit != "unknown" && daemon_commit != "unknown" && cli_commit != daemon_commit;
 
     match format {
         OutputFormat::Json => {
@@ -1496,8 +1514,11 @@ pub fn print_daemon_status_from_result(result: &serde_json::Value, format: Outpu
                     "uptime_ms": uptime_ms,
                     "session_count": session_count,
                     "daemon_version": daemon_version,
+                    "daemon_commit": daemon_commit,
                     "cli_version": cli_version,
-                    "version_mismatch": version_mismatch
+                    "cli_commit": cli_commit,
+                    "version_mismatch": version_mismatch,
+                    "commit_mismatch": commit_mismatch
                 })
             );
         }
@@ -1511,11 +1532,23 @@ pub fn print_daemon_status_from_result(result: &serde_json::Value, format: Outpu
             println!("  Uptime: {}", format_uptime_ms(uptime_ms));
             println!("  Sessions: {}", session_count);
             println!("  Daemon version: {}", daemon_version);
+            println!("  Daemon commit: {}", daemon_commit);
             println!("  CLI version: {}", cli_version);
+            println!("  CLI commit: {}", cli_commit);
 
             if version_mismatch {
                 eprintln!();
                 eprintln!("{} Version mismatch detected!", Colors::warning("⚠"));
+                eprintln!(
+                    "  Run '{}' to update the daemon.",
+                    Colors::info("agent-tui daemon restart")
+                );
+            } else if commit_mismatch {
+                eprintln!();
+                eprintln!(
+                    "{} Build mismatch detected (commit differs).",
+                    Colors::warning("⚠")
+                );
                 eprintln!(
                     "  Run '{}' to update the daemon.",
                     Colors::info("agent-tui daemon restart")
@@ -1526,7 +1559,8 @@ pub fn print_daemon_status_from_result(result: &serde_json::Value, format: Outpu
 }
 
 pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let cli_version = env!("CARGO_PKG_VERSION");
+    let cli_version = env!("AGENT_TUI_VERSION");
+    let cli_commit = env!("AGENT_TUI_GIT_SHA");
     match ctx.client.call("health", None) {
         Ok(result) => print_daemon_status_from_result(&result, ctx.format),
         Err(e) => match ctx.format {
@@ -1536,6 +1570,7 @@ pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Han
                     serde_json::json!({
                         "running": false,
                         "cli_version": cli_version,
+                        "cli_commit": cli_commit,
                         "error": e.to_string()
                     })
                 );
@@ -1548,6 +1583,7 @@ pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Han
                     Colors::dim(&e.to_string())
                 );
                 println!("  CLI version: {}", cli_version);
+                println!("  CLI commit: {}", cli_commit);
             }
         },
     }

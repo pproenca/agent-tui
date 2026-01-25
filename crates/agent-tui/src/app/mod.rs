@@ -194,20 +194,23 @@ impl Application {
     }
 
     fn print_daemon_not_running_status(&self, cli: &Cli) {
-        let cli_version = env!("CARGO_PKG_VERSION");
+        let cli_version = env!("AGENT_TUI_VERSION");
+        let cli_commit = env!("AGENT_TUI_GIT_SHA");
         match cli.effective_format() {
             OutputFormat::Json => {
                 println!(
                     "{}",
                     serde_json::json!({
                         "running": false,
-                        "cli_version": cli_version
+                        "cli_version": cli_version,
+                        "cli_commit": cli_commit
                     })
                 );
             }
             _ => {
                 println!("Daemon is not running");
                 println!("  CLI version: {}", cli_version);
+                println!("  CLI commit: {}", cli_commit);
             }
         }
     }
@@ -604,15 +607,26 @@ impl Default for Application {
 fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
     use crate::infra::ipc::version::{VersionCheckResult, check_version};
 
-    match check_version(client, env!("CARGO_PKG_VERSION")) {
+    match check_version(client, env!("AGENT_TUI_VERSION"), env!("AGENT_TUI_GIT_SHA")) {
         VersionCheckResult::Match => {}
         VersionCheckResult::Mismatch(mismatch) => {
-            eprintln!(
-                "{} CLI version ({}) differs from daemon version ({})",
-                Colors::warning("Warning:"),
-                mismatch.cli_version,
-                mismatch.daemon_version
-            );
+            if mismatch.cli_version == mismatch.daemon_version
+                && mismatch.cli_commit != mismatch.daemon_commit
+            {
+                eprintln!(
+                    "{} CLI commit ({}) differs from daemon commit ({})",
+                    Colors::warning("Warning:"),
+                    mismatch.cli_commit,
+                    mismatch.daemon_commit
+                );
+            } else {
+                eprintln!(
+                    "{} CLI version ({}) differs from daemon version ({})",
+                    Colors::warning("Warning:"),
+                    mismatch.cli_version,
+                    mismatch.daemon_version
+                );
+            }
             eprintln!(
                 "{} Run '{}' to update the daemon.",
                 Colors::dim("Hint:"),

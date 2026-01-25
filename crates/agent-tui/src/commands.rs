@@ -8,34 +8,34 @@ const LONG_ABOUT: &str = r#"agent-tui enables AI agents to interact with TUI (Te
 WORKFLOW:
     1. Run a TUI application
     2. View the screen and detect elements
-    3. Interact using action and input commands
+    3. Interact with elements or press keys
     4. Wait for UI changes
     5. Kill the session when done
 
-ELEMENT REFS:
-    Element refs are simple sequential identifiers like @e1, @e2, @e3 that
-    you can use to interact with detected UI elements. Run 'agent-tui screen -e'
-    to see available elements and their refs.
-
-    @e1, @e2, @e3, ...  - Elements in document order (top-to-bottom, left-to-right)
-
-    Refs reset on each screen view. Always use the latest screen's refs.
+SELECTORS:
+    @e1, @e2, @e3  - Element refs (from 'screen -e' output)
+    @"Submit"      - Find element by exact text
+    :Submit        - Find element by partial text (contains)
 
 EXAMPLES:
-    # Start a new Next.js project wizard
+    # Start and interact with a TUI app
     agent-tui run "npx create-next-app"
     agent-tui screen -e
-    agent-tui action @e1 fill "my-project"
-    agent-tui input Enter
+    agent-tui @e1 "my-project"           # Fill input with value
+    agent-tui press Enter                 # Press Enter key
     agent-tui wait "success"
     agent-tui kill
 
-    # Interactive menu navigation
+    # Navigate menus efficiently
     agent-tui run htop
-    agent-tui input F10
+    agent-tui press F10
     agent-tui screen -e
-    agent-tui action @e1 click
-    agent-tui kill
+    agent-tui @e1                         # Activate element (click)
+    agent-tui press ArrowDown ArrowDown Enter
+
+    # Use text selectors for readable scripts
+    agent-tui @"Yes, proceed"             # Click by exact text
+    agent-tui :Submit                     # Click element containing "Submit"
 
     # Check daemon status
     agent-tui daemon status"#;
@@ -180,6 +180,21 @@ EXAMPLES:
 
         #[command(subcommand)]
         operation: ActionOperation,
+    },
+
+    /// Send key press(es) to the terminal
+    #[command(name = "press")]
+    Press {
+        /// Keys to press (e.g., Enter, Ctrl+C, ArrowDown)
+        #[arg(required = true)]
+        keys: Vec<String>,
+    },
+
+    /// Type literal text character by character
+    #[command(name = "type")]
+    Type {
+        /// Text to type
+        text: String,
     },
 
     #[command(name = "input")]
@@ -364,6 +379,10 @@ EXAMPLES:
     agent-tui env
     agent-tui env -f json"#)]
     Env,
+
+    /// Catch-all for element refs (@e1) and text selectors (:Submit)
+    #[command(external_subcommand)]
+    External(Vec<String>),
 
     #[command(
         long_about = r#"Generate shell completion scripts for bash, zsh, fish, powershell, or elvish.
@@ -1460,35 +1479,165 @@ mod tests {
         ));
     }
 
+    // Note: With external_subcommand, unknown commands are captured as External.
+    // These "removed" commands will be caught at runtime with validation errors.
     #[test]
-    fn test_count_command_removed() {
+    fn test_count_command_becomes_external() {
+        let cli = Cli::parse_from(["agent-tui", "count", "--role", "button"]);
         assert!(
-            Cli::try_parse_from(["agent-tui", "count", "--role", "button"]).is_err(),
-            "The 'count' command should be removed. Use 'screen -e' filtering instead."
+            matches!(cli.command, Commands::External(_)),
+            "Unknown command should be captured as External"
         );
     }
 
     #[test]
-    fn test_find_command_removed() {
+    fn test_find_command_becomes_external() {
+        let cli = Cli::parse_from(["agent-tui", "find", "--role", "button"]);
         assert!(
-            Cli::try_parse_from(["agent-tui", "find", "--role", "button"]).is_err(),
-            "The 'find' command should be removed. Use 'screen -e' filtering instead."
+            matches!(cli.command, Commands::External(_)),
+            "Unknown command should be captured as External"
         );
     }
 
     #[test]
-    fn test_restart_command_removed() {
+    fn test_restart_command_becomes_external() {
+        let cli = Cli::parse_from(["agent-tui", "restart"]);
         assert!(
-            Cli::try_parse_from(["agent-tui", "restart"]).is_err(),
-            "The 'restart' command should be removed. Use 'kill' + 'run' instead."
+            matches!(cli.command, Commands::External(_)),
+            "Unknown command should be captured as External"
         );
     }
 
     #[test]
-    fn test_resize_command_removed() {
+    fn test_resize_command_becomes_external() {
+        let cli = Cli::parse_from(["agent-tui", "resize", "--cols", "80"]);
         assert!(
-            Cli::try_parse_from(["agent-tui", "resize", "--cols", "80"]).is_err(),
-            "The 'resize' command should be removed. Use 'run --cols --rows' instead."
+            matches!(cli.command, Commands::External(_)),
+            "Unknown command should be captured as External"
         );
+    }
+
+    // Phase 1: Press and Type commands
+    #[test]
+    fn test_press_enter_command() {
+        let cli = Cli::parse_from(["agent-tui", "press", "Enter"]);
+        let Commands::Press { keys } = cli.command else {
+            panic!("Expected Press command, got {:?}", cli.command);
+        };
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0], "Enter");
+    }
+
+    #[test]
+    fn test_press_key_sequence() {
+        let cli = Cli::parse_from(["agent-tui", "press", "ArrowDown", "ArrowDown", "Enter"]);
+        let Commands::Press { keys } = cli.command else {
+            panic!("Expected Press command, got {:?}", cli.command);
+        };
+        assert_eq!(keys.len(), 3);
+        assert_eq!(keys[0], "ArrowDown");
+        assert_eq!(keys[1], "ArrowDown");
+        assert_eq!(keys[2], "Enter");
+    }
+
+    #[test]
+    fn test_press_with_modifier() {
+        let cli = Cli::parse_from(["agent-tui", "press", "Ctrl+C"]);
+        let Commands::Press { keys } = cli.command else {
+            panic!("Expected Press command, got {:?}", cli.command);
+        };
+        assert_eq!(keys[0], "Ctrl+C");
+    }
+
+    #[test]
+    fn test_type_command() {
+        let cli = Cli::parse_from(["agent-tui", "type", "hello"]);
+        let Commands::Type { text } = cli.command else {
+            panic!("Expected Type command, got {:?}", cli.command);
+        };
+        assert_eq!(text, "hello");
+    }
+
+    #[test]
+    fn test_type_command_with_spaces() {
+        let cli = Cli::parse_from(["agent-tui", "type", "Hello, World!"]);
+        let Commands::Type { text } = cli.command else {
+            panic!("Expected Type command, got {:?}", cli.command);
+        };
+        assert_eq!(text, "Hello, World!");
+    }
+
+    // Phase 2: Element ref as command (@e1)
+    #[test]
+    fn test_element_ref_activate() {
+        let cli = Cli::parse_from(["agent-tui", "@e1"]);
+        let Commands::External(args) = cli.command else {
+            panic!("Expected External command, got {:?}", cli.command);
+        };
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0], "@e1");
+    }
+
+    #[test]
+    fn test_element_ref_fill() {
+        let cli = Cli::parse_from(["agent-tui", "@e1", "my-project"]);
+        let Commands::External(args) = cli.command else {
+            panic!("Expected External command, got {:?}", cli.command);
+        };
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0], "@e1");
+        assert_eq!(args[1], "my-project");
+    }
+
+    #[test]
+    fn test_element_ref_toggle() {
+        let cli = Cli::parse_from(["agent-tui", "@e1", "toggle"]);
+        let Commands::External(args) = cli.command else {
+            panic!("Expected External command, got {:?}", cli.command);
+        };
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0], "@e1");
+        assert_eq!(args[1], "toggle");
+    }
+
+    #[test]
+    fn test_element_ref_toggle_on() {
+        let cli = Cli::parse_from(["agent-tui", "@e1", "toggle", "on"]);
+        let Commands::External(args) = cli.command else {
+            panic!("Expected External command, got {:?}", cli.command);
+        };
+        assert_eq!(args.len(), 3);
+        assert_eq!(args[2], "on");
+    }
+
+    #[test]
+    fn test_element_ref_choose() {
+        let cli = Cli::parse_from(["agent-tui", "@e1", "choose", "Option 1"]);
+        let Commands::External(args) = cli.command else {
+            panic!("Expected External command, got {:?}", cli.command);
+        };
+        assert_eq!(args.len(), 3);
+        assert_eq!(args[0], "@e1");
+        assert_eq!(args[1], "choose");
+        assert_eq!(args[2], "Option 1");
+    }
+
+    // Phase 3: Text selectors
+    #[test]
+    fn test_text_selector_exact() {
+        let cli = Cli::parse_from(["agent-tui", "@Yes, proceed"]);
+        let Commands::External(args) = cli.command else {
+            panic!("Expected External command, got {:?}", cli.command);
+        };
+        assert_eq!(args[0], "@Yes, proceed");
+    }
+
+    #[test]
+    fn test_text_selector_partial() {
+        let cli = Cli::parse_from(["agent-tui", ":Submit"]);
+        let Commands::External(args) = cli.command else {
+            panic!("Expected External command, got {:?}", cli.command);
+        };
+        assert_eq!(args[0], ":Submit");
     }
 }

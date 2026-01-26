@@ -42,6 +42,7 @@ const INDEX_HTML: &str = include_str!(concat!(
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const START_TIMEOUT: Duration = Duration::from_secs(2);
 const LIVE_PREVIEW_MAX_CHUNK_BYTES: usize = 64 * 1024;
+const LIVE_PREVIEW_MAX_TICK_BYTES: usize = 256 * 1024;
 
 pub struct LivePreviewManager {
     repository: Arc<dyn SessionRepository>,
@@ -390,38 +391,45 @@ async fn pump_events(
                     .stream_cursor
                     .lock()
                     .unwrap_or_else(|e| e.into_inner());
-                let read = match state
-                    .session
-                    .stream_read(&mut cursor, LIVE_PREVIEW_MAX_CHUNK_BYTES, 0)
-                {
-                    Ok(read) => read,
-                    Err(e) => {
-                        warn!(error = %e, "Live preview stream read failed");
-                        continue;
+                let mut remaining = LIVE_PREVIEW_MAX_TICK_BYTES;
+                loop {
+                    if remaining == 0 {
+                        break;
                     }
-                };
+                    let max_bytes = LIVE_PREVIEW_MAX_CHUNK_BYTES.min(remaining);
+                    let read = match state.session.stream_read(&mut cursor, max_bytes, 0) {
+                        Ok(read) => read,
+                        Err(e) => {
+                            warn!(error = %e, "Live preview stream read failed");
+                            break;
+                        }
+                    };
 
-                if read.dropped_bytes > 0 {
-                    warn!(
-                        dropped_bytes = read.dropped_bytes,
-                        "Live preview stream dropped bytes, resetting"
-                    );
-                    let snapshot = state.session.live_preview_snapshot();
-                    let text = state.session.screen_text();
-                    let _ = state.broadcaster.send(LiveEvent::Init {
-                        time,
-                        cols: snapshot.cols,
-                        rows: snapshot.rows,
-                        seq: snapshot.seq,
-                        text,
-                    });
-                }
+                    if read.dropped_bytes > 0 {
+                        warn!(
+                            dropped_bytes = read.dropped_bytes,
+                            "Live preview stream dropped bytes, resetting"
+                        );
+                        let snapshot = state.session.live_preview_snapshot();
+                        let text = state.session.screen_text();
+                        let _ = state.broadcaster.send(LiveEvent::Init {
+                            time,
+                            cols: snapshot.cols,
+                            rows: snapshot.rows,
+                            seq: snapshot.seq,
+                            text,
+                        });
+                        cursor.seq = read.latest_cursor.seq;
+                        break;
+                    }
 
-                if !read.data.is_empty() {
+                    if read.data.is_empty() {
+                        break;
+                    }
+
+                    remaining = remaining.saturating_sub(read.data.len());
                     let seq = String::from_utf8_lossy(&read.data).to_string();
-                    let _ = state
-                        .broadcaster
-                        .send(LiveEvent::Output { time, seq });
+                    let _ = state.broadcaster.send(LiveEvent::Output { time, seq });
                 }
             }
         }
@@ -572,9 +580,7 @@ async fn alis_message(
                 warn!(dropped = count, "Live preview broadcast lagged");
                 None
             }
-            tokio_stream::wrappers::errors::BroadcastStreamRecvError::Closed => {
-                Some(Err(axum::Error::new(e)))
-            }
+            _ => Some(Err(axum::Error::new(e))),
         },
     }
 }
@@ -713,9 +719,7 @@ async fn events_message(
                 warn!(dropped = count, "Live preview events lagged");
                 None
             }
-            tokio_stream::wrappers::errors::BroadcastStreamRecvError::Closed => {
-                Some(Err(axum::Error::new(e)))
-            }
+            _ => Some(Err(axum::Error::new(e))),
         },
     }
 }

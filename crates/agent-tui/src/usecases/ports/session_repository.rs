@@ -22,6 +22,7 @@ pub struct StreamCursor {
 pub struct StreamRead {
     pub data: Vec<u8>,
     pub next_cursor: StreamCursor,
+    pub latest_cursor: StreamCursor,
     pub dropped_bytes: u64,
 }
 

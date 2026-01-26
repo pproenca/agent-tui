@@ -1,9 +1,7 @@
 use std::collections::HashMap;
-use std::fs::OpenOptions;
 use std::io;
 use std::io::IsTerminal;
 use std::net::SocketAddr;
-use std::net::TcpStream;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
@@ -631,24 +629,18 @@ pub fn handle_live_start<C: DaemonClient>(
         )
     })?;
 
-    let ui_result = ensure_ui_server();
-    let (ui_base_url, ui_payload, ui_error) = match ui_result {
-        Ok(UiLocation::External(url)) => (
+    let (ui_base_url, ui_payload) = match std::env::var("AGENT_TUI_UI_URL") {
+        Ok(url) if !url.trim().is_empty() => (
             Some(url.clone()),
-            Some(json!({ "url": url, "managed": false })),
-            None,
+            Some(json!({ "url": url, "managed": false, "source": "external" })),
         ),
-        Ok(UiLocation::Managed(state)) => (
-            Some(state.url.clone()),
-            Some(json!({
-                "url": state.url,
-                "managed": true,
-                "pid": state.pid,
-                "port": state.port
-            })),
-            None,
-        ),
-        Err(err) => (None, None, Some(err)),
+        _ => {
+            let url = format!("{}ui", state.http_url);
+            (
+                Some(url.clone()),
+                Some(json!({ "url": url, "managed": true, "source": "daemon" })),
+            )
+        }
     };
 
     match ctx.format {
@@ -664,9 +656,6 @@ pub fn handle_live_start<C: DaemonClient>(
             });
             if let Some(payload) = ui_payload {
                 output["ui"] = payload;
-            }
-            if let Some(err) = ui_error.as_deref() {
-                output["ui_error"] = json!(err);
             }
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
@@ -686,26 +675,14 @@ pub fn handle_live_start<C: DaemonClient>(
             } else {
                 println!("Token: (disabled)");
             }
-            if let Some(err) = ui_error.as_deref() {
-                eprintln!(
-                    "{} Failed to start web UI: {}",
-                    Colors::warning("Warning:"),
-                    err
-                );
-            }
         }
     }
 
     if args.open {
-        let target = if let Some(ui_base) = ui_base_url.as_deref() {
-            build_ui_url(ui_base, &state)
-        } else {
-            eprintln!(
-                "{} UI URL not available; opening API URL instead.",
-                Colors::warning("Warning:")
-            );
-            state.http_url.clone()
-        };
+        let target = ui_base_url
+            .as_deref()
+            .map(|base| build_ui_url(base, &state))
+            .unwrap_or_else(|| state.http_url.clone());
         if let Err(err) = open_in_browser(&target, args.browser.as_deref()) {
             eprintln!("Warning: failed to open browser: {}", err);
         }
@@ -914,12 +891,6 @@ struct UiState {
 }
 
 #[derive(Debug, Clone)]
-enum UiLocation {
-    External(String),
-    Managed(UiState),
-}
-
-#[derive(Debug, Clone)]
 enum UiStatus {
     External(String),
     Running(UiState),
@@ -1004,12 +975,6 @@ fn ui_state_path() -> PathBuf {
     home.join(".agent-tui").join("ui.json")
 }
 
-fn ui_log_path() -> PathBuf {
-    let mut path = ui_state_path();
-    path.set_extension("log");
-    path
-}
-
 fn read_ui_state(path: &PathBuf) -> Option<UiState> {
     let contents = std::fs::read_to_string(path).ok()?;
     let value: Value = serde_json::from_str(&contents).ok()?;
@@ -1024,18 +989,6 @@ fn read_ui_state(path: &PathBuf) -> Option<UiState> {
         url,
         port,
     })
-}
-
-fn write_ui_state(path: &PathBuf, state: &UiState) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let payload = json!({
-        "pid": state.pid,
-        "url": state.url,
-        "port": state.port
-    });
-    std::fs::write(path, serde_json::to_string_pretty(&payload)?)
 }
 
 fn read_ui_state_running(path: &PathBuf) -> Option<UiState> {
@@ -1065,175 +1018,6 @@ fn resolve_ui_status() -> UiStatus {
         Some(state) => UiStatus::Running(state),
         None => UiStatus::NotRunning,
     }
-}
-
-fn ui_mode() -> Result<String, String> {
-    let mode = std::env::var("AGENT_TUI_UI_MODE").unwrap_or_else(|_| "dev".to_string());
-    let mode = mode.trim().to_lowercase();
-    match mode.as_str() {
-        "dev" | "serve" => Ok(mode),
-        _ => Err(format!(
-            "Invalid AGENT_TUI_UI_MODE '{}'; expected 'dev' or 'serve'",
-            mode
-        )),
-    }
-}
-
-fn ui_port() -> Result<u16, String> {
-    let value = std::env::var("AGENT_TUI_UI_PORT").unwrap_or_else(|_| "4173".to_string());
-    let port: u16 = value
-        .parse()
-        .map_err(|_| format!("Invalid AGENT_TUI_UI_PORT '{}'", value))?;
-    if port == 0 {
-        return Err("AGENT_TUI_UI_PORT must be a non-zero port".to_string());
-    }
-    Ok(port)
-}
-
-fn resolve_ui_root() -> Result<PathBuf, String> {
-    if let Ok(path) = std::env::var("AGENT_TUI_UI_ROOT") {
-        let root = PathBuf::from(path);
-        if root.join("package.json").is_file() && root.join("server.ts").is_file() {
-            return Ok(root);
-        }
-        return Err("AGENT_TUI_UI_ROOT does not look like the web UI directory".to_string());
-    }
-
-    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-    let candidates = [cwd.join("web"), cwd.join("../web"), cwd.join("../../web")];
-    for candidate in candidates {
-        if candidate.join("package.json").is_file() && candidate.join("server.ts").is_file() {
-            return Ok(candidate);
-        }
-    }
-
-    Err("Web UI directory not found. Set AGENT_TUI_UI_URL or AGENT_TUI_UI_ROOT.".to_string())
-}
-
-fn open_ui_log_file() -> Option<std::fs::File> {
-    let path = ui_log_path();
-    if let Some(parent) = path.parent() {
-        if std::fs::create_dir_all(parent).is_err() {
-            return None;
-        }
-    }
-    OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .ok()
-}
-
-fn configure_ui_stdio(cmd: &mut std::process::Command) {
-    if let Some(log_file) = open_ui_log_file() {
-        let stderr = log_file.try_clone().ok().or_else(open_ui_log_file);
-        cmd.stdout(std::process::Stdio::from(log_file));
-        if let Some(stderr) = stderr {
-            cmd.stderr(std::process::Stdio::from(stderr));
-        } else {
-            cmd.stderr(std::process::Stdio::null());
-        }
-    } else {
-        cmd.stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-    }
-}
-
-fn run_bun_command(root: &PathBuf, args: &[&str]) -> Result<(), String> {
-    let mut cmd = std::process::Command::new("bun");
-    cmd.args(args).current_dir(root);
-    configure_ui_stdio(&mut cmd);
-    let status = cmd.status().map_err(|e| match e.kind() {
-        io::ErrorKind::NotFound => "Bun is not installed (missing 'bun' executable)".to_string(),
-        _ => format!("Failed to run bun command: {}", e),
-    })?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "Bun command failed (see {}).",
-            ui_log_path().display()
-        ))
-    }
-}
-
-fn ensure_ui_assets(root: &PathBuf, mode: &str) -> Result<(), String> {
-    if !root.join("node_modules").exists() {
-        return Err(format!(
-            "Web UI dependencies missing in {}. Run 'bun install' there.",
-            root.display()
-        ));
-    }
-    if mode == "serve" && !root.join("public/index.html").is_file() {
-        run_bun_command(root, &["run", "build"])?;
-    }
-    Ok(())
-}
-
-fn spawn_ui_server(root: &PathBuf, port: u16, mode: &str) -> Result<u32, String> {
-    let mut cmd = std::process::Command::new("bun");
-    match mode {
-        "dev" => {
-            cmd.args(["run", "dev"]);
-        }
-        "serve" => {
-            cmd.args(["run", "serve"]);
-        }
-        _ => {
-            return Err(format!("Unsupported UI mode '{}'", mode));
-        }
-    }
-    cmd.current_dir(root)
-        .env("PORT", port.to_string())
-        .stdin(std::process::Stdio::null());
-
-    configure_ui_stdio(&mut cmd);
-
-    let child = cmd.spawn().map_err(|e| match e.kind() {
-        io::ErrorKind::NotFound => "Bun is not installed (missing 'bun' executable)".to_string(),
-        _ => format!("Failed to start web UI: {}", e),
-    })?;
-
-    Ok(child.id())
-}
-
-fn wait_for_port(port: u16, timeout: Duration) -> Result<(), String> {
-    let deadline = Instant::now() + timeout;
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    loop {
-        if TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            return Err(format!("Web UI did not start listening on port {}", port));
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-fn ensure_ui_server() -> Result<UiLocation, String> {
-    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL") {
-        if !url.trim().is_empty() {
-            return Ok(UiLocation::External(url));
-        }
-    }
-
-    let state_path = ui_state_path();
-    if let Some(state) = read_ui_state_running(&state_path) {
-        return Ok(UiLocation::Managed(state));
-    }
-
-    let root = resolve_ui_root()?;
-    let mode = ui_mode()?;
-    let port = ui_port()?;
-    ensure_ui_assets(&root, &mode)?;
-    let pid = spawn_ui_server(&root, port, &mode)?;
-    wait_for_port(port, Duration::from_secs(3))?;
-
-    let url = format!("http://127.0.0.1:{}", port);
-    let state = UiState { pid, url, port };
-    let _ = write_ui_state(&state_path, &state);
-    Ok(UiLocation::Managed(state))
 }
 
 fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {

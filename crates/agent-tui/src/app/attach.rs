@@ -2,7 +2,7 @@ use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::str::FromStr;
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use base64::Engine;
@@ -23,7 +23,9 @@ use serde_json::json;
 use crate::common::Colors;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::DaemonClient;
+use crate::infra::ipc::client::StreamResponse;
 use crate::infra::terminal::key_to_escape_sequence;
+use crossbeam_channel as channel;
 
 pub use crate::app::error::AttachError;
 
@@ -166,16 +168,21 @@ pub fn attach_ipc<C: DaemonClient>(
             });
             let _ = client.call("resize", Some(resize_params));
 
-            let mut stdout = io::stdout();
-            render_initial_screen(client, session_id, &mut stdout);
+            let stdout = Arc::new(Mutex::new(io::stdout()));
+            if let Ok(mut guard) = stdout.lock() {
+                render_initial_screen(client, session_id, &mut *guard);
+            }
 
-            let result = attach_ipc_loop(client, session_id, &detach_keys);
+            let result = attach_ipc_loop(client, session_id, &detach_keys, stdout);
 
             drop(term_guard);
 
             result
         }
-        AttachMode::Stream => attach_stream_loop(client, session_id),
+        AttachMode::Stream => {
+            let stdout = Arc::new(Mutex::new(io::stdout()));
+            attach_stream_loop(client, session_id, stdout)
+        }
     }?;
 
     eprintln!();
@@ -258,42 +265,78 @@ fn attach_ipc_loop<C: DaemonClient>(
     client: &mut C,
     session_id: &str,
     detach_keys: &DetachKeys,
+    stdout: Arc<Mutex<io::Stdout>>,
 ) -> Result<(), AttachError> {
-    let mut stdout = io::stdout();
     let mut detach_detector = DetachDetector::new(detach_keys);
     let mut hint_active = false;
 
-    loop {
-        if event::poll(Duration::from_millis(10)).unwrap_or(false) {
-            match event::read() {
-                Ok(Event::Key(key_event)) => {
-                    if let Some(bytes) = key_event_to_bytes(&key_event) {
-                        let (to_send, detach) = detach_detector.consume(&bytes);
-                        if !detach_keys.is_disabled() {
-                            let now_active = detach_detector.is_partial_match();
-                            if now_active != hint_active {
-                                render_detach_hint(
-                                    &mut stdout,
-                                    if now_active {
-                                        Some(
-                                            "Detach: sequence started, press remaining keys to detach",
-                                        )
-                                    } else {
-                                        None
-                                    },
-                                );
-                                hint_active = now_active;
-                            }
-                        }
-                        if detach {
-                            if hint_active {
-                                render_detach_hint(&mut stdout, None);
-                            }
-                            break;
-                        }
+    let stream = client
+        .call_stream("attach_stream", Some(json!({ "session": session_id })))
+        .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
+    let abort_handle = stream.abort_handle();
+    let output_done_rx = start_attach_stream_output(stream, Arc::clone(&stdout), false)?;
+    let event_rx = spawn_event_reader();
 
-                        if !to_send.is_empty() {
-                            let data_b64 = STANDARD.encode(&to_send);
+    loop {
+        channel::select! {
+            recv(output_done_rx) -> result => {
+                match result {
+                    Ok(Ok(())) => break,
+                    Ok(Err(err)) => return Err(err),
+                    Err(_) => break,
+                }
+            }
+            recv(event_rx) -> msg => {
+                match msg {
+                    Ok(EventMessage::Event(Event::Key(key_event))) => {
+                        if let Some(bytes) = key_event_to_bytes(&key_event) {
+                            let (to_send, detach) = detach_detector.consume(&bytes);
+                            if !detach_keys.is_disabled() {
+                                let now_active = detach_detector.is_partial_match();
+                                if now_active != hint_active {
+                                    if let Ok(mut guard) = stdout.lock() {
+                                        render_detach_hint(
+                                            &mut *guard,
+                                            if now_active {
+                                                Some(
+                                                    "Detach: sequence started, press remaining keys to detach",
+                                                )
+                                            } else {
+                                                None
+                                            },
+                                        );
+                                    }
+                                    hint_active = now_active;
+                                }
+                            }
+                            if detach {
+                                if hint_active {
+                                    if let Ok(mut guard) = stdout.lock() {
+                                        render_detach_hint(&mut *guard, None);
+                                    }
+                                }
+                                if let Some(handle) = abort_handle.as_ref() {
+                                    handle.abort();
+                                }
+                                let _ = output_done_rx.recv_timeout(Duration::from_millis(500));
+                                break;
+                            }
+
+                            if !to_send.is_empty() {
+                                let data_b64 = STANDARD.encode(&to_send);
+                                let params = json!({
+                                    "session": session_id,
+                                    "data": data_b64
+                                });
+                                if let Err(e) = client.call("pty_write", Some(params)) {
+                                    return Err(AttachError::PtyWrite(format_client_error(&e)));
+                                }
+                            }
+                        }
+                    }
+                    Ok(EventMessage::Event(Event::Paste(data))) => {
+                        if !data.is_empty() {
+                            let data_b64 = STANDARD.encode(data.as_bytes());
                             let params = json!({
                                 "session": session_id,
                                 "data": data_b64
@@ -303,53 +346,18 @@ fn attach_ipc_loop<C: DaemonClient>(
                             }
                         }
                     }
-                }
-                Ok(Event::Paste(data)) => {
-                    if !data.is_empty() {
-                        let data_b64 = STANDARD.encode(data.as_bytes());
+                    Ok(EventMessage::Event(Event::Resize(cols, rows))) => {
                         let params = json!({
-                            "session": session_id,
-                            "data": data_b64
+                            "cols": cols,
+                            "rows": rows,
+                            "session": session_id
                         });
-                        if let Err(e) = client.call("pty_write", Some(params)) {
-                            return Err(AttachError::PtyWrite(format_client_error(&e)));
-                        }
+                        let _ = client.call("resize", Some(params));
                     }
+                    Ok(EventMessage::Event(_)) => {}
+                    Ok(EventMessage::Error) => return Err(AttachError::EventRead),
+                    Err(_) => return Err(AttachError::EventRead),
                 }
-                Ok(Event::Resize(cols, rows)) => {
-                    let params = json!({
-                        "cols": cols,
-                        "rows": rows,
-                        "session": session_id
-                    });
-                    let _ = client.call("resize", Some(params));
-                }
-                Ok(_) => {}
-                Err(_) => return Err(AttachError::EventRead),
-            }
-        }
-
-        let read_params = json!({
-            "session": session_id,
-            "timeout_ms": 50
-        });
-        match client.call("pty_read", Some(read_params)) {
-            Ok(result) => {
-                if let Some(data_b64) = result.get("data").and_then(serde_json::Value::as_str) {
-                    if let Ok(data) = STANDARD.decode(data_b64) {
-                        if !data.is_empty() {
-                            if stdout.write_all(&data).is_err() {
-                                break;
-                            }
-                            if stdout.flush().is_err() {
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                return Err(AttachError::PtyRead(format_client_error(&e)));
             }
         }
     }
@@ -360,67 +368,56 @@ fn attach_ipc_loop<C: DaemonClient>(
 fn attach_stream_loop<C: DaemonClient>(
     client: &mut C,
     session_id: &str,
+    stdout: Arc<Mutex<io::Stdout>>,
 ) -> Result<(), AttachError> {
-    let mut stdout = io::stdout();
-    let mut stdin_active = true;
+    let stream = client
+        .call_stream("attach_stream", Some(json!({ "session": session_id })))
+        .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
+    let output_done_rx = start_attach_stream_output(stream, Arc::clone(&stdout), true)?;
     let stdin_rx = spawn_stdin_reader();
+    let mut stdin_active = true;
 
     loop {
         if stdin_active {
-            loop {
-                match stdin_rx.try_recv() {
-                    Ok(StdinMessage::Data(data)) => {
-                        if !data.is_empty() {
-                            let data_b64 = STANDARD.encode(&data);
-                            let params = json!({
-                                "session": session_id,
-                                "data": data_b64
-                            });
-                            if let Err(e) = client.call("pty_write", Some(params)) {
-                                return Err(AttachError::PtyWrite(format_client_error(&e)));
-                            }
-                        }
-                    }
-                    Ok(StdinMessage::Eof) => {
-                        stdin_active = false;
-                    }
-                    Ok(StdinMessage::Error) => {
-                        stdin_active = false;
-                    }
-                    Err(mpsc::TryRecvError::Empty) => break,
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        stdin_active = false;
-                        break;
+            channel::select! {
+                recv(output_done_rx) -> result => {
+                    match result {
+                        Ok(Ok(())) => return Ok(()),
+                        Ok(Err(err)) => return Err(err),
+                        Err(_) => return Ok(()),
                     }
                 }
-            }
-        }
-
-        let read_params = json!({
-            "session": session_id,
-            "timeout_ms": 50
-        });
-        match client.call("pty_read", Some(read_params)) {
-            Ok(result) => {
-                if let Some(data_b64) = result.get("data").and_then(serde_json::Value::as_str) {
-                    if let Ok(data) = STANDARD.decode(data_b64) {
-                        if !data.is_empty() {
-                            if stdout.write_all(&data).is_err() {
-                                break;
+                recv(stdin_rx) -> msg => {
+                    match msg {
+                        Ok(StdinMessage::Data(data)) => {
+                            if !data.is_empty() {
+                                let data_b64 = STANDARD.encode(&data);
+                                let params = json!({
+                                    "session": session_id,
+                                    "data": data_b64
+                                });
+                                if let Err(e) = client.call("pty_write", Some(params)) {
+                                    return Err(AttachError::PtyWrite(format_client_error(&e)));
+                                }
                             }
-                            if stdout.flush().is_err() {
-                                break;
-                            }
+                        }
+                        Ok(StdinMessage::Eof) | Ok(StdinMessage::Error) => {
+                            stdin_active = false;
+                        }
+                        Err(_) => {
+                            stdin_active = false;
                         }
                     }
                 }
             }
-            Err(e) => {
-                return Err(AttachError::PtyRead(format_client_error(&e)));
+        } else {
+            match output_done_rx.recv() {
+                Ok(Ok(())) => return Ok(()),
+                Ok(Err(err)) => return Err(err),
+                Err(_) => return Ok(()),
             }
         }
     }
-    Ok(())
 }
 
 fn format_client_error(error: &ClientError) -> String {
@@ -552,10 +549,11 @@ enum StdinMessage {
     Error,
 }
 
-fn spawn_stdin_reader() -> mpsc::Receiver<StdinMessage> {
-    let (tx, rx) = mpsc::channel();
+fn spawn_stdin_reader() -> channel::Receiver<StdinMessage> {
+    let (tx, rx) = channel::unbounded();
     let span = tracing::debug_span!("attach_stdin_reader");
     let builder = std::thread::Builder::new().name("attach-stdin".to_string());
+    let tx_thread = tx.clone();
     if let Err(err) = builder.spawn(move || {
         let _guard = span.enter();
         let mut stdin = io::stdin();
@@ -563,16 +561,19 @@ fn spawn_stdin_reader() -> mpsc::Receiver<StdinMessage> {
         loop {
             match stdin.read(&mut buf) {
                 Ok(0) => {
-                    let _ = tx.send(StdinMessage::Eof);
+                    let _ = tx_thread.send(StdinMessage::Eof);
                     break;
                 }
                 Ok(n) => {
-                    if tx.send(StdinMessage::Data(buf[..n].to_vec())).is_err() {
+                    if tx_thread
+                        .send(StdinMessage::Data(buf[..n].to_vec()))
+                        .is_err()
+                    {
                         break;
                     }
                 }
                 Err(_) => {
-                    let _ = tx.send(StdinMessage::Error);
+                    let _ = tx_thread.send(StdinMessage::Error);
                     break;
                 }
             }
@@ -582,6 +583,148 @@ fn spawn_stdin_reader() -> mpsc::Receiver<StdinMessage> {
         let _ = tx.send(StdinMessage::Error);
     }
     rx
+}
+
+enum EventMessage {
+    Event(Event),
+    Error,
+}
+
+fn spawn_event_reader() -> channel::Receiver<EventMessage> {
+    let (tx, rx) = channel::unbounded();
+    let span = tracing::debug_span!("attach_event_reader");
+    let builder = std::thread::Builder::new().name("attach-events".to_string());
+    let tx_thread = tx.clone();
+    if let Err(err) = builder.spawn(move || {
+        let _guard = span.enter();
+        loop {
+            match event::read() {
+                Ok(ev) => {
+                    if tx_thread.send(EventMessage::Event(ev)).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    let _ = tx_thread.send(EventMessage::Error);
+                    break;
+                }
+            }
+        }
+    }) {
+        tracing::warn!(error = %err, "Failed to spawn event reader");
+        let _ = tx.send(EventMessage::Error);
+    }
+    rx
+}
+
+enum AttachStreamEvent {
+    Output { data: Vec<u8>, dropped_bytes: u64 },
+    Dropped(u64),
+    Closed,
+}
+
+fn parse_stream_event(value: serde_json::Value) -> Result<Option<AttachStreamEvent>, AttachError> {
+    let event = value.get("event").and_then(serde_json::Value::as_str);
+    let Some(event) = event else {
+        return Ok(None);
+    };
+
+    match event {
+        "output" => {
+            let data_b64 = value
+                .get("data")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            if data_b64.is_empty() {
+                return Ok(None);
+            }
+            let data = STANDARD
+                .decode(data_b64)
+                .map_err(|e| AttachError::PtyRead(e.to_string()))?;
+            let dropped_bytes = value
+                .get("dropped_bytes")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            Ok(Some(AttachStreamEvent::Output {
+                data,
+                dropped_bytes,
+            }))
+        }
+        "dropped" => {
+            let dropped_bytes = value
+                .get("dropped_bytes")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            Ok(Some(AttachStreamEvent::Dropped(dropped_bytes)))
+        }
+        "closed" => Ok(Some(AttachStreamEvent::Closed)),
+        "ready" | "heartbeat" => Ok(None),
+        _ => Ok(None),
+    }
+}
+
+fn start_attach_stream_output(
+    stream: StreamResponse,
+    stdout: Arc<Mutex<io::Stdout>>,
+    report_drops: bool,
+) -> Result<channel::Receiver<Result<(), AttachError>>, AttachError> {
+    let (tx, rx) = channel::bounded(1);
+    let builder = std::thread::Builder::new().name("attach-stream-output".to_string());
+    builder
+        .spawn(move || {
+            let result = stream_output_loop(stream, stdout, report_drops);
+            let _ = tx.send(result);
+        })
+        .map_err(|err| {
+            AttachError::PtyRead(format!("Failed to spawn attach output thread: {}", err))
+        })?;
+    Ok(rx)
+}
+
+fn stream_output_loop(
+    mut stream: StreamResponse,
+    stdout: Arc<Mutex<io::Stdout>>,
+    report_drops: bool,
+) -> Result<(), AttachError> {
+    loop {
+        let next = stream
+            .next_result()
+            .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
+        let Some(value) = next else {
+            return Ok(());
+        };
+        match parse_stream_event(value)? {
+            Some(AttachStreamEvent::Output {
+                data,
+                dropped_bytes,
+            }) => {
+                if !data.is_empty() {
+                    if let Ok(mut guard) = stdout.lock() {
+                        guard.write_all(&data).map_err(AttachError::Terminal)?;
+                        guard.flush().map_err(AttachError::Terminal)?;
+                    }
+                }
+                if report_drops && dropped_bytes > 0 {
+                    eprintln!(
+                        "{} Dropped {} bytes from stream buffer.",
+                        Colors::warning("[attach]"),
+                        dropped_bytes
+                    );
+                }
+            }
+            Some(AttachStreamEvent::Dropped(dropped_bytes)) => {
+                if report_drops && dropped_bytes > 0 {
+                    eprintln!(
+                        "{} Dropped {} bytes from stream buffer.",
+                        Colors::warning("[attach]"),
+                        dropped_bytes
+                    );
+                }
+            }
+            Some(AttachStreamEvent::Closed) => return Ok(()),
+            None => {}
+        }
+    }
 }
 
 fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
@@ -880,5 +1023,51 @@ mod tests {
     fn test_detach_keys_invalid_token() {
         let err = "ctrl-".parse::<DetachKeys>().unwrap_err();
         assert!(err.contains("ctrl-"));
+    }
+
+    #[test]
+    fn test_parse_stream_event_output() {
+        let payload = STANDARD.encode(b"hello");
+        let value = serde_json::json!({
+            "event": "output",
+            "data": payload,
+            "dropped_bytes": 2
+        });
+        let event = parse_stream_event(value).unwrap().unwrap();
+        match event {
+            AttachStreamEvent::Output {
+                data,
+                dropped_bytes,
+            } => {
+                assert_eq!(data, b"hello");
+                assert_eq!(dropped_bytes, 2);
+            }
+            _ => panic!("expected output event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_stream_event_dropped() {
+        let value = serde_json::json!({
+            "event": "dropped",
+            "dropped_bytes": 128
+        });
+        let event = parse_stream_event(value).unwrap().unwrap();
+        match event {
+            AttachStreamEvent::Dropped(bytes) => assert_eq!(bytes, 128),
+            _ => panic!("expected dropped event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_stream_event_closed() {
+        let value = serde_json::json!({
+            "event": "closed"
+        });
+        let event = parse_stream_event(value).unwrap().unwrap();
+        match event {
+            AttachStreamEvent::Closed => {}
+            _ => panic!("expected closed event"),
+        }
     }
 }

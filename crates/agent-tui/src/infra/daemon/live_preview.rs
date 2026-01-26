@@ -11,11 +11,11 @@ use axum::{
     response::{Html, IntoResponse},
     routing::get,
 };
+use crossbeam_channel;
 use futures_util::{StreamExt, sink, stream};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::{broadcast, watch};
-use tokio::time::MissedTickBehavior;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{Instrument, info, warn};
 
@@ -39,7 +39,6 @@ const INDEX_HTML: &str = include_str!(concat!(
     "/assets/live/index.html"
 ));
 
-const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const START_TIMEOUT: Duration = Duration::from_secs(2);
 const LIVE_PREVIEW_MAX_CHUNK_BYTES: usize = 64 * 1024;
 const LIVE_PREVIEW_MAX_TICK_BYTES: usize = 256 * 1024;
@@ -316,11 +315,22 @@ impl LivePreviewServerState {
             .unwrap_or_else(|e| e.into_inner())
             .insert(session_id.as_str().to_string(), Arc::clone(&session_state));
 
-        let shutdown = self.shutdown.subscribe();
+        let mut shutdown = self.shutdown.subscribe();
+        let (shutdown_tx, shutdown_rx) = crossbeam_channel::bounded(1);
+        tokio::spawn(async move {
+            let _ = shutdown.changed().await;
+            let _ = shutdown_tx.send(());
+        });
+
+        let subscription = session_state.session.stream_subscribe();
         let pump_state = Arc::clone(&session_state);
         let start_time = self.start_time;
+        let thread_name = format!("live-preview-{}", session_id.as_str());
         let pump_span = tracing::debug_span!("live_preview_pump", session = %session_id.as_str());
-        tokio::spawn(pump_events(pump_state, start_time, shutdown).instrument(pump_span));
+        let _ = thread::Builder::new().name(thread_name).spawn(move || {
+            let _guard = pump_span.enter();
+            pump_events(pump_state, start_time, subscription, shutdown_rx);
+        });
 
         Ok(session_state)
     }
@@ -359,77 +369,86 @@ enum LiveEvent {
     },
 }
 
-async fn pump_events(
+fn pump_events(
     state: Arc<SessionStreamState>,
     start_time: Instant,
-    mut shutdown: watch::Receiver<bool>,
+    subscription: crate::usecases::ports::StreamSubscription,
+    shutdown_rx: crossbeam_channel::Receiver<()>,
 ) {
-    let mut interval = tokio::time::interval(POLL_INTERVAL);
-    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let notify_rx = subscription.receiver();
+    let drain = |state: &SessionStreamState| {
+        let (cols, rows) = state.session.size();
 
-    loop {
-        tokio::select! {
-            _ = shutdown.changed() => {
-                if *shutdown.borrow() {
+        let mut snapshot = state.snapshot.lock().unwrap_or_else(|e| e.into_inner());
+        let time = start_time.elapsed().as_secs_f64();
+
+        if snapshot.size != (cols, rows) {
+            let _ = state
+                .broadcaster
+                .send(LiveEvent::Resize { time, cols, rows });
+            snapshot.size = (cols, rows);
+        }
+
+        let mut cursor = state
+            .stream_cursor
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let mut remaining = LIVE_PREVIEW_MAX_TICK_BYTES;
+        loop {
+            if remaining == 0 {
+                break;
+            }
+            let max_bytes = LIVE_PREVIEW_MAX_CHUNK_BYTES.min(remaining);
+            let read = match state.session.stream_read(&mut cursor, max_bytes, 0) {
+                Ok(read) => read,
+                Err(e) => {
+                    warn!(error = %e, "Live preview stream read failed");
                     break;
                 }
+            };
+
+            if read.closed && read.data.is_empty() {
+                return false;
             }
-            _ = interval.tick() => {
-                let (cols, rows) = state.session.size();
 
-                let mut snapshot = state.snapshot.lock().unwrap_or_else(|e| e.into_inner());
-                let time = start_time.elapsed().as_secs_f64();
+            if read.dropped_bytes > 0 {
+                warn!(
+                    dropped_bytes = read.dropped_bytes,
+                    "Live preview stream dropped bytes, resetting"
+                );
+                let snapshot = state.session.live_preview_snapshot();
+                let text = state.session.screen_text();
+                let _ = state.broadcaster.send(LiveEvent::Init {
+                    time,
+                    cols: snapshot.cols,
+                    rows: snapshot.rows,
+                    seq: snapshot.seq,
+                    text,
+                });
+                cursor.seq = read.latest_cursor.seq;
+                break;
+            }
 
-                if snapshot.size != (cols, rows) {
-                    let _ = state
-                        .broadcaster
-                        .send(LiveEvent::Resize { time, cols, rows });
-                    snapshot.size = (cols, rows);
-                }
+            if read.data.is_empty() {
+                break;
+            }
 
-                let mut cursor = state
-                    .stream_cursor
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
-                let mut remaining = LIVE_PREVIEW_MAX_TICK_BYTES;
-                loop {
-                    if remaining == 0 {
-                        break;
-                    }
-                    let max_bytes = LIVE_PREVIEW_MAX_CHUNK_BYTES.min(remaining);
-                    let read = match state.session.stream_read(&mut cursor, max_bytes, 0) {
-                        Ok(read) => read,
-                        Err(e) => {
-                            warn!(error = %e, "Live preview stream read failed");
-                            break;
-                        }
-                    };
+            remaining = remaining.saturating_sub(read.data.len());
+            let seq = String::from_utf8_lossy(&read.data).to_string();
+            let _ = state.broadcaster.send(LiveEvent::Output { time, seq });
+        }
+        true
+    };
 
-                    if read.dropped_bytes > 0 {
-                        warn!(
-                            dropped_bytes = read.dropped_bytes,
-                            "Live preview stream dropped bytes, resetting"
-                        );
-                        let snapshot = state.session.live_preview_snapshot();
-                        let text = state.session.screen_text();
-                        let _ = state.broadcaster.send(LiveEvent::Init {
-                            time,
-                            cols: snapshot.cols,
-                            rows: snapshot.rows,
-                            seq: snapshot.seq,
-                            text,
-                        });
-                        cursor.seq = read.latest_cursor.seq;
-                        break;
-                    }
-
-                    if read.data.is_empty() {
-                        break;
-                    }
-
-                    remaining = remaining.saturating_sub(read.data.len());
-                    let seq = String::from_utf8_lossy(&read.data).to_string();
-                    let _ = state.broadcaster.send(LiveEvent::Output { time, seq });
+    if !drain(&state) {
+        return;
+    }
+    loop {
+        crossbeam_channel::select! {
+            recv(shutdown_rx) -> _ => break,
+            recv(notify_rx) -> _ => {
+                if !drain(&state) {
+                    return;
                 }
             }
         }
@@ -575,13 +594,10 @@ async fn alis_message(
             })
             .to_string(),
         ))),
-        Err(e) => match e {
-            tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(count) => {
-                warn!(dropped = count, "Live preview broadcast lagged");
-                None
-            }
-            _ => Some(Err(axum::Error::new(e))),
-        },
+        Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(count)) => {
+            warn!(dropped = count, "Live preview broadcast lagged");
+            None
+        }
     }
 }
 
@@ -714,13 +730,10 @@ async fn events_message(
             .to_string(),
         ))),
         Ok(_) => None,
-        Err(e) => match e {
-            tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(count) => {
-                warn!(dropped = count, "Live preview events lagged");
-                None
-            }
-            _ => Some(Err(axum::Error::new(e))),
-        },
+        Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(count)) => {
+            warn!(dropped = count, "Live preview events lagged");
+            None
+        }
     }
 }
 

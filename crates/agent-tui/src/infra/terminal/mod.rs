@@ -7,6 +7,7 @@ mod vterm;
 
 pub use error::PtyError;
 pub use pty::PtyHandle;
+pub(crate) use pty::ReadEvent;
 pub use pty::key_to_escape_sequence;
 pub use render::render_screen;
 pub use vterm::Cell;

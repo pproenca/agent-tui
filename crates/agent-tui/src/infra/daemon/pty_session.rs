@@ -1,4 +1,5 @@
-use crate::infra::terminal::PtyHandle;
+use crate::infra::terminal::{PtyHandle, ReadEvent};
+use crossbeam_channel::Receiver;
 
 use crate::infra::daemon::SessionError;
 
@@ -35,6 +36,10 @@ impl PtySession {
         self.handle
             .try_read(buf, timeout_ms)
             .map_err(|err| SessionError::Pty(err.into()))
+    }
+
+    pub(crate) fn take_read_rx(&mut self) -> Option<Receiver<ReadEvent>> {
+        self.handle.take_read_rx()
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), SessionError> {

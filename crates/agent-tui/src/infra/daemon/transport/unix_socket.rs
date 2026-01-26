@@ -1,4 +1,5 @@
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::time::Duration;
@@ -111,6 +112,12 @@ impl UnixSocketListener {
 
     pub fn into_inner(self) -> UnixListener {
         self.inner
+    }
+}
+
+impl AsRawFd for UnixSocketListener {
+    fn as_raw_fd(&self) -> std::os::unix::io::RawFd {
+        self.inner.as_raw_fd()
     }
 }
 

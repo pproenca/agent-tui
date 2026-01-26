@@ -1,6 +1,14 @@
+use crate::adapters::{attach_output_to_response, parse_attach_input, session_error_response};
 use crate::common::telemetry;
 use crate::infra::ipc::RpcResponse;
 use crate::infra::ipc::socket_path;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
+use libc::{POLLIN, poll, pollfd};
+use serde_json::json;
+use std::io::{Read, Write};
+use std::os::unix::io::AsRawFd;
+use std::os::unix::net::UnixStream;
 use tracing::{debug, error, info, warn};
 
 use super::config::DaemonConfig;
@@ -16,7 +24,8 @@ use crate::infra::daemon::transport::{
     UnixSocketListener,
 };
 use crate::infra::daemon::{LockFile, remove_lock_file};
-use crate::usecases::ports::SessionRepository;
+use crate::usecases::AttachUseCase;
+use crate::usecases::ports::{SessionRepository, StreamCursor};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender};
@@ -25,12 +34,67 @@ use std::time::{Duration, Instant};
 
 const MAX_CONNECTIONS: usize = 64;
 const CHANNEL_CAPACITY: usize = 128;
+const ATTACH_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
+const ATTACH_STREAM_MAX_TICK_BYTES: usize = 512 * 1024;
+const ATTACH_STREAM_HEARTBEAT: Duration = Duration::from_secs(30);
 static CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
+
+struct ShutdownWaker {
+    reader: UnixStream,
+    writer: Arc<std::sync::Mutex<UnixStream>>,
+}
+
+impl ShutdownWaker {
+    fn new() -> std::io::Result<Self> {
+        let (reader, writer) = UnixStream::pair()?;
+        reader.set_nonblocking(true)?;
+        Ok(Self {
+            reader,
+            writer: Arc::new(std::sync::Mutex::new(writer)),
+        })
+    }
+
+    fn notifier(&self) -> crate::usecases::ports::ShutdownNotifierHandle {
+        Arc::new(ShutdownNotify {
+            writer: Arc::clone(&self.writer),
+        })
+    }
+
+    fn reader_fd(&self) -> std::os::unix::io::RawFd {
+        self.reader.as_raw_fd()
+    }
+
+    fn drain(&mut self) {
+        let mut buf = [0u8; 64];
+        loop {
+            match self.reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(_) => continue,
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(_) => break,
+            }
+        }
+    }
+}
+
+struct ShutdownNotify {
+    writer: Arc<std::sync::Mutex<UnixStream>>,
+}
+
+impl crate::usecases::ports::ShutdownNotifier for ShutdownNotify {
+    fn notify(&self) {
+        if let Ok(mut writer) = self.writer.lock() {
+            let _ = writer.write_all(&[1]);
+        }
+    }
+}
 
 pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
     usecases: UseCaseContainer<SessionManager>,
     active_connections: Arc<AtomicUsize>,
+    connection_wait_lock: std::sync::Mutex<()>,
+    connection_cv: std::sync::Condvar,
     metrics: Arc<DaemonMetrics>,
 }
 
@@ -40,11 +104,7 @@ struct ThreadPool {
 }
 
 impl ThreadPool {
-    fn new(
-        size: usize,
-        server: Arc<DaemonServer>,
-        shutdown: Arc<AtomicBool>,
-    ) -> std::io::Result<Self> {
+    fn new(size: usize, server: Arc<DaemonServer>) -> std::io::Result<Self> {
         let (sender, receiver) = mpsc::sync_channel::<UnixSocketConnection>(CHANNEL_CAPACITY);
         let receiver = Arc::new(std::sync::Mutex::new(receiver));
 
@@ -53,7 +113,6 @@ impl ThreadPool {
         for id in 0..size {
             let receiver = Arc::clone(&receiver);
             let server = Arc::clone(&server);
-            let shutdown = Arc::clone(&shutdown);
 
             let handle =
                 match thread::Builder::new()
@@ -63,10 +122,6 @@ impl ThreadPool {
                         let _worker_guard = worker_span.enter();
                         debug!(worker_id = id, "Worker thread started");
                         loop {
-                            if shutdown.load(Ordering::Relaxed) {
-                                break;
-                            }
-
                             let conn = {
                                 let lock = match receiver.lock() {
                                     Ok(l) => l,
@@ -75,16 +130,19 @@ impl ThreadPool {
                                         break;
                                     }
                                 };
-                                match lock.recv_timeout(Duration::from_millis(100)) {
+                                match lock.recv() {
                                     Ok(conn) => conn,
-                                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
-                                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                                    Err(mpsc::RecvError) => break,
                                 }
                             };
 
                             server.active_connections.fetch_add(1, Ordering::Relaxed);
                             server.handle_client(conn);
-                            server.active_connections.fetch_sub(1, Ordering::Relaxed);
+                            let remaining =
+                                server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
+                            if remaining == 0 {
+                                server.connection_cv.notify_all();
+                            }
                         }
                         debug!(worker_id = id, "Worker thread stopped");
                     }) {
@@ -128,7 +186,11 @@ impl ThreadPool {
 }
 
 impl DaemonServer {
-    pub fn with_config(config: DaemonConfig, shutdown_flag: Arc<AtomicBool>) -> Self {
+    pub fn with_config(
+        config: DaemonConfig,
+        shutdown_flag: Arc<AtomicBool>,
+        shutdown_notifier: crate::usecases::ports::ShutdownNotifierHandle,
+    ) -> Self {
         let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
         let metrics = Arc::new(DaemonMetrics::new());
         let session_repo: Arc<dyn SessionRepository> = session_manager.clone();
@@ -141,12 +203,15 @@ impl DaemonServer {
             start_time,
             Arc::clone(&active_connections),
             shutdown_flag,
+            shutdown_notifier,
             live_preview,
         );
         Self {
             session_manager,
             usecases,
             active_connections,
+            connection_wait_lock: std::sync::Mutex::new(()),
+            connection_cv: std::sync::Condvar::new(),
             metrics,
         }
     }
@@ -163,6 +228,136 @@ impl DaemonServer {
     fn handle_request(&self, request: crate::infra::ipc::RpcRequest) -> RpcResponse {
         let router = Router::new(&self.usecases);
         router.route(request)
+    }
+
+    fn handle_attach_stream(
+        &self,
+        conn: &mut impl TransportConnection,
+        request: crate::infra::ipc::RpcRequest,
+    ) -> Result<(), TransportError> {
+        let req_id = request.id;
+        let input = match parse_attach_input(&request) {
+            Ok(input) => input,
+            Err(response) => {
+                let _ = conn.write_response(&response);
+                return Ok(());
+            }
+        };
+
+        let session_id = input.session_id.to_string();
+        match self.usecases.session.attach.execute(input) {
+            Ok(output) => {
+                let response = attach_output_to_response(req_id, output);
+                conn.write_response(&response)?;
+            }
+            Err(err) => {
+                let response = session_error_response(req_id, err);
+                let _ = conn.write_response(&response);
+                return Ok(());
+            }
+        }
+
+        let session =
+            match SessionRepository::resolve(self.session_manager.as_ref(), Some(&session_id)) {
+                Ok(session) => session,
+                Err(err) => {
+                    let response = session_error_response(req_id, err);
+                    let _ = conn.write_response(&response);
+                    return Ok(());
+                }
+            };
+
+        if let Err(err) = session.update() {
+            let response = session_error_response(req_id, err);
+            let _ = conn.write_response(&response);
+            return Ok(());
+        }
+
+        let ready = RpcResponse::success(
+            req_id,
+            json!({
+                "event": "ready",
+                "session_id": session_id
+            }),
+        );
+        conn.write_response(&ready)?;
+
+        let subscription = session.stream_subscribe();
+        let mut cursor = StreamCursor::default();
+
+        loop {
+            let mut budget = ATTACH_STREAM_MAX_TICK_BYTES;
+            let mut sent_any = false;
+
+            loop {
+                if budget == 0 {
+                    break;
+                }
+
+                let max_chunk = budget.min(ATTACH_STREAM_MAX_CHUNK_BYTES);
+                let read = match session.stream_read(&mut cursor, max_chunk, 0) {
+                    Ok(read) => read,
+                    Err(err) => {
+                        let response = session_error_response(req_id, err);
+                        let _ = conn.write_response(&response);
+                        return Ok(());
+                    }
+                };
+
+                if read.dropped_bytes > 0 && read.data.is_empty() {
+                    let response = RpcResponse::success(
+                        req_id,
+                        json!({
+                            "event": "dropped",
+                            "dropped_bytes": read.dropped_bytes
+                        }),
+                    );
+                    conn.write_response(&response)?;
+                    sent_any = true;
+                }
+
+                if !read.data.is_empty() {
+                    let data_b64 = STANDARD.encode(&read.data);
+                    let response = RpcResponse::success(
+                        req_id,
+                        json!({
+                            "event": "output",
+                            "data": data_b64,
+                            "bytes": read.data.len(),
+                            "dropped_bytes": read.dropped_bytes
+                        }),
+                    );
+                    conn.write_response(&response)?;
+                    sent_any = true;
+                    budget = budget.saturating_sub(read.data.len());
+                    if read.closed {
+                        let response = RpcResponse::success(req_id, json!({ "event": "closed" }));
+                        let _ = conn.write_response(&response);
+                        return Ok(());
+                    }
+                    continue;
+                }
+
+                if read.closed {
+                    let response = RpcResponse::success(req_id, json!({ "event": "closed" }));
+                    let _ = conn.write_response(&response);
+                    return Ok(());
+                }
+
+                break;
+            }
+
+            if sent_any {
+                if budget == 0 {
+                    continue;
+                }
+            }
+
+            if !subscription.wait(Some(ATTACH_STREAM_HEARTBEAT)) {
+                let response = RpcResponse::success(req_id, json!({ "event": "heartbeat" }));
+                conn.write_response(&response)?;
+            }
+        }
     }
 
     fn handle_client(&self, mut conn: impl TransportConnection) {
@@ -226,6 +421,24 @@ impl DaemonServer {
             let start = Instant::now();
 
             self.metrics.record_request();
+
+            if method == "attach_stream" {
+                let stream_result = self.handle_attach_stream(&mut conn, request);
+                debug!(
+                    request_id,
+                    method = %method,
+                    elapsed_ms = start.elapsed().as_millis(),
+                    "RPC stream handled"
+                );
+                if let Err(e) = stream_result {
+                    match e {
+                        TransportError::ConnectionClosed => {}
+                        _ => error!(error = %e, "RPC stream error"),
+                    }
+                }
+                break;
+            }
+
             let response = self.handle_request(request);
             debug!(
                 request_id,
@@ -268,21 +481,61 @@ fn bind_socket(socket_path: &std::path::Path) -> Result<UnixSocketListener, Daem
     Ok(listener)
 }
 
-fn run_accept_loop(listener: &UnixSocketListener, pool: &ThreadPool, shutdown: &AtomicBool) {
+fn run_accept_loop(
+    listener: &UnixSocketListener,
+    pool: &ThreadPool,
+    shutdown: &AtomicBool,
+    waker: &mut ShutdownWaker,
+) {
+    let listener_fd = listener.as_raw_fd();
+    let wake_fd = waker.reader_fd();
+    let mut fds = [
+        pollfd {
+            fd: listener_fd,
+            events: POLLIN,
+            revents: 0,
+        },
+        pollfd {
+            fd: wake_fd,
+            events: POLLIN,
+            revents: 0,
+        },
+    ];
+
     while !shutdown.load(Ordering::Relaxed) {
-        match listener.accept() {
-            Ok(conn) => {
-                if let Err(conn) = pool.execute(conn) {
-                    warn!("Thread pool channel closed, dropping connection");
-                    drop(conn);
-                }
+        let poll_result = unsafe { poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, -1) };
+        if poll_result < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue;
             }
-            Err(TransportError::Timeout) => {
-                thread::sleep(Duration::from_millis(10));
+            error!(error = %err, "poll failed");
+            continue;
+        }
+
+        if fds[1].revents & POLLIN != 0 {
+            waker.drain();
+            if shutdown.load(Ordering::Relaxed) {
+                break;
             }
-            Err(e) => {
-                if !shutdown.load(Ordering::Relaxed) {
-                    error!(error = %e, "Error accepting connection");
+        }
+
+        if fds[0].revents & POLLIN != 0 {
+            loop {
+                match listener.accept() {
+                    Ok(conn) => {
+                        if let Err(conn) = pool.execute(conn) {
+                            warn!("Thread pool channel closed, dropping connection");
+                            drop(conn);
+                        }
+                    }
+                    Err(TransportError::Timeout) => break,
+                    Err(e) => {
+                        if !shutdown.load(Ordering::Relaxed) {
+                            error!(error = %e, "Error accepting connection");
+                        }
+                        break;
+                    }
                 }
             }
         }
@@ -295,12 +548,23 @@ fn wait_for_connections(server: &DaemonServer, timeout_secs: u64) {
         "Waiting for active connections to complete"
     );
     let shutdown_deadline = Instant::now() + Duration::from_secs(timeout_secs);
+    let mut guard = server
+        .connection_wait_lock
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     while server.active_connections.load(Ordering::Relaxed) > 0 {
-        if Instant::now() > shutdown_deadline {
+        let now = Instant::now();
+        if now >= shutdown_deadline {
             warn!("Shutdown timeout, forcing close");
             break;
         }
-        thread::sleep(Duration::from_millis(50));
+        let remaining = shutdown_deadline.saturating_duration_since(now);
+        let (_guard, result) = server.connection_cv.wait_timeout(guard, remaining).unwrap();
+        guard = _guard;
+        if result.timed_out() {
+            warn!("Shutdown timeout, forcing close");
+            break;
+        }
     }
 }
 
@@ -337,15 +601,23 @@ pub fn start_daemon() -> Result<(), DaemonError> {
     info!(socket = %socket_path.display(), pid = std::process::id(), "Daemon started");
 
     let shutdown = Arc::new(AtomicBool::new(false));
+    let waker = ShutdownWaker::new()
+        .map_err(|e| DaemonError::SignalSetup(format!("failed to create shutdown waker: {}", e)))?;
+    let shutdown_notifier = waker.notifier();
     let config = DaemonConfig::from_env();
-    let server = Arc::new(DaemonServer::with_config(config, Arc::clone(&shutdown)));
+    let server = Arc::new(DaemonServer::with_config(
+        config,
+        Arc::clone(&shutdown),
+        Arc::clone(&shutdown_notifier),
+    ));
 
-    let _signal_handler = SignalHandler::setup(Arc::clone(&shutdown))?;
+    let _signal_handler = SignalHandler::setup(Arc::clone(&shutdown), Some(shutdown_notifier))?;
 
-    let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server), Arc::clone(&shutdown))
+    let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server))
         .map_err(|e| DaemonError::ThreadPool(e.to_string()))?;
 
-    run_accept_loop(&listener, &pool, &shutdown);
+    let mut waker = waker;
+    run_accept_loop(&listener, &pool, &shutdown, &mut waker);
 
     info!("Shutting down daemon...");
     wait_for_connections(&server, 5);

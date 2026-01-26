@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::domain::{ShutdownInput, ShutdownOutput};
+use crate::usecases::ports::ShutdownNotifier;
 
 pub trait ShutdownUseCase: Send + Sync {
     fn execute(&self, input: ShutdownInput) -> ShutdownOutput;
@@ -9,11 +10,15 @@ pub trait ShutdownUseCase: Send + Sync {
 
 pub struct ShutdownUseCaseImpl {
     shutdown_flag: Arc<AtomicBool>,
+    notifier: Arc<dyn ShutdownNotifier>,
 }
 
 impl ShutdownUseCaseImpl {
-    pub fn new(shutdown_flag: Arc<AtomicBool>) -> Self {
-        Self { shutdown_flag }
+    pub fn new(shutdown_flag: Arc<AtomicBool>, notifier: Arc<dyn ShutdownNotifier>) -> Self {
+        Self {
+            shutdown_flag,
+            notifier,
+        }
     }
 }
 
@@ -21,6 +26,7 @@ impl ShutdownUseCase for ShutdownUseCaseImpl {
     #[tracing::instrument(skip(self, _input))]
     fn execute(&self, _input: ShutdownInput) -> ShutdownOutput {
         self.shutdown_flag.store(true, Ordering::SeqCst);
+        self.notifier.notify();
         ShutdownOutput { acknowledged: true }
     }
 }
@@ -32,7 +38,10 @@ mod tests {
     #[test]
     fn test_shutdown_usecase_sets_flag_to_true() {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        let usecase = ShutdownUseCaseImpl::new(Arc::clone(&shutdown_flag));
+        let usecase = ShutdownUseCaseImpl::new(
+            Arc::clone(&shutdown_flag),
+            Arc::new(crate::usecases::ports::NoopShutdownNotifier),
+        );
 
         assert!(!shutdown_flag.load(Ordering::SeqCst));
 
@@ -45,7 +54,10 @@ mod tests {
     #[test]
     fn test_shutdown_usecase_returns_acknowledged_true() {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        let usecase = ShutdownUseCaseImpl::new(shutdown_flag);
+        let usecase = ShutdownUseCaseImpl::new(
+            shutdown_flag,
+            Arc::new(crate::usecases::ports::NoopShutdownNotifier),
+        );
 
         let output = usecase.execute(ShutdownInput);
 
@@ -55,7 +67,10 @@ mod tests {
     #[test]
     fn test_shutdown_usecase_is_idempotent() {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        let usecase = ShutdownUseCaseImpl::new(Arc::clone(&shutdown_flag));
+        let usecase = ShutdownUseCaseImpl::new(
+            Arc::clone(&shutdown_flag),
+            Arc::new(crate::usecases::ports::NoopShutdownNotifier),
+        );
 
         let output1 = usecase.execute(ShutdownInput);
         let output2 = usecase.execute(ShutdownInput);

@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
+
+use crossbeam_channel as channel;
 
 use crate::domain::core::{Component, CursorPosition, Element};
 use crate::domain::session_types::{SessionId, SessionInfo};
@@ -24,6 +27,29 @@ pub struct StreamRead {
     pub next_cursor: StreamCursor,
     pub latest_cursor: StreamCursor,
     pub dropped_bytes: u64,
+    pub closed: bool,
+}
+
+#[derive(Clone)]
+pub struct StreamSubscription {
+    receiver: channel::Receiver<()>,
+}
+
+impl StreamSubscription {
+    pub(crate) fn new(receiver: channel::Receiver<()>) -> Self {
+        Self { receiver }
+    }
+
+    pub fn wait(&self, timeout: Option<Duration>) -> bool {
+        match timeout {
+            Some(timeout) => self.receiver.recv_timeout(timeout).is_ok(),
+            None => self.receiver.recv().is_ok(),
+        }
+    }
+
+    pub(crate) fn receiver(&self) -> &channel::Receiver<()> {
+        &self.receiver
+    }
 }
 
 pub trait SessionOps: Send + Sync {
@@ -40,6 +66,7 @@ pub trait SessionOps: Send + Sync {
         max_bytes: usize,
         timeout_ms: i32,
     ) -> Result<StreamRead, SessionError>;
+    fn stream_subscribe(&self) -> StreamSubscription;
     fn analyze_screen(&self) -> Vec<Component>;
     fn click(&self, element_ref: &str) -> Result<(), SessionError>;
     fn keystroke(&self, key: &str) -> Result<(), SessionError>;

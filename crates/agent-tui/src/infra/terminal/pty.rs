@@ -5,9 +5,10 @@ use std::io::Read;
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::mpsc;
 use std::time::Duration;
 
+use crossbeam_channel as channel;
+use libc::{POLLERR, POLLHUP, POLLOUT, poll, pollfd};
 use portable_pty::Child;
 use portable_pty::CommandBuilder;
 use portable_pty::MasterPty;
@@ -24,7 +25,7 @@ pub struct PtyHandle {
     child: Box<dyn Child + Send + Sync>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     size: PtySize,
-    read_rx: mpsc::Receiver<ReadEvent>,
+    read_rx: Option<channel::Receiver<ReadEvent>>,
     read_buffer: VecDeque<u8>,
     read_closed: bool,
     read_error: Option<String>,
@@ -96,7 +97,7 @@ impl PtyHandle {
             child,
             writer: Arc::new(Mutex::new(writer)),
             size,
-            read_rx,
+            read_rx: Some(read_rx),
             read_buffer: VecDeque::new(),
             read_closed: false,
             read_error: None,
@@ -131,7 +132,7 @@ impl PtyHandle {
                 Ok(n) => offset += n,
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(1));
+                    self.wait_writable()?;
                 }
                 Err(e) => return Err(PtyError::Write(e.to_string())),
             }
@@ -141,6 +142,41 @@ impl PtyHandle {
 
     pub fn write_str(&self, s: &str) -> Result<(), PtyError> {
         self.write(s.as_bytes())
+    }
+
+    fn wait_writable(&self) -> Result<(), PtyError> {
+        #[cfg(unix)]
+        {
+            let Some(fd) = self.master.as_raw_fd() else {
+                return Ok(());
+            };
+            let mut fds = [pollfd {
+                fd,
+                events: POLLOUT,
+                revents: 0,
+            }];
+            loop {
+                let rc = unsafe { poll(fds.as_mut_ptr(), 1, -1) };
+                if rc < 0 {
+                    let err = io::Error::last_os_error();
+                    if err.kind() == io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    return Err(PtyError::Write(err.to_string()));
+                }
+                let events = fds[0].revents;
+                if events & (POLLHUP | POLLERR) != 0 {
+                    return Err(PtyError::Write("PTY closed".to_string()));
+                }
+                if events & POLLOUT != 0 {
+                    return Ok(());
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            Ok(())
+        }
     }
 
     pub fn try_read(&mut self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, PtyError> {
@@ -156,31 +192,47 @@ impl PtyHandle {
         }
 
         if self.read_buffer.is_empty() && !self.read_closed {
-            let first_event = if timeout_ms < 0 {
-                match self.read_rx.recv() {
-                    Ok(event) => Some(event),
-                    Err(_) => {
-                        self.read_closed = true;
-                        None
+            let mut events = Vec::new();
+            {
+                let read_rx = match self.read_rx.as_ref() {
+                    Some(rx) => rx,
+                    None => {
+                        return Err(PtyError::Read(
+                            "PTY read channel is not available".to_string(),
+                        ));
                     }
-                }
-            } else {
-                let timeout = Duration::from_millis(timeout_ms as u64);
-                match self.read_rx.recv_timeout(timeout) {
-                    Ok(event) => Some(event),
-                    Err(mpsc::RecvTimeoutError::Timeout) => None,
-                    Err(mpsc::RecvTimeoutError::Disconnected) => {
-                        self.read_closed = true;
-                        None
-                    }
-                }
-            };
+                };
 
-            if let Some(event) = first_event {
-                self.handle_read_event(event);
+                let first_event = if timeout_ms < 0 {
+                    match read_rx.recv() {
+                        Ok(event) => Some(event),
+                        Err(_) => {
+                            self.read_closed = true;
+                            None
+                        }
+                    }
+                } else {
+                    let timeout = Duration::from_millis(timeout_ms as u64);
+                    match read_rx.recv_timeout(timeout) {
+                        Ok(event) => Some(event),
+                        Err(channel::RecvTimeoutError::Timeout) => None,
+                        Err(channel::RecvTimeoutError::Disconnected) => {
+                            self.read_closed = true;
+                            None
+                        }
+                    }
+                };
+
+                if let Some(event) = first_event {
+                    events.push(event);
+                }
+
+                while let Ok(event) = read_rx.try_recv() {
+                    events.push(event);
+                }
             }
 
-            while let Ok(event) = self.read_rx.try_recv() {
+            for event in events {
                 self.handle_read_event(event);
             }
         }
@@ -226,6 +278,10 @@ impl PtyHandle {
             .kill()
             .map_err(|e| PtyError::Spawn(e.to_string()))
     }
+
+    pub(crate) fn take_read_rx(&mut self) -> Option<channel::Receiver<ReadEvent>> {
+        self.read_rx.take()
+    }
 }
 
 impl PtyHandle {
@@ -241,35 +297,36 @@ impl PtyHandle {
     }
 }
 
-enum ReadEvent {
+pub(crate) enum ReadEvent {
     Data(Vec<u8>),
     Eof,
     Error(String),
 }
 
-fn spawn_reader(mut reader: Box<dyn Read + Send>) -> mpsc::Receiver<ReadEvent> {
-    let (tx, rx) = mpsc::channel();
+fn spawn_reader(mut reader: Box<dyn Read + Send>) -> channel::Receiver<ReadEvent> {
+    let (tx, rx) = channel::unbounded();
     let span = tracing::debug_span!("pty_reader");
     let builder = std::thread::Builder::new().name("pty-reader".to_string());
+    let tx_thread = tx.clone();
     if let Err(err) = builder.spawn(move || {
         let _guard = span.enter();
         let mut buf = [0u8; 8192];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => {
-                    let _ = tx.send(ReadEvent::Eof);
+                    let _ = tx_thread.send(ReadEvent::Eof);
                     debug!("PTY reader EOF");
                     break;
                 }
                 Ok(n) => {
-                    if tx.send(ReadEvent::Data(buf[..n].to_vec())).is_err() {
+                    if tx_thread.send(ReadEvent::Data(buf[..n].to_vec())).is_err() {
                         break;
                     }
                 }
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 Err(e) => {
                     warn!(error = %e, "PTY reader error");
-                    let _ = tx.send(ReadEvent::Error(e.to_string()));
+                    let _ = tx_thread.send(ReadEvent::Error(e.to_string()));
                     break;
                 }
             }

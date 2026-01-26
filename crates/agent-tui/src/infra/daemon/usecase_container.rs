@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::time::Instant;
 
-use crate::infra::daemon::{DaemonMetrics, RealSleeper};
-use crate::usecases::ports::{LivePreviewService, SessionRepository};
+use crate::infra::daemon::DaemonMetrics;
+use crate::usecases::ports::{LivePreviewService, SessionRepository, ShutdownNotifierHandle};
 use crate::usecases::{
     AccessibilitySnapshotUseCaseImpl, AssertUseCaseImpl, AttachUseCaseImpl, CleanupUseCaseImpl,
     ClearUseCaseImpl, ClickUseCaseImpl, CountUseCaseImpl, DoubleClickUseCaseImpl, FillUseCaseImpl,
@@ -24,7 +24,7 @@ pub struct UseCaseContainer<R: SessionRepository + 'static> {
     pub input: InputUseCases<R>,
     pub diagnostics: DiagnosticsUseCases<R>,
     pub live_preview: LivePreviewUseCases<R>,
-    pub wait: WaitUseCaseImpl<R, RealSleeper>,
+    pub wait: WaitUseCaseImpl<R>,
 }
 
 pub struct SessionUseCases<R: SessionRepository + 'static> {
@@ -42,7 +42,7 @@ pub struct ElementUseCases<R: SessionRepository + 'static> {
     pub snapshot: SnapshotUseCaseImpl<R>,
     pub accessibility_snapshot: AccessibilitySnapshotUseCaseImpl<R>,
     pub click: ClickUseCaseImpl<R>,
-    pub dbl_click: DoubleClickUseCaseImpl<R, RealSleeper>,
+    pub dbl_click: DoubleClickUseCaseImpl<R>,
     pub fill: FillUseCaseImpl<R>,
     pub find: FindUseCaseImpl<R>,
     pub scroll: ScrollUseCaseImpl<R>,
@@ -51,8 +51,8 @@ pub struct ElementUseCases<R: SessionRepository + 'static> {
     pub clear: ClearUseCaseImpl<R>,
     pub select_all: SelectAllUseCaseImpl<R>,
     pub toggle: ToggleUseCaseImpl<R>,
-    pub select: SelectUseCaseImpl<R, RealSleeper>,
-    pub multiselect: MultiselectUseCaseImpl<R, RealSleeper>,
+    pub select: SelectUseCaseImpl<R>,
+    pub multiselect: MultiselectUseCaseImpl<R>,
 
     pub get_text: GetTextUseCaseImpl<R>,
     pub get_value: GetValueUseCaseImpl<R>,
@@ -62,7 +62,7 @@ pub struct ElementUseCases<R: SessionRepository + 'static> {
     pub is_checked: IsCheckedUseCaseImpl<R>,
     pub get_focused: GetFocusedUseCaseImpl<R>,
     pub get_title: GetTitleUseCaseImpl<R>,
-    pub scroll_into_view: ScrollIntoViewUseCaseImpl<R, RealSleeper>,
+    pub scroll_into_view: ScrollIntoViewUseCaseImpl<R>,
 }
 
 pub struct InputUseCases<R: SessionRepository + 'static> {
@@ -93,6 +93,7 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
         start_time: Instant,
         active_connections: Arc<AtomicUsize>,
         shutdown_flag: Arc<AtomicBool>,
+        shutdown_notifier: ShutdownNotifierHandle,
         live_preview: Arc<dyn LivePreviewService>,
     ) -> Self {
         let metrics_provider: Arc<dyn crate::usecases::ports::MetricsProvider> = metrics.clone();
@@ -114,10 +115,7 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                     &repository,
                 )),
                 click: ClickUseCaseImpl::new(Arc::clone(&repository)),
-                dbl_click: DoubleClickUseCaseImpl::with_sleeper(
-                    Arc::clone(&repository),
-                    RealSleeper,
-                ),
+                dbl_click: DoubleClickUseCaseImpl::new(Arc::clone(&repository)),
                 fill: FillUseCaseImpl::new(Arc::clone(&repository)),
                 find: FindUseCaseImpl::new(Arc::clone(&repository)),
                 scroll: ScrollUseCaseImpl::new(Arc::clone(&repository)),
@@ -126,11 +124,8 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 clear: ClearUseCaseImpl::new(Arc::clone(&repository)),
                 select_all: SelectAllUseCaseImpl::new(Arc::clone(&repository)),
                 toggle: ToggleUseCaseImpl::new(Arc::clone(&repository)),
-                select: SelectUseCaseImpl::with_sleeper(Arc::clone(&repository), RealSleeper),
-                multiselect: MultiselectUseCaseImpl::with_sleeper(
-                    Arc::clone(&repository),
-                    RealSleeper,
-                ),
+                select: SelectUseCaseImpl::new(Arc::clone(&repository)),
+                multiselect: MultiselectUseCaseImpl::new(Arc::clone(&repository)),
                 get_text: GetTextUseCaseImpl::new(Arc::clone(&repository)),
                 get_value: GetValueUseCaseImpl::new(Arc::clone(&repository)),
                 is_visible: IsVisibleUseCaseImpl::new(Arc::clone(&repository)),
@@ -139,10 +134,7 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 is_checked: IsCheckedUseCaseImpl::new(Arc::clone(&repository)),
                 get_focused: GetFocusedUseCaseImpl::new(Arc::clone(&repository)),
                 get_title: GetTitleUseCaseImpl::new(Arc::clone(&repository)),
-                scroll_into_view: ScrollIntoViewUseCaseImpl::with_sleeper(
-                    Arc::clone(&repository),
-                    RealSleeper,
-                ),
+                scroll_into_view: ScrollIntoViewUseCaseImpl::new(Arc::clone(&repository)),
             },
             input: InputUseCases {
                 keystroke: KeystrokeUseCaseImpl::new(Arc::clone(&repository)),
@@ -165,7 +157,7 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                     start_time,
                     active_connections,
                 ),
-                shutdown: ShutdownUseCaseImpl::new(shutdown_flag),
+                shutdown: ShutdownUseCaseImpl::new(shutdown_flag, shutdown_notifier),
             },
             live_preview: LivePreviewUseCases {
                 start: LivePreviewStartUseCaseImpl::new(
@@ -175,7 +167,7 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 stop: LivePreviewStopUseCaseImpl::new(Arc::clone(&live_preview)),
                 status: LivePreviewStatusUseCaseImpl::new(live_preview),
             },
-            wait: WaitUseCaseImpl::with_sleeper(repository, RealSleeper),
+            wait: WaitUseCaseImpl::new(repository),
         }
     }
 }

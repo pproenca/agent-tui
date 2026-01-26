@@ -9,4 +9,4 @@
 ## Repo Layout
 - CLI workspace (Cargo + npm package) lives in `cli/`; most Rust/Node commands should run there.
 - The root `justfile` sets `working-directory := "cli"` so `just` works from repo root.
-- Web assets live in `web/` and are synced into `cli/web` for packaging.
+- The daemon exposes a versioned HTTP/WS API for live preview; frontends are external consumers of that API.

@@ -150,16 +150,19 @@ impl LivePreviewError {
         match self {
             LivePreviewError::Session(err) => err.suggestion(),
             LivePreviewError::AlreadyRunning => {
-                "Run 'live status' to see the active preview or 'live stop' to stop it.".to_string()
+                "Run 'live status' to see the API endpoints or 'daemon stop' to stop it."
+                    .to_string()
             }
             LivePreviewError::NotRunning => {
-                "Run 'live start' to start the live preview.".to_string()
+                "Restart the daemon to start the live preview API.".to_string()
             }
             LivePreviewError::InvalidListenAddress(_) => {
-                "Use a valid HOST:PORT or IP:PORT listen address.".to_string()
+                "Use a valid HOST:PORT or IP:PORT listen address via AGENT_TUI_API_LISTEN."
+                    .to_string()
             }
             LivePreviewError::BindFailed { .. } => {
-                "Check if the port is available or choose another --listen address.".to_string()
+                "Check if the port is available or choose another AGENT_TUI_API_LISTEN."
+                    .to_string()
             }
         }
     }

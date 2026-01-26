@@ -2,6 +2,7 @@
 mod config;
 mod error;
 mod file_lock;
+mod http_api;
 pub mod handlers;
 mod lock_helpers;
 mod metrics;

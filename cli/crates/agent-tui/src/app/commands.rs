@@ -362,25 +362,25 @@ EXAMPLES:
         command: Option<SessionsCommand>,
     },
 
-    /// Live preview gateway for the current session
+    /// Live preview API for the current session
     #[command(long_about = "\
-Start or manage the live preview gateway.
+Show the daemon's live preview API endpoints.
 
-By default, starts a live preview gateway for the active session.
-The gateway serves a browser page with a live terminal view using the daemon stream.
+The daemon exposes HTTP + WebSocket endpoints for live preview by default.
+Use this command to print the URLs and token so external frontends can connect.
 
-REQUIREMENTS:
-    The gateway is a Node/Bun script shipped with the repo. If auto-discovery
-    fails, set AGENT_TUI_LIVE_GATEWAY to the script path.
+CONFIGURATION:
+    AGENT_TUI_API_LISTEN         Bind address (default: 127.0.0.1:0)
+    AGENT_TUI_API_ALLOW_REMOTE   Allow non-loopback bind (default: false)
+    AGENT_TUI_API_TOKEN          Override token (or 'none' to disable)
+    AGENT_TUI_API_STATE          State file path (default: ~/.agent-tui/api.json)
+    AGENT_TUI_UI_URL             Frontend URL to open with --open
 
 SECURITY:
-    Only binds to loopback by default. Use --allow-remote to bind to
-    non-loopback addresses.")]
+    API is token-protected by default. Use --allow-remote only when needed.")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui live start
-    agent-tui live start -l 127.0.0.1:0
-    agent-tui live start -l 0.0.0.0:9999 --allow-remote
     agent-tui live status
     agent-tui live stop")]
     Live {
@@ -477,19 +477,19 @@ pub enum SessionsCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum LiveCommand {
-    /// Start the live preview gateway
+    /// Show the live preview API details
     Start(LiveStartArgs),
 
-    /// Stop the live preview gateway
+    /// Stop the live preview API (stop the daemon)
     Stop,
 
-    /// Show live preview status
+    /// Show live preview API status
     Status,
 }
 
 #[derive(Debug, Clone, Default, Args)]
 pub struct LiveStartArgs {
-    /// Listen address for the live preview gateway (default: 127.0.0.1:0)
+    /// Deprecated (use AGENT_TUI_API_LISTEN and restart the daemon)
     #[arg(
         short = 'l',
         long,
@@ -499,11 +499,11 @@ pub struct LiveStartArgs {
     )]
     pub listen: Option<String>,
 
-    /// Allow binding to non-loopback addresses (e.g., 0.0.0.0)
+    /// Deprecated (use AGENT_TUI_API_ALLOW_REMOTE and restart the daemon)
     #[arg(long)]
     pub allow_remote: bool,
 
-    /// Open the preview URL in a browser
+    /// Open the preview URL in a browser (uses AGENT_TUI_UI_URL if set)
     #[arg(long)]
     pub open: bool,
 
@@ -511,8 +511,8 @@ pub struct LiveStartArgs {
     #[arg(long, value_name = "CMD")]
     pub browser: Option<String>,
 
-    /// Maximum concurrent live preview viewers (default: 3)
-    #[arg(long, value_name = "COUNT", env = "AGENT_TUI_LIVE_MAX_VIEWERS")]
+    /// Deprecated (use AGENT_TUI_API_MAX_CONNECTIONS and restart the daemon)
+    #[arg(long, value_name = "COUNT", env = "AGENT_TUI_API_MAX_CONNECTIONS")]
     pub max_viewers: Option<u16>,
 }
 

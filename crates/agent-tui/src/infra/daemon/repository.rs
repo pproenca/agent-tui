@@ -34,6 +34,11 @@ impl SessionOps for SessionHandleImpl {
         session_guard.screen_text()
     }
 
+    fn screen_render(&self) -> String {
+        let session_guard = mutex_lock_or_recover(&self.inner);
+        session_guard.screen_render()
+    }
+
     fn detect_elements(&self) -> Vec<Element> {
         let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.detect_elements().to_vec()

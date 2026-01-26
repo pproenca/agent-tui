@@ -22,6 +22,7 @@ pub struct LivePreviewOutput {
 pub trait SessionOps: Send + Sync {
     fn update(&self) -> Result<(), SessionError>;
     fn screen_text(&self) -> String;
+    fn screen_render(&self) -> String;
     fn detect_elements(&self) -> Vec<Element>;
     fn find_element(&self, element_ref: &str) -> Option<Element>;
     fn pty_write(&self, data: &[u8]) -> Result<(), SessionError>;

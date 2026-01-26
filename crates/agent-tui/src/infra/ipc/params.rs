@@ -35,6 +35,8 @@ pub struct SnapshotParams {
     pub strip_ansi: bool,
     #[serde(default)]
     pub include_cursor: bool,
+    #[serde(default)]
+    pub include_render: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -220,6 +222,7 @@ mod tests {
             session: Some("test-session".to_string()),
             include_elements: true,
             include_cursor: true,
+            include_render: true,
             ..Default::default()
         };
 
@@ -227,6 +230,7 @@ mod tests {
         assert_eq!(json["session"], "test-session");
         assert_eq!(json["include_elements"], true);
         assert_eq!(json["include_cursor"], true);
+        assert_eq!(json["include_render"], true);
     }
 
     #[test]
@@ -234,13 +238,15 @@ mod tests {
         let json = serde_json::json!({
             "session": "abc123",
             "include_elements": true,
-            "include_cursor": true
+            "include_cursor": true,
+            "include_render": true
         });
 
         let params: SnapshotParams = serde_json::from_value(json).unwrap();
         assert_eq!(params.session, Some("abc123".to_string()));
         assert!(params.include_elements);
         assert!(params.include_cursor);
+        assert!(params.include_render);
     }
 
     #[test]
@@ -251,6 +257,7 @@ mod tests {
         assert_eq!(params.session, None);
         assert!(!params.include_elements);
         assert!(!params.include_cursor);
+        assert!(!params.include_render);
         assert!(!params.strip_ansi);
         assert_eq!(params.region, None);
     }

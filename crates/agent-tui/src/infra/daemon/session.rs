@@ -27,6 +27,7 @@ use crate::domain::core::Element;
 use crate::infra::terminal::CursorPosition;
 use crate::infra::terminal::PtyHandle;
 use crate::infra::terminal::key_to_escape_sequence;
+use crate::infra::terminal::render_screen;
 use crate::usecases::ports::{LivePreviewOutput, LivePreviewSnapshot};
 
 use super::pty_session::PtySession;
@@ -223,6 +224,11 @@ impl Session {
 
     pub fn screen_text(&self) -> String {
         self.terminal.screen_text()
+    }
+
+    pub fn screen_render(&self) -> String {
+        let buffer = self.terminal.screen_buffer();
+        render_screen(&buffer)
     }
 
     pub fn cursor(&self) -> CursorPosition {

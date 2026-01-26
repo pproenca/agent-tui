@@ -242,6 +242,7 @@ pub fn handle_snapshot<C: DaemonClient>(
         region,
         strip_ansi,
         include_cursor,
+        include_render: false,
     };
     let params = serde_json::to_value(rpc_params)?;
 

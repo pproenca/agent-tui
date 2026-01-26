@@ -300,6 +300,7 @@ pub struct SnapshotInput {
     pub region: Option<String>,
     pub strip_ansi: bool,
     pub include_cursor: bool,
+    pub include_render: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -308,6 +309,7 @@ pub struct SnapshotOutput {
     pub screenshot: String,
     pub elements: Option<Vec<DomainElement>>,
     pub cursor: Option<DomainCursorPosition>,
+    pub rendered: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]

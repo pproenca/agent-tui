@@ -44,11 +44,18 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
             None
         };
 
+        let rendered = if input.include_render {
+            Some(session.screen_render())
+        } else {
+            None
+        };
+
         Ok(SnapshotOutput {
             session_id,
             screenshot,
             elements,
             cursor,
+            rendered,
         })
     }
 }

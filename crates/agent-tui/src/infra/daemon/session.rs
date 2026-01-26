@@ -5,7 +5,7 @@ use std::io::BufReader;
 use std::io::BufWriter;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
-use std::sync::{Arc, Condvar, Mutex, RwLock, mpsc};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -16,8 +16,10 @@ use crossterm::style;
 use crossterm::terminal;
 use tracing::warn;
 
+use bytes::Bytes;
 use chrono::DateTime;
 use chrono::Utc;
+use crossbeam_channel as channel;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
@@ -27,9 +29,9 @@ use crate::common::rwlock_read_or_recover;
 use crate::common::rwlock_write_or_recover;
 use crate::domain::core::Element;
 use crate::infra::terminal::CursorPosition;
-use crate::infra::terminal::PtyHandle;
 use crate::infra::terminal::key_to_escape_sequence;
 use crate::infra::terminal::render_screen;
+use crate::infra::terminal::{PtyHandle, ReadEvent};
 use crate::usecases::ports::{LivePreviewSnapshot, StreamCursor, StreamRead};
 
 use super::pty_session::PtySession;
@@ -40,14 +42,15 @@ pub use crate::domain::session_types::SessionInfo;
 pub use crate::infra::daemon::SessionError;
 
 const STREAM_MAX_BUFFER_BYTES: usize = 8 * 1024 * 1024;
-const PUMP_READ_TIMEOUT_MS: i32 = 10;
+pub(crate) const PUMP_FLUSH_TIMEOUT: Duration = Duration::from_millis(50);
 
 pub fn generate_session_id() -> SessionId {
     SessionId::new(Uuid::new_v4().to_string()[..8].to_string())
 }
 
 struct StreamState {
-    buffer: VecDeque<u8>,
+    buffer: VecDeque<Bytes>,
+    buffer_len: usize,
     base_seq: u64,
     next_seq: u64,
     dropped_bytes: u64,
@@ -59,6 +62,7 @@ struct StreamBuffer {
     state: RwLock<StreamState>,
     wait_lock: Mutex<()>,
     cv: Condvar,
+    notifiers: Mutex<Vec<channel::Sender<()>>>,
     max_bytes: usize,
 }
 
@@ -80,9 +84,14 @@ impl StreamReader {
     ) -> Result<StreamRead, SessionError> {
         self.inner.read(cursor, max_bytes, timeout_ms)
     }
+
+    pub fn subscribe(&self) -> crate::usecases::ports::StreamSubscription {
+        self.inner.subscribe()
+    }
 }
 
 enum PumpCommand {
+    Flush(channel::Sender<()>),
     Shutdown,
 }
 
@@ -91,6 +100,7 @@ impl StreamBuffer {
         Self {
             state: RwLock::new(StreamState {
                 buffer: VecDeque::new(),
+                buffer_len: 0,
                 base_seq: 0,
                 next_seq: 0,
                 dropped_bytes: 0,
@@ -99,25 +109,50 @@ impl StreamBuffer {
             }),
             wait_lock: Mutex::new(()),
             cv: Condvar::new(),
+            notifiers: Mutex::new(Vec::new()),
             max_bytes,
         }
     }
 
+    #[cfg(test)]
     fn push(&self, data: &[u8]) {
         if data.is_empty() {
             return;
         }
-        let mut state = self.state.write().unwrap_or_else(|e| e.into_inner());
-        state.buffer.extend(data.iter().copied());
-        state.next_seq = state.next_seq.saturating_add(data.len() as u64);
-        while state.buffer.len() > self.max_bytes {
-            if state.buffer.pop_front().is_some() {
-                state.base_seq = state.base_seq.saturating_add(1);
-                state.dropped_bytes = state.dropped_bytes.saturating_add(1);
-            } else {
-                break;
-            }
+        self.push_bytes(Bytes::copy_from_slice(data));
+    }
+
+    fn push_bytes(&self, data: Bytes) {
+        if data.is_empty() {
+            return;
         }
+        let mut state = self.state.write().unwrap_or_else(|e| e.into_inner());
+        state.buffer_len = state.buffer_len.saturating_add(data.len());
+        state.next_seq = state.next_seq.saturating_add(data.len() as u64);
+        state.buffer.push_back(data);
+
+        while state.buffer_len > self.max_bytes {
+            let excess = state.buffer_len - self.max_bytes;
+            let Some(chunk) = state.buffer.pop_front() else {
+                break;
+            };
+            if chunk.len() <= excess {
+                let len = chunk.len();
+                state.buffer_len = state.buffer_len.saturating_sub(len);
+                state.base_seq = state.base_seq.saturating_add(len as u64);
+                state.dropped_bytes = state.dropped_bytes.saturating_add(len as u64);
+                continue;
+            }
+
+            let keep = chunk.slice(excess..);
+            state.buffer.push_front(keep);
+            state.buffer_len = state.buffer_len.saturating_sub(excess);
+            state.base_seq = state.base_seq.saturating_add(excess as u64);
+            state.dropped_bytes = state.dropped_bytes.saturating_add(excess as u64);
+            break;
+        }
+        drop(state);
+        self.notify_listeners();
         self.cv.notify_all();
     }
 
@@ -126,7 +161,31 @@ impl StreamBuffer {
         state.closed = true;
         state.error = error;
         drop(state);
+        self.notify_listeners();
         self.cv.notify_all();
+    }
+
+    fn notify(&self) {
+        self.notify_listeners();
+        self.cv.notify_all();
+    }
+
+    fn subscribe(&self) -> crate::usecases::ports::StreamSubscription {
+        let (tx, rx) = channel::bounded(1);
+        {
+            let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
+            notifiers.push(tx);
+        }
+        crate::usecases::ports::StreamSubscription::new(rx)
+    }
+
+    fn notify_listeners(&self) {
+        let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
+        notifiers.retain(|sender| match sender.try_send(()) {
+            Ok(()) => true,
+            Err(channel::TrySendError::Full(_)) => true,
+            Err(channel::TrySendError::Disconnected(_)) => false,
+        });
     }
 
     fn read(
@@ -151,13 +210,13 @@ impl StreamBuffer {
 
             if let Some(wait) = timeout {
                 let guard = self.wait_lock.lock().unwrap_or_else(|e| e.into_inner());
-                let (_, result) = self.cv.wait_timeout(guard, wait).unwrap();
+                let (_guard, result) = self.cv.wait_timeout(guard, wait).unwrap();
                 if result.timed_out() {
                     break;
                 }
             } else {
                 let guard = self.wait_lock.lock().unwrap_or_else(|e| e.into_inner());
-                let _ = self.cv.wait(guard).unwrap();
+                let _guard = self.cv.wait(guard).unwrap();
             }
         }
 
@@ -171,6 +230,7 @@ impl StreamBuffer {
         let latest_cursor = StreamCursor {
             seq: state.next_seq,
         };
+        let closed = state.closed;
         let dropped_bytes = if cursor.seq < state.base_seq {
             state.base_seq - cursor.seq
         } else {
@@ -182,13 +242,26 @@ impl StreamBuffer {
         }
 
         let offset = (cursor.seq - state.base_seq) as usize;
-        let available = state.buffer.len().saturating_sub(offset);
+        let available = state.buffer_len.saturating_sub(offset);
         let read_len = available.min(max_bytes);
 
         let mut data = Vec::with_capacity(read_len);
         if read_len > 0 {
-            for byte in state.buffer.iter().skip(offset).take(read_len) {
-                data.push(*byte);
+            let mut remaining = read_len;
+            let mut skip = offset;
+            for chunk in state.buffer.iter() {
+                if remaining == 0 {
+                    break;
+                }
+                if skip >= chunk.len() {
+                    skip -= chunk.len();
+                    continue;
+                }
+                let start = skip;
+                let take = (chunk.len() - start).min(remaining);
+                data.extend_from_slice(&chunk[start..start + take]);
+                remaining -= take;
+                skip = 0;
             }
         }
 
@@ -199,6 +272,7 @@ impl StreamBuffer {
             next_cursor: *cursor,
             latest_cursor,
             dropped_bytes,
+            closed,
         })
     }
 }
@@ -229,46 +303,65 @@ fn render_live_preview_init(
 fn spawn_pump(
     session: Arc<Mutex<Session>>,
     thread_name: String,
-) -> (mpsc::Sender<PumpCommand>, thread::JoinHandle<()>) {
-    let (tx, rx) = mpsc::channel();
+) -> (channel::Sender<PumpCommand>, thread::JoinHandle<()>) {
+    let (tx, rx) = channel::unbounded();
+    let pty_rx = {
+        let mut sess = mutex_lock_or_recover(&session);
+        sess.take_pty_rx()
+    }
+    .unwrap_or_else(|| {
+        let (_tx, rx) = channel::unbounded();
+        rx
+    });
     let join = thread::Builder::new()
         .name(thread_name)
-        .spawn(move || pump_loop(session, rx))
+        .spawn(move || pump_loop(session, pty_rx, rx))
         .expect("Failed to spawn session pump thread");
     (tx, join)
 }
 
-fn pump_loop(session: Arc<Mutex<Session>>, rx: mpsc::Receiver<PumpCommand>) {
+fn pump_loop(
+    session: Arc<Mutex<Session>>,
+    pty_rx: channel::Receiver<ReadEvent>,
+    rx: channel::Receiver<PumpCommand>,
+) {
     loop {
-        while let Ok(cmd) = rx.try_recv() {
-            match cmd {
-                PumpCommand::Shutdown => {
+        channel::select! {
+            recv(rx) -> cmd => match cmd {
+                Ok(PumpCommand::Flush(ack)) => {
+                    let mut should_continue = true;
                     if let Ok(mut sess) = session.lock() {
+                        should_continue = sess.pump_drain_events(&pty_rx);
+                    }
+                    let _ = ack.send(());
+                    if !should_continue {
+                        return;
+                    }
+                }
+                Ok(PumpCommand::Shutdown) | Err(_) => {
+                    if let Ok(sess) = session.lock() {
+                        sess.stream.close(None);
+                    }
+                    return;
+                }
+            },
+            recv(pty_rx) -> event => match event {
+                Ok(event) => {
+                    let mut should_continue = true;
+                    if let Ok(mut sess) = session.lock() {
+                        should_continue = sess.handle_read_event(event);
+                    }
+                    if !should_continue {
+                        return;
+                    }
+                }
+                Err(_) => {
+                    if let Ok(sess) = session.lock() {
                         sess.stream.close(None);
                     }
                     return;
                 }
             }
-        }
-
-        let read_result = {
-            let mut sess = match session.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            let bytes = match sess.pump_read_once(PUMP_READ_TIMEOUT_MS) {
-                Ok(bytes) => bytes,
-                Err(e) => return sess.stream.close(Some(e.to_string())),
-            };
-            let running = sess.is_running();
-            (bytes, running)
-        };
-
-        if read_result.0 == 0 && !read_result.1 {
-            if let Ok(mut sess) = session.lock() {
-                sess.stream.close(None);
-            }
-            return;
         }
     }
 }
@@ -320,22 +413,26 @@ pub struct Session {
     terminal: TerminalState,
     held_modifiers: ModifierState,
     stream: Arc<StreamBuffer>,
+    pty_rx: Option<channel::Receiver<ReadEvent>>,
     pty_cursor: Arc<Mutex<StreamCursor>>,
-    pump_tx: Option<mpsc::Sender<PumpCommand>>,
+    pump_tx: Option<channel::Sender<PumpCommand>>,
     pump_join: Option<thread::JoinHandle<()>>,
 }
 
 impl Session {
     fn new(id: SessionId, command: String, pty: PtyHandle, cols: u16, rows: u16) -> Self {
         let stream = Arc::new(StreamBuffer::new(STREAM_MAX_BUFFER_BYTES));
+        let mut pty = PtySession::new(pty);
+        let pty_rx = pty.take_read_rx();
         Self {
             id,
             command,
             created_at: Utc::now(),
-            pty: PtySession::new(pty),
+            pty,
             terminal: TerminalState::new(cols, rows),
             held_modifiers: ModifierState::default(),
             stream,
+            pty_rx,
             pty_cursor: Arc::new(Mutex::new(StreamCursor::default())),
             pump_tx: None,
             pump_join: None,
@@ -354,8 +451,14 @@ impl Session {
         self.terminal.size()
     }
 
-    pub fn update(&mut self) -> Result<(), SessionError> {
-        self.pump_drain()
+    pub fn request_flush(&self) -> Option<channel::Receiver<()>> {
+        if let Some(tx) = self.pump_tx.as_ref() {
+            let (ack_tx, ack_rx) = channel::unbounded();
+            if tx.send(PumpCommand::Flush(ack_tx)).is_ok() {
+                return Some(ack_rx);
+            }
+        }
+        None
     }
 
     pub fn screen_text(&self) -> String {
@@ -419,9 +522,7 @@ impl Session {
     }
 
     pub fn click(&mut self, element_ref: &str) -> Result<(), SessionError> {
-        self.update()?;
         self.detect_elements();
-
         let element = self
             .find_element(element_ref)
             .ok_or_else(|| SessionError::ElementNotFound(element_ref.to_string()))?;
@@ -441,6 +542,7 @@ impl Session {
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), SessionError> {
         self.pty.resize(cols, rows)?;
         self.terminal.resize(cols, rows);
+        self.stream.notify();
         Ok(())
     }
 
@@ -475,32 +577,46 @@ impl Session {
         StreamReader::new(Arc::clone(&self.stream))
     }
 
+    pub fn stream_subscribe(&self) -> crate::usecases::ports::StreamSubscription {
+        self.stream.subscribe()
+    }
+
     pub fn pty_cursor_handle(&self) -> Arc<Mutex<StreamCursor>> {
         Arc::clone(&self.pty_cursor)
     }
 
-    fn pump_read_once(&mut self, timeout_ms: i32) -> Result<usize, SessionError> {
-        let mut buf = [0u8; 8192];
-        let bytes_read = self.pty.try_read(&mut buf, timeout_ms)?;
-        if bytes_read > 0 {
-            let data = &buf[..bytes_read];
-            self.terminal.process(data);
-            self.stream.push(data);
-        }
-        Ok(bytes_read)
+    fn take_pty_rx(&mut self) -> Option<channel::Receiver<ReadEvent>> {
+        self.pty_rx.take()
     }
 
-    fn pump_drain(&mut self) -> Result<(), SessionError> {
-        loop {
-            let bytes = self.pump_read_once(0)?;
-            if bytes == 0 {
-                break;
+    fn handle_read_event(&mut self, event: ReadEvent) -> bool {
+        match event {
+            ReadEvent::Data(data) => {
+                self.terminal.process(&data);
+                self.stream.push_bytes(Bytes::from(data));
+                true
+            }
+            ReadEvent::Eof => {
+                self.stream.close(None);
+                false
+            }
+            ReadEvent::Error(error) => {
+                self.stream.close(Some(error));
+                false
             }
         }
-        Ok(())
     }
 
-    fn attach_pump(&mut self, tx: mpsc::Sender<PumpCommand>, join: thread::JoinHandle<()>) {
+    fn pump_drain_events(&mut self, pty_rx: &channel::Receiver<ReadEvent>) -> bool {
+        while let Ok(event) = pty_rx.try_recv() {
+            if !self.handle_read_event(event) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn attach_pump(&mut self, tx: channel::Sender<PumpCommand>, join: thread::JoinHandle<()>) {
         self.pump_tx = Some(tx);
         self.pump_join = Some(join);
     }
@@ -608,7 +724,7 @@ impl SessionManager {
 
         {
             let mut sessions = rwlock_write_or_recover(&self.sessions);
-            sessions.insert(id.clone(), session);
+            sessions.insert(id.clone(), Arc::clone(&session));
         }
 
         {
@@ -981,6 +1097,7 @@ mod stream_tests {
         assert_eq!(cursor.seq, 5);
         assert_eq!(read.dropped_bytes, 0);
         assert_eq!(read.latest_cursor.seq, 5);
+        assert!(!read.closed);
     }
 
     #[test]
@@ -995,6 +1112,7 @@ mod stream_tests {
         assert_eq!(read.data, b"cdef");
         assert_eq!(cursor.seq, 6);
         assert_eq!(read.latest_cursor.seq, 6);
+        assert!(!read.closed);
     }
 
     #[test]
@@ -1012,6 +1130,7 @@ mod stream_tests {
         assert_eq!(read.data, b"ok");
         assert_eq!(cursor.seq, 2);
         assert_eq!(read.latest_cursor.seq, 2);
+        assert!(!read.closed);
     }
 
     #[test]
@@ -1031,6 +1150,52 @@ mod stream_tests {
         assert_eq!(cursor_b.seq, 5);
         assert_eq!(read_a.latest_cursor.seq, 5);
         assert_eq!(read_b.latest_cursor.seq, 5);
+    }
+}
+
+#[cfg(test)]
+mod pump_tests {
+    use super::{Session, StreamCursor, spawn_pump};
+    use crate::infra::terminal::PtyHandle;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    #[cfg(unix)]
+    #[test]
+    fn session_pump_streams_output_into_buffer() {
+        let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
+        let pty = PtyHandle::spawn("sh", &args, None, None, 80, 24).unwrap();
+        let session = Session::new("test-session".into(), "sh".to_string(), pty, 80, 24);
+        let session = Arc::new(Mutex::new(session));
+
+        let (tx, join) = spawn_pump(Arc::clone(&session), "test-pump".to_string());
+        {
+            let mut guard = session.lock().unwrap();
+            guard.attach_pump(tx, join);
+        }
+
+        let reader = { session.lock().unwrap().stream_reader() };
+        let mut cursor = StreamCursor::default();
+        let deadline = Instant::now() + Duration::from_millis(500);
+        let mut collected = Vec::new();
+
+        while Instant::now() < deadline {
+            let read = reader.read(&mut cursor, 64, 10).unwrap();
+            if !read.data.is_empty() {
+                collected.extend_from_slice(&read.data);
+            }
+            if String::from_utf8_lossy(&collected).contains("hi") {
+                break;
+            }
+        }
+
+        assert!(String::from_utf8_lossy(&collected).contains("hi"));
+
+        let join = { session.lock().unwrap().shutdown_pump() };
+        let _ = session.lock().unwrap().kill();
+        if let Some(join) = join {
+            let _ = join.join();
+        }
     }
 }
 

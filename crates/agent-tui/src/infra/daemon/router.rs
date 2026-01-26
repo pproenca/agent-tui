@@ -153,7 +153,7 @@ mod tests {
     use super::*;
     use crate::infra::daemon::DaemonMetrics;
     use crate::infra::daemon::SessionManager;
-    use crate::usecases::ports::SessionRepository;
+    use crate::usecases::ports::{NoopShutdownNotifier, SessionRepository};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize};
     use std::time::Instant;
@@ -166,12 +166,14 @@ mod tests {
         let start_time = Instant::now();
         let active_connections = Arc::new(AtomicUsize::new(0));
         let shutdown_flag = Arc::new(AtomicBool::new(false));
+        let shutdown_notifier = Arc::new(NoopShutdownNotifier);
         UseCaseContainer::new(
             session_manager,
             metrics,
             start_time,
             active_connections,
             shutdown_flag,
+            shutdown_notifier,
             live_preview,
         )
     }

@@ -2,6 +2,7 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
+use std::net::Shutdown;
 use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::os::unix::net::UnixStream;
@@ -69,6 +70,14 @@ impl ClientStream {
         match self {
             Self::Unix(stream) => stream.set_write_timeout(timeout)?,
             Self::Tcp(stream) => stream.set_write_timeout(timeout)?,
+        }
+        Ok(())
+    }
+
+    pub fn shutdown(&self) -> Result<(), ClientError> {
+        match self {
+            Self::Unix(stream) => stream.shutdown(Shutdown::Both)?,
+            Self::Tcp(stream) => stream.shutdown(Shutdown::Both)?,
         }
         Ok(())
     }

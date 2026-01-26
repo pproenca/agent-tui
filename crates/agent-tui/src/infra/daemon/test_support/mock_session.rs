@@ -4,7 +4,9 @@ use crate::domain::core::vom::Component;
 use std::sync::Mutex;
 
 use crate::domain::session_types::SessionId;
-use crate::usecases::ports::{LivePreviewSnapshot, SessionOps, StreamCursor, StreamRead};
+use crate::usecases::ports::{
+    LivePreviewSnapshot, SessionOps, StreamCursor, StreamRead, StreamSubscription,
+};
 use crate::usecases::ports::{PtyError, SessionError};
 
 pub struct MockSession {
@@ -103,7 +105,13 @@ impl SessionOps for MockSession {
             next_cursor: *cursor,
             latest_cursor: *cursor,
             dropped_bytes: 0,
+            closed: false,
         })
+    }
+
+    fn stream_subscribe(&self) -> StreamSubscription {
+        let (_tx, rx) = crossbeam_channel::bounded(1);
+        StreamSubscription::new(rx)
     }
 
     fn analyze_screen(&self) -> Vec<Component> {

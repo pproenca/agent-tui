@@ -2,28 +2,24 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::domain::{WaitInput, WaitOutput};
-use crate::usecases::ports::{SessionError, SessionRepository, Sleeper};
+use crate::usecases::ports::{SessionError, SessionRepository};
 use crate::usecases::wait_condition::{StableTracker, WaitCondition, check_condition};
 
 pub trait WaitUseCase: Send + Sync {
     fn execute(&self, input: WaitInput) -> Result<WaitOutput, SessionError>;
 }
 
-pub struct WaitUseCaseImpl<R: SessionRepository, S: Sleeper> {
+pub struct WaitUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
-    sleeper: S,
 }
 
-impl<R: SessionRepository, S: Sleeper> WaitUseCaseImpl<R, S> {
-    pub fn with_sleeper(repository: Arc<R>, sleeper: S) -> Self {
-        Self {
-            repository,
-            sleeper,
-        }
+impl<R: SessionRepository> WaitUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
     }
 }
 
-impl<R: SessionRepository, S: Sleeper> WaitUseCase for WaitUseCaseImpl<R, S> {
+impl<R: SessionRepository> WaitUseCase for WaitUseCaseImpl<R> {
     #[tracing::instrument(
         skip(self, input),
         fields(
@@ -48,6 +44,7 @@ impl<R: SessionRepository, S: Sleeper> WaitUseCase for WaitUseCaseImpl<R, S> {
 
         let mut stable_tracker = StableTracker::new(3);
         let poll_interval = Duration::from_millis(50);
+        let subscription = session.stream_subscribe();
 
         loop {
             session.update()?;
@@ -66,7 +63,7 @@ impl<R: SessionRepository, S: Sleeper> WaitUseCase for WaitUseCaseImpl<R, S> {
                 });
             }
 
-            self.sleeper.sleep(poll_interval);
+            let _ = subscription.wait(Some(poll_interval));
         }
     }
 }
@@ -76,19 +73,17 @@ mod tests {
     use super::*;
     use crate::domain::SessionId;
     use crate::infra::daemon::test_support::{MockError, MockSessionRepository};
-    use crate::usecases::ports::MockSleeper;
 
     #[test]
     fn test_wait_usecase_can_be_constructed_with_mock_sleeper() {
         let repo = Arc::new(MockSessionRepository::new());
-        let mock_sleeper = MockSleeper::new();
-        let _usecase = WaitUseCaseImpl::with_sleeper(repo, mock_sleeper);
+        let _usecase = WaitUseCaseImpl::new(repo);
     }
 
     #[test]
     fn test_wait_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
-        let usecase = WaitUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = WaitUseCaseImpl::new(repo);
 
         let input = WaitInput {
             session_id: None,
@@ -109,7 +104,7 @@ mod tests {
                 .with_resolve_error(MockError::NotFound("missing".to_string()))
                 .build(),
         );
-        let usecase = WaitUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = WaitUseCaseImpl::new(repo);
 
         let input = WaitInput {
             session_id: Some(SessionId::new("missing")),
@@ -126,7 +121,7 @@ mod tests {
     #[test]
     fn test_wait_usecase_returns_error_with_stable_condition() {
         let repo = Arc::new(MockSessionRepository::new());
-        let usecase = WaitUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = WaitUseCaseImpl::new(repo);
 
         let input = WaitInput {
             session_id: None,
@@ -143,7 +138,7 @@ mod tests {
     #[test]
     fn test_wait_usecase_returns_error_with_element_condition() {
         let repo = Arc::new(MockSessionRepository::new());
-        let usecase = WaitUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = WaitUseCaseImpl::new(repo);
 
         let input = WaitInput {
             session_id: None,

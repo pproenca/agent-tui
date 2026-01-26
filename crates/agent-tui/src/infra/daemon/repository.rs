@@ -12,7 +12,7 @@ use crate::usecases::ports::{
 };
 
 use crate::infra::daemon::session::{
-    Session, SessionId, SessionInfo, SessionManager, StreamReader,
+    PUMP_FLUSH_TIMEOUT, Session, SessionId, SessionInfo, SessionManager, StreamReader,
 };
 
 struct SessionHandleImpl {
@@ -40,8 +40,14 @@ impl SessionHandleImpl {
 
 impl SessionOps for SessionHandleImpl {
     fn update(&self) -> Result<(), SessionError> {
-        let mut session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.update()
+        let ack = {
+            let session_guard = mutex_lock_or_recover(&self.inner);
+            session_guard.request_flush()
+        };
+        if let Some(ack) = ack {
+            let _ = ack.recv_timeout(PUMP_FLUSH_TIMEOUT);
+        }
+        Ok(())
     }
 
     fn screen_text(&self) -> String {
@@ -86,12 +92,17 @@ impl SessionOps for SessionHandleImpl {
         self.stream.read(cursor, max_bytes, timeout_ms)
     }
 
+    fn stream_subscribe(&self) -> crate::usecases::ports::StreamSubscription {
+        self.stream.subscribe()
+    }
+
     fn analyze_screen(&self) -> Vec<Component> {
         let session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.analyze_screen()
     }
 
     fn click(&self, element_ref: &str) -> Result<(), SessionError> {
+        self.update()?;
         let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.click(element_ref)
     }

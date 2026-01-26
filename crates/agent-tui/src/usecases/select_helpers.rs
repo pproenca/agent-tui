@@ -1,11 +1,10 @@
 use std::time::Duration;
 
 use crate::common::ansi_keys;
-use crate::usecases::ports::{SessionError, SessionOps, Sleeper};
+use crate::usecases::ports::{SessionError, SessionOps};
 
-pub fn navigate_to_option<Sess: SessionOps + ?Sized, Sl: Sleeper>(
+pub fn navigate_to_option<Sess: SessionOps + ?Sized>(
     sess: &Sess,
-    sleeper: &Sl,
     target: &str,
     screen_text: &str,
 ) -> Result<(), SessionError> {
@@ -24,9 +23,10 @@ pub fn navigate_to_option<Sess: SessionOps + ?Sized, Sl: Sleeper>(
         ansi_keys::UP
     };
 
+    let subscription = sess.stream_subscribe();
     for _ in 0..steps.unsigned_abs() {
         sess.pty_write(key)?;
-        sleeper.sleep(Duration::from_millis(30));
+        let _ = subscription.wait(Some(Duration::from_millis(30)));
     }
 
     Ok(())

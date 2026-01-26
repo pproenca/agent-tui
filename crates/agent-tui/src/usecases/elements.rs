@@ -16,7 +16,6 @@ use crate::domain::{
 };
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionRepository;
-use crate::usecases::ports::Sleeper;
 use crate::usecases::select_helpers::navigate_to_option;
 
 #[derive(Debug, Clone, Default)]
@@ -297,21 +296,17 @@ pub trait DoubleClickUseCase: Send + Sync {
     fn execute(&self, input: DoubleClickInput) -> Result<DoubleClickOutput, SessionError>;
 }
 
-pub struct DoubleClickUseCaseImpl<R: SessionRepository, S: Sleeper> {
+pub struct DoubleClickUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
-    sleeper: S,
 }
 
-impl<R: SessionRepository, S: Sleeper> DoubleClickUseCaseImpl<R, S> {
-    pub fn with_sleeper(repository: Arc<R>, sleeper: S) -> Self {
-        Self {
-            repository,
-            sleeper,
-        }
+impl<R: SessionRepository> DoubleClickUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
     }
 }
 
-impl<R: SessionRepository, S: Sleeper> DoubleClickUseCase for DoubleClickUseCaseImpl<R, S> {
+impl<R: SessionRepository> DoubleClickUseCase for DoubleClickUseCaseImpl<R> {
     #[tracing::instrument(
         skip(self, input),
         fields(session = ?input.session_id, element_ref = %input.element_ref)
@@ -323,7 +318,8 @@ impl<R: SessionRepository, S: Sleeper> DoubleClickUseCase for DoubleClickUseCase
             session.click(&input.element_ref)?;
         }
 
-        self.sleeper.sleep(Duration::from_millis(50));
+        let subscription = session.stream_subscribe();
+        let _ = subscription.wait(Some(Duration::from_millis(50)));
 
         {
             session.click(&input.element_ref)?;
@@ -502,21 +498,17 @@ pub trait SelectUseCase: Send + Sync {
     fn execute(&self, input: SelectInput) -> Result<SelectOutput, SessionError>;
 }
 
-pub struct SelectUseCaseImpl<R: SessionRepository, S: Sleeper> {
+pub struct SelectUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
-    sleeper: S,
 }
 
-impl<R: SessionRepository, S: Sleeper> SelectUseCaseImpl<R, S> {
-    pub fn with_sleeper(repository: Arc<R>, sleeper: S) -> Self {
-        Self {
-            repository,
-            sleeper,
-        }
+impl<R: SessionRepository> SelectUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
     }
 }
 
-impl<R: SessionRepository, S: Sleeper> SelectUseCase for SelectUseCaseImpl<R, S> {
+impl<R: SessionRepository> SelectUseCase for SelectUseCaseImpl<R> {
     #[tracing::instrument(
         skip(self, input),
         fields(
@@ -544,7 +536,7 @@ impl<R: SessionRepository, S: Sleeper> SelectUseCase for SelectUseCaseImpl<R, S>
         }
 
         let screen_text = session.screen_text();
-        navigate_to_option(session.as_ref(), &self.sleeper, &input.option, &screen_text)?;
+        navigate_to_option(session.as_ref(), &input.option, &screen_text)?;
         session.pty_write(b"\r")?;
 
         Ok(SelectOutput {
@@ -559,21 +551,17 @@ pub trait MultiselectUseCase: Send + Sync {
     fn execute(&self, input: MultiselectInput) -> Result<MultiselectOutput, SessionError>;
 }
 
-pub struct MultiselectUseCaseImpl<R: SessionRepository, S: Sleeper> {
+pub struct MultiselectUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
-    sleeper: S,
 }
 
-impl<R: SessionRepository, S: Sleeper> MultiselectUseCaseImpl<R, S> {
-    pub fn with_sleeper(repository: Arc<R>, sleeper: S) -> Self {
-        Self {
-            repository,
-            sleeper,
-        }
+impl<R: SessionRepository> MultiselectUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
     }
 }
 
-impl<R: SessionRepository, S: Sleeper> MultiselectUseCase for MultiselectUseCaseImpl<R, S> {
+impl<R: SessionRepository> MultiselectUseCase for MultiselectUseCaseImpl<R> {
     #[tracing::instrument(
         skip(self, input),
         fields(
@@ -593,9 +581,10 @@ impl<R: SessionRepository, S: Sleeper> MultiselectUseCase for MultiselectUseCase
         }
 
         let mut selected = Vec::new();
+        let subscription = session.stream_subscribe();
         for option in &input.options {
             session.pty_write(option.as_bytes())?;
-            self.sleeper.sleep(Duration::from_millis(50));
+            let _ = subscription.wait(Some(Duration::from_millis(50)));
             session.pty_write(b" ")?;
             session.pty_write(&[0x15])?;
             selected.push(option.clone());
@@ -920,21 +909,17 @@ pub trait ScrollIntoViewUseCase: Send + Sync {
     fn execute(&self, input: ScrollIntoViewInput) -> Result<ScrollIntoViewOutput, SessionError>;
 }
 
-pub struct ScrollIntoViewUseCaseImpl<R: SessionRepository, S: Sleeper> {
+pub struct ScrollIntoViewUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
-    sleeper: S,
 }
 
-impl<R: SessionRepository, S: Sleeper> ScrollIntoViewUseCaseImpl<R, S> {
-    pub fn with_sleeper(repository: Arc<R>, sleeper: S) -> Self {
-        Self {
-            repository,
-            sleeper,
-        }
+impl<R: SessionRepository> ScrollIntoViewUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
     }
 }
 
-impl<R: SessionRepository, S: Sleeper> ScrollIntoViewUseCase for ScrollIntoViewUseCaseImpl<R, S> {
+impl<R: SessionRepository> ScrollIntoViewUseCase for ScrollIntoViewUseCaseImpl<R> {
     #[tracing::instrument(
         skip(self, input),
         fields(session = ?input.session_id, element_ref = %input.element_ref)
@@ -943,6 +928,7 @@ impl<R: SessionRepository, S: Sleeper> ScrollIntoViewUseCase for ScrollIntoViewU
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let max_scrolls = 50;
 
+        let subscription = session.stream_subscribe();
         for scroll_count in 0..max_scrolls {
             {
                 let _ = session.update();
@@ -958,7 +944,7 @@ impl<R: SessionRepository, S: Sleeper> ScrollIntoViewUseCase for ScrollIntoViewU
 
                 session.pty_write(ansi_keys::DOWN)?;
             }
-            self.sleeper.sleep(Duration::from_millis(50));
+            let _ = subscription.wait(Some(Duration::from_millis(50)));
         }
 
         Ok(ScrollIntoViewOutput {
@@ -977,7 +963,6 @@ mod tests {
     use super::*;
     use crate::domain::SessionId;
     use crate::infra::daemon::test_support::{MockError, MockSessionRepository};
-    use crate::usecases::ports::MockSleeper;
 
     #[test]
     fn test_click_usecase_returns_error_when_no_active_session() {
@@ -1111,7 +1096,7 @@ mod tests {
     #[test]
     fn test_select_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
-        let usecase = SelectUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = SelectUseCaseImpl::new(repo);
 
         let input = SelectInput {
             session_id: None,
@@ -1130,7 +1115,7 @@ mod tests {
                 .with_resolve_error(MockError::NotFound("missing".to_string()))
                 .build(),
         );
-        let usecase = SelectUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = SelectUseCaseImpl::new(repo);
 
         let input = SelectInput {
             session_id: Some(SessionId::new("missing")),
@@ -1145,7 +1130,7 @@ mod tests {
     #[test]
     fn test_multiselect_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
-        let usecase = MultiselectUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = MultiselectUseCaseImpl::new(repo);
 
         let input = MultiselectInput {
             session_id: None,
@@ -1164,7 +1149,7 @@ mod tests {
                 .with_resolve_error(MockError::NotFound("missing".to_string()))
                 .build(),
         );
-        let usecase = MultiselectUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = MultiselectUseCaseImpl::new(repo);
 
         let input = MultiselectInput {
             session_id: Some(SessionId::new("missing")),
@@ -1179,7 +1164,7 @@ mod tests {
     #[test]
     fn test_scroll_into_view_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
-        let usecase = ScrollIntoViewUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = ScrollIntoViewUseCaseImpl::new(repo);
 
         let input = ScrollIntoViewInput {
             session_id: None,
@@ -1197,7 +1182,7 @@ mod tests {
                 .with_resolve_error(MockError::NotFound("missing".to_string()))
                 .build(),
         );
-        let usecase = ScrollIntoViewUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = ScrollIntoViewUseCaseImpl::new(repo);
 
         let input = ScrollIntoViewInput {
             session_id: Some(SessionId::new("missing")),
@@ -1281,7 +1266,7 @@ mod tests {
     #[test]
     fn test_double_click_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
-        let usecase = DoubleClickUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = DoubleClickUseCaseImpl::new(repo);
 
         let input = DoubleClickInput {
             session_id: None,
@@ -1299,7 +1284,7 @@ mod tests {
                 .with_resolve_error(MockError::NotFound("missing".to_string()))
                 .build(),
         );
-        let usecase = DoubleClickUseCaseImpl::with_sleeper(repo, MockSleeper::new());
+        let usecase = DoubleClickUseCaseImpl::new(repo);
 
         let input = DoubleClickInput {
             session_id: Some(SessionId::new("missing")),

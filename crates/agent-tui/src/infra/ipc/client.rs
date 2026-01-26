@@ -15,6 +15,7 @@ use crate::common::Colors;
 use crate::infra::ipc::error::ClientError;
 use crate::infra::ipc::error_codes;
 use crate::infra::ipc::socket::socket_path;
+use crate::infra::ipc::transport::ClientStream;
 use crate::infra::ipc::transport::IpcTransport;
 use crate::infra::ipc::transport::default_transport;
 
@@ -99,6 +100,16 @@ pub trait DaemonClient: Send + Sync {
         params: Option<Value>,
         max_retries: u32,
     ) -> Result<Value, ClientError>;
+
+    fn call_stream(
+        &mut self,
+        _method: &str,
+        _params: Option<Value>,
+    ) -> Result<StreamResponse, ClientError> {
+        Err(ClientError::UnexpectedResponse {
+            message: "Streaming RPC not supported by this client".to_string(),
+        })
+    }
 }
 
 pub struct UnixSocketClient {
@@ -133,6 +144,80 @@ impl UnixSocketClient {
     pub fn is_daemon_running() -> bool {
         default_transport().is_daemon_running()
     }
+}
+
+pub struct StreamAbortHandle {
+    stream: ClientStream,
+}
+
+impl StreamAbortHandle {
+    pub fn abort(&self) {
+        let _ = self.stream.shutdown();
+    }
+}
+
+pub struct StreamResponse {
+    reader: BufReader<ClientStream>,
+}
+
+impl StreamResponse {
+    pub fn next_result(&mut self) -> Result<Option<Value>, ClientError> {
+        let mut response_line = String::new();
+        let bytes = self.reader.read_line(&mut response_line)?;
+        if bytes == 0 {
+            return Ok(None);
+        }
+        let response: Response = serde_json::from_str(&response_line)?;
+        response_to_result(response).map(Some)
+    }
+
+    pub fn abort_handle(&self) -> Option<StreamAbortHandle> {
+        self.reader
+            .get_ref()
+            .try_clone()
+            .ok()
+            .map(|stream| StreamAbortHandle { stream })
+    }
+}
+
+fn response_to_result(response: Response) -> Result<Value, ClientError> {
+    if let Some(rpc_error) = response.error {
+        let (category, retryable, context, suggestion) = if let Some(data) = rpc_error.data.as_ref()
+        {
+            let cat = data
+                .get("category")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<error_codes::ErrorCategory>().ok());
+            let retry = data
+                .get("retryable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or_else(|| error_codes::is_retryable(rpc_error.code));
+            let ctx = data.get("context").cloned();
+            let sug = data
+                .get("suggestion")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            (cat, retry, ctx, sug)
+        } else {
+            (
+                Some(error_codes::category_for_code(rpc_error.code)),
+                error_codes::is_retryable(rpc_error.code),
+                None,
+                None,
+            )
+        };
+
+        return Err(ClientError::RpcError {
+            code: rpc_error.code,
+            message: rpc_error.message,
+            category,
+            retryable,
+            context,
+            suggestion,
+        });
+    }
+
+    response.result.ok_or(ClientError::InvalidResponse)
 }
 
 impl DaemonClient for UnixSocketClient {
@@ -188,50 +273,7 @@ impl DaemonClient for UnixSocketClient {
         );
 
         let response: Response = serde_json::from_str(&response_line)?;
-
-        if let Some(rpc_error) = response.error {
-            debug!(
-                request_id,
-                method = %method,
-                code = rpc_error.code,
-                "RPC error response"
-            );
-            let (category, retryable, context, suggestion) =
-                if let Some(data) = rpc_error.data.as_ref() {
-                    let cat = data
-                        .get("category")
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| s.parse::<error_codes::ErrorCategory>().ok());
-                    let retry = data
-                        .get("retryable")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or_else(|| error_codes::is_retryable(rpc_error.code));
-                    let ctx = data.get("context").cloned();
-                    let sug = data
-                        .get("suggestion")
-                        .and_then(|v| v.as_str())
-                        .map(String::from);
-                    (cat, retry, ctx, sug)
-                } else {
-                    (
-                        Some(error_codes::category_for_code(rpc_error.code)),
-                        error_codes::is_retryable(rpc_error.code),
-                        None,
-                        None,
-                    )
-                };
-
-            return Err(ClientError::RpcError {
-                code: rpc_error.code,
-                message: rpc_error.message,
-                category,
-                retryable,
-                context,
-                suggestion,
-            });
-        }
-
-        let result = response.result.ok_or(ClientError::InvalidResponse);
+        let result = response_to_result(response);
         debug!(
             request_id,
             method = %method,
@@ -279,6 +321,38 @@ impl DaemonClient for UnixSocketClient {
         }
 
         Err(last_error.unwrap_or(ClientError::DaemonNotRunning))
+    }
+
+    fn call_stream(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+    ) -> Result<StreamResponse, ClientError> {
+        let request_id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        let mut stream = self.transport.connect_stream()?;
+
+        stream.set_read_timeout(None)?;
+        stream.set_write_timeout(Some(DaemonClientConfig::default().write_timeout))?;
+
+        let request = Request {
+            jsonrpc: "2.0".to_string(),
+            id: request_id,
+            method: method.to_string(),
+            params,
+        };
+
+        let request_json = serde_json::to_string(&request)?;
+        writeln!(stream, "{}", request_json)?;
+        stream.flush()?;
+
+        let reader_stream = stream.try_clone()?;
+        let mut reader = BufReader::new(reader_stream);
+        let mut response_line = String::new();
+        reader.read_line(&mut response_line)?;
+        let response: Response = serde_json::from_str(&response_line)?;
+        let _ = response_to_result(response)?;
+
+        Ok(StreamResponse { reader })
     }
 }
 

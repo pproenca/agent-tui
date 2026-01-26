@@ -40,6 +40,8 @@ tokio.workspace = true
 tokio-stream.workspace = true
 futures-util.workspace = true
 axum.workspace = true
+crossbeam-channel.workspace = true
+bytes.workspace = true
 
 # Terminal emulation
 portable-pty.workspace = true

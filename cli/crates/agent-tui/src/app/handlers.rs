@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::fs::OpenOptions;
 use std::io;
 use std::io::IsTerminal;
+use std::net::SocketAddr;
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
@@ -13,6 +16,7 @@ use crate::common::ValueExt;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::DaemonClient;
 use crate::infra::ipc::ProcessController;
+use crate::infra::ipc::Signal;
 use crate::infra::ipc::UnixProcessController;
 use crate::infra::ipc::params;
 use crate::infra::ipc::socket_path;
@@ -627,9 +631,29 @@ pub fn handle_live_start<C: DaemonClient>(
         )
     })?;
 
+    let ui_result = ensure_ui_server();
+    let (ui_base_url, ui_payload, ui_error) = match ui_result {
+        Ok(UiLocation::External(url)) => (
+            Some(url.clone()),
+            Some(json!({ "url": url, "managed": false })),
+            None,
+        ),
+        Ok(UiLocation::Managed(state)) => (
+            Some(state.url.clone()),
+            Some(json!({
+                "url": state.url,
+                "managed": true,
+                "pid": state.pid,
+                "port": state.port
+            })),
+            None,
+        ),
+        Err(err) => (None, None, Some(err)),
+    };
+
     match ctx.format {
         OutputFormat::Json => {
-            let output = json!({
+            let mut output = json!({
                 "running": true,
                 "pid": state.pid,
                 "listen": state.listen,
@@ -638,11 +662,22 @@ pub fn handle_live_start<C: DaemonClient>(
                 "token": state.token,
                 "api_version": state.api_version,
             });
+            if let Some(payload) = ui_payload {
+                output["ui"] = payload;
+            }
+            if let Some(err) = ui_error.as_deref() {
+                output["ui_error"] = json!(err);
+            }
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
             println!("API: {}", state.http_url);
             println!("WS: {}", state.ws_url);
+            if let Some(ui_base) = ui_base_url.as_deref() {
+                println!("UI: {}", ui_base);
+            } else {
+                println!("UI: (not available)");
+            }
             if let Some(api_version) = state.api_version.as_deref() {
                 println!("API version: {}", api_version);
             }
@@ -651,16 +686,22 @@ pub fn handle_live_start<C: DaemonClient>(
             } else {
                 println!("Token: (disabled)");
             }
+            if let Some(err) = ui_error.as_deref() {
+                eprintln!(
+                    "{} Failed to start web UI: {}",
+                    Colors::warning("Warning:"),
+                    err
+                );
+            }
         }
     }
 
     if args.open {
-        let ui_url = std::env::var("AGENT_TUI_UI_URL").ok();
-        let target = if let Some(ui_url) = ui_url.as_deref() {
-            build_ui_url(ui_url, &state)
+        let target = if let Some(ui_base) = ui_base_url.as_deref() {
+            build_ui_url(ui_base, &state)
         } else {
             eprintln!(
-                "{} AGENT_TUI_UI_URL not set; opening API URL instead.",
+                "{} UI URL not available; opening API URL instead.",
                 Colors::warning("Warning:")
             );
             state.http_url.clone()
@@ -674,15 +715,45 @@ pub fn handle_live_start<C: DaemonClient>(
 }
 
 pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+    let ui_result = stop_ui_server();
     match ctx.format {
         OutputFormat::Json => {
-            let output = json!({
+            let mut output = json!({
                 "stopped": false,
                 "reason": "live preview is served by the daemon; stop the daemon to stop"
             });
+            let ui_payload = match ui_result {
+                Ok(StopUiResult::Stopped) => json!({ "stopped": true }),
+                Ok(StopUiResult::AlreadyStopped) => {
+                    json!({ "stopped": false, "reason": "ui not running" })
+                }
+                Ok(StopUiResult::External) => {
+                    json!({ "stopped": false, "reason": "ui managed externally" })
+                }
+                Err(err) => json!({ "stopped": false, "error": err }),
+            };
+            output["ui"] = ui_payload;
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
+            match ui_result {
+                Ok(StopUiResult::Stopped) => {
+                    println!("UI server stopped.");
+                }
+                Ok(StopUiResult::AlreadyStopped) => {
+                    println!("UI server is not running.");
+                }
+                Ok(StopUiResult::External) => {
+                    println!("UI server is managed externally (AGENT_TUI_UI_URL).");
+                }
+                Err(err) => {
+                    eprintln!(
+                        "{} Failed to stop UI server: {}",
+                        Colors::warning("Warning:"),
+                        err
+                    );
+                }
+            }
             println!("Live preview is served by the daemon; run 'agent-tui daemon stop' to stop.");
         }
     }
@@ -691,10 +762,11 @@ pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handler
 
 pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let status = read_api_state_running(&api_state_path());
+    let ui_status = resolve_ui_status();
 
     match ctx.format {
         OutputFormat::Json => {
-            let output = match status {
+            let mut output = match status {
                 Some(state) => json!({
                     "running": true,
                     "pid": state.pid,
@@ -706,6 +778,17 @@ pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handl
                 }),
                 None => json!({ "running": false }),
             };
+            let ui_payload = match ui_status {
+                UiStatus::External(url) => json!({ "url": url, "managed": false }),
+                UiStatus::Running(state) => json!({
+                    "url": state.url,
+                    "managed": true,
+                    "pid": state.pid,
+                    "port": state.port
+                }),
+                UiStatus::NotRunning => json!({ "running": false }),
+            };
+            output["ui"] = ui_payload;
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
@@ -713,6 +796,17 @@ pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handl
                 println!("Live preview API: {}", state.http_url);
             } else {
                 println!("Live preview: not running");
+            }
+            match ui_status {
+                UiStatus::External(url) => {
+                    println!("UI: {} (external)", url);
+                }
+                UiStatus::Running(state) => {
+                    println!("UI: {}", state.url);
+                }
+                UiStatus::NotRunning => {
+                    println!("UI: not running");
+                }
             }
         }
     }
@@ -812,6 +906,33 @@ struct ApiState {
     api_version: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct UiState {
+    pid: u32,
+    url: String,
+    port: u16,
+}
+
+#[derive(Debug, Clone)]
+enum UiLocation {
+    External(String),
+    Managed(UiState),
+}
+
+#[derive(Debug, Clone)]
+enum UiStatus {
+    External(String),
+    Running(UiState),
+    NotRunning,
+}
+
+#[derive(Debug, Clone)]
+enum StopUiResult {
+    Stopped,
+    AlreadyStopped,
+    External,
+}
+
 fn api_state_path() -> PathBuf {
     if let Ok(path) = std::env::var("AGENT_TUI_API_STATE") {
         return PathBuf::from(path);
@@ -841,7 +962,7 @@ fn read_api_state(path: &PathBuf) -> Option<ApiState> {
     })
 }
 
-fn is_api_process_running(pid: u32) -> bool {
+fn is_process_running(pid: u32) -> bool {
     let controller = UnixProcessController;
     matches!(
         controller.check_process(pid),
@@ -852,7 +973,7 @@ fn is_api_process_running(pid: u32) -> bool {
 
 fn read_api_state_running(path: &PathBuf) -> Option<ApiState> {
     let state = read_api_state(path)?;
-    if is_api_process_running(state.pid) {
+    if is_process_running(state.pid) {
         Some(state)
     } else {
         let _ = std::fs::remove_file(path);
@@ -870,6 +991,293 @@ fn wait_for_api_state(path: &PathBuf, timeout: Duration) -> Option<ApiState> {
             return None;
         }
         std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn ui_state_path() -> PathBuf {
+    if let Ok(path) = std::env::var("AGENT_TUI_UI_STATE") {
+        return PathBuf::from(path);
+    }
+    let home = std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+    home.join(".agent-tui").join("ui.json")
+}
+
+fn ui_log_path() -> PathBuf {
+    let mut path = ui_state_path();
+    path.set_extension("log");
+    path
+}
+
+fn read_ui_state(path: &PathBuf) -> Option<UiState> {
+    let contents = std::fs::read_to_string(path).ok()?;
+    let value: Value = serde_json::from_str(&contents).ok()?;
+    let url = value.get("url")?.as_str()?.to_string();
+    let port = value
+        .get("port")
+        .and_then(|v| v.as_u64())
+        .and_then(|v| u16::try_from(v).ok())
+        .or_else(|| parse_port_from_url(&url))?;
+    Some(UiState {
+        pid: value.get("pid")?.as_u64()? as u32,
+        url,
+        port,
+    })
+}
+
+fn write_ui_state(path: &PathBuf, state: &UiState) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let payload = json!({
+        "pid": state.pid,
+        "url": state.url,
+        "port": state.port
+    });
+    std::fs::write(path, serde_json::to_string_pretty(&payload)?)
+}
+
+fn read_ui_state_running(path: &PathBuf) -> Option<UiState> {
+    let state = read_ui_state(path)?;
+    if is_process_running(state.pid) {
+        Some(state)
+    } else {
+        let _ = std::fs::remove_file(path);
+        None
+    }
+}
+
+fn parse_port_from_url(url: &str) -> Option<u16> {
+    let host = url.split("://").nth(1)?;
+    let host = host.split('/').next()?;
+    let addr: SocketAddr = host.parse().ok()?;
+    Some(addr.port())
+}
+
+fn resolve_ui_status() -> UiStatus {
+    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL") {
+        if !url.trim().is_empty() {
+            return UiStatus::External(url);
+        }
+    }
+    match read_ui_state_running(&ui_state_path()) {
+        Some(state) => UiStatus::Running(state),
+        None => UiStatus::NotRunning,
+    }
+}
+
+fn ui_mode() -> Result<String, String> {
+    let mode = std::env::var("AGENT_TUI_UI_MODE").unwrap_or_else(|_| "dev".to_string());
+    let mode = mode.trim().to_lowercase();
+    match mode.as_str() {
+        "dev" | "serve" => Ok(mode),
+        _ => Err(format!(
+            "Invalid AGENT_TUI_UI_MODE '{}'; expected 'dev' or 'serve'",
+            mode
+        )),
+    }
+}
+
+fn ui_port() -> Result<u16, String> {
+    let value = std::env::var("AGENT_TUI_UI_PORT").unwrap_or_else(|_| "4173".to_string());
+    let port: u16 = value
+        .parse()
+        .map_err(|_| format!("Invalid AGENT_TUI_UI_PORT '{}'", value))?;
+    if port == 0 {
+        return Err("AGENT_TUI_UI_PORT must be a non-zero port".to_string());
+    }
+    Ok(port)
+}
+
+fn resolve_ui_root() -> Result<PathBuf, String> {
+    if let Ok(path) = std::env::var("AGENT_TUI_UI_ROOT") {
+        let root = PathBuf::from(path);
+        if root.join("package.json").is_file() && root.join("server.ts").is_file() {
+            return Ok(root);
+        }
+        return Err("AGENT_TUI_UI_ROOT does not look like the web UI directory".to_string());
+    }
+
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    let candidates = [cwd.join("web"), cwd.join("../web"), cwd.join("../../web")];
+    for candidate in candidates {
+        if candidate.join("package.json").is_file() && candidate.join("server.ts").is_file() {
+            return Ok(candidate);
+        }
+    }
+
+    Err("Web UI directory not found. Set AGENT_TUI_UI_URL or AGENT_TUI_UI_ROOT.".to_string())
+}
+
+fn open_ui_log_file() -> Option<std::fs::File> {
+    let path = ui_log_path();
+    if let Some(parent) = path.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return None;
+        }
+    }
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .ok()
+}
+
+fn run_bun_command(root: &PathBuf, args: &[&str]) -> Result<(), String> {
+    let mut cmd = std::process::Command::new("bun");
+    cmd.args(args).current_dir(root);
+    if let Some(log_file) = open_ui_log_file() {
+        let stderr = log_file.try_clone().unwrap_or(log_file);
+        cmd.stdout(std::process::Stdio::from(log_file))
+            .stderr(std::process::Stdio::from(stderr));
+    } else {
+        cmd.stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+    }
+    let status = cmd.status().map_err(|e| match e.kind() {
+        io::ErrorKind::NotFound => "Bun is not installed (missing 'bun' executable)".to_string(),
+        _ => format!("Failed to run bun command: {}", e),
+    })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Bun command failed (see {}).",
+            ui_log_path().display()
+        ))
+    }
+}
+
+fn ensure_ui_assets(root: &PathBuf, mode: &str) -> Result<(), String> {
+    if !root.join("node_modules").exists() {
+        return Err(format!(
+            "Web UI dependencies missing in {}. Run 'bun install' there.",
+            root.display()
+        ));
+    }
+    if mode == "serve" && !root.join("public/index.html").is_file() {
+        run_bun_command(root, &["run", "build"])?;
+    }
+    Ok(())
+}
+
+fn spawn_ui_server(root: &PathBuf, port: u16, mode: &str) -> Result<u32, String> {
+    let mut cmd = std::process::Command::new("bun");
+    match mode {
+        "dev" => {
+            cmd.args(["run", "dev"]);
+        }
+        "serve" => {
+            cmd.args(["run", "serve"]);
+        }
+        _ => {
+            return Err(format!("Unsupported UI mode '{}'", mode));
+        }
+    }
+    cmd.current_dir(root)
+        .env("PORT", port.to_string())
+        .stdin(std::process::Stdio::null());
+
+    if let Some(log_file) = open_ui_log_file() {
+        let stderr = log_file.try_clone().unwrap_or(log_file);
+        cmd.stdout(std::process::Stdio::from(log_file))
+            .stderr(std::process::Stdio::from(stderr));
+    } else {
+        cmd.stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+    }
+
+    let child = cmd.spawn().map_err(|e| match e.kind() {
+        io::ErrorKind::NotFound => "Bun is not installed (missing 'bun' executable)".to_string(),
+        _ => format!("Failed to start web UI: {}", e),
+    })?;
+
+    Ok(child.id())
+}
+
+fn wait_for_port(port: u16, timeout: Duration) -> Result<(), String> {
+    let deadline = Instant::now() + timeout;
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    loop {
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!("Web UI did not start listening on port {}", port));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn ensure_ui_server() -> Result<UiLocation, String> {
+    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL") {
+        if !url.trim().is_empty() {
+            return Ok(UiLocation::External(url));
+        }
+    }
+
+    let state_path = ui_state_path();
+    if let Some(state) = read_ui_state_running(&state_path) {
+        return Ok(UiLocation::Managed(state));
+    }
+
+    let root = resolve_ui_root()?;
+    let mode = ui_mode()?;
+    let port = ui_port()?;
+    ensure_ui_assets(&root, &mode)?;
+    let pid = spawn_ui_server(&root, port, &mode)?;
+    wait_for_port(port, Duration::from_secs(3))?;
+
+    let url = format!("http://127.0.0.1:{}", port);
+    let state = UiState { pid, url, port };
+    let _ = write_ui_state(&state_path, &state);
+    Ok(UiLocation::Managed(state))
+}
+
+fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
+    let controller = UnixProcessController;
+    let deadline = Instant::now() + timeout;
+    loop {
+        match controller.check_process(pid) {
+            Ok(crate::infra::ipc::ProcessStatus::NotFound) => return true,
+            Ok(_) => {}
+            Err(_) => {}
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn stop_ui_server() -> Result<StopUiResult, String> {
+    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL") {
+        if !url.trim().is_empty() {
+            return Ok(StopUiResult::External);
+        }
+    }
+
+    let state_path = ui_state_path();
+    let Some(state) = read_ui_state(&state_path) else {
+        return Ok(StopUiResult::AlreadyStopped);
+    };
+
+    if !is_process_running(state.pid) {
+        let _ = std::fs::remove_file(&state_path);
+        return Ok(StopUiResult::AlreadyStopped);
+    }
+
+    let controller = UnixProcessController;
+    controller
+        .send_signal(state.pid, Signal::Term)
+        .map_err(|e| format!("Failed to stop UI server: {}", e))?;
+
+    if wait_for_process_exit(state.pid, Duration::from_secs(2)) {
+        let _ = std::fs::remove_file(&state_path);
+        Ok(StopUiResult::Stopped)
+    } else {
+        Err("UI server did not stop in time".to_string())
     }
 }
 
@@ -1358,6 +1766,13 @@ pub fn handle_env<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
             std::env::var("AGENT_TUI_API_WS_QUEUE").ok(),
         ),
         ("AGENT_TUI_UI_URL", std::env::var("AGENT_TUI_UI_URL").ok()),
+        ("AGENT_TUI_UI_MODE", std::env::var("AGENT_TUI_UI_MODE").ok()),
+        ("AGENT_TUI_UI_PORT", std::env::var("AGENT_TUI_UI_PORT").ok()),
+        ("AGENT_TUI_UI_ROOT", std::env::var("AGENT_TUI_UI_ROOT").ok()),
+        (
+            "AGENT_TUI_UI_STATE",
+            std::env::var("AGENT_TUI_UI_STATE").ok(),
+        ),
         ("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR").ok()),
         ("NO_COLOR", std::env::var("NO_COLOR").ok()),
     ];

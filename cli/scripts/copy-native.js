@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 
 /**
- * copy-native.js - Copies the locally built binary to bin/ with platform-specific naming
+ * copy-native.js - Copies the locally built binary into the matching npm package.
  *
  * This script is used after running `cargo build --release` to copy the built
- * binary to the bin/ directory with the correct platform/arch naming convention.
+ * binary to cli/npm/agent-tui-<platform>/bin/agent-tui.
  */
 
 const fs = require('fs');
 const path = require('path');
 
 const CLI_DIR = path.join(__dirname, '..');
-const BIN_DIR = path.join(__dirname, '..', 'bin');
+const NPM_DIR = path.join(__dirname, '..', 'npm');
 
 function getPlatformArch() {
   const platform = process.platform;
@@ -43,15 +43,16 @@ function getSourceBinaryPath() {
 }
 
 function getDestBinaryPath(platformArch) {
-  const binaryName =
-    process.platform === 'win32' ? `agent-tui-${platformArch}.exe` : `agent-tui-${platformArch}`;
-  return path.join(BIN_DIR, binaryName);
+  const pkgDir = path.join(NPM_DIR, `agent-tui-${platformArch}`);
+  const binDir = path.join(pkgDir, 'bin');
+  const binaryName = process.platform === 'win32' ? 'agent-tui.exe' : 'agent-tui';
+  return { binDir, destPath: path.join(binDir, binaryName), pkgDir };
 }
 
 function main() {
   const platformArch = getPlatformArch();
   const sourcePath = getSourceBinaryPath();
-  const destPath = getDestBinaryPath(platformArch);
+  const { binDir, destPath, pkgDir } = getDestBinaryPath(platformArch);
 
   console.log(`Platform: ${platformArch}`);
   console.log(`Source: ${sourcePath}`);
@@ -59,12 +60,18 @@ function main() {
 
   if (!fs.existsSync(sourcePath)) {
     console.error(`Binary not found at ${sourcePath}`);
-    console.error('Run `npm run build` first to compile the binary');
+    console.error('Run `npm run build:native` first to compile the binary');
     process.exit(1);
   }
 
-  if (!fs.existsSync(BIN_DIR)) {
-    fs.mkdirSync(BIN_DIR, { recursive: true });
+  if (!fs.existsSync(pkgDir)) {
+    console.error(`Platform package not found at ${pkgDir}`);
+    console.error('Ensure the npm platform packages exist under cli/npm.');
+    process.exit(1);
+  }
+
+  if (!fs.existsSync(binDir)) {
+    fs.mkdirSync(binDir, { recursive: true });
   }
 
   fs.copyFileSync(sourcePath, destPath);

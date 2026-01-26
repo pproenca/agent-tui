@@ -25,6 +25,7 @@
   },
   "scripts": {
     "build:native": "cargo build --release -p agent-tui && node scripts/copy-native.js",
+    "dist:npm": "cargo xtask dist npm",
     "version:check": "cargo xtask version check",
     "preversion": "just ready",
     "version": "echo 'ERROR: Use cargo xtask release <version|patch|minor|major> or just release-* instead' && exit 1",
@@ -32,19 +33,20 @@
     "prepack": "node scripts/sync-web.js",
     "prepare": "husky"
   },
+  "workspaces": [
+    "npm/*"
+  ],
   "files": [
-    "bin",
+    "bin/agent-tui",
     "scripts",
     "web"
   ],
-  "os": [
-    "darwin",
-    "linux"
-  ],
-  "cpu": [
-    "x64",
-    "arm64"
-  ],
+  "optionalDependencies": {
+    "agent-tui-darwin-arm64": "0.3.8",
+    "agent-tui-darwin-x64": "0.3.8",
+    "agent-tui-linux-arm64": "0.3.8",
+    "agent-tui-linux-x64": "0.3.8"
+  },
   "engines": {
     "node": ">=16"
   },

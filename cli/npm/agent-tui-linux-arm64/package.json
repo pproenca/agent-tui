@@ -1,0 +1,22 @@
+{
+  "name": "agent-tui-linux-arm64",
+  "version": "0.3.8",
+  "description": "Platform-specific binary for agent-tui (linux-arm64)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pproenca/agent-tui.git"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/agent-tui"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}

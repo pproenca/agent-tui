@@ -52,6 +52,36 @@ function setMeta(text: string) {
   metaEl.textContent = text;
 }
 
+async function hydrateLocalState(): Promise<boolean> {
+  try {
+    const resp = await fetch("/api-state");
+    if (!resp.ok) {
+      return false;
+    }
+    const payload = (await resp.json()) as {
+      http_url?: string;
+      ws_url?: string;
+      token?: string;
+    };
+    let updated = false;
+    if (!apiInput.value && payload.http_url) {
+      apiInput.value = payload.http_url;
+      updated = true;
+    }
+    if (!wsInput.value && payload.ws_url) {
+      wsInput.value = payload.ws_url;
+      updated = true;
+    }
+    if (!tokenInput.value && payload.token) {
+      tokenInput.value = payload.token;
+      updated = true;
+    }
+    return updated;
+  } catch {
+    return false;
+  }
+}
+
 function resolveWsBase(): string | null {
   const wsValue = wsInput.value.trim();
   if (wsValue) {
@@ -168,16 +198,24 @@ function disconnect() {
   setStatus("Disconnected", false);
 }
 
-function connect() {
+async function connect() {
+  const hydrated = await hydrateLocalState();
+  if (hydrated) {
+    setMeta("Loaded local daemon settings.");
+  }
   const wsUrl = buildWsUrl();
   if (!wsUrl) {
     setMeta("Provide an API or WS URL.");
     return;
   }
-
+  const tokenMissing = !tokenInput.value.trim();
   disconnect();
   setStatus("Connecting...", false);
-  setMeta(wsUrl);
+  if (tokenMissing) {
+    setMeta(`Token missing (ok if auth is disabled): ${wsUrl}`);
+  } else {
+    setMeta(wsUrl);
+  }
 
   socket = new WebSocket(wsUrl);
   socket.binaryType = "arraybuffer";
@@ -211,11 +249,20 @@ connectBtn.addEventListener("click", () => {
   if (socket) {
     disconnect();
   } else {
-    connect();
+    void connect();
   }
 });
 
-const auto = params.get("auto");
-if (auto === "1" || auto === "true") {
-  connect();
+async function init() {
+  const hydrated = await hydrateLocalState();
+  const auto = params.get("auto");
+  if (auto === "1" || auto === "true") {
+    void connect();
+    return;
+  }
+  if (hydrated) {
+    setMeta("Loaded local daemon settings.");
+  }
 }
+
+void init();

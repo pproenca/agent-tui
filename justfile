@@ -31,10 +31,20 @@ test:
     cargo test --workspace --lib --test cli_smoke --test cli_contracts
 
 build:
+    @just web-install
     cargo build --workspace
 
 build-release:
+    @just web-install
     cargo build --workspace --release
+
+web-install:
+    @command -v bun >/dev/null || { echo "bun is required for web UI. Install bun and re-run."; exit 1; }
+    (cd ../web && bun install)
+
+web-build:
+    @command -v bun >/dev/null || { echo "bun is required for web UI. Install bun and re-run."; exit 1; }
+    (cd ../web && bun install && bun run build)
 
 clean:
     cargo clean

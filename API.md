@@ -74,6 +74,11 @@ Response:
     "init": "<initial-render-seq>"
   }
 
+UI
+The daemon serves the live preview UI directly:
+- GET /ui (redirects to /ui with auto-connect params)
+- GET / (redirects to /ui)
+
 WebSocket
 WS /api/v1/stream?session=<id>&encoding=<base64|binary>
 Use session=active to follow the active session.

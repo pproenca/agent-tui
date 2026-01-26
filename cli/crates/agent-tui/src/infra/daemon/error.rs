@@ -161,8 +161,7 @@ impl LivePreviewError {
                     .to_string()
             }
             LivePreviewError::BindFailed { .. } => {
-                "Check if the port is available or choose another AGENT_TUI_API_LISTEN."
-                    .to_string()
+                "Check if the port is available or choose another AGENT_TUI_API_LISTEN.".to_string()
             }
         }
     }

@@ -612,7 +612,9 @@ pub fn handle_live_start<C: DaemonClient>(
             "{} Live preview is now served by the daemon API. Configure it via:",
             Colors::info("Note:")
         );
-        eprintln!("  AGENT_TUI_API_LISTEN / AGENT_TUI_API_ALLOW_REMOTE / AGENT_TUI_API_MAX_CONNECTIONS");
+        eprintln!(
+            "  AGENT_TUI_API_LISTEN / AGENT_TUI_API_ALLOW_REMOTE / AGENT_TUI_API_MAX_CONNECTIONS"
+        );
     }
 
     let state_path = api_state_path();
@@ -826,7 +828,10 @@ fn read_api_state(path: &PathBuf) -> Option<ApiState> {
         http_url: value.get("http_url")?.as_str()?.to_string(),
         ws_url: value.get("ws_url")?.as_str()?.to_string(),
         listen: value.get("listen")?.as_str()?.to_string(),
-        token: value.get("token").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        token: value
+            .get("token")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         api_version: value
             .get("api_version")
             .and_then(|v| v.as_str())

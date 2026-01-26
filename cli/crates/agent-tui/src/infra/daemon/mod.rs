@@ -2,8 +2,8 @@
 mod config;
 mod error;
 mod file_lock;
-mod http_api;
 pub mod handlers;
+mod http_api;
 mod lock_helpers;
 mod metrics;
 mod pty_session;

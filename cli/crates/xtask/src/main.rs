@@ -217,7 +217,7 @@ fn npm_platform_package_paths(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error
         }
     }
 
-    paths.sort();
+    paths.sort_unstable();
     Ok(paths)
 }
 

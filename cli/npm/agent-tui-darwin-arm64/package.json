@@ -1,22 +1,22 @@
 {
-  "name": "agent-tui-darwin-arm64",
-  "version": "0.3.8",
+  "cpu": [
+    "arm64"
+  ],
   "description": "Platform-specific binary for agent-tui (darwin-arm64)",
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "bin/agent-tui"
+  ],
   "license": "MIT",
+  "name": "agent-tui-darwin-arm64",
+  "os": [
+    "darwin"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pproenca/agent-tui.git"
   },
-  "os": [
-    "darwin"
-  ],
-  "cpu": [
-    "arm64"
-  ],
-  "files": [
-    "bin/agent-tui"
-  ],
-  "engines": {
-    "node": ">=16"
-  }
+  "version": "0.3.9"
 }

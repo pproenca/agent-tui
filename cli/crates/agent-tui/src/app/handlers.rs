@@ -666,16 +666,15 @@ pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handl
                     "listen": state.listen,
                     "url": state.url
                 }),
-                None => json!({ "running": false })
+                None => json!({ "running": false }),
             };
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
-            if status.is_none() {
-                println!("Live preview: not running");
-            } else {
-                let state = status.unwrap();
+            if let Some(state) = status {
                 println!("Live preview: {}", state.url);
+            } else {
+                println!("Live preview: not running");
             }
         }
     }
@@ -839,7 +838,10 @@ fn find_gateway_script() -> Option<PathBuf> {
     None
 }
 
-fn wait_for_live_preview_state(path: &PathBuf, timeout: Duration) -> Option<LivePreviewGatewayState> {
+fn wait_for_live_preview_state(
+    path: &PathBuf,
+    timeout: Duration,
+) -> Option<LivePreviewGatewayState> {
     let deadline = Instant::now() + timeout;
     loop {
         if let Some(state) = read_live_preview_state(path) {
@@ -929,16 +931,17 @@ fn start_live_preview_gateway(
         fallback.spawn()?;
     }
 
-    wait_for_live_preview_state(&state_path, Duration::from_secs(5)).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::TimedOut,
-            format!(
-                "live preview gateway failed to start (see {})",
-                log_path.display()
-            ),
-        )
-    })
-    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    wait_for_live_preview_state(&state_path, Duration::from_secs(5))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!(
+                    "live preview gateway failed to start (see {})",
+                    log_path.display()
+                ),
+            )
+        })
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }
 
 fn stop_live_preview_gateway() -> Result<bool, Box<dyn std::error::Error>> {

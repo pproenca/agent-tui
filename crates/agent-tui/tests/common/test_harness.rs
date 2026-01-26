@@ -7,9 +7,14 @@ use serde_json::Value;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
-// Shared runtime to avoid per-test spin-up overhead and reduce flakiness from repeated scheduler init.
-static RUNTIME: Lazy<Runtime> =
-    Lazy::new(|| Runtime::new().expect("Failed to create tokio runtime"));
+// Shared current-thread runtime to support time pausing in tests without cross-thread flakiness.
+static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .enable_io()
+        .build()
+        .expect("Failed to create tokio runtime")
+});
 
 pub struct TestHarness {
     daemon: MockDaemon,

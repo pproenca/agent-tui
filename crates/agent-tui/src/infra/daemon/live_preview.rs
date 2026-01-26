@@ -1,12 +1,13 @@
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Query, State, ws},
-    http::header,
+    http::{StatusCode, header},
     response::{Html, IntoResponse},
     routing::get,
 };
@@ -14,13 +15,14 @@ use futures_util::{StreamExt, sink, stream};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::{broadcast, watch};
+use tokio::time::MissedTickBehavior;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{info, warn};
 
 use crate::domain::session_types::SessionId;
 use crate::domain::{LivePreviewStartOutput, LivePreviewStatusOutput, LivePreviewStopOutput};
 use crate::usecases::ports::{
-    LivePreviewError, LivePreviewOptions, LivePreviewService, SessionHandle,
+    LivePreviewError, LivePreviewOptions, LivePreviewService, SessionHandle, SessionRepository,
 };
 
 const ASCIINEMA_PLAYER_JS: &[u8] = include_bytes!(concat!(
@@ -40,20 +42,16 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const START_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub struct LivePreviewManager {
+    repository: Arc<dyn SessionRepository>,
     state: Mutex<LivePreviewState>,
 }
 
 impl LivePreviewManager {
-    pub fn new() -> Self {
+    pub fn new(repository: Arc<dyn SessionRepository>) -> Self {
         Self {
+            repository,
             state: Mutex::new(LivePreviewState { server: None }),
         }
-    }
-}
-
-impl Default for LivePreviewManager {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -71,7 +69,12 @@ impl LivePreviewService for LivePreviewManager {
             }
         }
 
-        let handle = spawn_preview_server(session, options.listen_addr)?;
+        let session_id = session.session_id();
+        let handle = spawn_preview_server(
+            Arc::clone(&self.repository),
+            session_id,
+            options.listen_addr,
+        )?;
         let output = LivePreviewStartOutput {
             session_id: handle.session_id.clone(),
             listen_addr: handle.listen_addr.to_string(),
@@ -138,18 +141,20 @@ struct LivePreviewServerHandle {
 }
 
 fn spawn_preview_server(
-    session: SessionHandle,
+    repository: Arc<dyn SessionRepository>,
+    default_session_id: SessionId,
     listen_addr: SocketAddr,
 ) -> Result<LivePreviewServerHandle, LivePreviewError> {
     let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<SocketAddr, LivePreviewError>>();
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let session_id = session.session_id();
-
-    let thread_name = format!("live-preview-{}", session_id.as_str());
+    let session_id = default_session_id.clone();
+    let server_session_id = default_session_id.clone();
+    let shutdown_tx_clone = shutdown_tx.clone();
+    let thread_name = format!("live-preview-{}", default_session_id.as_str());
     let join = thread::Builder::new()
         .name(thread_name)
         .spawn(move || {
-            let runtime = match tokio::runtime::Builder::new_multi_thread()
+            let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
             {
@@ -178,13 +183,13 @@ fn spawn_preview_server(
                 let actual_addr = listener.local_addr().unwrap_or(listen_addr);
                 let _ = ready_tx.send(Ok(actual_addr));
 
-                let server_state = Arc::new(LivePreviewServerState::new(session));
+                let server_state = Arc::new(LivePreviewServerState::new(
+                    repository,
+                    server_session_id,
+                    shutdown_tx_clone,
+                ));
                 let app = build_router(Arc::clone(&server_state));
                 let mut shutdown = shutdown_rx.clone();
-                let pump_shutdown = shutdown_rx.clone();
-
-                let pump_handle =
-                    tokio::spawn(pump_events(Arc::clone(&server_state), pump_shutdown));
                 info!(listen = %actual_addr, "Live preview server started");
 
                 let _ = axum::serve(listener, app)
@@ -193,7 +198,6 @@ fn spawn_preview_server(
                     })
                     .await;
 
-                pump_handle.abort();
                 info!(listen = %actual_addr, "Live preview server stopped");
             });
         })
@@ -223,30 +227,93 @@ fn spawn_preview_server(
 
 #[derive(Clone)]
 struct LivePreviewServerState {
-    session: SessionHandle,
-    broadcaster: broadcast::Sender<LiveEvent>,
-    snapshot: Arc<Mutex<SnapshotState>>,
+    repository: Arc<dyn SessionRepository>,
+    default_session_id: SessionId,
+    sessions: Arc<Mutex<HashMap<String, Arc<SessionStreamState>>>>,
+    shutdown: watch::Sender<bool>,
     start_time: Instant,
 }
 
 impl LivePreviewServerState {
-    fn new(session: SessionHandle) -> Self {
-        let _ = session.update();
-        let snapshot = session.live_preview_snapshot();
-        let snapshot = SnapshotState {
-            size: (snapshot.cols, snapshot.rows),
-        };
-        let (tx, _) = broadcast::channel(128);
+    fn new(
+        repository: Arc<dyn SessionRepository>,
+        default_session_id: SessionId,
+        shutdown: watch::Sender<bool>,
+    ) -> Self {
         Self {
-            session,
-            broadcaster: tx,
-            snapshot: Arc::new(Mutex::new(snapshot)),
+            repository,
+            default_session_id,
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+            shutdown,
             start_time: Instant::now(),
         }
     }
 
-    fn now(&self) -> f64 {
-        self.start_time.elapsed().as_secs_f64()
+    fn resolve_session_id(&self, requested: Option<&str>) -> Result<SessionId, LivePreviewError> {
+        if let Some(requested) = requested {
+            return Ok(SessionId::new(requested.to_string()));
+        }
+        if let Some(active) = self.repository.active_session_id() {
+            return Ok(active);
+        }
+        Ok(self.default_session_id.clone())
+    }
+
+    fn list_sessions(
+        &self,
+    ) -> (
+        Vec<crate::domain::session_types::SessionInfo>,
+        Option<SessionId>,
+    ) {
+        let sessions = self.repository.list();
+        let active = self.repository.active_session_id();
+        (sessions, active)
+    }
+
+    fn get_or_create_session(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<Arc<SessionStreamState>, LivePreviewError> {
+        if let Some(state) = self
+            .sessions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(session_id.as_str())
+        {
+            return Ok(Arc::clone(state));
+        }
+
+        let session = self.repository.get(session_id.as_str())?;
+        if !session.is_running() {
+            return Err(LivePreviewError::Session(
+                crate::usecases::ports::SessionError::NotFound(format!(
+                    "{} (session not running)",
+                    session_id.as_str()
+                )),
+            ));
+        }
+        let (tx, _) = broadcast::channel(128);
+        let (cols, rows) = session.size();
+        let snapshot = SnapshotState { size: (cols, rows) };
+        let session_state = Arc::new(SessionStreamState {
+            session,
+            broadcaster: tx,
+            snapshot: Arc::new(Mutex::new(snapshot)),
+        });
+
+        self.sessions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(session_id.as_str().to_string(), Arc::clone(&session_state));
+
+        let shutdown = self.shutdown.subscribe();
+        let pump_state = Arc::clone(&session_state);
+        let start_time = self.start_time;
+        tokio::spawn(async move {
+            pump_events(pump_state, start_time, shutdown).await;
+        });
+
+        Ok(session_state)
     }
 }
 
@@ -256,13 +323,25 @@ struct SnapshotState {
 }
 
 #[derive(Clone)]
+struct SessionStreamState {
+    session: SessionHandle,
+    broadcaster: broadcast::Sender<LiveEvent>,
+    snapshot: Arc<Mutex<SnapshotState>>,
+}
+
+#[derive(Clone)]
 enum LiveEvent {
     Output { time: f64, seq: String },
     Resize { time: f64, cols: u16, rows: u16 },
 }
 
-async fn pump_events(state: Arc<LivePreviewServerState>, mut shutdown: watch::Receiver<bool>) {
+async fn pump_events(
+    state: Arc<SessionStreamState>,
+    start_time: Instant,
+    mut shutdown: watch::Receiver<bool>,
+) {
     let mut interval = tokio::time::interval(POLL_INTERVAL);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
@@ -272,14 +351,24 @@ async fn pump_events(state: Arc<LivePreviewServerState>, mut shutdown: watch::Re
                 }
             }
             _ = interval.tick() => {
-                if let Err(e) = state.session.update() {
-                    warn!(error = %e, "Live preview session update failed");
-                    continue;
+                let session = Arc::clone(&state.session);
+                let update_result = tokio::task::spawn_blocking(move || session.update()).await;
+                match update_result {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        warn!(error = %e, "Live preview session update failed");
+                        continue;
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Live preview session update task failed");
+                        continue;
+                    }
                 }
+
                 let (cols, rows) = state.session.size();
 
                 let mut snapshot = state.snapshot.lock().unwrap_or_else(|e| e.into_inner());
-                let time = state.now();
+                let time = start_time.elapsed().as_secs_f64();
 
                 if snapshot.size != (cols, rows) {
                     let _ = state
@@ -308,6 +397,7 @@ async fn pump_events(state: Arc<LivePreviewServerState>, mut shutdown: watch::Re
 fn build_router(state: Arc<LivePreviewServerState>) -> Router {
     Router::new()
         .route("/", get(index_handler))
+        .route("/sessions", get(sessions_handler))
         .route("/asciinema-player.css", get(css_handler))
         .route("/asciinema-player.min.js", get(js_handler))
         .route("/ws/alis", get(alis_handler))
@@ -317,6 +407,25 @@ fn build_router(state: Arc<LivePreviewServerState>) -> Router {
 
 async fn index_handler() -> impl IntoResponse {
     Html(INDEX_HTML)
+}
+
+async fn sessions_handler(State(state): State<Arc<LivePreviewServerState>>) -> impl IntoResponse {
+    let (sessions, active) = state.list_sessions();
+    let payload = json!({
+        "active": active.as_ref().map(|id| id.as_str()),
+        "sessions": sessions.into_iter().map(|session| {
+            json!({
+                "id": session.id.as_str(),
+                "command": session.command,
+                "pid": session.pid,
+                "running": session.running,
+                "created_at": session.created_at,
+                "cols": session.size.0,
+                "rows": session.size.1
+            })
+        }).collect::<Vec<_>>()
+    });
+    Json(payload)
 }
 
 async fn css_handler() -> impl IntoResponse {
@@ -332,23 +441,36 @@ async fn js_handler() -> impl IntoResponse {
 
 async fn alis_handler(
     ws: ws::WebSocketUpgrade,
+    Query(params): Query<SessionParams>,
     State(state): State<Arc<LivePreviewServerState>>,
 ) -> impl IntoResponse {
+    let session_id = match state.resolve_session_id(params.session.as_deref()) {
+        Ok(id) => id,
+        Err(e) => return (StatusCode::NOT_FOUND, e.to_string()).into_response(),
+    };
+    let session_state = match state.get_or_create_session(&session_id) {
+        Ok(session_state) => session_state,
+        Err(e) => return (StatusCode::NOT_FOUND, e.to_string()).into_response(),
+    };
+    let start_time = state.start_time;
+
     ws.on_upgrade(move |socket| async move {
-        let _ = handle_alis_socket(socket, state).await;
+        let _ = handle_alis_socket(socket, session_state, start_time).await;
     })
 }
 
 async fn handle_alis_socket(
     socket: ws::WebSocket,
-    state: Arc<LivePreviewServerState>,
+    session_state: Arc<SessionStreamState>,
+    start_time: Instant,
 ) -> Result<(), axum::Error> {
     let (sink, stream) = socket.split();
     let drainer = tokio::spawn(stream.map(Ok).forward(sink::drain()));
 
-    let init_message = alis_init_message(&state);
+    let init_message = alis_init_message(&session_state, start_time.elapsed().as_secs_f64()).await;
     let init_stream = stream::iter(std::iter::once(Ok(init_message)));
-    let events = BroadcastStream::new(state.broadcaster.subscribe()).filter_map(alis_message);
+    let events =
+        BroadcastStream::new(session_state.broadcaster.subscribe()).filter_map(alis_message);
 
     let result = init_stream.chain(events).forward(sink).await;
 
@@ -356,10 +478,16 @@ async fn handle_alis_socket(
     result
 }
 
-fn alis_init_message(state: &LivePreviewServerState) -> ws::Message {
+async fn alis_init_message(state: &SessionStreamState, now: f64) -> ws::Message {
+    let session = Arc::clone(&state.session);
+    let update_result = tokio::task::spawn_blocking(move || session.update()).await;
+    if let Ok(Err(e)) = update_result {
+        warn!(error = %e, "Live preview session update failed");
+    }
+
     let snapshot = state.session.live_preview_snapshot();
     let message = json!({
-        "time": state.now(),
+        "time": now,
         "cols": snapshot.cols,
         "rows": snapshot.rows,
         "init": snapshot.seq
@@ -382,8 +510,14 @@ async fn alis_message(
 }
 
 #[derive(Debug, Deserialize)]
+struct SessionParams {
+    session: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct EventsParams {
     sub: Option<String>,
+    session: Option<String>,
 }
 
 async fn events_handler(
@@ -392,28 +526,41 @@ async fn events_handler(
     State(state): State<Arc<LivePreviewServerState>>,
 ) -> impl IntoResponse {
     let sub: Subscription = params.sub.unwrap_or_default().parse().unwrap_or_default();
+    let session_id = match state.resolve_session_id(params.session.as_deref()) {
+        Ok(id) => id,
+        Err(e) => return (StatusCode::NOT_FOUND, e.to_string()).into_response(),
+    };
+    let session_state = match state.get_or_create_session(&session_id) {
+        Ok(session_state) => session_state,
+        Err(e) => return (StatusCode::NOT_FOUND, e.to_string()).into_response(),
+    };
 
     ws.on_upgrade(move |socket| async move {
-        let _ = handle_events_socket(socket, state, sub).await;
+        let _ = handle_events_socket(socket, session_state, sub).await;
     })
 }
 
 async fn handle_events_socket(
     socket: ws::WebSocket,
-    state: Arc<LivePreviewServerState>,
+    session_state: Arc<SessionStreamState>,
     sub: Subscription,
 ) -> Result<(), axum::Error> {
     let (sink, stream) = socket.split();
     let drainer = tokio::spawn(stream.map(Ok).forward(sink::drain()));
 
     let init = if sub.init {
-        Some(event_init_message(&state))
+        let session = Arc::clone(&session_state.session);
+        let update_result = tokio::task::spawn_blocking(move || session.update()).await;
+        if let Ok(Err(e)) = update_result {
+            warn!(error = %e, "Live preview session update failed");
+        }
+        Some(event_init_message(&session_state))
     } else {
         None
     };
 
     let init_stream = stream::iter(init.into_iter().map(Ok));
-    let events = BroadcastStream::new(state.broadcaster.subscribe())
+    let events = BroadcastStream::new(session_state.broadcaster.subscribe())
         .filter_map(move |event| events_message(event, sub));
 
     let result = init_stream.chain(events).forward(sink).await;
@@ -422,7 +569,7 @@ async fn handle_events_socket(
     result
 }
 
-fn event_init_message(state: &LivePreviewServerState) -> ws::Message {
+fn event_init_message(state: &SessionStreamState) -> ws::Message {
     let snapshot = state.session.live_preview_snapshot();
     let text = state.session.screen_text();
     let message = json!({

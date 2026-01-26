@@ -15,6 +15,7 @@ use crate::infra::daemon::transport::{
     UnixSocketListener,
 };
 use crate::infra::daemon::{LockFile, remove_lock_file};
+use crate::usecases::ports::SessionRepository;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender};
@@ -124,7 +125,8 @@ impl DaemonServer {
     pub fn with_config(config: DaemonConfig, shutdown_flag: Arc<AtomicBool>) -> Self {
         let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
         let metrics = Arc::new(DaemonMetrics::new());
-        let live_preview = Arc::new(LivePreviewManager::new());
+        let session_repo: Arc<dyn SessionRepository> = session_manager.clone();
+        let live_preview = Arc::new(LivePreviewManager::new(session_repo));
         let start_time = Instant::now();
         let active_connections = Arc::new(AtomicUsize::new(0));
         let usecases = UseCaseContainer::new(

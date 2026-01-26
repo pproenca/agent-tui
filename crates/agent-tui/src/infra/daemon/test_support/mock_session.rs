@@ -64,6 +64,10 @@ impl SessionOps for MockSession {
         self.screen_text.clone()
     }
 
+    fn screen_render(&self) -> String {
+        self.screen_text.clone()
+    }
+
     fn detect_elements(&self) -> Vec<Element> {
         self.elements.clone()
     }

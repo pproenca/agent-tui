@@ -1,0 +1,76 @@
+use std::io::Write;
+
+use crossterm::queue;
+use crossterm::style;
+
+use super::CellStyle;
+use super::Color;
+use super::ScreenBuffer;
+
+pub fn render_screen(buffer: &ScreenBuffer) -> String {
+    if buffer.cells.is_empty() {
+        return String::new();
+    }
+
+    let mut out = Vec::new();
+    let mut current_style: Option<CellStyle> = None;
+
+    for (row_idx, row) in buffer.cells.iter().enumerate() {
+        let mut col = 0;
+        while col < row.len() {
+            let style = row[col].style.clone();
+            let mut run_end = col + 1;
+            while run_end < row.len() && row[run_end].style == style {
+                run_end += 1;
+            }
+
+            if current_style.as_ref() != Some(&style) {
+                let _ = apply_style(&mut out, &style);
+                current_style = Some(style.clone());
+            }
+
+            let mut text = String::with_capacity(run_end - col);
+            for cell in &row[col..run_end] {
+                text.push(cell.char);
+            }
+            let _ = queue!(out, style::Print(text));
+            col = run_end;
+        }
+
+        if row_idx + 1 < buffer.cells.len() {
+            let _ = queue!(out, style::Print("\r\n"));
+        }
+    }
+
+    String::from_utf8(out).unwrap_or_default()
+}
+
+fn apply_style(out: &mut impl Write, style: &CellStyle) -> std::io::Result<()> {
+    queue!(out, style::SetAttribute(style::Attribute::Reset))?;
+
+    if style.bold {
+        queue!(out, style::SetAttribute(style::Attribute::Bold))?;
+    }
+    if style.underline {
+        queue!(out, style::SetAttribute(style::Attribute::Underlined))?;
+    }
+    if style.inverse {
+        queue!(out, style::SetAttribute(style::Attribute::Reverse))?;
+    }
+
+    let fg = style.fg_color.unwrap_or(Color::Default);
+    let bg = style.bg_color.unwrap_or(Color::Default);
+
+    queue!(out, style::SetForegroundColor(to_crossterm_color(fg)))?;
+    queue!(out, style::SetBackgroundColor(to_crossterm_color(bg)))?;
+
+    Ok(())
+}
+
+fn to_crossterm_color(color: Color) -> style::Color {
+    match color {
+        Color::Default => style::Color::Reset,
+        Color::Indexed(idx) => style::Color::AnsiValue(idx),
+        Color::Rgb(r, g, b) => style::Color::Rgb { r, g, b },
+    }
+}

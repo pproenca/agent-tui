@@ -176,6 +176,7 @@ pub fn parse_snapshot_input(request: &RpcRequest) -> SnapshotInput {
         region: rpc_params.region,
         strip_ansi: rpc_params.strip_ansi,
         include_cursor: rpc_params.include_cursor,
+        include_render: rpc_params.include_render,
     }
 }
 
@@ -207,6 +208,10 @@ pub fn snapshot_output_to_response(
             "col": cursor.col,
             "visible": cursor.visible
         });
+    }
+
+    if let Some(rendered) = output.rendered {
+        result["rendered"] = json!(rendered);
     }
 
     RpcResponse::success(id, result)
@@ -1011,13 +1016,15 @@ mod tests {
             Some(json!({
                 "session": "abc123",
                 "include_elements": true,
-                "include_cursor": true
+                "include_cursor": true,
+                "include_render": true
             })),
         );
         let input = parse_snapshot_input(&request);
         assert_eq!(input.session_id, Some(SessionId::new("abc123")));
         assert!(input.include_elements);
         assert!(input.include_cursor);
+        assert!(input.include_render);
     }
 
     #[test]

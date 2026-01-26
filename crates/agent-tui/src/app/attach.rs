@@ -196,7 +196,7 @@ fn render_initial_screen<C: DaemonClient>(
     let params = json!({
         "session": session_id,
         "include_cursor": true,
-        "strip_ansi": true
+        "include_render": true
     });
 
     let snapshot = match client.call("snapshot", Some(params)) {
@@ -204,15 +204,17 @@ fn render_initial_screen<C: DaemonClient>(
         Err(_) => return,
     };
 
-    let screenshot = match snapshot
+    let rendered = snapshot.get("rendered").and_then(serde_json::Value::as_str);
+    let screenshot = snapshot
         .get("screenshot")
-        .and_then(serde_json::Value::as_str)
-    {
-        Some(screenshot) => screenshot,
+        .and_then(serde_json::Value::as_str);
+
+    let screen = match rendered.or(screenshot) {
+        Some(screen) => screen,
         None => return,
     };
 
-    if screenshot.is_empty() {
+    if screen.is_empty() {
         return;
     }
 
@@ -222,7 +224,7 @@ fn render_initial_screen<C: DaemonClient>(
         cursor::MoveTo(0, 0),
         style::SetAttribute(style::Attribute::Reset),
         style::ResetColor,
-        style::Print(screenshot)
+        style::Print(screen)
     );
 
     if let Some(cursor) = snapshot.get("cursor") {
@@ -812,7 +814,7 @@ mod tests {
         let params = params.pop().unwrap().unwrap();
         assert_eq!(params["session"], "sess1");
         assert_eq!(params["include_cursor"], true);
-        assert_eq!(params["strip_ansi"], true);
+        assert_eq!(params["include_render"], true);
     }
 
     #[test]

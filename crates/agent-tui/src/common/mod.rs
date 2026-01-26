@@ -5,9 +5,9 @@ mod color;
 pub mod error_codes;
 mod json_ext;
 pub mod key_names;
-pub mod telemetry;
 mod string_utils;
 mod sync;
+pub mod telemetry;
 
 pub use color::Colors;
 pub use color::init as color_init;

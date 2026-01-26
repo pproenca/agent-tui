@@ -17,11 +17,15 @@ impl TelemetryGuard {
 }
 
 pub fn init_tracing(default_level: &str) -> TelemetryGuard {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(default_level));
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
 
     let (writer, guard) = match log_file_path_from_env() {
-        Some(path) => match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Some(path) => match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
             Ok(file) => {
                 let (non_blocking, guard) = tracing_appender::non_blocking(file);
                 (BoxMakeWriter::new(non_blocking), Some(guard))

@@ -196,30 +196,30 @@ impl DaemonClient for UnixSocketClient {
                 code = rpc_error.code,
                 "RPC error response"
             );
-            let (category, retryable, context, suggestion) = if let Some(data) = rpc_error.data.as_ref()
-            {
-                let cat = data
-                    .get("category")
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| s.parse::<error_codes::ErrorCategory>().ok());
-                let retry = data
-                    .get("retryable")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or_else(|| error_codes::is_retryable(rpc_error.code));
-                let ctx = data.get("context").cloned();
-                let sug = data
-                    .get("suggestion")
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-                (cat, retry, ctx, sug)
-            } else {
-                (
-                    Some(error_codes::category_for_code(rpc_error.code)),
-                    error_codes::is_retryable(rpc_error.code),
-                    None,
-                    None,
-                )
-            };
+            let (category, retryable, context, suggestion) =
+                if let Some(data) = rpc_error.data.as_ref() {
+                    let cat = data
+                        .get("category")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<error_codes::ErrorCategory>().ok());
+                    let retry = data
+                        .get("retryable")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or_else(|| error_codes::is_retryable(rpc_error.code));
+                    let ctx = data.get("context").cloned();
+                    let sug = data
+                        .get("suggestion")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    (cat, retry, ctx, sug)
+                } else {
+                    (
+                        Some(error_codes::category_for_code(rpc_error.code)),
+                        error_codes::is_retryable(rpc_error.code),
+                        None,
+                        None,
+                    )
+                };
 
             return Err(ClientError::RpcError {
                 code: rpc_error.code,

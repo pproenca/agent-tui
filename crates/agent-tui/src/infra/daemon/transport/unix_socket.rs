@@ -57,6 +57,8 @@ pub struct UnixSocketConnection {
 
 impl UnixSocketConnection {
     pub fn new(stream: UnixStream) -> Result<Self, TransportError> {
+        // Ensure accepted sockets are blocking so timeouts can be set reliably.
+        let _ = stream.set_nonblocking(false);
         let reader_stream = stream.try_clone()?;
         Ok(Self {
             reader: SizeLimitedReader::new(BufReader::new(reader_stream), MAX_REQUEST_SIZE),

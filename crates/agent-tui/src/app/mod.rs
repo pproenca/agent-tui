@@ -11,9 +11,11 @@ pub mod handlers;
 
 use crate::app::commands::OutputFormat;
 use crate::common::key_names::is_key_name;
+use crate::common::telemetry;
 use crate::common::{Colors, color_init};
 use crate::infra::daemon::{DaemonError, start_daemon};
 use crate::infra::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
+use tracing::debug;
 
 use crate::app::attach::AttachError;
 use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs};
@@ -116,8 +118,15 @@ impl Application {
 
     fn execute(&self) -> Result<(), Box<dyn std::error::Error>> {
         let cli = Cli::parse();
+        let _telemetry = telemetry::init_tracing(if cli.verbose { "debug" } else { "warn" });
         color_init(cli.no_color);
         let format = cli.effective_format();
+        debug!(
+            command = ?cli.command,
+            session = ?cli.session,
+            format = ?format,
+            "CLI command parsed"
+        );
 
         if self
             .handle_standalone_commands(&cli)

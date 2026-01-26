@@ -1,6 +1,7 @@
+use crate::common::telemetry;
 use crate::infra::ipc::RpcResponse;
 use crate::infra::ipc::socket_path;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::config::DaemonConfig;
 use super::router::Router;
@@ -17,13 +18,14 @@ use crate::infra::daemon::transport::{
 use crate::infra::daemon::{LockFile, remove_lock_file};
 use crate::usecases::ports::SessionRepository;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const MAX_CONNECTIONS: usize = 64;
 const CHANNEL_CAPACITY: usize = 128;
+static CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
 
 pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
@@ -57,6 +59,7 @@ impl ThreadPool {
                 match thread::Builder::new()
                     .name(format!("worker-{}", id))
                     .spawn(move || {
+                        debug!(worker_id = id, "Worker thread started");
                         loop {
                             if shutdown.load(Ordering::Relaxed) {
                                 break;
@@ -81,6 +84,7 @@ impl ThreadPool {
                             server.handle_client(conn);
                             server.active_connections.fetch_sub(1, Ordering::Relaxed);
                         }
+                        debug!(worker_id = id, "Worker thread stopped");
                     }) {
                     Ok(h) => h,
                     Err(e) => {
@@ -161,15 +165,17 @@ impl DaemonServer {
 
     fn handle_client(&self, mut conn: impl TransportConnection) {
         let idle_timeout = DaemonConfig::from_env().idle_timeout;
+        let conn_id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
+        let conn_span = tracing::info_span!("daemon_connection", conn_id);
+        let _conn_guard = conn_span.enter();
+        debug!(conn_id, "Client connected");
 
         if let Err(e) = conn.set_read_timeout(Some(idle_timeout)) {
-            error!(error = %e, "Failed to set read timeout");
-            return;
+            warn!(error = %e, "Failed to set read timeout");
         }
 
         if let Err(e) = conn.set_write_timeout(Some(Duration::from_secs(30))) {
-            error!(error = %e, "Failed to set write timeout");
-            return;
+            warn!(error = %e, "Failed to set write timeout");
         }
 
         loop {
@@ -178,6 +184,7 @@ impl DaemonServer {
                 Err(TransportError::ConnectionClosed) | Err(TransportError::Timeout) => break,
                 Err(TransportError::SizeLimit { max_bytes }) => {
                     self.metrics.record_error();
+                    warn!(max_bytes, "Request size limit exceeded");
                     let error_response = RpcResponse::error(
                         0,
                         -32700,
@@ -191,6 +198,7 @@ impl DaemonServer {
                 }
                 Err(TransportError::Parse(msg)) => {
                     self.metrics.record_error();
+                    debug!(error = %msg, "Request parse error");
                     let error_response =
                         RpcResponse::error(0, -32700, &format!("Parse error: {}", msg));
                     let _ = conn.write_response(&error_response);
@@ -202,8 +210,27 @@ impl DaemonServer {
                 }
             };
 
+            let request_id = request.id;
+            let method = request.method.clone();
+            let session = request.param_str("session").map(str::to_string);
+            let session_field = session.as_deref().unwrap_or("-");
+            let request_span = tracing::debug_span!(
+                "rpc_request",
+                request_id,
+                method = %method,
+                session = %session_field
+            );
+            let _request_guard = request_span.enter();
+            let start = Instant::now();
+
             self.metrics.record_request();
             let response = self.handle_request(request);
+            debug!(
+                request_id,
+                method = %method,
+                elapsed_ms = start.elapsed().as_millis(),
+                "RPC request handled"
+            );
 
             if let Err(e) = conn.write_response(&response) {
                 match e {
@@ -215,18 +242,12 @@ impl DaemonServer {
                 }
             }
         }
+        debug!(conn_id, "Client disconnected");
     }
 }
 
-fn init_logging() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(tracing::Level::INFO.into()),
-        )
-        .with_target(false)
-        .with_writer(std::io::stderr)
-        .init();
+fn init_logging() -> telemetry::TelemetryGuard {
+    telemetry::init_tracing("info")
 }
 
 fn bind_socket(socket_path: &std::path::Path) -> Result<UnixSocketListener, DaemonError> {
@@ -303,7 +324,7 @@ fn cleanup(
 }
 
 pub fn start_daemon() -> Result<(), DaemonError> {
-    init_logging();
+    let _telemetry = init_logging();
 
     let socket_path = socket_path();
     let lock_path = socket_path.with_extension("lock");

@@ -1916,6 +1916,34 @@ pub enum StopResult {
     AlreadyStopped,
 }
 
+/// Core daemon restart logic that doesn't require an active client connection.
+pub fn restart_daemon_core() -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    use crate::infra::ipc::{
+        PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background,
+    };
+
+    let mut warnings = Vec::new();
+    let pid = match get_daemon_pid() {
+        PidLookupResult::Found(pid) => Some(pid),
+        PidLookupResult::NotRunning => None,
+        PidLookupResult::Error(msg) => {
+            warnings.push(format!("Could not read daemon PID: {}", msg));
+            None
+        }
+    };
+
+    let controller = UnixProcessController;
+    let get_pid = move || pid;
+    let mut restart_warnings = daemon_lifecycle::restart_daemon(
+        &controller,
+        get_pid,
+        &socket_path(),
+        start_daemon_background,
+    )?;
+    warnings.append(&mut restart_warnings);
+    Ok(warnings)
+}
+
 /// Core daemon stop logic that doesn't require an active client connection.
 /// Returns `Ok(StopResult)` on success, including when daemon is already stopped (idempotent).
 pub fn stop_daemon_core(force: bool) -> Result<StopResult, Box<dyn std::error::Error>> {
@@ -2103,37 +2131,10 @@ pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Han
 }
 
 pub fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
-    use crate::infra::ipc::{
-        PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background,
-    };
-
     if let OutputFormat::Text = ctx.format {
         ctx.presenter().present_info("Restarting daemon...");
     }
-
-    let controller = UnixProcessController;
-
-    let get_pid = || -> Option<u32> {
-        match get_daemon_pid() {
-            PidLookupResult::Found(pid) => Some(pid),
-            PidLookupResult::NotRunning => None,
-            PidLookupResult::Error(msg) => {
-                eprintln!(
-                    "{} Could not read daemon PID: {}",
-                    Colors::warning("Warning:"),
-                    msg
-                );
-                None
-            }
-        }
-    };
-
-    let warnings = daemon_lifecycle::restart_daemon(
-        &controller,
-        get_pid,
-        &socket_path(),
-        start_daemon_background,
-    )?;
+    let warnings = restart_daemon_core()?;
 
     for warning in &warnings {
         eprintln!("{}", Colors::warning(warning));

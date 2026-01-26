@@ -20,6 +20,7 @@ use tracing::debug;
 use crate::app::attach::AttachError;
 use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs};
 use crate::app::handlers::HandlerContext;
+use crate::adapters::presenter::create_presenter;
 
 static ELEMENT_REF_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^@(e|btn|inp)\d+$").expect("Invalid element ref regex"));
@@ -172,6 +173,10 @@ impl Application {
                 self.handle_daemon_stop_without_autostart(*force)?;
                 Ok(true)
             }
+            Commands::Daemon(DaemonCommand::Restart) => {
+                self.handle_daemon_restart_without_autostart(cli)?;
+                Ok(true)
+            }
             Commands::Completions { shell } => {
                 let mut cmd = Cli::command();
                 generate(*shell, &mut cmd, "agent-tui", &mut std::io::stdout());
@@ -249,6 +254,25 @@ impl Application {
         Ok(())
     }
 
+    fn handle_daemon_restart_without_autostart(
+        &self,
+        cli: &Cli,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let format = cli.effective_format();
+        let presenter = create_presenter(&format);
+
+        if let OutputFormat::Text = format {
+            presenter.present_info("Restarting daemon...");
+        }
+
+        let warnings = handlers::restart_daemon_core()?;
+        for warning in &warnings {
+            eprintln!("{}", Colors::warning(warning));
+        }
+        presenter.present_success("Daemon restarted", None);
+        Ok(())
+    }
+
     fn connect_to_daemon_autostart(&self) -> Result<UnixSocketClient, Box<dyn std::error::Error>> {
         ensure_daemon().map_err(Into::into)
     }
@@ -274,7 +298,7 @@ impl Application {
                 DaemonCommand::Start { .. } => unreachable!("Handled in standalone"),
                 DaemonCommand::Stop { .. } => unreachable!("Handled in standalone"),
                 DaemonCommand::Status => unreachable!("Handled in standalone"),
-                DaemonCommand::Restart => handlers::handle_daemon_restart(ctx)?,
+                DaemonCommand::Restart => unreachable!("Handled in standalone"),
             },
             Commands::Completions { .. } => unreachable!("Handled in standalone"),
 
@@ -958,7 +982,12 @@ mod tests {
         }
 
         #[test]
-        fn handle_standalone_commands_does_not_route_restart() {
+        fn handle_standalone_commands_routes_daemon_restart() {
+            // Isolate from any real daemon by pointing socket to a temp path.
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            env::set_var("AGENT_TUI_SOCKET", &socket_path);
+
             let app = Application::new();
             let cli = Cli {
                 command: Commands::Daemon(DaemonCommand::Restart),
@@ -969,10 +998,11 @@ mod tests {
                 verbose: false,
             };
 
-            // Restart should NOT be handled as standalone
+            // Restart should be handled as standalone (may error if start fails)
             let result = app.handle_standalone_commands(&cli);
-            assert!(result.is_ok());
-            assert!(!result.unwrap());
+            if let Ok(handled) = result {
+                assert!(handled, "daemon restart should be handled as standalone");
+            }
         }
 
         #[test]

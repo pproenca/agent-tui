@@ -567,7 +567,9 @@ fn stream_live_preview(
     }
 
     let subscription = session.stream_subscribe();
-    let mut cursor = StreamCursor::default();
+    let mut cursor = StreamCursor {
+        seq: snapshot.stream_seq,
+    };
     let mut last_size = (snapshot.cols, snapshot.rows);
 
     loop {

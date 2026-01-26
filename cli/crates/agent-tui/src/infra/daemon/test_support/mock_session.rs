@@ -168,6 +168,7 @@ impl SessionOps for MockSession {
             cols: self.cols,
             rows: self.rows,
             seq: self.screen_text.clone(),
+            stream_seq: 0,
         }
     }
 }

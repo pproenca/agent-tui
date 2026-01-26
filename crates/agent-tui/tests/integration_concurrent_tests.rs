@@ -1,6 +1,6 @@
 mod common;
 
-use common::{MockResponse, TEST_SESSION_ID, TestHarness, with_timeout};
+use common::{MockResponse, TEST_SESSION_ID, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
@@ -256,32 +256,32 @@ fn test_concurrent_with_delays() {
         ),
     );
 
-    let harness_clone = Arc::clone(&harness);
-    let result = with_timeout(Duration::from_secs(5), move || {
-        let handles = vec![
-            {
-                let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["daemon", "status"]).success())
-            },
-            {
-                let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["sessions"]).success())
-            },
-            {
-                let h = Arc::clone(&harness_clone);
-                thread::spawn(move || h.run(&["screenshot"]).success())
-            },
-        ];
+    let handles = vec![
+        {
+            let h = Arc::clone(&harness);
+            thread::spawn(move || h.run(&["daemon", "status"]).success())
+        },
+        {
+            let h = Arc::clone(&harness);
+            thread::spawn(move || h.run(&["sessions"]).success())
+        },
+        {
+            let h = Arc::clone(&harness);
+            thread::spawn(move || h.run(&["screenshot"]).success())
+        },
+    ];
 
-        for handle in handles {
-            handle.join().expect("Thread panicked");
-        }
-    });
-
+    harness.wait_for_request_count(3);
+    harness.wait_for_pending_delays(1);
     assert!(
-        result.is_some(),
-        "Concurrent requests with delay should complete"
+        !handles[0].is_finished(),
+        "Expected daemon status to wait for delayed response"
     );
+    harness.advance_time(Duration::from_millis(100));
+
+    for handle in handles {
+        handle.join().expect("Thread panicked");
+    }
 }
 
 #[test]
@@ -326,29 +326,24 @@ fn test_concurrent_pty_read_write_no_deadlock() {
         }),
     );
 
-    let result = with_timeout(Duration::from_secs(5), move || {
-        let handles: Vec<_> = (0..10)
-            .map(|i| {
-                let h = Arc::clone(&harness);
-                thread::spawn(move || {
-                    if i % 2 == 0 {
-                        h.run(&["daemon", "status"])
-                    } else {
-                        h.run(&["input", "test"])
-                    }
-                })
+    let handles: Vec<_> = (0..10)
+        .map(|i| {
+            let h = Arc::clone(&harness);
+            thread::spawn(move || {
+                if i % 2 == 0 {
+                    h.run(&["daemon", "status"])
+                } else {
+                    h.run(&["input", "test"])
+                }
             })
-            .collect();
+        })
+        .collect();
 
-        for handle in handles {
-            let _ = handle.join().expect("Thread panicked");
-        }
-    });
+    harness.wait_for_request_count(10);
 
-    assert!(
-        result.is_some(),
-        "Concurrent PTY operations should complete without deadlock"
-    );
+    for handle in handles {
+        let _ = handle.join().expect("Thread panicked");
+    }
 }
 
 #[test]

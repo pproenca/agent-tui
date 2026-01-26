@@ -153,6 +153,7 @@ mod tests {
     use super::*;
     use crate::infra::daemon::DaemonMetrics;
     use crate::infra::daemon::SessionManager;
+    use crate::usecases::ports::SessionRepository;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize};
     use std::time::Instant;
@@ -160,7 +161,8 @@ mod tests {
     fn create_test_usecases() -> UseCaseContainer<SessionManager> {
         let session_manager = Arc::new(SessionManager::new());
         let metrics = Arc::new(DaemonMetrics::new());
-        let live_preview = Arc::new(crate::infra::daemon::LivePreviewManager::new());
+        let session_repo: Arc<dyn SessionRepository> = session_manager.clone();
+        let live_preview = Arc::new(crate::infra::daemon::LivePreviewManager::new(session_repo));
         let start_time = Instant::now();
         let active_connections = Arc::new(AtomicUsize::new(0));
         let shutdown_flag = Arc::new(AtomicBool::new(false));

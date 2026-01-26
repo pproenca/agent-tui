@@ -313,8 +313,14 @@ impl Session {
         Ok(())
     }
 
-    pub fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
-        self.pty.try_read(buf, timeout_ms)
+    pub fn pty_try_read(&mut self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
+        let bytes_read = self.pty.try_read(buf, timeout_ms)?;
+        if bytes_read > 0 {
+            let data = &buf[..bytes_read];
+            self.terminal.process(data);
+            self.live_preview.process(data);
+        }
+        Ok(bytes_read)
     }
 
     pub fn live_preview_snapshot(&self) -> LivePreviewSnapshot {

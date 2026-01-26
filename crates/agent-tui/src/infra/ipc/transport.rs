@@ -10,6 +10,7 @@ use std::time::Duration;
 use crate::infra::ipc::error::ClientError;
 use crate::infra::ipc::polling;
 use crate::infra::ipc::socket::socket_path;
+use tracing::debug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportKind {
@@ -18,14 +19,16 @@ pub enum TransportKind {
 }
 
 fn transport_kind() -> TransportKind {
-    match std::env::var("AGENT_TUI_TRANSPORT")
+    let kind = match std::env::var("AGENT_TUI_TRANSPORT")
         .unwrap_or_else(|_| "unix".to_string())
         .to_lowercase()
         .as_str()
     {
         "tcp" => TransportKind::Tcp,
         _ => TransportKind::Unix,
-    }
+    };
+    debug!(transport = ?kind, "IPC transport selected");
+    kind
 }
 
 fn tcp_addr_from_env() -> Option<SocketAddr> {
@@ -115,8 +118,10 @@ impl IpcTransport for UnixSocketTransport {
     fn connect_stream(&self) -> Result<ClientStream, ClientError> {
         let path = socket_path();
         if !path.exists() {
+            debug!(socket = %path.display(), "Daemon socket missing");
             return Err(ClientError::DaemonNotRunning);
         }
+        debug!(socket = %path.display(), "Connecting to daemon socket");
         Ok(ClientStream::Unix(UnixStream::connect(&path)?))
     }
 
@@ -156,8 +161,10 @@ impl TcpSocketTransport {
 impl IpcTransport for TcpSocketTransport {
     fn connect_stream(&self) -> Result<ClientStream, ClientError> {
         let Some(addr) = self.addr else {
+            debug!("TCP transport configured without address");
             return Err(ClientError::DaemonNotRunning);
         };
+        debug!(addr = %addr, "Connecting to daemon TCP socket");
         Ok(ClientStream::Tcp(TcpStream::connect(addr)?))
     }
 

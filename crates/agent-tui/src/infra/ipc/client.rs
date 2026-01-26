@@ -4,11 +4,12 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+use tracing::{debug, trace};
 
 use crate::common::Colors;
 use crate::infra::ipc::error::ClientError;
@@ -145,6 +146,15 @@ impl DaemonClient for UnixSocketClient {
         params: Option<Value>,
         config: &DaemonClientConfig,
     ) -> Result<Value, ClientError> {
+        let request_id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        let start = Instant::now();
+        debug!(
+            request_id,
+            method = %method,
+            read_timeout_ms = config.read_timeout.as_millis(),
+            write_timeout_ms = config.write_timeout.as_millis(),
+            "RPC call started"
+        );
         let mut stream = self.transport.connect_stream()?;
 
         stream.set_read_timeout(Some(config.read_timeout))?;
@@ -152,12 +162,17 @@ impl DaemonClient for UnixSocketClient {
 
         let request = Request {
             jsonrpc: "2.0".to_string(),
-            id: REQUEST_ID.fetch_add(1, Ordering::SeqCst),
+            id: request_id,
             method: method.to_string(),
             params,
         };
 
         let request_json = serde_json::to_string(&request)?;
+        trace!(
+            request_id,
+            bytes = request_json.len(),
+            "RPC request serialized"
+        );
 
         writeln!(stream, "{}", request_json)?;
         stream.flush()?;
@@ -166,11 +181,22 @@ impl DaemonClient for UnixSocketClient {
         let mut reader = BufReader::new(reader_stream);
         let mut response_line = String::new();
         reader.read_line(&mut response_line)?;
+        trace!(
+            request_id,
+            bytes = response_line.len(),
+            "RPC response received"
+        );
 
         let response: Response = serde_json::from_str(&response_line)?;
 
-        if let Some(error) = response.error {
-            let (category, retryable, context, suggestion) = if let Some(data) = error.data.as_ref()
+        if let Some(rpc_error) = response.error {
+            debug!(
+                request_id,
+                method = %method,
+                code = rpc_error.code,
+                "RPC error response"
+            );
+            let (category, retryable, context, suggestion) = if let Some(data) = rpc_error.data.as_ref()
             {
                 let cat = data
                     .get("category")
@@ -179,7 +205,7 @@ impl DaemonClient for UnixSocketClient {
                 let retry = data
                     .get("retryable")
                     .and_then(|v| v.as_bool())
-                    .unwrap_or_else(|| error_codes::is_retryable(error.code));
+                    .unwrap_or_else(|| error_codes::is_retryable(rpc_error.code));
                 let ctx = data.get("context").cloned();
                 let sug = data
                     .get("suggestion")
@@ -188,16 +214,16 @@ impl DaemonClient for UnixSocketClient {
                 (cat, retry, ctx, sug)
             } else {
                 (
-                    Some(error_codes::category_for_code(error.code)),
-                    error_codes::is_retryable(error.code),
+                    Some(error_codes::category_for_code(rpc_error.code)),
+                    error_codes::is_retryable(rpc_error.code),
                     None,
                     None,
                 )
             };
 
             return Err(ClientError::RpcError {
-                code: error.code,
-                message: error.message,
+                code: rpc_error.code,
+                message: rpc_error.message,
                 category,
                 retryable,
                 context,
@@ -205,7 +231,14 @@ impl DaemonClient for UnixSocketClient {
             });
         }
 
-        response.result.ok_or(ClientError::InvalidResponse)
+        let result = response.result.ok_or(ClientError::InvalidResponse);
+        debug!(
+            request_id,
+            method = %method,
+            elapsed_ms = start.elapsed().as_millis(),
+            "RPC call finished"
+        );
+        result
     }
 
     fn call_with_retry(
@@ -219,11 +252,23 @@ impl DaemonClient for UnixSocketClient {
         let mut last_error = None;
 
         for attempt in 0..=config.max_retries {
+            debug!(
+                method = %method,
+                attempt,
+                max_retries = config.max_retries,
+                "RPC retry attempt"
+            );
             let params_clone = params.clone();
             match self.call_with_config(method, params_clone, &config) {
                 Ok(result) => return Ok(result),
                 Err(e) => {
                     if !is_retriable_error(&e) || attempt == config.max_retries {
+                        debug!(
+                            method = %method,
+                            attempt,
+                            retryable = is_retriable_error(&e),
+                            "RPC retry aborted"
+                        );
                         return Err(e);
                     }
                     last_error = Some(e);
@@ -244,8 +289,11 @@ pub fn ensure_daemon() -> Result<UnixSocketClient, ClientError> {
 pub fn ensure_daemon_with_transport(
     transport: std::sync::Arc<dyn IpcTransport>,
 ) -> Result<UnixSocketClient, ClientError> {
+    debug!("Ensuring daemon is running");
     if !transport.is_daemon_running() {
+        debug!("Daemon not running");
         if transport.supports_autostart() {
+            debug!("Attempting daemon autostart");
             eprintln!("{} Starting daemon in background...", Colors::dim("Note:"));
             transport.start_daemon_background()?;
         } else {

@@ -1,0 +1,54 @@
+{
+  "name": "agent-tui",
+  "version": "0.3.8",
+  "description": "CLI tool for AI agents to interact with TUI applications",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pproenca/agent-tui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pproenca/agent-tui/issues"
+  },
+  "homepage": "https://github.com/pproenca/agent-tui#readme",
+  "keywords": [
+    "tui",
+    "terminal",
+    "ai",
+    "agent",
+    "automation",
+    "cli",
+    "pty"
+  ],
+  "bin": {
+    "agent-tui": "bin/agent-tui"
+  },
+  "scripts": {
+    "build:native": "cargo build --release -p agent-tui && node scripts/copy-native.js",
+    "version:check": "cargo xtask version check",
+    "preversion": "just ready",
+    "version": "echo 'ERROR: Use cargo xtask release <version|patch|minor|major> or just release-* instead' && exit 1",
+    "postinstall": "node scripts/postinstall.js",
+    "prepack": "node scripts/sync-web.js",
+    "prepare": "husky"
+  },
+  "files": [
+    "bin",
+    "scripts",
+    "web"
+  ],
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

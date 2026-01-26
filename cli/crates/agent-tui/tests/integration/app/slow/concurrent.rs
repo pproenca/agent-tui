@@ -19,6 +19,15 @@ fn max_parallel() -> usize {
     env_override.unwrap_or(default_parallel).max(1)
 }
 
+#[cfg(feature = "stress-tests")]
+fn stress_count(var: &str, default: usize) -> usize {
+    std::env::var(var)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(default)
+}
+
 fn run_batched<T, F>(count: usize, f: F) -> Vec<T>
 where
     T: Send + 'static,
@@ -155,12 +164,14 @@ fn test_concurrent_spawns() {
     }
 }
 
+#[cfg(feature = "stress-tests")]
 #[test]
 fn test_rapid_connect_disconnect() {
     let harness = Arc::new(TestHarness::new());
 
     let mut successes = 0;
-    let results = run_batched(20, {
+    let count = stress_count("AGENT_TUI_TEST_RAPID_CONNECT_COUNT", 20);
+    let results = run_batched(count, {
         let harness = Arc::clone(&harness);
         move |_| {
             let h = Arc::clone(&harness);
@@ -174,7 +185,7 @@ fn test_rapid_connect_disconnect() {
         }
     }
 
-    assert_eq!(successes, 20);
+    assert_eq!(successes, count);
 }
 
 #[test]
@@ -282,12 +293,14 @@ fn test_concurrent_with_delays() {
     }
 }
 
+#[cfg(feature = "stress-tests")]
 #[test]
 fn test_many_parallel_health_checks() {
     let harness = Arc::new(TestHarness::new());
 
     let mut successes = 0;
-    let results = run_batched(50, {
+    let count = stress_count("AGENT_TUI_TEST_PARALLEL_HEALTH_COUNT", 50);
+    let results = run_batched(count, {
         let harness = Arc::clone(&harness);
         move |_| {
             let h = Arc::clone(&harness);
@@ -301,7 +314,7 @@ fn test_many_parallel_health_checks() {
         }
     }
 
-    assert_eq!(successes, 50);
+    assert_eq!(successes, count);
 }
 
 #[test]

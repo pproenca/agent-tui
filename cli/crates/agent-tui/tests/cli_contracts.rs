@@ -21,10 +21,15 @@ fn run_fixture(file: &str) {
         .join("fixtures")
         .join("contracts")
         .join(file);
-    let data = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
+    let data =
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
     let fixture: Fixture =
         serde_json::from_str(&data).unwrap_or_else(|e| panic!("parse {}: {}", path.display(), e));
-    assert!(!fixture.name.is_empty(), "fixture name missing for {}", file);
+    assert!(
+        !fixture.name.is_empty(),
+        "fixture name missing for {}",
+        file
+    );
 
     let harness = TestHarness::new();
     harness.set_response(

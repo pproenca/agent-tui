@@ -749,8 +749,8 @@ pub enum OutputFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::error::ErrorKind;
     use clap::Parser;
+    use clap::error::ErrorKind;
 
     #[test]
     fn test_cli_defaults() {

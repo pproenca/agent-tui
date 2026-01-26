@@ -1,6 +1,7 @@
 use crate::infra::ipc::{RpcRequest, RpcResponse};
 use serde_json::{Value, json};
 
+use super::common;
 use super::common::session_error_response;
 use crate::adapters::{
     count_output_to_response, element_to_json as adapter_element_to_json, fill_success_response,
@@ -21,6 +22,7 @@ use crate::usecases::{
 };
 
 pub fn handle_snapshot_uc<U: SnapshotUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "snapshot").entered();
     let input = parse_snapshot_input(&request);
     let strip_ansi = request
         .params
@@ -40,6 +42,7 @@ pub fn handle_accessibility_snapshot_uc<U: AccessibilitySnapshotUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
+    let _span = common::handler_span(&request, "accessibility_snapshot").entered();
     let session_id = parse_session_id(request.param_str("session").map(String::from));
     let interactive_only = request.param_bool("interactive", false);
     let req_id = request.id;
@@ -67,6 +70,7 @@ pub fn handle_accessibility_snapshot_uc<U: AccessibilitySnapshotUseCase>(
 }
 
 pub fn handle_click_uc<U: ClickUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "click").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -86,6 +90,7 @@ pub fn handle_click_uc<U: ClickUseCase>(usecase: &U, request: RpcRequest) -> Rpc
 }
 
 pub fn handle_dbl_click_uc<U: DoubleClickUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "dbl_click").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -105,6 +110,7 @@ pub fn handle_dbl_click_uc<U: DoubleClickUseCase>(usecase: &U, request: RpcReque
 }
 
 pub fn handle_fill_uc<U: FillUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "fill").entered();
     let input = match parse_fill_input(&request) {
         Ok(i) => i,
         Err(resp) => return resp,
@@ -119,6 +125,7 @@ pub fn handle_fill_uc<U: FillUseCase>(usecase: &U, request: RpcRequest) -> RpcRe
 }
 
 pub fn handle_find_uc<U: FindUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "find").entered();
     let input = parse_find_input(&request);
     let req_id = request.id;
 
@@ -142,6 +149,7 @@ pub fn handle_find_uc<U: FindUseCase>(usecase: &U, request: RpcRequest) -> RpcRe
 }
 
 pub fn handle_count_uc<U: CountUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "count").entered();
     let input = parse_count_input(&request);
     let req_id = request.id;
 
@@ -152,6 +160,7 @@ pub fn handle_count_uc<U: CountUseCase>(usecase: &U, request: RpcRequest) -> Rpc
 }
 
 pub fn handle_scroll_uc<U: ScrollUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "scroll").entered();
     let input = match parse_scroll_input(&request) {
         Ok(i) => i,
         Err(resp) => return resp,
@@ -167,6 +176,7 @@ pub fn handle_scroll_uc<U: ScrollUseCase>(usecase: &U, request: RpcRequest) -> R
 }
 
 pub fn handle_get_text_uc<U: GetTextUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "get_text").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -189,6 +199,7 @@ pub fn handle_get_text_uc<U: GetTextUseCase>(usecase: &U, request: RpcRequest) -
 }
 
 pub fn handle_get_value_uc<U: GetValueUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "get_value").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -211,6 +222,7 @@ pub fn handle_get_value_uc<U: GetValueUseCase>(usecase: &U, request: RpcRequest)
 }
 
 pub fn handle_is_visible_uc<U: IsVisibleUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "is_visible").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -233,6 +245,7 @@ pub fn handle_is_visible_uc<U: IsVisibleUseCase>(usecase: &U, request: RpcReques
 }
 
 pub fn handle_is_focused_uc<U: IsFocusedUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "is_focused").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -255,6 +268,7 @@ pub fn handle_is_focused_uc<U: IsFocusedUseCase>(usecase: &U, request: RpcReques
 }
 
 pub fn handle_is_enabled_uc<U: IsEnabledUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "is_enabled").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -277,6 +291,7 @@ pub fn handle_is_enabled_uc<U: IsEnabledUseCase>(usecase: &U, request: RpcReques
 }
 
 pub fn handle_is_checked_uc<U: IsCheckedUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "is_checked").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -306,6 +321,7 @@ pub fn handle_get_focused_uc<U: GetFocusedUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
+    let _span = common::handler_span(&request, "get_focused").entered();
     let input = parse_session_input(&request);
     let req_id = request.id;
 
@@ -337,6 +353,7 @@ pub fn handle_get_focused_uc<U: GetFocusedUseCase>(
 }
 
 pub fn handle_get_title_uc<U: GetTitleUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "get_title").entered();
     let input = parse_session_input(&request);
     let req_id = request.id;
 
@@ -353,6 +370,7 @@ pub fn handle_get_title_uc<U: GetTitleUseCase>(usecase: &U, request: RpcRequest)
 }
 
 pub fn handle_focus_uc<U: FocusUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "focus").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -372,6 +390,7 @@ pub fn handle_focus_uc<U: FocusUseCase>(usecase: &U, request: RpcRequest) -> Rpc
 }
 
 pub fn handle_clear_uc<U: ClearUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "clear").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -391,6 +410,7 @@ pub fn handle_clear_uc<U: ClearUseCase>(usecase: &U, request: RpcRequest) -> Rpc
 }
 
 pub fn handle_select_all_uc<U: SelectAllUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "select_all").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -410,6 +430,7 @@ pub fn handle_select_all_uc<U: SelectAllUseCase>(usecase: &U, request: RpcReques
 }
 
 pub fn handle_toggle_uc<U: ToggleUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "toggle").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -434,6 +455,7 @@ pub fn handle_toggle_uc<U: ToggleUseCase>(usecase: &U, request: RpcRequest) -> R
 }
 
 pub fn handle_select_uc<U: SelectUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "select").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -464,6 +486,7 @@ pub fn handle_scroll_into_view_uc<U: ScrollIntoViewUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
+    let _span = common::handler_span(&request, "scroll_into_view").entered();
     let element_ref = match request.require_str("ref") {
         Ok(r) => r.to_string(),
         Err(resp) => return resp,
@@ -505,6 +528,7 @@ pub fn handle_multiselect_uc<U: MultiselectUseCase>(
     usecase: &U,
     request: RpcRequest,
 ) -> RpcResponse {
+    let _span = common::handler_span(&request, "multiselect").entered();
     let options: Vec<String> = match request.require_array("options") {
         Ok(arr) => arr
             .iter()

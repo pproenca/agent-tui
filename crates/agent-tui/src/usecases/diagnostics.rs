@@ -23,6 +23,14 @@ impl<R: SessionRepository> PtyReadUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> PtyReadUseCase for PtyReadUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            max_bytes = input.max_bytes,
+            timeout_ms = input.timeout_ms
+        )
+    )]
     fn execute(&self, input: PtyReadInput) -> Result<PtyReadOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let max_bytes = if input.max_bytes == 0 {
@@ -62,6 +70,10 @@ impl<R: SessionRepository> PtyWriteUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> PtyWriteUseCase for PtyWriteUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, bytes_len = input.data.len())
+    )]
     fn execute(&self, input: PtyWriteInput) -> Result<PtyWriteOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let bytes_len = input.data.len();
@@ -102,6 +114,7 @@ impl<R: SessionRepository> HealthUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> HealthUseCase for HealthUseCaseImpl<R> {
+    #[tracing::instrument(skip(self, _input))]
     fn execute(&self, _input: HealthInput) -> Result<HealthOutput, SessionError> {
         Ok(HealthOutput {
             status: "healthy".to_string(),
@@ -145,6 +158,7 @@ impl<R: SessionRepository> MetricsUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> MetricsUseCase for MetricsUseCaseImpl<R> {
+    #[tracing::instrument(skip(self, _input))]
     fn execute(&self, _input: MetricsInput) -> Result<MetricsOutput, SessionError> {
         Ok(MetricsOutput {
             requests_total: self.metrics.requests(),

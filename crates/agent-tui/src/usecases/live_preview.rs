@@ -38,6 +38,14 @@ impl<R: SessionRepository> LivePreviewStartUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> LivePreviewStartUseCase for LivePreviewStartUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            listen_addr = ?input.listen_addr,
+            allow_remote = input.allow_remote
+        )
+    )]
     fn execute(
         &self,
         input: LivePreviewStartInput,
@@ -79,6 +87,7 @@ impl LivePreviewStopUseCaseImpl {
 }
 
 impl LivePreviewStopUseCase for LivePreviewStopUseCaseImpl {
+    #[tracing::instrument(skip(self))]
     fn execute(&self) -> Result<LivePreviewStopOutput, LivePreviewError> {
         self.service.stop()
     }
@@ -95,6 +104,7 @@ impl LivePreviewStatusUseCaseImpl {
 }
 
 impl LivePreviewStatusUseCase for LivePreviewStatusUseCaseImpl {
+    #[tracing::instrument(skip(self))]
     fn execute(&self) -> LivePreviewStatusOutput {
         self.service.status()
     }

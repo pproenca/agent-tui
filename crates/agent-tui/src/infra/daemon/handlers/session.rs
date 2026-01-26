@@ -1,3 +1,4 @@
+use super::common;
 use crate::infra::ipc::{RpcRequest, RpcResponse};
 
 use crate::adapters::{
@@ -15,6 +16,7 @@ use crate::usecases::{
 };
 
 pub fn handle_spawn<U: SpawnUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "spawn").entered();
     let input = match parse_spawn_input(&request) {
         Ok(input) => input,
         Err(resp) => return resp,
@@ -27,6 +29,7 @@ pub fn handle_spawn<U: SpawnUseCase>(usecase: &U, request: RpcRequest) -> RpcRes
 }
 
 pub fn handle_kill<U: KillUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "kill").entered();
     let input = parse_session_input(&request);
 
     match usecase.execute(input) {
@@ -39,6 +42,7 @@ pub fn handle_kill<U: KillUseCase>(usecase: &U, request: RpcRequest) -> RpcRespo
 }
 
 pub fn handle_restart<U: RestartUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "restart").entered();
     let input = parse_session_input(&request);
 
     match usecase.execute(input) {
@@ -48,11 +52,13 @@ pub fn handle_restart<U: RestartUseCase>(usecase: &U, request: RpcRequest) -> Rp
 }
 
 pub fn handle_sessions<U: SessionsUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "sessions").entered();
     let output = usecase.execute();
     sessions_output_to_response(request.id, output)
 }
 
 pub fn handle_resize<U: ResizeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "resize").entered();
     let input = parse_resize_input(&request);
 
     match usecase.execute(input) {
@@ -62,6 +68,7 @@ pub fn handle_resize<U: ResizeUseCase>(usecase: &U, request: RpcRequest) -> RpcR
 }
 
 pub fn handle_attach<U: AttachUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "attach").entered();
     let req_id = request.id;
     let input = match parse_attach_input(&request) {
         Ok(i) => i,
@@ -75,12 +82,14 @@ pub fn handle_attach<U: AttachUseCase>(usecase: &U, request: RpcRequest) -> RpcR
 }
 
 pub fn handle_cleanup<U: CleanupUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "cleanup").entered();
     let input = parse_cleanup_input(&request);
     let output = usecase.execute(input);
     cleanup_output_to_response(request.id, output)
 }
 
 pub fn handle_assert<U: AssertUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "assert").entered();
     let req_id = request.id;
     let input = match parse_assert_input(&request) {
         Ok(i) => i,

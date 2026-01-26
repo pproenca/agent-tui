@@ -24,6 +24,17 @@ impl<R: SessionRepository> SnapshotUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            include_elements = input.include_elements,
+            include_cursor = input.include_cursor,
+            include_render = input.include_render,
+            strip_ansi = input.strip_ansi,
+            region = ?input.region
+        )
+    )]
     fn execute(&self, input: SnapshotInput) -> Result<SnapshotOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -78,6 +89,10 @@ impl<R: SessionRepository> AccessibilitySnapshotUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> AccessibilitySnapshotUseCase for AccessibilitySnapshotUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, interactive_only = input.interactive_only)
+    )]
     fn execute(
         &self,
         input: AccessibilitySnapshotInput,

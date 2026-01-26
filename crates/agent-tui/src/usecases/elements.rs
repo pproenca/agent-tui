@@ -86,6 +86,10 @@ impl<R: SessionRepository> ClickUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> ClickUseCase for ClickUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: ClickInput) -> Result<ClickOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -115,6 +119,14 @@ impl<R: SessionRepository> FillUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> FillUseCase for FillUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            element_ref = %input.element_ref,
+            value_len = input.value.len()
+        )
+    )]
     fn execute(&self, input: FillInput) -> Result<FillOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -147,6 +159,18 @@ impl<R: SessionRepository> FindUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> FindUseCase for FindUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            role = ?input.role,
+            focused = ?input.focused,
+            exact = input.exact,
+            name_len = input.name.as_ref().map(|name| name.len()),
+            text_len = input.text.as_ref().map(|text| text.len()),
+            nth = ?input.nth
+        )
+    )]
     fn execute(&self, input: FindInput) -> Result<FindOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -194,6 +218,14 @@ impl<R: SessionRepository> ScrollUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> ScrollUseCase for ScrollUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            direction = %input.direction,
+            amount = input.amount
+        )
+    )]
     fn execute(&self, input: ScrollInput) -> Result<ScrollOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -233,6 +265,15 @@ impl<R: SessionRepository> CountUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> CountUseCase for CountUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            role = ?input.role,
+            name_len = input.name.as_ref().map(|name| name.len()),
+            text_len = input.text.as_ref().map(|text| text.len())
+        )
+    )]
     fn execute(&self, input: CountInput) -> Result<CountOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -271,6 +312,10 @@ impl<R: SessionRepository, S: Sleeper> DoubleClickUseCaseImpl<R, S> {
 }
 
 impl<R: SessionRepository, S: Sleeper> DoubleClickUseCase for DoubleClickUseCaseImpl<R, S> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: DoubleClickInput) -> Result<DoubleClickOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         {
@@ -303,6 +348,10 @@ impl<R: SessionRepository> FocusUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> FocusUseCase for FocusUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: FocusInput) -> Result<FocusOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -334,6 +383,10 @@ impl<R: SessionRepository> ClearUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> ClearUseCase for ClearUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: ClearInput) -> Result<ClearOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -365,6 +418,10 @@ impl<R: SessionRepository> SelectAllUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> SelectAllUseCase for SelectAllUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: SelectAllInput) -> Result<SelectAllOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -396,6 +453,14 @@ impl<R: SessionRepository> ToggleUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> ToggleUseCase for ToggleUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            element_ref = %input.element_ref,
+            state = ?input.state
+        )
+    )]
     fn execute(&self, input: ToggleInput) -> Result<ToggleOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -452,6 +517,14 @@ impl<R: SessionRepository, S: Sleeper> SelectUseCaseImpl<R, S> {
 }
 
 impl<R: SessionRepository, S: Sleeper> SelectUseCase for SelectUseCaseImpl<R, S> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            element_ref = %input.element_ref,
+            option_len = input.option.len()
+        )
+    )]
     fn execute(&self, input: SelectInput) -> Result<SelectOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -501,6 +574,14 @@ impl<R: SessionRepository, S: Sleeper> MultiselectUseCaseImpl<R, S> {
 }
 
 impl<R: SessionRepository, S: Sleeper> MultiselectUseCase for MultiselectUseCaseImpl<R, S> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            element_ref = %input.element_ref,
+            options_len = input.options.len()
+        )
+    )]
     fn execute(&self, input: MultiselectInput) -> Result<MultiselectOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -545,6 +626,10 @@ impl<R: SessionRepository> GetTextUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> GetTextUseCase for GetTextUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: ElementStateInput) -> Result<GetTextOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -583,6 +668,10 @@ impl<R: SessionRepository> GetValueUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> GetValueUseCase for GetValueUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: ElementStateInput) -> Result<GetValueOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -617,6 +706,10 @@ impl<R: SessionRepository> IsVisibleUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> IsVisibleUseCase for IsVisibleUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: ElementStateInput) -> Result<VisibilityOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -646,6 +739,10 @@ impl<R: SessionRepository> IsFocusedUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> IsFocusedUseCase for IsFocusedUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: ElementStateInput) -> Result<FocusCheckOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -680,6 +777,10 @@ impl<R: SessionRepository> IsEnabledUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> IsEnabledUseCase for IsEnabledUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: ElementStateInput) -> Result<IsEnabledOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -714,6 +815,10 @@ impl<R: SessionRepository> IsCheckedUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> IsCheckedUseCase for IsCheckedUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: ElementStateInput) -> Result<IsCheckedOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -764,6 +869,7 @@ impl<R: SessionRepository> GetFocusedUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> GetFocusedUseCase for GetFocusedUseCaseImpl<R> {
+    #[tracing::instrument(skip(self, input), fields(session = ?input.session_id))]
     fn execute(&self, input: SessionInput) -> Result<GetFocusedOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -799,6 +905,7 @@ impl<R: SessionRepository> GetTitleUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> GetTitleUseCase for GetTitleUseCaseImpl<R> {
+    #[tracing::instrument(skip(self, input), fields(session = ?input.session_id))]
     fn execute(&self, input: SessionInput) -> Result<GetTitleOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -828,6 +935,10 @@ impl<R: SessionRepository, S: Sleeper> ScrollIntoViewUseCaseImpl<R, S> {
 }
 
 impl<R: SessionRepository, S: Sleeper> ScrollIntoViewUseCase for ScrollIntoViewUseCaseImpl<R, S> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, element_ref = %input.element_ref)
+    )]
     fn execute(&self, input: ScrollIntoViewInput) -> Result<ScrollIntoViewOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let max_scrolls = 50;

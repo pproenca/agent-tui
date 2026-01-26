@@ -1,15 +1,21 @@
 {
-  "name": "agent-tui",
-  "version": "0.3.8",
-  "description": "CLI tool for AI agents to interact with TUI applications",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/pproenca/agent-tui.git"
+  "bin": {
+    "agent-tui": "bin/agent-tui"
   },
   "bugs": {
     "url": "https://github.com/pproenca/agent-tui/issues"
   },
+  "description": "CLI tool for AI agents to interact with TUI applications",
+  "devDependencies": {
+    "husky": "^9.1.7"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "bin/agent-tui",
+    "scripts"
+  ],
   "homepage": "https://github.com/pproenca/agent-tui#readme",
   "keywords": [
     "tui",
@@ -20,35 +26,29 @@
     "cli",
     "pty"
   ],
-  "bin": {
-    "agent-tui": "bin/agent-tui"
-  },
-  "scripts": {
-    "build:native": "cargo build --release -p agent-tui && node scripts/copy-native.js",
-    "dist:npm": "cargo xtask dist npm",
-    "version:check": "cargo xtask version check",
-    "preversion": "just ready",
-    "version": "echo 'ERROR: Use cargo xtask release <version|patch|minor|major> or just release-* instead' && exit 1",
-    "postinstall": "node scripts/postinstall.js",
-    "prepare": "husky"
-  },
-  "workspaces": [
-    "npm/*"
-  ],
-  "files": [
-    "bin/agent-tui",
-    "scripts"
-  ],
+  "license": "MIT",
+  "name": "agent-tui",
   "optionalDependencies": {
     "agent-tui-darwin-arm64": "0.3.8",
     "agent-tui-darwin-x64": "0.3.8",
     "agent-tui-linux-arm64": "0.3.8",
     "agent-tui-linux-x64": "0.3.8"
   },
-  "engines": {
-    "node": ">=16"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pproenca/agent-tui.git"
   },
-  "devDependencies": {
-    "husky": "^9.1.7"
-  }
+  "scripts": {
+    "build:native": "cargo build --release -p agent-tui && node scripts/copy-native.js",
+    "dist:npm": "cargo xtask dist npm",
+    "postinstall": "node scripts/postinstall.js",
+    "prepare": "husky",
+    "preversion": "just ready",
+    "version": "echo 'ERROR: Use cargo xtask release <version|patch|minor|major> or just release-* instead' && exit 1",
+    "version:check": "cargo xtask version check"
+  },
+  "version": "0.3.9",
+  "workspaces": [
+    "npm/*"
+  ]
 }

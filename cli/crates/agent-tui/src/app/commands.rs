@@ -760,6 +760,7 @@ mod tests {
 
     #[test]
     fn test_cli_defaults() {
+        std::env::remove_var("NO_COLOR");
         let cli = Cli::parse_from(["agent-tui", "sessions"]);
         assert!(cli.session.is_none());
         assert_eq!(cli.format, OutputFormat::Text);

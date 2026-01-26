@@ -413,12 +413,7 @@ async fn handle_ws(
     thread::Builder::new()
         .name(format!("api-stream-{session_id}"))
         .spawn(move || {
-            stream_live_preview(
-                session_for_thread,
-                tx,
-                stop_for_thread,
-                output_encoding,
-            );
+            stream_live_preview(session_for_thread, tx, stop_for_thread, output_encoding);
         })
         .ok();
 
@@ -520,9 +515,8 @@ fn stream_live_preview(
             let read = match session.stream_read(&mut cursor, max_chunk, 0) {
                 Ok(read) => read,
                 Err(err) => {
-                    let _ = sender.blocking_send(WsPayload::Text(
-                        error_event(&err.to_string()).to_string(),
-                    ));
+                    let _ = sender
+                        .blocking_send(WsPayload::Text(error_event(&err.to_string()).to_string()));
                     return;
                 }
             };
@@ -543,9 +537,8 @@ fn stream_live_preview(
                 }
 
                 if let Err(err) = session.update() {
-                    let _ = sender.blocking_send(WsPayload::Text(
-                        error_event(&err.to_string()).to_string(),
-                    ));
+                    let _ = sender
+                        .blocking_send(WsPayload::Text(error_event(&err.to_string()).to_string()));
                     return;
                 }
                 let snapshot = session.live_preview_snapshot();

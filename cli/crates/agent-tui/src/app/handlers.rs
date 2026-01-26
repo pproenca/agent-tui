@@ -656,14 +656,16 @@ pub fn handle_live_start<C: DaemonClient>(
 
     if args.open {
         let ui_url = std::env::var("AGENT_TUI_UI_URL").ok();
-        let target = ui_url.as_deref().unwrap_or(&state.http_url);
-        if ui_url.is_none() {
+        let target = if let Some(ui_url) = ui_url.as_deref() {
+            build_ui_url(ui_url, &state)
+        } else {
             eprintln!(
                 "{} AGENT_TUI_UI_URL not set; opening API URL instead.",
                 Colors::warning("Warning:")
             );
-        }
-        if let Err(err) = open_in_browser(target, args.browser.as_deref()) {
+            state.http_url.clone()
+        };
+        if let Err(err) = open_in_browser(&target, args.browser.as_deref()) {
             eprintln!("Warning: failed to open browser: {}", err);
         }
     }
@@ -869,6 +871,28 @@ fn wait_for_api_state(path: &PathBuf, timeout: Duration) -> Option<ApiState> {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
+}
+
+fn build_ui_url(base: &str, state: &ApiState) -> String {
+    let (base, fragment) = base.split_once('#').unwrap_or((base, ""));
+    let separator = if base.contains('?') { "&" } else { "?" };
+    let mut url = String::with_capacity(base.len() + 128);
+    url.push_str(base);
+    url.push_str(separator);
+    url.push_str("api=");
+    url.push_str(&state.http_url);
+    url.push_str("&ws=");
+    url.push_str(&state.ws_url);
+    url.push_str("&session=active&encoding=binary&auto=1");
+    if let Some(token) = state.token.as_deref() {
+        url.push_str("&token=");
+        url.push_str(token);
+    }
+    if !fragment.is_empty() {
+        url.push('#');
+        url.push_str(fragment);
+    }
+    url
 }
 
 fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<(), String> {

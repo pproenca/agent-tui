@@ -1,0 +1,287 @@
+openapi: 3.0.3
+info:
+  title: agent-tui Daemon API
+  version: "1"
+  description: |
+    HTTP API exposed by the agent-tui daemon. Authentication is required unless the daemon
+    was started with API auth disabled.
+servers:
+  - url: http://127.0.0.1:{port}
+    description: Local daemon
+    variables:
+      port:
+        default: "PORT"
+paths:
+  /api/v1/version:
+    get:
+      summary: Version information
+      description: Returns daemon and API version info.
+      security:
+        - bearerAuth: []
+        - tokenHeader: []
+        - tokenQuery: []
+      parameters:
+        - $ref: '#/components/parameters/token'
+      responses:
+        '200':
+          description: Version payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/health:
+    get:
+      summary: Health status
+      description: Returns daemon health and uptime.
+      security:
+        - bearerAuth: []
+        - tokenHeader: []
+        - tokenQuery: []
+      parameters:
+        - $ref: '#/components/parameters/token'
+      responses:
+        '200':
+          description: Health payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/sessions:
+    get:
+      summary: List sessions
+      description: Returns all known sessions and the active session id.
+      security:
+        - bearerAuth: []
+        - tokenHeader: []
+        - tokenQuery: []
+      parameters:
+        - $ref: '#/components/parameters/token'
+      responses:
+        '200':
+          description: Sessions payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/sessions/{id}/snapshot:
+    get:
+      summary: Live preview snapshot
+      description: Returns the current terminal snapshot for a session.
+      security:
+        - bearerAuth: []
+        - tokenHeader: []
+        - tokenQuery: []
+      parameters:
+        - $ref: '#/components/parameters/sessionId'
+        - $ref: '#/components/parameters/token'
+      responses:
+        '200':
+          description: Snapshot payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+  /api/v1/stream:
+    get:
+      summary: Live preview stream (WebSocket)
+      description: |
+        WebSocket upgrade endpoint. Use AsyncAPI for the detailed stream schema.
+      security:
+        - bearerAuth: []
+        - tokenHeader: []
+        - tokenQuery: []
+      parameters:
+        - $ref: '#/components/parameters/session'
+        - $ref: '#/components/parameters/encoding'
+        - $ref: '#/components/parameters/token'
+      responses:
+        '101':
+          description: Switching Protocols
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  parameters:
+    token:
+      name: token
+      in: query
+      description: Authentication token (if enabled).
+      required: false
+      schema:
+        type: string
+    session:
+      name: session
+      in: query
+      description: Session id or "active" to target the active session.
+      required: false
+      schema:
+        type: string
+        default: active
+    encoding:
+      name: encoding
+      in: query
+      description: Output encoding for WebSocket stream.
+      required: false
+      schema:
+        type: string
+        enum: [base64, binary]
+        default: base64
+    sessionId:
+      name: id
+      in: path
+      required: true
+      description: Session id or "active".
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Invalid or missing token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Session not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadGateway:
+      description: Backend failed to refresh session state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Too many WebSocket connections.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    VersionResponse:
+      type: object
+      required: [api_version, daemon_version, daemon_commit]
+      properties:
+        api_version:
+          type: string
+          example: "1"
+        daemon_version:
+          type: string
+          example: "0.8.0"
+        daemon_commit:
+          type: string
+          example: "abcdef1"
+    HealthResponse:
+      type: object
+      required: [status, pid, uptime_ms, session_count, api_version, daemon_version, daemon_commit]
+      properties:
+        status:
+          type: string
+          example: healthy
+        pid:
+          type: integer
+          format: int64
+        uptime_ms:
+          type: integer
+          format: int64
+        session_count:
+          type: integer
+          format: int64
+        api_version:
+          type: string
+        daemon_version:
+          type: string
+        daemon_commit:
+          type: string
+    SessionsResponse:
+      type: object
+      required: [active, sessions]
+      properties:
+        active:
+          type: string
+          nullable: true
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionInfo'
+    SessionInfo:
+      type: object
+      required: [id, command, pid, running, created_at, size]
+      properties:
+        id:
+          type: string
+        command:
+          type: string
+        pid:
+          type: integer
+          format: int64
+        running:
+          type: boolean
+        created_at:
+          type: string
+          description: Creation timestamp as stored by the daemon.
+        size:
+          type: object
+          required: [cols, rows]
+          properties:
+            cols:
+              type: integer
+              format: int32
+            rows:
+              type: integer
+              format: int32
+    SnapshotResponse:
+      type: object
+      required: [cols, rows, init]
+      properties:
+        cols:
+          type: integer
+          format: int32
+        rows:
+          type: integer
+          format: int32
+        init:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: agent-tui
+    tokenHeader:
+      type: apiKey
+      in: header
+      name: x-agent-tui-token
+    tokenQuery:
+      type: apiKey
+      in: query
+      name: token

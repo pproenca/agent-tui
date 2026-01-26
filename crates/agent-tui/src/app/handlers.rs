@@ -21,7 +21,7 @@ use crate::app::commands::LiveStartArgs;
 use crate::app::commands::OutputFormat;
 use crate::app::commands::ScrollDirection;
 use crate::app::commands::WaitParams;
-use crate::app::error::AttachError;
+use crate::app::error::{AttachError, ReportedError};
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -122,7 +122,15 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
 
         match self.format {
             OutputFormat::Json => {
-                self.presenter.present_value(result);
+                if success {
+                    self.presenter.present_value(result);
+                } else {
+                    eprintln!(
+                        "{}",
+                        serde_json::to_string_pretty(result).unwrap_or_default()
+                    );
+                    return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+                }
             }
             OutputFormat::Text => {
                 if success {
@@ -132,11 +140,11 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
                     let msg = result.str_or("message", "Unknown error");
                     self.presenter
                         .present_error(&format!("{}: {}", failure_prefix, msg));
-                    return Err(format!("{}: {}", failure_prefix, msg).into());
+                    return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
                 }
             }
         }
-        Ok(success)
+        Ok(true)
     }
 
     fn ref_params(&self, element_ref: &str) -> Value {
@@ -380,15 +388,15 @@ pub fn handle_wait<C: DaemonClient>(
     let params_json = serde_json::to_value(rpc_params)?;
     let result = ctx.client.call("wait", Some(params_json))?;
 
+    let wait_result = WaitResult::from_json(&result);
+
     match ctx.format {
         OutputFormat::Json => ctx.presenter().present_value(&result),
-        OutputFormat::Text => {
-            let wait_result = WaitResult::from_json(&result);
-            ctx.presenter().present_wait_result(&wait_result);
-            if !wait_result.found {
-                return Err("Wait condition not met within timeout".into());
-            }
-        }
+        OutputFormat::Text => ctx.presenter().present_wait_result(&wait_result),
+    }
+
+    if wait_params.assert && !wait_result.found {
+        return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
     }
     Ok(())
 }
@@ -864,6 +872,10 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
         }
         OutputFormat::Text => ctx.presenter().present_cleanup(&result),
     }
+
+    if !result.failures.is_empty() {
+        return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+    }
     Ok(())
 }
 
@@ -934,7 +946,12 @@ fn handle_select_multiple<C: DaemonClient>(
 
     match ctx.format {
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            if result.bool_or("success", false) {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                eprintln!("{}", serde_json::to_string_pretty(&result)?);
+                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+            }
         }
         OutputFormat::Text => {
             if result.bool_or("success", false) {
@@ -944,8 +961,12 @@ fn handle_select_multiple<C: DaemonClient>(
                 );
             } else {
                 let msg = result.str_or("message", "Unknown error");
-                eprintln!("Multiselect failed: {}", msg);
-                return Err(format!("Multiselect failed: {}", msg).into());
+                eprintln!(
+                    "agent-tui: {} Multiselect failed: {}",
+                    Colors::error("Error:"),
+                    msg
+                );
+                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
             }
         }
     }
@@ -976,7 +997,12 @@ pub fn handle_scroll_into_view<C: DaemonClient>(
 
     match ctx.format {
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            if result.bool_or("success", false) {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                eprintln!("{}", serde_json::to_string_pretty(&result)?);
+                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+            }
         }
         OutputFormat::Text => {
             if result.bool_or("success", false) {
@@ -987,8 +1013,8 @@ pub fn handle_scroll_into_view<C: DaemonClient>(
                 );
             } else {
                 let msg = result.str_or("message", "Element not found");
-                eprintln!("{}", msg);
-                return Err(msg.into());
+                eprintln!("agent-tui: {} {}", Colors::error("Error:"), msg);
+                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
             }
         }
     }
@@ -1045,7 +1071,12 @@ pub fn handle_toggle<C: DaemonClient>(
 
     match ctx.format {
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            if result.bool_or("success", false) {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                eprintln!("{}", serde_json::to_string_pretty(&result)?);
+                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+            }
         }
         OutputFormat::Text => {
             if result.bool_or("success", false) {
@@ -1057,8 +1088,12 @@ pub fn handle_toggle<C: DaemonClient>(
                 println!("{} is now {}", element_ref, state);
             } else {
                 let msg = result.str_or("message", "Unknown error");
-                eprintln!("Toggle failed: {}", msg);
-                return Err(format!("Toggle failed: {}", msg).into());
+                eprintln!(
+                    "agent-tui: {} Toggle failed: {}",
+                    Colors::error("Error:"),
+                    msg
+                );
+                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
             }
         }
     }
@@ -1181,8 +1216,11 @@ pub fn handle_assert<C: DaemonClient>(
 ) -> HandlerResult {
     let parts: Vec<&str> = condition.splitn(2, ':').collect();
     if parts.len() != 2 {
-        eprintln!("Invalid condition format. Use: text:pattern, element:ref, or session:id");
-        return Err("Invalid condition format".into());
+        eprintln!(
+            "agent-tui: {} Invalid condition format. Use: text:pattern, element:ref, or session:id",
+            Colors::error("Error:")
+        );
+        return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
     }
 
     let (cond_type, cond_value) = (parts[0], parts[1]);
@@ -1213,10 +1251,11 @@ pub fn handle_assert<C: DaemonClient>(
         }
         _ => {
             eprintln!(
-                "Unknown condition type: {}. Use: text, element, or session",
+                "agent-tui: {} Unknown condition type: {}. Use: text, element, or session",
+                Colors::error("Error:"),
                 cond_type
             );
-            return Err("Unknown condition type".into());
+            return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
         }
     };
 
@@ -1235,10 +1274,10 @@ pub fn handle_assert<C: DaemonClient>(
         }
         OutputFormat::Text => {
             ctx.presenter().present_assert_result(&assert_result);
-            if !assert_result.passed {
-                return Err("Assertion failed".into());
-            }
         }
+    }
+    if !assert_result.passed {
+        return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
     }
     Ok(())
 }

@@ -247,6 +247,10 @@ EXAMPLES:
     },
 
     /// Type literal text character by character
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui type \"hello world\"
+    agent-tui type \"user@example.com\"")]
     Type {
         /// Text to type
         #[arg(value_name = "TEXT")]
@@ -302,7 +306,8 @@ WAIT CONDITIONS:
     -g, --gone          Modifier: wait for element/text to disappear
 
 ASSERT MODE:
-    --assert            Exit with code 0 if condition met, 1 if timeout")]
+    --assert            Exit with code 0 if condition met, 1 if timeout.
+                        Without --assert, always exit 0 (timeout still reported).")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui wait \"Continue\"           # Wait for text
@@ -316,6 +321,10 @@ EXAMPLES:
     },
 
     /// Kill the current session
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui kill
+    agent-tui --session abc123 kill")]
     Kill,
 
     /// List and manage sessions
@@ -386,6 +395,10 @@ Show environment diagnostics.
 
 Displays all environment variables and configuration that affect
 agent-tui behavior. Useful for debugging connection issues.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui env
+    agent-tui --format json env")]
     Env,
 
     /// Catch-all for element refs (@e1) and text selectors (:Submit)

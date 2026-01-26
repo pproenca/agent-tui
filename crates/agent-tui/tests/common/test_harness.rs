@@ -7,11 +7,12 @@ use serde_json::Value;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
-// Shared current-thread runtime to support time pausing in tests without cross-thread flakiness.
+// Shared runtime keeps the mock daemon server running while CLI processes execute.
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
-    tokio::runtime::Builder::new_current_thread()
+    tokio::runtime::Builder::new_multi_thread()
         .enable_time()
         .enable_io()
+        .worker_threads(1)
         .build()
         .expect("Failed to create tokio runtime")
 });

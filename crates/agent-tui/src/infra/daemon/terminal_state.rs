@@ -14,7 +14,7 @@ impl TerminalState {
         }
     }
 
-    pub fn process(&self, data: &[u8]) {
+    pub fn process(&mut self, data: &[u8]) {
         self.terminal.process(data);
     }
 

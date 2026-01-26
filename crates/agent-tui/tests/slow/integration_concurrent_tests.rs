@@ -1,3 +1,4 @@
+#[path = "../common/mod.rs"]
 mod common;
 
 use common::{MockResponse, TEST_SESSION_ID, TestHarness};

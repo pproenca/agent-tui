@@ -1,3 +1,4 @@
+#[path = "../common/mod.rs"]
 mod common;
 
 use common::{MockResponse, TestHarness, agent_tui_cmd};

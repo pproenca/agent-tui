@@ -143,6 +143,7 @@ pub struct ElementInfo {
 }
 
 pub struct TextPresenter;
+const PROGRAM_NAME: &str = "agent-tui";
 
 impl Presenter for TextPresenter {
     fn present_success(&self, message: &str, warning: Option<&str>) {
@@ -153,7 +154,7 @@ impl Presenter for TextPresenter {
     }
 
     fn present_error(&self, message: &str) {
-        eprintln!("{} {}", Colors::error("Error:"), message);
+        eprintln!("{}: {} {}", PROGRAM_NAME, Colors::error("Error:"), message);
     }
 
     fn present_value(&self, value: &Value) {
@@ -172,7 +173,7 @@ impl Presenter for TextPresenter {
     }
 
     fn present_client_error(&self, error: &ClientError) {
-        eprintln!("{} {}", Colors::error("Error:"), error);
+        eprintln!("{}: {} {}", PROGRAM_NAME, Colors::error("Error:"), error);
         if let Some(suggestion) = error.suggestion() {
             eprintln!("{} {}", Colors::dim("Suggestion:"), suggestion);
         }
@@ -228,7 +229,12 @@ impl Presenter for TextPresenter {
         if result.found {
             println!("Found after {}ms", result.elapsed_ms);
         } else {
-            eprintln!("Timeout after {}ms - not found", result.elapsed_ms);
+            eprintln!(
+                "{}: {} Timeout after {}ms - not found",
+                PROGRAM_NAME,
+                Colors::error("Error:"),
+                result.elapsed_ms
+            );
         }
     }
 
@@ -241,8 +247,9 @@ impl Presenter for TextPresenter {
             );
         } else {
             eprintln!(
-                "{} Assertion failed: {}",
-                Colors::error("✗"),
+                "{}: {} Assertion failed: {}",
+                PROGRAM_NAME,
+                Colors::error("Error:"),
                 result.condition
             );
         }
@@ -282,7 +289,8 @@ impl Presenter for TextPresenter {
         if !result.failures.is_empty() {
             eprintln!();
             eprintln!(
-                "{} Failed to clean up {} session(s):",
+                "{}: {} Failed to clean up {} session(s):",
+                PROGRAM_NAME,
                 Colors::error("Error:"),
                 result.failures.len()
             );

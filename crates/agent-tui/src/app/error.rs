@@ -19,6 +19,25 @@ pub enum AttachError {
     EventRead,
 }
 
+#[derive(Debug)]
+pub struct ReportedError {
+    pub exit_code: i32,
+}
+
+impl ReportedError {
+    pub fn new(exit_code: i32) -> Self {
+        Self { exit_code }
+    }
+}
+
+impl std::fmt::Display for ReportedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "error already reported")
+    }
+}
+
+impl std::error::Error for ReportedError {}
+
 impl AttachError {
     pub fn code(&self) -> i32 {
         match self {

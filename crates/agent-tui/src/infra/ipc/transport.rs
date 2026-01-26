@@ -310,7 +310,10 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
                     .collect::<Vec<_>>()
                     .join("\n");
                 if !last_lines.is_empty() {
-                    eprintln!("Daemon failed to start. Recent log output:\n{}", last_lines);
+                    eprintln!(
+                        "agent-tui: Error: Daemon failed to start. Recent log output:\n{}",
+                        last_lines
+                    );
                 }
             }
         }

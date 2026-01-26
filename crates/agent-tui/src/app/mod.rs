@@ -21,6 +21,7 @@ use crate::app::handlers::HandlerContext;
 
 static ELEMENT_REF_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^@(e|btn|inp)\d+$").expect("Invalid element ref regex"));
+const PROGRAM_NAME: &str = "agent-tui";
 
 /// Exit codes following sysexits.h and LSB init script conventions.
 ///
@@ -234,7 +235,8 @@ impl Application {
     fn connect_to_daemon_autostart(&self) -> Result<UnixSocketClient, Box<dyn std::error::Error>> {
         ensure_daemon().map_err(|e| {
             eprintln!(
-                "{} Failed to connect to daemon: {}",
+                "{}: {} Failed to connect to daemon: {}",
+                PROGRAM_NAME,
                 Colors::error("Error:"),
                 e
             );
@@ -252,10 +254,7 @@ impl Application {
     ) -> Result<UnixSocketClient, Box<dyn std::error::Error>> {
         match UnixSocketClient::connect() {
             Ok(client) => Ok(client),
-            Err(ClientError::DaemonNotRunning) => {
-                println!("Daemon is not running");
-                Err(Box::new(DaemonNotRunningError))
-            }
+            Err(ClientError::DaemonNotRunning) => Err(Box::new(ClientError::DaemonNotRunning)),
             Err(e) => Err(e.into()),
         }
     }
@@ -517,6 +516,10 @@ impl Application {
     }
 
     fn handle_error(&self, e: Box<dyn std::error::Error>) -> i32 {
+        if let Some(reported) = e.downcast_ref::<crate::app::error::ReportedError>() {
+            return reported.exit_code;
+        }
+
         // Handle DaemonNotRunningError specially - no error message printed,
         // output was already shown by the handler, just return LSB exit code 3
         if e.downcast_ref::<DaemonNotRunningError>().is_some() {
@@ -524,7 +527,12 @@ impl Application {
         }
 
         if let Some(client_error) = e.downcast_ref::<ClientError>() {
-            eprintln!("{} {}", Colors::error("Error:"), client_error);
+            eprintln!(
+                "{}: {} {}",
+                PROGRAM_NAME,
+                Colors::error("Error:"),
+                client_error
+            );
             if let Some(suggestion) = client_error.suggestion() {
                 eprintln!("{} {}", Colors::dim("Suggestion:"), suggestion);
             }
@@ -536,7 +544,12 @@ impl Application {
             }
             exit_code_for_client_error(client_error)
         } else if let Some(attach_error) = e.downcast_ref::<AttachError>() {
-            eprintln!("{} {}", Colors::error("Error:"), attach_error);
+            eprintln!(
+                "{}: {} {}",
+                PROGRAM_NAME,
+                Colors::error("Error:"),
+                attach_error
+            );
             eprintln!(
                 "{} {}",
                 Colors::dim("Suggestion:"),
@@ -550,7 +563,12 @@ impl Application {
             }
             attach_error.exit_code()
         } else if let Some(daemon_error) = e.downcast_ref::<DaemonError>() {
-            eprintln!("{} {}", Colors::error("Error:"), daemon_error);
+            eprintln!(
+                "{}: {} {}",
+                PROGRAM_NAME,
+                Colors::error("Error:"),
+                daemon_error
+            );
             eprintln!(
                 "{} {}",
                 Colors::dim("Suggestion:"),
@@ -564,7 +582,7 @@ impl Application {
             }
             exit_codes::IOERR
         } else {
-            eprintln!("{} {}", Colors::error("Error:"), e);
+            eprintln!("{}: {} {}", PROGRAM_NAME, Colors::error("Error:"), e);
             exit_codes::GENERAL_ERROR
         }
     }
@@ -618,6 +636,10 @@ fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
 
 fn exit_code_for_client_error(error: &ClientError) -> i32 {
     use crate::infra::ipc::error_codes::ErrorCategory;
+
+    if matches!(error, ClientError::DaemonNotRunning) {
+        return exit_codes::UNAVAILABLE;
+    }
 
     match error.category() {
         Some(ErrorCategory::InvalidInput) => exit_codes::USAGE,

@@ -52,6 +52,7 @@ impl ClientError {
     pub fn suggestion(&self) -> Option<&str> {
         match self {
             ClientError::RpcError { suggestion, .. } => suggestion.as_deref(),
+            ClientError::DaemonNotRunning => Some("Start daemon with: agent-tui daemon"),
             _ => None,
         }
     }

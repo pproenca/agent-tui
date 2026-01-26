@@ -96,7 +96,13 @@ pub struct Cli {
     pub json: bool,
 
     /// Disable colored output (also respects NO_COLOR)
-    #[arg(long, global = true, env = "NO_COLOR", help_heading = "Output Options")]
+    #[arg(
+        long,
+        global = true,
+        env = "NO_COLOR",
+        value_parser = clap::builder::BoolishValueParser::new(),
+        help_heading = "Output Options"
+    )]
     pub no_color: bool,
 
     /// Enable verbose output (shows request timing)

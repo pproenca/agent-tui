@@ -9,7 +9,7 @@ pub use errors::{LivePreviewError, PtyError, SessionError};
 pub use live_preview::{LivePreviewOptions, LivePreviewService};
 pub use metrics::MetricsProvider;
 pub use session_repository::{
-    LivePreviewOutput, LivePreviewSnapshot, SessionHandle, SessionOps, SessionRepository,
+    LivePreviewSnapshot, SessionHandle, SessionOps, SessionRepository, StreamCursor, StreamRead,
 };
 pub use sleeper::{MockSleeper, Sleeper};
 pub use terminal_engine::TerminalEngine;

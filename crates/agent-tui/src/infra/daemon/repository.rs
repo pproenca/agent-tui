@@ -7,19 +7,34 @@ use crate::domain::core::Component;
 use crate::domain::core::CursorPosition;
 use crate::domain::core::Element;
 use crate::usecases::ports::{
-    LivePreviewOutput, LivePreviewSnapshot, SessionError, SessionHandle, SessionOps,
-    SessionRepository,
+    LivePreviewSnapshot, SessionError, SessionHandle, SessionOps, SessionRepository, StreamCursor,
+    StreamRead,
 };
 
-use crate::infra::daemon::session::{Session, SessionId, SessionInfo, SessionManager};
+use crate::infra::daemon::session::{
+    Session, SessionId, SessionInfo, SessionManager, StreamReader,
+};
 
 struct SessionHandleImpl {
     inner: Arc<Mutex<Session>>,
+    stream: StreamReader,
+    pty_cursor: Arc<Mutex<StreamCursor>>,
 }
 
 impl SessionHandleImpl {
     fn new_handle(inner: Arc<Mutex<Session>>) -> SessionHandle {
-        Arc::new(Self { inner })
+        let (stream, pty_cursor) = {
+            let session_guard = mutex_lock_or_recover(&inner);
+            (
+                session_guard.stream_reader(),
+                session_guard.pty_cursor_handle(),
+            )
+        };
+        Arc::new(Self {
+            inner,
+            stream,
+            pty_cursor,
+        })
     }
 }
 
@@ -55,8 +70,20 @@ impl SessionOps for SessionHandleImpl {
     }
 
     fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
-        let mut session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.pty_try_read(buf, timeout_ms)
+        let mut cursor = self.pty_cursor.lock().unwrap_or_else(|e| e.into_inner());
+        let read = self.stream.read(&mut cursor, buf.len(), timeout_ms)?;
+        let bytes_read = read.data.len().min(buf.len());
+        buf[..bytes_read].copy_from_slice(&read.data[..bytes_read]);
+        Ok(bytes_read)
+    }
+
+    fn stream_read(
+        &self,
+        cursor: &mut StreamCursor,
+        max_bytes: usize,
+        timeout_ms: i32,
+    ) -> Result<StreamRead, SessionError> {
+        self.stream.read(cursor, max_bytes, timeout_ms)
     }
 
     fn analyze_screen(&self) -> Vec<Component> {
@@ -122,11 +149,6 @@ impl SessionOps for SessionHandleImpl {
     fn live_preview_snapshot(&self) -> LivePreviewSnapshot {
         let session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.live_preview_snapshot()
-    }
-
-    fn live_preview_drain_output(&self) -> LivePreviewOutput {
-        let mut session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.live_preview_drain_output()
     }
 }
 

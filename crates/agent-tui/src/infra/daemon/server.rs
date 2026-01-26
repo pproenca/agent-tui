@@ -59,6 +59,8 @@ impl ThreadPool {
                 match thread::Builder::new()
                     .name(format!("worker-{}", id))
                     .spawn(move || {
+                        let worker_span = tracing::info_span!("daemon_worker", worker_id = id);
+                        let _worker_guard = worker_span.enter();
                         debug!(worker_id = id, "Worker thread started");
                         loop {
                             if shutdown.load(Ordering::Relaxed) {

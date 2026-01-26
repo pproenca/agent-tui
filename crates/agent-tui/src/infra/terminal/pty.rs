@@ -13,6 +13,7 @@ use portable_pty::CommandBuilder;
 use portable_pty::MasterPty;
 use portable_pty::PtySize;
 use portable_pty::native_pty_system;
+use tracing::{debug, warn};
 
 use crate::common::mutex_lock_or_recover;
 
@@ -248,12 +249,16 @@ enum ReadEvent {
 
 fn spawn_reader(mut reader: Box<dyn Read + Send>) -> mpsc::Receiver<ReadEvent> {
     let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
+    let span = tracing::debug_span!("pty_reader");
+    let builder = std::thread::Builder::new().name("pty-reader".to_string());
+    if let Err(err) = builder.spawn(move || {
+        let _guard = span.enter();
         let mut buf = [0u8; 8192];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => {
                     let _ = tx.send(ReadEvent::Eof);
+                    debug!("PTY reader EOF");
                     break;
                 }
                 Ok(n) => {
@@ -263,12 +268,15 @@ fn spawn_reader(mut reader: Box<dyn Read + Send>) -> mpsc::Receiver<ReadEvent> {
                 }
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 Err(e) => {
+                    warn!(error = %e, "PTY reader error");
                     let _ = tx.send(ReadEvent::Error(e.to_string()));
                     break;
                 }
             }
         }
-    });
+    }) {
+        let _ = tx.send(ReadEvent::Error(err.to_string()));
+    }
     rx
 }
 

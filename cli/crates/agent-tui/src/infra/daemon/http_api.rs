@@ -1,21 +1,21 @@
+use axum::Json;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::Json;
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use serde::Deserialize;
 use serde_json::json;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path as StdPath, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc, watch, Semaphore};
+use tokio::sync::{Semaphore, mpsc, watch};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info, warn};
 
@@ -47,9 +47,8 @@ impl ApiConfig {
         let enabled = env_bool("AGENT_TUI_API_DISABLED")
             .map(|v| !v)
             .unwrap_or(true);
-        let listen = std::env::var("AGENT_TUI_API_LISTEN").unwrap_or_else(|_| {
-            DEFAULT_API_LISTEN.to_string()
-        });
+        let listen = std::env::var("AGENT_TUI_API_LISTEN")
+            .unwrap_or_else(|_| DEFAULT_API_LISTEN.to_string());
         let allow_remote = env_bool("AGENT_TUI_API_ALLOW_REMOTE").unwrap_or(false);
         let token = match std::env::var("AGENT_TUI_API_TOKEN") {
             Ok(value) => {
@@ -307,7 +306,11 @@ async fn snapshot_handler(
     if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
         return resp;
     }
-    let session_id = if id == "active" { None } else { Some(id.as_str()) };
+    let session_id = if id == "active" {
+        None
+    } else {
+        Some(id.as_str())
+    };
     let session = match SessionRepository::resolve(state.session_manager.as_ref(), session_id) {
         Ok(session) => session,
         Err(err) => return error_response(StatusCode::NOT_FOUND, &err.to_string()),
@@ -368,11 +371,7 @@ async fn handle_ws(
         "daemon_commit": state.daemon_commit,
         "session_id": session_id
     });
-    if socket
-        .send(Message::Text(hello.to_string()))
-        .await
-        .is_err()
-    {
+    if socket.send(Message::Text(hello.to_string())).await.is_err() {
         return;
     }
 
@@ -649,7 +648,9 @@ fn error_response(status: StatusCode, message: &str) -> Response {
     (status, Json(json!({ "error": message }))).into_response()
 }
 
-fn bind_listener(config: &ApiConfig) -> Result<(std::net::TcpListener, SocketAddr), ApiServerError> {
+fn bind_listener(
+    config: &ApiConfig,
+) -> Result<(std::net::TcpListener, SocketAddr), ApiServerError> {
     let mut addrs = config
         .listen
         .to_socket_addrs()
@@ -665,8 +666,8 @@ fn bind_listener(config: &ApiConfig) -> Result<(std::net::TcpListener, SocketAdd
         ));
     }
 
-    let listener = std::net::TcpListener::bind(addr)
-        .map_err(|e| ApiServerError::Bind(e.to_string()))?;
+    let listener =
+        std::net::TcpListener::bind(addr).map_err(|e| ApiServerError::Bind(e.to_string()))?;
     listener
         .set_nonblocking(true)
         .map_err(|e| ApiServerError::Bind(e.to_string()))?;
@@ -716,7 +717,10 @@ fn write_state_file(
         "started_at": started_at
     });
     let tmp_path = path.with_extension("tmp");
-    std::fs::write(&tmp_path, serde_json::to_vec_pretty(&payload).unwrap_or_default())?;
+    std::fs::write(
+        &tmp_path,
+        serde_json::to_vec_pretty(&payload).unwrap_or_default(),
+    )?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -737,11 +741,13 @@ fn default_state_path() -> PathBuf {
 }
 
 fn env_bool(key: &str) -> Option<bool> {
-    std::env::var(key).ok().and_then(|value| match value.to_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" => Some(true),
-        "0" | "false" | "no" | "off" => Some(false),
-        _ => None,
-    })
+    std::env::var(key)
+        .ok()
+        .and_then(|value| match value.to_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        })
 }
 
 fn generate_token() -> String {

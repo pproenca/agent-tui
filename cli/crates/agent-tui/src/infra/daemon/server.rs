@@ -18,7 +18,9 @@ use super::usecase_container::UseCaseContainer;
 use crate::infra::daemon::DaemonError;
 use crate::infra::daemon::DaemonMetrics;
 use crate::infra::daemon::SessionManager;
-use crate::infra::daemon::http_api::{ApiConfig, ApiServerError, ApiServerHandle, start_api_server};
+use crate::infra::daemon::http_api::{
+    ApiConfig, ApiServerError, ApiServerHandle, start_api_server,
+};
 use crate::infra::daemon::transport::{
     TransportConnection, TransportError, TransportListener, UnixSocketConnection,
     UnixSocketListener,

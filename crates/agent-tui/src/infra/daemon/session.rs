@@ -11,7 +11,10 @@ use std::sync::RwLock;
 use std::time::Duration;
 use std::time::Instant;
 
-use avt::Vt;
+use crossterm::cursor;
+use crossterm::queue;
+use crossterm::style;
+use crossterm::terminal;
 use tracing::warn;
 
 use chrono::DateTime;
@@ -26,6 +29,7 @@ use crate::common::rwlock_write_or_recover;
 use crate::domain::core::Element;
 use crate::infra::terminal::CursorPosition;
 use crate::infra::terminal::PtyHandle;
+use crate::infra::terminal::VirtualTerminal;
 use crate::infra::terminal::key_to_escape_sequence;
 use crate::infra::terminal::render_screen;
 use crate::usecases::ports::{LivePreviewOutput, LivePreviewSnapshot};
@@ -44,7 +48,7 @@ pub fn generate_session_id() -> SessionId {
 }
 
 struct LivePreviewBuffer {
-    vt: Vt,
+    terminal: VirtualTerminal,
     cols: u16,
     rows: u16,
     pending: VecDeque<String>,
@@ -55,7 +59,7 @@ struct LivePreviewBuffer {
 impl LivePreviewBuffer {
     fn new(cols: u16, rows: u16) -> Self {
         Self {
-            vt: build_preview_vt(cols, rows),
+            terminal: VirtualTerminal::new(cols, rows),
             cols,
             rows,
             pending: VecDeque::new(),
@@ -72,12 +76,18 @@ impl LivePreviewBuffer {
         if text.is_empty() {
             return;
         }
-        self.vt.feed_str(&text);
+        self.terminal.process(data);
         self.push_text(text.as_ref());
     }
 
     fn snapshot(&self) -> (u16, u16, String) {
-        (self.cols, self.rows, self.vt.dump())
+        let buffer = self.terminal.screen_buffer();
+        let cursor = self.terminal.cursor();
+        (
+            self.cols,
+            self.rows,
+            render_live_preview_init(&buffer, &cursor),
+        )
     }
 
     fn drain_output(&mut self) -> (String, u64) {
@@ -96,7 +106,7 @@ impl LivePreviewBuffer {
     fn resize(&mut self, cols: u16, rows: u16) {
         self.cols = cols;
         self.rows = rows;
-        self.vt.resize(cols as usize, rows as usize);
+        self.terminal.resize(cols, rows);
     }
 
     fn push_text(&mut self, text: &str) {
@@ -117,8 +127,27 @@ impl LivePreviewBuffer {
     }
 }
 
-fn build_preview_vt(cols: u16, rows: u16) -> Vt {
-    Vt::builder().size(cols as usize, rows as usize).build()
+fn render_live_preview_init(
+    buffer: &crate::infra::terminal::ScreenBuffer,
+    cursor: &CursorPosition,
+) -> String {
+    let mut out = Vec::new();
+    let _ = queue!(
+        out,
+        terminal::Clear(terminal::ClearType::All),
+        cursor::MoveTo(0, 0),
+        style::SetAttribute(style::Attribute::Reset),
+        style::ResetColor
+    );
+    let body = render_screen(buffer);
+    let _ = queue!(out, style::Print(body));
+    let _ = queue!(out, cursor::MoveTo(cursor.col, cursor.row));
+    if cursor.visible {
+        let _ = queue!(out, cursor::Show);
+    } else {
+        let _ = queue!(out, cursor::Hide);
+    }
+    String::from_utf8(out).unwrap_or_default()
 }
 
 #[derive(Clone, Copy)]

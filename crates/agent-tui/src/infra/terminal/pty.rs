@@ -1,10 +1,12 @@
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::io;
 use std::io::Read;
 use std::io::Write;
-use std::os::fd::RawFd;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::mpsc;
+use std::time::Duration;
 
 use portable_pty::Child;
 use portable_pty::CommandBuilder;
@@ -19,10 +21,12 @@ pub use crate::infra::terminal::error::PtyError;
 pub struct PtyHandle {
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
-    reader: Arc<Mutex<Box<dyn Read + Send>>>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     size: PtySize,
-    reader_fd: RawFd,
+    read_rx: mpsc::Receiver<ReadEvent>,
+    read_buffer: VecDeque<u8>,
+    read_closed: bool,
+    read_error: Option<String>,
 }
 
 impl Drop for PtyHandle {
@@ -79,13 +83,7 @@ impl PtyHandle {
             .master
             .try_clone_reader()
             .map_err(|e| PtyError::Open(e.to_string()))?;
-
-        let reader_fd = pair
-            .master
-            .as_raw_fd()
-            .ok_or_else(|| PtyError::Open("Failed to get master fd".to_string()))?;
-
-        set_non_blocking(reader_fd)?;
+        let read_rx = spawn_reader(reader);
 
         let writer = pair
             .master
@@ -95,10 +93,12 @@ impl PtyHandle {
         Ok(Self {
             master: pair.master,
             child,
-            reader: Arc::new(Mutex::new(reader)),
             writer: Arc::new(Mutex::new(writer)),
             size,
-            reader_fd,
+            read_rx,
+            read_buffer: VecDeque::new(),
+            read_closed: false,
+            read_error: None,
         })
     }
 
@@ -130,7 +130,7 @@ impl PtyHandle {
                 Ok(n) => offset += n,
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    wait_writable(self.reader_fd)?;
+                    std::thread::sleep(Duration::from_millis(1));
                 }
                 Err(e) => return Err(PtyError::Write(e.to_string())),
             }
@@ -142,30 +142,62 @@ impl PtyHandle {
         self.write(s.as_bytes())
     }
 
-    pub fn try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, PtyError> {
+    pub fn try_read(&mut self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, PtyError> {
         if buf.is_empty() {
             return Ok(0);
         }
 
-        let ready = wait_readable(self.reader_fd, timeout_ms)?;
-        if !ready {
+        if self.read_closed && self.read_buffer.is_empty() {
+            if let Some(error) = self.read_error.take() {
+                return Err(PtyError::Read(error));
+            }
             return Ok(0);
         }
 
-        let mut reader = mutex_lock_or_recover(&self.reader);
-        let mut total = 0;
-        loop {
-            match reader.read(&mut buf[total..]) {
-                Ok(0) => break,
-                Ok(n) => {
-                    total += n;
-                    if total == buf.len() {
-                        break;
+        if self.read_buffer.is_empty() && !self.read_closed {
+            let first_event = if timeout_ms < 0 {
+                match self.read_rx.recv() {
+                    Ok(event) => Some(event),
+                    Err(_) => {
+                        self.read_closed = true;
+                        None
                     }
                 }
-                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(PtyError::Read(e.to_string())),
+            } else {
+                let timeout = Duration::from_millis(timeout_ms as u64);
+                match self.read_rx.recv_timeout(timeout) {
+                    Ok(event) => Some(event),
+                    Err(mpsc::RecvTimeoutError::Timeout) => None,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        self.read_closed = true;
+                        None
+                    }
+                }
+            };
+
+            if let Some(event) = first_event {
+                self.handle_read_event(event);
+            }
+
+            while let Ok(event) = self.read_rx.try_recv() {
+                self.handle_read_event(event);
+            }
+        }
+
+        let mut total = 0;
+        while total < buf.len() {
+            match self.read_buffer.pop_front() {
+                Some(byte) => {
+                    buf[total] = byte;
+                    total += 1;
+                }
+                None => break,
+            }
+        }
+
+        if total == 0 && self.read_closed {
+            if let Some(error) = self.read_error.take() {
+                return Err(PtyError::Read(error));
             }
         }
 
@@ -195,67 +227,49 @@ impl PtyHandle {
     }
 }
 
-fn set_non_blocking(fd: RawFd) -> Result<(), PtyError> {
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
-    if flags < 0 {
-        return Err(PtyError::Open(io::Error::last_os_error().to_string()));
+impl PtyHandle {
+    fn handle_read_event(&mut self, event: ReadEvent) {
+        match event {
+            ReadEvent::Data(data) => self.read_buffer.extend(data),
+            ReadEvent::Eof => self.read_closed = true,
+            ReadEvent::Error(error) => {
+                self.read_closed = true;
+                self.read_error = Some(error);
+            }
+        }
     }
-
-    if flags & libc::O_NONBLOCK != 0 {
-        return Ok(());
-    }
-
-    let result = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
-    if result < 0 {
-        return Err(PtyError::Open(io::Error::last_os_error().to_string()));
-    }
-
-    Ok(())
 }
 
-fn wait_readable(fd: RawFd, timeout_ms: i32) -> Result<bool, PtyError> {
-    let mut pollfd = libc::pollfd {
-        fd,
-        events: libc::POLLIN,
-        revents: 0,
-    };
-
-    let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
-    if result < 0 {
-        return Err(PtyError::Read(io::Error::last_os_error().to_string()));
-    }
-    if result == 0 {
-        return Ok(false);
-    }
-
-    if pollfd.revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
-        return Err(PtyError::Read("poll error on PTY".to_string()));
-    }
-
-    if pollfd.revents & libc::POLLHUP != 0 && pollfd.revents & libc::POLLIN == 0 {
-        return Ok(false);
-    }
-
-    Ok(pollfd.revents & libc::POLLIN != 0)
+enum ReadEvent {
+    Data(Vec<u8>),
+    Eof,
+    Error(String),
 }
 
-fn wait_writable(fd: RawFd) -> Result<(), PtyError> {
-    let mut pollfd = libc::pollfd {
-        fd,
-        events: libc::POLLOUT,
-        revents: 0,
-    };
-
-    let result = unsafe { libc::poll(&mut pollfd, 1, -1) };
-    if result < 0 {
-        return Err(PtyError::Write(io::Error::last_os_error().to_string()));
-    }
-
-    if pollfd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
-        return Err(PtyError::Write("poll error on PTY".to_string()));
-    }
-
-    Ok(())
+fn spawn_reader(mut reader: Box<dyn Read + Send>) -> mpsc::Receiver<ReadEvent> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 8192];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => {
+                    let _ = tx.send(ReadEvent::Eof);
+                    break;
+                }
+                Ok(n) => {
+                    if tx.send(ReadEvent::Data(buf[..n].to_vec())).is_err() {
+                        break;
+                    }
+                }
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => {
+                    let _ = tx.send(ReadEvent::Error(e.to_string()));
+                    break;
+                }
+            }
+        }
+    });
+    rx
 }
 
 pub fn key_to_escape_sequence(key: &str) -> Option<Vec<u8>> {

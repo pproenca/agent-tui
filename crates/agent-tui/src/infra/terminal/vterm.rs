@@ -1,10 +1,12 @@
+use std::io;
 use std::sync::Arc;
-use std::sync::Mutex;
 
-use vt100::Parser;
+use tattoy_wezterm_surface::CursorVisibility;
+use tattoy_wezterm_term::color::{ColorAttribute, ColorPalette};
+use tattoy_wezterm_term::{Intensity, Terminal, TerminalConfiguration, TerminalSize, Underline};
 
-use crate::common::mutex_lock_or_recover;
-use crate::domain::core::{CellStyle, Color, ScreenGrid};
+use crate::domain::core::{CellStyle, Color, ScreenGrid, ScreenSnapshot};
+use crate::usecases::ports::TerminalEngine;
 
 #[derive(Debug, Clone)]
 pub struct Cell {
@@ -36,80 +38,100 @@ impl ScreenGrid for ScreenBuffer {
 
 pub use crate::domain::core::CursorPosition;
 
+const DEFAULT_SCROLLBACK: usize = 1000;
+
+#[derive(Debug, Default)]
+struct DefaultTerminalConfig {
+    palette: ColorPalette,
+}
+
+impl TerminalConfiguration for DefaultTerminalConfig {
+    fn scrollback_size(&self) -> usize {
+        DEFAULT_SCROLLBACK
+    }
+
+    fn color_palette(&self) -> ColorPalette {
+        self.palette.clone()
+    }
+}
+
 pub struct VirtualTerminal {
-    parser: Arc<Mutex<Parser>>,
+    terminal: Terminal,
     cols: u16,
     rows: u16,
 }
 
-const MAX_SCROLLBACK: usize = 1000;
-
 impl VirtualTerminal {
     pub fn new(cols: u16, rows: u16) -> Self {
-        let parser = Parser::new(rows, cols, MAX_SCROLLBACK);
+        let size = TerminalSize {
+            rows: rows as usize,
+            cols: cols as usize,
+            pixel_width: 0,
+            pixel_height: 0,
+            dpi: 0,
+        };
+        let config: Arc<dyn TerminalConfiguration + Send + Sync> =
+            Arc::new(DefaultTerminalConfig::default());
+        let writer: Box<dyn io::Write + Send> = Box::new(io::sink());
+        let terminal = Terminal::new(size, config, "agent-tui", env!("CARGO_PKG_VERSION"), writer);
         Self {
-            parser: Arc::new(Mutex::new(parser)),
+            terminal,
             cols,
             rows,
         }
     }
 
-    pub fn process(&self, data: &[u8]) {
-        let mut parser = mutex_lock_or_recover(&self.parser);
-        parser.process(data);
+    pub fn process(&mut self, data: &[u8]) {
+        if data.is_empty() {
+            return;
+        }
+        self.terminal.advance_bytes(data);
     }
 
     pub fn screen_text(&self) -> String {
-        let parser = mutex_lock_or_recover(&self.parser);
-        let screen = parser.screen();
-
+        let buffer = self.screen_buffer();
         let mut lines = Vec::new();
-        for row in 0..screen.size().0 {
+        for row in &buffer.cells {
             let mut line = String::new();
-            for col in 0..screen.size().1 {
-                let cell = screen.cell(row, col);
-                if let Some(cell) = cell {
-                    line.push(cell.contents().chars().next().unwrap_or(' '));
-                } else {
-                    line.push(' ');
-                }
+            for cell in row {
+                line.push(cell.char);
             }
-
             let trimmed = line.trim_end();
             lines.push(trimmed.to_string());
         }
-
         while lines.last().map(|l| l.is_empty()).unwrap_or(false) {
             lines.pop();
         }
-
         lines.join("\n")
     }
 
     pub fn screen_buffer(&self) -> ScreenBuffer {
-        let parser = mutex_lock_or_recover(&self.parser);
-        let screen = parser.screen();
+        let screen = self.terminal.screen();
+        let rows = screen.physical_rows;
+        let cols = screen.physical_cols;
+        let total_lines = screen.scrollback_rows();
+        let start = total_lines.saturating_sub(rows);
+        let end = start + rows;
+        let lines = screen.lines_in_phys_range(start..end);
 
-        let mut cells = Vec::new();
-        for row in 0..screen.size().0 {
-            let mut row_cells = Vec::new();
-            for col in 0..screen.size().1 {
-                let cell = screen.cell(row, col);
-                let (char, style) = if let Some(cell) = cell {
-                    let c = cell.contents().chars().next().unwrap_or(' ');
-                    let s = CellStyle {
-                        bold: cell.bold(),
-                        underline: cell.underline(),
-                        inverse: cell.inverse(),
-                        fg_color: convert_color(cell.fgcolor()),
-                        bg_color: convert_color(cell.bgcolor()),
-                    };
-                    (c, s)
-                } else {
-                    (' ', CellStyle::default())
-                };
-                row_cells.push(Cell { char, style });
+        let mut cells = Vec::with_capacity(rows);
+        for line in lines {
+            let mut row_cells = Vec::with_capacity(cols);
+            row_cells.resize_with(cols, || Cell {
+                char: ' ',
+                style: CellStyle::default(),
+            });
+
+            for cell in line.visible_cells() {
+                let idx = cell.cell_index();
+                if idx >= cols {
+                    continue;
+                }
+                let ch = cell.str().chars().next().unwrap_or(' ');
+                let style = style_from_attrs(cell.attrs());
+                row_cells[idx] = Cell { char: ch, style };
             }
+
             cells.push(row_cells);
         }
 
@@ -117,20 +139,29 @@ impl VirtualTerminal {
     }
 
     pub fn cursor(&self) -> CursorPosition {
-        let parser = mutex_lock_or_recover(&self.parser);
-        let screen = parser.screen();
-        let (row, col) = screen.cursor_position();
-
+        let cursor = self.terminal.cursor_pos();
+        let row = if cursor.y < 0 {
+            0
+        } else {
+            (cursor.y as u64).min(u16::MAX as u64) as u16
+        };
+        let col = cursor.x.min(u16::MAX as usize) as u16;
         CursorPosition {
             row,
             col,
-            visible: !screen.hide_cursor(),
+            visible: matches!(cursor.visibility, CursorVisibility::Visible),
         }
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) {
-        let mut parser = mutex_lock_or_recover(&self.parser);
-        parser.screen_mut().set_size(rows, cols);
+        let size = TerminalSize {
+            rows: rows as usize,
+            cols: cols as usize,
+            pixel_width: 0,
+            pixel_height: 0,
+            dpi: 0,
+        };
+        self.terminal.resize(size);
         self.cols = cols;
         self.rows = rows;
     }
@@ -140,18 +171,71 @@ impl VirtualTerminal {
     }
 
     pub fn clear(&mut self) {
-        let rows = self.rows;
-        let cols = self.cols;
-        let mut parser = mutex_lock_or_recover(&self.parser);
-        parser.screen_mut().set_size(rows, cols);
+        self.terminal.erase_scrollback_and_viewport();
     }
 }
 
-fn convert_color(color: vt100::Color) -> Option<Color> {
+impl TerminalEngine for VirtualTerminal {
+    fn process_bytes(&mut self, bytes: &[u8]) {
+        self.process(bytes);
+    }
+
+    fn resize(&mut self, cols: u16, rows: u16) {
+        self.resize(cols, rows);
+    }
+
+    fn snapshot(&self) -> ScreenSnapshot {
+        let buffer = self.screen_buffer();
+        ScreenSnapshot {
+            cols: self.cols,
+            rows: self.rows,
+            cells: buffer
+                .cells
+                .into_iter()
+                .map(|row| {
+                    row.into_iter()
+                        .map(|cell| crate::domain::core::ScreenCell {
+                            ch: cell.char,
+                            style: cell.style,
+                        })
+                        .collect()
+                })
+                .collect(),
+            cursor: self.cursor(),
+        }
+    }
+
+    fn plain_text(&self) -> String {
+        self.screen_text()
+    }
+}
+
+fn style_from_attrs(attrs: &tattoy_wezterm_term::CellAttributes) -> CellStyle {
+    let bold = matches!(attrs.intensity(), Intensity::Bold);
+    let underline = !matches!(attrs.underline(), Underline::None);
+    let inverse = attrs.reverse();
+
+    let fg = convert_color(attrs.foreground());
+    let bg = convert_color(attrs.background());
+
+    CellStyle {
+        bold,
+        underline,
+        inverse,
+        fg_color: fg,
+        bg_color: bg,
+    }
+}
+
+fn convert_color(color: ColorAttribute) -> Option<Color> {
     match color {
-        vt100::Color::Default => Some(Color::Default),
-        vt100::Color::Idx(idx) => Some(Color::Indexed(idx)),
-        vt100::Color::Rgb(r, g, b) => Some(Color::Rgb(r, g, b)),
+        ColorAttribute::Default => Some(Color::Default),
+        ColorAttribute::PaletteIndex(idx) => Some(Color::Indexed(idx)),
+        ColorAttribute::TrueColorWithPaletteFallback(color, _)
+        | ColorAttribute::TrueColorWithDefaultFallback(color) => {
+            let (r, g, b, _) = color.as_rgba_u8();
+            Some(Color::Rgb(r, g, b))
+        }
     }
 }
 
@@ -161,7 +245,7 @@ mod tests {
 
     #[test]
     fn test_basic_terminal() {
-        let term = VirtualTerminal::new(80, 24);
+        let mut term = VirtualTerminal::new(80, 24);
         term.process(b"Hello, World!");
         let text = term.screen_text();
         assert!(text.contains("Hello, World!"));
@@ -169,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_cursor_position() {
-        let term = VirtualTerminal::new(80, 24);
+        let mut term = VirtualTerminal::new(80, 24);
         term.process(b"ABC");
         let cursor = term.cursor();
         assert_eq!(cursor.col, 3);
@@ -178,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_screen_buffer() {
-        let term = VirtualTerminal::new(80, 24);
+        let mut term = VirtualTerminal::new(80, 24);
         term.process(b"\x1b[1mBold\x1b[0m Normal");
         let buffer = term.screen_buffer();
 

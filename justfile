@@ -23,23 +23,21 @@ format-check:
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Run tests
+# Run fast tests (unit + smoke integration)
 test:
-    cargo test --workspace
+    cargo test --workspace --lib --test integration_smoke_tests
 
 # Run unit tests only (~2s)
 test-unit:
     cargo test --lib --workspace
 
-# Run integration tests with mock daemon (~8s)
+# Run smoke integration tests (fast)
 test-integration:
-    cargo test --test integration_concurrent_tests --test integration_connection_failure_tests \
-        --test integration_contracts_tests --test integration_daemon_no_autostart_tests \
-        --test integration_dbl_click_tests --test integration_daemon_tests \
-        --test integration_error_propagation_tests --test integration_lock_timeout_tests \
-        --test integration_parameter_validation_tests \
-        --test integration_response_edge_cases_tests --test integration_retry_mechanism_tests \
-        --test integration_session_state_tests
+    cargo test --test integration_smoke_tests
+
+# Run slow integration/E2E suite (feature-gated)
+test-slow:
+    cargo test --test slow_tests --features slow-tests
 
 # Prep for nextest tiers (CI hook to be wired later)
 test-fast-nextest:
@@ -48,13 +46,13 @@ test-fast-nextest:
 test-system-nextest:
     cargo nextest run --workspace --filter-set 'expr(test-type(system))'
 
-# Run E2E tests with real daemon (~31s)
+# Run E2E tests with real daemon (slow)
 test-e2e:
-    cargo test --test e2e_workflow_tests
+    cargo test --test slow_tests --features slow-tests e2e_
 
-# Run tests with output
+# Run fast tests with output
 test-verbose:
-    cargo test --workspace -- --nocapture
+    cargo test --workspace --lib --test integration_smoke_tests -- --nocapture
 
 # Build debug
 build:

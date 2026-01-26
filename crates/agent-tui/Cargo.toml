@@ -16,6 +16,9 @@ path = "src/main.rs"
 name = "agent_tui"
 path = "src/lib.rs"
 
+[features]
+slow-tests = []
+
 [dependencies]
 # CLI
 clap.workspace = true
@@ -40,8 +43,8 @@ axum.workspace = true
 
 # Terminal emulation
 portable-pty.workspace = true
-vt100.workspace = true
-avt.workspace = true
+tattoy-wezterm-term.workspace = true
+tattoy-wezterm-surface.workspace = true
 
 # VOM analysis
 regex.workspace = true

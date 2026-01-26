@@ -1,3 +1,4 @@
+#[path = "../common/mod.rs"]
 mod common;
 
 use common::{TEST_COLS, TEST_ROWS, TEST_SESSION_ID, TestHarness};

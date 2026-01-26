@@ -31,7 +31,7 @@ impl PtySession {
             .map_err(|err| SessionError::Pty(err.into()))
     }
 
-    pub fn try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
+    pub fn try_read(&mut self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
         self.handle
             .try_read(buf, timeout_ms)
             .map_err(|err| SessionError::Pty(err.into()))

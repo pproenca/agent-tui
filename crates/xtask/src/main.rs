@@ -145,7 +145,7 @@ enum DistKind {
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("Error: {err}");
+        eprintln!("{}: error: {err}", env!("CARGO_PKG_NAME"));
         std::process::exit(1);
     }
 }

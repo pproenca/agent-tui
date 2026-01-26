@@ -101,6 +101,7 @@ impl SessionOps for MockSession {
         Ok(StreamRead {
             data: Vec::new(),
             next_cursor: *cursor,
+            latest_cursor: *cursor,
             dropped_bytes: 0,
         })
     }

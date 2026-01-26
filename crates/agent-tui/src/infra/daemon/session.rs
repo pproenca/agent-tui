@@ -41,7 +41,6 @@ pub use crate::infra::daemon::SessionError;
 
 const STREAM_MAX_BUFFER_BYTES: usize = 8 * 1024 * 1024;
 const PUMP_READ_TIMEOUT_MS: i32 = 10;
-const PUMP_FLUSH_TIMEOUT: Duration = Duration::from_millis(50);
 
 pub fn generate_session_id() -> SessionId {
     SessionId::new(Uuid::new_v4().to_string()[..8].to_string())
@@ -84,7 +83,6 @@ impl StreamReader {
 }
 
 enum PumpCommand {
-    Flush(mpsc::Sender<()>),
     Shutdown,
 }
 
@@ -110,10 +108,8 @@ impl StreamBuffer {
             return;
         }
         let mut state = self.state.write().unwrap_or_else(|e| e.into_inner());
-        for &byte in data {
-            state.buffer.push_back(byte);
-            state.next_seq = state.next_seq.saturating_add(1);
-        }
+        state.buffer.extend(data.iter().copied());
+        state.next_seq = state.next_seq.saturating_add(data.len() as u64);
         while state.buffer.len() > self.max_bytes {
             if state.buffer.pop_front().is_some() {
                 state.base_seq = state.base_seq.saturating_add(1);
@@ -172,6 +168,9 @@ impl StreamBuffer {
             )));
         }
 
+        let latest_cursor = StreamCursor {
+            seq: state.next_seq,
+        };
         let dropped_bytes = if cursor.seq < state.base_seq {
             state.base_seq - cursor.seq
         } else {
@@ -198,6 +197,7 @@ impl StreamBuffer {
         Ok(StreamRead {
             data,
             next_cursor: *cursor,
+            latest_cursor,
             dropped_bytes,
         })
     }
@@ -242,12 +242,6 @@ fn pump_loop(session: Arc<Mutex<Session>>, rx: mpsc::Receiver<PumpCommand>) {
     loop {
         while let Ok(cmd) = rx.try_recv() {
             match cmd {
-                PumpCommand::Flush(ack) => {
-                    if let Ok(mut sess) = session.lock() {
-                        let _ = sess.pump_drain();
-                    }
-                    let _ = ack.send(());
-                }
                 PumpCommand::Shutdown => {
                     if let Ok(mut sess) = session.lock() {
                         sess.stream.close(None);
@@ -361,13 +355,7 @@ impl Session {
     }
 
     pub fn update(&mut self) -> Result<(), SessionError> {
-        if let Some(tx) = self.pump_tx.as_ref() {
-            let (ack_tx, ack_rx) = mpsc::channel();
-            if tx.send(PumpCommand::Flush(ack_tx)).is_ok() {
-                let _ = ack_rx.recv_timeout(PUMP_FLUSH_TIMEOUT);
-            }
-        }
-        Ok(())
+        self.pump_drain()
     }
 
     pub fn screen_text(&self) -> String {
@@ -992,6 +980,7 @@ mod stream_tests {
         assert_eq!(read.data, b"hello");
         assert_eq!(cursor.seq, 5);
         assert_eq!(read.dropped_bytes, 0);
+        assert_eq!(read.latest_cursor.seq, 5);
     }
 
     #[test]
@@ -1005,6 +994,7 @@ mod stream_tests {
         assert_eq!(read.dropped_bytes, 2);
         assert_eq!(read.data, b"cdef");
         assert_eq!(cursor.seq, 6);
+        assert_eq!(read.latest_cursor.seq, 6);
     }
 
     #[test]
@@ -1021,6 +1011,7 @@ mod stream_tests {
         let read = buffer.read(&mut cursor, 16, 200).unwrap();
         assert_eq!(read.data, b"ok");
         assert_eq!(cursor.seq, 2);
+        assert_eq!(read.latest_cursor.seq, 2);
     }
 
     #[test]
@@ -1038,6 +1029,8 @@ mod stream_tests {
         assert_eq!(read_b.data, b"hello");
         assert_eq!(cursor_a.seq, 2);
         assert_eq!(cursor_b.seq, 5);
+        assert_eq!(read_a.latest_cursor.seq, 5);
+        assert_eq!(read_b.latest_cursor.seq, 5);
     }
 }
 

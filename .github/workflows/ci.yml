@@ -148,8 +148,8 @@ jobs:
       - name: Run tests
         working-directory: cli
         run: |
-          # Run lib and bin tests + e2e_daemon_tests (mock daemon tests can run in parallel)
-          cargo test --release -p agent-tui --lib --bins --test e2e_daemon_tests
+          # Run lib + bins + fast CLI smoke/contract tests
+          cargo test --release -p agent-tui --lib --bins --test cli_smoke --test cli_contracts
 
       - name: Stage CLI artifact
         run: cp cli/target/release/agent-tui agent-tui
@@ -219,7 +219,7 @@ jobs:
           agent-tui input "echo 'test'"
           agent-tui input Enter
           agent-tui wait "test"
-          agent-tui screen
+          agent-tui screenshot
           agent-tui kill
 
       - name: Cleanup daemon

@@ -28,7 +28,7 @@ lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
 test:
-    cargo test --workspace --lib --test unit_tests --test integration_tests
+    cargo test --workspace --lib --test cli_smoke --test cli_contracts
 
 build:
     cargo build --workspace

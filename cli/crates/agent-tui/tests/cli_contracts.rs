@@ -1,4 +1,6 @@
-use crate::common::{MockResponse, TestHarness};
+mod common;
+
+use common::{MockResponse, TestHarness};
 use predicates::prelude::*;
 use serde::Deserialize;
 use std::fs;
@@ -13,22 +15,16 @@ struct Fixture {
     expected_exit: i32,
 }
 
-pub fn run_fixture(file: &str) {
+fn run_fixture(file: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
-        .join("integration")
-        .join("contracts")
         .join("fixtures")
+        .join("contracts")
         .join(file);
-    let data =
-        fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
+    let data = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
     let fixture: Fixture =
         serde_json::from_str(&data).unwrap_or_else(|e| panic!("parse {}: {}", path.display(), e));
-    assert!(
-        !fixture.name.is_empty(),
-        "fixture name missing for {}",
-        file
-    );
+    assert!(!fixture.name.is_empty(), "fixture name missing for {}", file);
 
     let harness = TestHarness::new();
     harness.set_response(
@@ -49,4 +45,9 @@ pub fn run_fixture(file: &str) {
             fail = fail.stdout(predicate::str::contains(needle));
         }
     }
+}
+
+#[test]
+fn contracts_health_fixture() {
+    run_fixture("health.json");
 }

@@ -10,11 +10,11 @@ use crate::domain::{
     FillInput, FindInput, FindOutput, FocusCheckOutput, FocusInput, GetFocusedOutput,
     GetTextOutput, GetTitleOutput, GetValueOutput, HealthOutput, IsCheckedOutput, IsEnabledOutput,
     KeydownInput, KeystrokeInput, KeyupInput, KillOutput, MetricsOutput, MultiselectInput,
-    MultiselectOutput, PtyReadInput, PtyReadOutput, PtyWriteInput,
-    PtyWriteOutput, ResizeInput, ResizeOutput, RestartOutput, ScrollInput, ScrollIntoViewInput,
-    ScrollIntoViewOutput, ScrollOutput, SelectAllInput, SelectInput, SessionId, SessionInput,
-    SessionsOutput, ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput,
-    ToggleInput, ToggleOutput, TypeInput, VisibilityOutput, WaitInput, WaitOutput,
+    MultiselectOutput, PtyReadInput, PtyReadOutput, PtyWriteInput, PtyWriteOutput, ResizeInput,
+    ResizeOutput, RestartOutput, ScrollInput, ScrollIntoViewInput, ScrollIntoViewOutput,
+    ScrollOutput, SelectAllInput, SelectInput, SessionId, SessionInput, SessionsOutput,
+    ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, ToggleInput,
+    ToggleOutput, TypeInput, VisibilityOutput, WaitInput, WaitOutput,
 };
 use crate::infra::daemon::{DomainError, SessionError};
 
@@ -32,7 +32,6 @@ pub fn parse_session_input(request: &RpcRequest) -> SessionInput {
     let session_id = parse_session_id(request.param_str("session").map(String::from));
     SessionInput { session_id }
 }
-
 
 const MAX_TERMINAL_COLS: u16 = 500;
 const MAX_TERMINAL_ROWS: u16 = 200;
@@ -73,7 +72,6 @@ pub fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
 pub fn session_error_response(id: u64, err: SessionError) -> RpcResponse {
     domain_error_response(id, &DomainError::from(err))
 }
-
 
 pub fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
     let err = DomainError::LockTimeout {

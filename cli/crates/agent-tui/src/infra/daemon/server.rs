@@ -662,7 +662,9 @@ impl DaemonServer {
                     .take()
                     .expect("stream payload missing");
                 let stream_result = match kind {
-                    StreamKind::Attach => server_for_thread.handle_attach_stream(&mut conn, request),
+                    StreamKind::Attach => {
+                        server_for_thread.handle_attach_stream(&mut conn, request)
+                    }
                     StreamKind::LivePreview => {
                         server_for_thread.handle_live_preview_stream(&mut conn, request)
                     }
@@ -812,10 +814,7 @@ fn wait_for_connections(server: &DaemonServer, timeout_secs: u64) {
             break;
         }
         let remaining = shutdown_deadline.saturating_duration_since(now);
-        let (_guard, result) = server
-            .connection_cv
-            .wait_timeout(guard, remaining)
-            .unwrap();
+        let (_guard, result) = server.connection_cv.wait_timeout(guard, remaining).unwrap();
         guard = _guard;
         if result.timed_out() {
             warn!("Shutdown timeout, forcing close");

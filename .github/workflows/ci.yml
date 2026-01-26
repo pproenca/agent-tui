@@ -7,11 +7,8 @@ on:
   pull_request:
     branches: [main, master]
     paths:
-      - 'crates/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'package.json'
-      - 'package-lock.json'
+      - 'cli/**'
+      - 'web/**'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -37,6 +34,7 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
+        working-directory: cli
         run: cargo fmt --all -- --check
 
   version-check:
@@ -49,6 +47,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Check versions match
+        working-directory: cli
         run: cargo xtask version check
 
   lint:
@@ -68,12 +67,13 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('Cargo.lock') }}
+            cli/target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('cli/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-lint-
 
       - name: Clippy
+        working-directory: cli
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   udeps:
@@ -94,12 +94,13 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-udeps-${{ hashFiles('Cargo.lock') }}
+            cli/target
+          key: ${{ runner.os }}-cargo-udeps-${{ hashFiles('cli/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-udeps-
 
       - name: Check unused dependencies
+        working-directory: cli
         run: cargo +nightly udeps --workspace --all-targets
 
   architecture:
@@ -112,6 +113,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run architecture checks
+        working-directory: cli
         run: cargo xtask architecture check
 
   build:
@@ -134,24 +136,29 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-build-${{ hashFiles('Cargo.lock') }}
+            cli/target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('cli/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-build-
 
       - name: Build
+        working-directory: cli
         run: cargo build --workspace --release
 
       - name: Run tests
+        working-directory: cli
         run: |
           # Run lib and bin tests + e2e_daemon_tests (mock daemon tests can run in parallel)
           cargo test --release -p agent-tui --lib --bins --test e2e_daemon_tests
+
+      - name: Stage CLI artifact
+        run: cp cli/target/release/agent-tui agent-tui
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
           name: agent-tui-${{ matrix.os }}
-          path: target/release/agent-tui
+          path: agent-tui
           if-no-files-found: error
 
   integration:

@@ -2,6 +2,7 @@
 # Run `just` for help, `just <recipe>` to execute
 
 set shell := ["bash", "-uc"]
+set working-directory := "cli"
 
 # Default recipe - show help
 default:

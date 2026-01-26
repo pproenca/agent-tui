@@ -367,7 +367,7 @@ EXAMPLES:
 Show the daemon's live preview API endpoints.
 
 The daemon exposes HTTP + WebSocket endpoints for live preview by default.
-This command also starts the bundled web UI (if available) for a seamless preview experience.
+The daemon also serves a built-in web UI at /ui.
 Use this command to print the URLs and token so external frontends can connect.
 
 CONFIGURATION:
@@ -375,11 +375,7 @@ CONFIGURATION:
     AGENT_TUI_API_ALLOW_REMOTE   Allow non-loopback bind (default: false)
     AGENT_TUI_API_TOKEN          Override token (or 'none' to disable)
     AGENT_TUI_API_STATE          State file path (default: ~/.agent-tui/api.json)
-    AGENT_TUI_UI_URL             Frontend URL to open with --open (CLI appends api/ws/token/session)
-    AGENT_TUI_UI_MODE            UI mode: dev (default) or serve
-    AGENT_TUI_UI_PORT            UI server port (default: 4173)
-    AGENT_TUI_UI_ROOT            UI root directory (default: auto-detect ./web)
-    AGENT_TUI_UI_STATE           UI state file path (default: ~/.agent-tui/ui.json)
+    AGENT_TUI_UI_URL             External UI URL to open with --open (CLI appends api/ws/token/session)
 
 SECURITY:
     API is token-protected by default. Use --allow-remote only when needed.")]

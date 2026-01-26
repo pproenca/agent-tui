@@ -1,6 +1,7 @@
 # agent-tui web UI (Bun)
 
 This is the Bun-powered frontend for the daemon live preview API.
+In normal usage, the daemon serves the built UI directly at `/ui`.
 
 ## Run (dev)
 
@@ -10,6 +11,8 @@ bun run dev
 ```
 
 The server defaults to `http://127.0.0.1:4173`.
+When running the bundled server, the UI attempts to load the local daemon state
+from `~/.agent-tui/api.json` (or `AGENT_TUI_API_STATE`) if no URL params are set.
 
 ## Run (prod-like)
 
@@ -19,9 +22,8 @@ bun run build
 bun run serve
 ```
 
-## Live command integration
+## External UI integration
 
-The CLI can auto-start this web UI when you run `agent-tui live`.
 If you prefer to run the UI separately, set a UI URL and use `--open`:
 
 ```bash
@@ -30,13 +32,6 @@ agent-tui live start --open
 ```
 
 The CLI appends `api`, `ws`, `token`, `session`, `encoding`, and `auto=1` query params so the UI auto-connects.
-
-### Auto-start configuration (optional)
-
-- `AGENT_TUI_UI_MODE=dev|serve` (default: `dev`)
-- `AGENT_TUI_UI_PORT=4173` (default: `4173`)
-- `AGENT_TUI_UI_ROOT=/path/to/web` (default: auto-detect `./web`)
-- `AGENT_TUI_UI_STATE=/path/to/ui.json` (default: `~/.agent-tui/ui.json`)
 
 ## Manual URL params
 

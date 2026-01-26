@@ -2,7 +2,7 @@ use axum::Json;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::get;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -31,6 +31,22 @@ const LIVE_PREVIEW_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
 const LIVE_PREVIEW_STREAM_MAX_TICK_BYTES: usize = 256 * 1024;
 const LIVE_PREVIEW_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
 const OUTPUT_FRAME_DATA: u8 = 0x01;
+const UI_INDEX_HTML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../web/public/index.html"
+));
+const UI_APP_JS: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../web/public/app.js"
+));
+const UI_STYLES_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../web/public/styles.css"
+));
+const UI_XTERM_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../web/public/xterm.css"
+));
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
@@ -121,6 +137,8 @@ struct ApiState {
     daemon_version: String,
     daemon_commit: String,
     start_time: Instant,
+    http_url: String,
+    ws_url: String,
     ws_limits: Arc<Semaphore>,
     ws_queue_capacity: usize,
 }
@@ -135,6 +153,13 @@ struct StreamQuery {
     token: Option<String>,
     session: Option<String>,
     encoding: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UiQuery {
+    api: Option<String>,
+    ws: Option<String>,
+    auto: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -179,6 +204,8 @@ pub fn start_api_server(
         daemon_version: env!("AGENT_TUI_VERSION").to_string(),
         daemon_commit: env!("AGENT_TUI_GIT_SHA").to_string(),
         start_time: Instant::now(),
+        http_url: http_url.clone(),
+        ws_url: ws_url.clone(),
         ws_limits: Arc::new(Semaphore::new(config.max_ws_connections)),
         ws_queue_capacity: config.ws_queue_capacity,
     });
@@ -246,6 +273,11 @@ fn build_router(state: Arc<ApiState>) -> axum::Router {
         .allow_headers(Any);
 
     axum::Router::new()
+        .route("/", get(ui_root_handler))
+        .route("/ui", get(ui_index_handler))
+        .route("/app.js", get(ui_app_js_handler))
+        .route("/styles.css", get(ui_styles_handler))
+        .route("/xterm.css", get(ui_xterm_handler))
         .route("/api/v1/version", get(version_handler))
         .route("/api/v1/health", get(health_handler))
         .route("/api/v1/sessions", get(sessions_handler))
@@ -269,6 +301,46 @@ async fn version_handler(
         "daemon_commit": state.daemon_commit
     }))
     .into_response()
+}
+
+async fn ui_root_handler() -> Response {
+    Redirect::temporary("/ui").into_response()
+}
+
+async fn ui_index_handler(
+    State(state): State<Arc<ApiState>>,
+    Query(query): Query<UiQuery>,
+) -> Response {
+    let has_params = query.api.is_some() || query.ws.is_some() || query.auto.is_some();
+    if !has_params {
+        let mut url = String::from("/ui?api=");
+        url.push_str(&state.http_url);
+        url.push_str("&ws=");
+        url.push_str(&state.ws_url);
+        url.push_str("&session=active&encoding=binary&auto=1");
+        if let Some(token) = state.token.as_deref() {
+            url.push_str("&token=");
+            url.push_str(token);
+        }
+        return Redirect::temporary(&url).into_response();
+    }
+    Html(UI_INDEX_HTML).into_response()
+}
+
+async fn ui_app_js_handler() -> Response {
+    (
+        [("content-type", "application/javascript; charset=utf-8")],
+        UI_APP_JS,
+    )
+        .into_response()
+}
+
+async fn ui_styles_handler() -> Response {
+    ([("content-type", "text/css; charset=utf-8")], UI_STYLES_CSS).into_response()
+}
+
+async fn ui_xterm_handler() -> Response {
+    ([("content-type", "text/css; charset=utf-8")], UI_XTERM_CSS).into_response()
 }
 
 async fn health_handler(

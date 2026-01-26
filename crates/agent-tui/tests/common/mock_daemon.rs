@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::fs;
@@ -68,12 +68,110 @@ pub enum MockResponse {
     JunkThen(Box<MockResponse>, String),
 }
 
+struct DelayState {
+    now_ms: u64,
+    pending: Vec<(u64, oneshot::Sender<()>)>,
+}
+
+struct DelayController {
+    state: Mutex<DelayState>,
+    pending_cvar: Condvar,
+}
+
+impl DelayController {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(DelayState {
+                now_ms: 0,
+                pending: Vec::new(),
+            }),
+            pending_cvar: Condvar::new(),
+        }
+    }
+
+    fn register(&self, duration: Duration) -> oneshot::Receiver<()> {
+        let mut state = self.state.lock().unwrap();
+        let target = state
+            .now_ms
+            .saturating_add(duration.as_millis().min(u64::MAX as u128) as u64);
+        let (tx, rx) = oneshot::channel();
+        state.pending.push((target, tx));
+        self.pending_cvar.notify_all();
+        rx
+    }
+
+    fn advance(&self, duration: Duration) {
+        let mut ready = Vec::new();
+        {
+            let mut state = self.state.lock().unwrap();
+            state.now_ms = state
+                .now_ms
+                .saturating_add(duration.as_millis().min(u64::MAX as u128) as u64);
+            let now_ms = state.now_ms;
+            let mut remaining = Vec::with_capacity(state.pending.len());
+            for (target, tx) in state.pending.drain(..) {
+                if target <= now_ms {
+                    ready.push(tx);
+                } else {
+                    remaining.push((target, tx));
+                }
+            }
+            state.pending = remaining;
+        }
+        for tx in ready {
+            let _ = tx.send(());
+        }
+    }
+
+    fn wait_for_pending(&self, count: usize) {
+        let mut state = self.state.lock().unwrap();
+        while state.pending.len() < count {
+            state = self.pending_cvar.wait(state).unwrap();
+        }
+    }
+}
+
+struct RequestCounter {
+    count: Mutex<usize>,
+    cvar: Condvar,
+}
+
+impl RequestCounter {
+    fn new() -> Self {
+        Self {
+            count: Mutex::new(0),
+            cvar: Condvar::new(),
+        }
+    }
+
+    fn increment(&self) {
+        let mut count = self.count.lock().unwrap();
+        *count += 1;
+        self.cvar.notify_all();
+    }
+
+    fn wait_for(&self, target: usize) {
+        let mut count = self.count.lock().unwrap();
+        while *count < target {
+            count = self.cvar.wait(count).unwrap();
+        }
+    }
+
+    fn reset(&self) {
+        let mut count = self.count.lock().unwrap();
+        *count = 0;
+        self.cvar.notify_all();
+    }
+}
+
 pub struct MockDaemon {
     _temp_dir: TempDir,
     tcp_addr: std::net::SocketAddr,
     pid_path: PathBuf,
     shutdown_tx: Option<oneshot::Sender<()>>,
     requests: Arc<Mutex<Vec<RecordedRequest>>>,
+    request_counter: Arc<RequestCounter>,
+    delay_controller: Arc<DelayController>,
     handlers: Arc<Mutex<HashMap<String, MockResponse>>>,
     sequence_counters: Arc<Mutex<HashMap<String, usize>>>,
 }
@@ -97,6 +195,8 @@ impl MockDaemon {
             .expect("Failed to create PID file");
 
         let requests = Arc::new(Mutex::new(Vec::new()));
+        let request_counter = Arc::new(RequestCounter::new());
+        let delay_controller = Arc::new(DelayController::new());
         let handlers = Arc::new(Mutex::new(HashMap::new()));
         let sequence_counters = Arc::new(Mutex::new(HashMap::new()));
 
@@ -403,6 +503,8 @@ impl MockDaemon {
             .expect("Failed to bind TCP listener");
         let tcp_addr = listener.local_addr().expect("Failed to get TCP addr");
         let requests_clone = requests.clone();
+        let request_counter_clone = request_counter.clone();
+        let delay_controller_clone = delay_controller.clone();
         let handlers_clone = handlers.clone();
         let sequence_counters_clone = sequence_counters.clone();
 
@@ -410,6 +512,8 @@ impl MockDaemon {
             Self::run_server(
                 listener,
                 requests_clone,
+                request_counter_clone,
+                delay_controller_clone,
                 handlers_clone,
                 sequence_counters_clone,
                 shutdown_rx,
@@ -417,14 +521,14 @@ impl MockDaemon {
             .await;
         });
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-
         Self {
             _temp_dir: temp_dir,
             tcp_addr,
             pid_path,
             shutdown_tx: Some(shutdown_tx),
             requests,
+            request_counter,
+            delay_controller,
             handlers,
             sequence_counters,
         }
@@ -445,6 +549,19 @@ impl MockDaemon {
 
     pub fn clear_requests(&self) {
         self.requests.lock().unwrap().clear();
+        self.request_counter.reset();
+    }
+
+    pub fn wait_for_request_count(&self, count: usize) {
+        self.request_counter.wait_for(count);
+    }
+
+    pub fn wait_for_pending_delays(&self, count: usize) {
+        self.delay_controller.wait_for_pending(count);
+    }
+
+    pub fn advance_time(&self, duration: Duration) {
+        self.delay_controller.advance(duration);
     }
 
     pub fn last_request_for(&self, method: &str) -> Option<RecordedRequest> {
@@ -500,6 +617,8 @@ impl MockDaemon {
     async fn run_server(
         listener: TcpListener,
         requests: Arc<Mutex<Vec<RecordedRequest>>>,
+        request_counter: Arc<RequestCounter>,
+        delay_controller: Arc<DelayController>,
         handlers: Arc<Mutex<HashMap<String, MockResponse>>>,
         sequence_counters: Arc<Mutex<HashMap<String, usize>>>,
         mut shutdown_rx: oneshot::Receiver<()>,
@@ -510,10 +629,20 @@ impl MockDaemon {
                     match accept_result {
                         Ok((stream, _)) => {
                             let requests = requests.clone();
+                            let request_counter = request_counter.clone();
+                            let delay_controller = delay_controller.clone();
                             let handlers = handlers.clone();
                             let sequence_counters = sequence_counters.clone();
                             tokio::spawn(async move {
-                                Self::handle_connection(stream, requests, handlers, sequence_counters).await;
+                                Self::handle_connection(
+                                    stream,
+                                    requests,
+                                    request_counter,
+                                    delay_controller,
+                                    handlers,
+                                    sequence_counters,
+                                )
+                                .await;
                             });
                         }
                         Err(e) => {
@@ -532,6 +661,8 @@ impl MockDaemon {
     async fn handle_connection(
         stream: TcpStream,
         requests: Arc<Mutex<Vec<RecordedRequest>>>,
+        request_counter: Arc<RequestCounter>,
+        delay_controller: Arc<DelayController>,
         handlers: Arc<Mutex<HashMap<String, MockResponse>>>,
         sequence_counters: Arc<Mutex<HashMap<String, usize>>>,
     ) {
@@ -560,6 +691,7 @@ impl MockDaemon {
                     params: request.params.clone(),
                 });
             }
+            request_counter.increment();
 
             let handler = {
                 let h = handlers.lock().unwrap();
@@ -569,8 +701,13 @@ impl MockDaemon {
             let resolved_handler =
                 Self::resolve_handler(handler, &request.method, &sequence_counters);
 
-            let response_str =
-                Self::generate_response(resolved_handler, request.id, &request.method).await;
+            let response_str = Self::generate_response(
+                resolved_handler,
+                request.id,
+                &request.method,
+                &delay_controller,
+            )
+            .await;
 
             let Some(response_str) = response_str else {
                 return;
@@ -613,6 +750,7 @@ impl MockDaemon {
         handler: Option<MockResponse>,
         request_id: u64,
         method: &str,
+        delay_controller: &Arc<DelayController>,
     ) -> Option<String> {
         match handler {
             Some(MockResponse::Success(result)) => {
@@ -676,20 +814,34 @@ impl MockDaemon {
             }
             Some(MockResponse::Malformed(s)) => Some(s),
             Some(MockResponse::Hang) => {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+                let rx = delay_controller.register(Duration::from_secs(3600));
+                let _ = rx.await;
                 None
             }
             Some(MockResponse::Disconnect) => None,
             Some(MockResponse::Delayed(duration, inner)) => {
-                tokio::time::sleep(duration).await;
+                let rx = delay_controller.register(duration);
+                let _ = rx.await;
 
-                Box::pin(Self::generate_response(Some(*inner), request_id, method)).await
+                Box::pin(Self::generate_response(
+                    Some(*inner),
+                    request_id,
+                    method,
+                    delay_controller,
+                ))
+                .await
             }
             Some(MockResponse::JunkThen(next, junk)) => {
                 // send junk first, then the next response
                 let mut out = String::new();
                 out.push_str(&junk);
-                let rest = Box::pin(Self::generate_response(Some(*next), request_id, method)).await;
+                let rest = Box::pin(Self::generate_response(
+                    Some(*next),
+                    request_id,
+                    method,
+                    delay_controller,
+                ))
+                .await;
                 if let Some(rest) = rest {
                     if !out.is_empty() {
                         out.push('\n');

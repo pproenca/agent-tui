@@ -1,8 +1,10 @@
 mod common;
 
-use common::{MockResponse, TestHarness, timed};
+use common::{MockResponse, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
+use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 
 /// LSB exit code 3: program is not running
@@ -120,7 +122,7 @@ fn test_sequence_with_malformed() {
 
 #[test]
 fn test_delayed_response_adds_latency() {
-    let harness = TestHarness::new();
+    let harness = Arc::new(TestHarness::new());
 
     harness.set_response(
         "health",
@@ -136,20 +138,26 @@ fn test_delayed_response_adds_latency() {
         ),
     );
 
-    let (result, duration) = timed(|| harness.run(&["daemon", "status"]));
+    let handle = {
+        let h = Arc::clone(&harness);
+        thread::spawn(move || h.run(&["daemon", "status"]))
+    };
 
-    result.success();
-
+    harness.wait_for_request_count(1);
+    harness.wait_for_pending_delays(1);
+    harness.advance_time(Duration::from_millis(150));
     assert!(
-        duration >= Duration::from_millis(150),
-        "Expected at least 150ms delay, got {:?}",
-        duration
+        !handle.is_finished(),
+        "Expected command to wait for delayed response"
     );
+    harness.advance_time(Duration::from_millis(100));
+
+    handle.join().expect("Thread panicked").success();
 }
 
 #[test]
 fn test_delayed_error_response() {
-    let harness = TestHarness::new();
+    let harness = Arc::new(TestHarness::new());
 
     harness.set_response(
         "health",
@@ -162,18 +170,26 @@ fn test_delayed_error_response() {
         ),
     );
 
-    let (result, duration) = timed(|| harness.run(&["daemon", "status"]));
+    let handle = {
+        let h = Arc::clone(&harness);
+        thread::spawn(move || h.run(&["daemon", "status"]))
+    };
+
+    harness.wait_for_request_count(1);
+    harness.wait_for_pending_delays(1);
+    harness.advance_time(Duration::from_millis(80));
+    assert!(
+        !handle.is_finished(),
+        "Expected command to wait for delayed error response"
+    );
+    harness.advance_time(Duration::from_millis(30));
 
     // Error from health check means daemon status shows "not running"
-    result
+    handle
+        .join()
+        .expect("Thread panicked")
         .code(EXIT_NOT_RUNNING)
         .stdout(predicate::str::contains("not running"));
-
-    assert!(
-        duration >= Duration::from_millis(80),
-        "Expected at least 80ms delay, got {:?}",
-        duration
-    );
 }
 
 #[test]

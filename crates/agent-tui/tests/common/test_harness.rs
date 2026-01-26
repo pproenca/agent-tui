@@ -67,6 +67,18 @@ impl TestHarness {
         self.set_response(method, MockResponse::Delayed(delay, Box::new(next)));
     }
 
+    pub fn advance_time(&self, duration: Duration) {
+        self.daemon.advance_time(duration);
+    }
+
+    pub fn wait_for_request_count(&self, count: usize) {
+        self.daemon.wait_for_request_count(count);
+    }
+
+    pub fn wait_for_pending_delays(&self, count: usize) {
+        self.daemon.wait_for_pending_delays(count);
+    }
+
     pub fn set_junk_then_response(&self, method: &str, junk: &str, next: MockResponse) {
         self.set_response(
             method,

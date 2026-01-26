@@ -1,7 +1,4 @@
-#[path = "../common/mod.rs"]
-mod common;
-
-use common::{MockResponse, TestHarness, agent_tui_cmd};
+use crate::common::{MockResponse, TestHarness, agent_tui_cmd};
 use predicates::prelude::*;
 
 /// LSB exit code 3: program is not running

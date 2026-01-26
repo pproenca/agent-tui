@@ -1,5 +1,8 @@
 #![cfg(feature = "slow-tests")]
 
+#[path = "common/mod.rs"]
+mod common;
+
 #[path = "slow/e2e_workflow_tests.rs"]
 mod e2e_workflow_tests;
 #[path = "slow/integration_concurrent_tests.rs"]

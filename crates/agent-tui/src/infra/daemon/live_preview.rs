@@ -367,6 +367,7 @@ enum LiveEvent {
         seq: String,
         text: String,
     },
+    Closed,
 }
 
 fn pump_events(
@@ -403,11 +404,13 @@ fn pump_events(
                 Ok(read) => read,
                 Err(e) => {
                     warn!(error = %e, "Live preview stream read failed");
-                    break;
+                    let _ = state.broadcaster.send(LiveEvent::Closed);
+                    return false;
                 }
             };
 
             if read.closed && read.data.is_empty() {
+                let _ = state.broadcaster.send(LiveEvent::Closed);
                 return false;
             }
 
@@ -594,6 +597,7 @@ async fn alis_message(
             })
             .to_string(),
         ))),
+        Ok(LiveEvent::Closed) => Some(Ok(ws::Message::Close(None))),
         Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(count)) => {
             warn!(dropped = count, "Live preview broadcast lagged");
             None
@@ -729,6 +733,7 @@ async fn events_message(
             })
             .to_string(),
         ))),
+        Ok(LiveEvent::Closed) => Some(Ok(ws::Message::Close(None))),
         Ok(_) => None,
         Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(count)) => {
             warn!(dropped = count, "Live preview events lagged");

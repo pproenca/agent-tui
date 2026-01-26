@@ -172,6 +172,7 @@ impl StreamBuffer {
 
     fn subscribe(&self) -> crate::usecases::ports::StreamSubscription {
         let (tx, rx) = channel::bounded(1);
+        self.notify_listeners();
         {
             let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
             notifiers.push(tx);
@@ -231,11 +232,7 @@ impl StreamBuffer {
             seq: state.next_seq,
         };
         let closed = state.closed;
-        let dropped_bytes = if cursor.seq < state.base_seq {
-            state.base_seq - cursor.seq
-        } else {
-            0
-        };
+        let dropped_bytes = state.base_seq.saturating_sub(cursor.seq);
 
         if cursor.seq < state.base_seq {
             cursor.seq = state.base_seq;
@@ -1150,6 +1147,22 @@ mod stream_tests {
         assert_eq!(cursor_b.seq, 5);
         assert_eq!(read_a.latest_cursor.seq, 5);
         assert_eq!(read_b.latest_cursor.seq, 5);
+    }
+
+    #[test]
+    fn stream_subscribe_notifies_on_push() {
+        let buffer = StreamBuffer::new(16);
+        let subscription = buffer.subscribe();
+        buffer.push(b"ping");
+        assert!(subscription.wait(Some(Duration::from_millis(50))));
+    }
+
+    #[test]
+    fn stream_subscribe_notifies_on_close() {
+        let buffer = StreamBuffer::new(16);
+        let subscription = buffer.subscribe();
+        buffer.close(None);
+        assert!(subscription.wait(Some(Duration::from_millis(50))));
     }
 }
 

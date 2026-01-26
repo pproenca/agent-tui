@@ -1,7 +1,4 @@
-#[path = "../common/mod.rs"]
-mod common;
-
-use common::RealTestHarness;
+use crate::common::RealTestHarness;
 use predicates::prelude::*;
 use std::time::Duration;
 

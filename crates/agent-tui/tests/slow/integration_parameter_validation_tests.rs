@@ -1,7 +1,4 @@
-#[path = "../common/mod.rs"]
-mod common;
-
-use common::TestHarness;
+use crate::common::TestHarness;
 use predicates::prelude::*;
 
 #[test]

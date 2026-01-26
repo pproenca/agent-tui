@@ -236,12 +236,7 @@ impl IpcTransport for InMemoryTransport {
                     let _ = server.flush();
                 }
             })
-            .map_err(|err| {
-                ClientError::ConnectionFailed(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    err.to_string(),
-                ))
-            })?;
+            .map_err(|err| ClientError::ConnectionFailed(std::io::Error::other(err.to_string())))?;
 
         Ok(ClientStream::Unix(client))
     }

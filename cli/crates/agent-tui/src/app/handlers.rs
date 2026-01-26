@@ -1124,17 +1124,25 @@ fn open_ui_log_file() -> Option<std::fs::File> {
         .ok()
 }
 
-fn run_bun_command(root: &PathBuf, args: &[&str]) -> Result<(), String> {
-    let mut cmd = std::process::Command::new("bun");
-    cmd.args(args).current_dir(root);
+fn configure_ui_stdio(cmd: &mut std::process::Command) {
     if let Some(log_file) = open_ui_log_file() {
-        let stderr = log_file.try_clone().unwrap_or(log_file);
-        cmd.stdout(std::process::Stdio::from(log_file))
-            .stderr(std::process::Stdio::from(stderr));
+        let stderr = log_file.try_clone().ok().or_else(open_ui_log_file);
+        cmd.stdout(std::process::Stdio::from(log_file));
+        if let Some(stderr) = stderr {
+            cmd.stderr(std::process::Stdio::from(stderr));
+        } else {
+            cmd.stderr(std::process::Stdio::null());
+        }
     } else {
         cmd.stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
     }
+}
+
+fn run_bun_command(root: &PathBuf, args: &[&str]) -> Result<(), String> {
+    let mut cmd = std::process::Command::new("bun");
+    cmd.args(args).current_dir(root);
+    configure_ui_stdio(&mut cmd);
     let status = cmd.status().map_err(|e| match e.kind() {
         io::ErrorKind::NotFound => "Bun is not installed (missing 'bun' executable)".to_string(),
         _ => format!("Failed to run bun command: {}", e),
@@ -1179,14 +1187,7 @@ fn spawn_ui_server(root: &PathBuf, port: u16, mode: &str) -> Result<u32, String>
         .env("PORT", port.to_string())
         .stdin(std::process::Stdio::null());
 
-    if let Some(log_file) = open_ui_log_file() {
-        let stderr = log_file.try_clone().unwrap_or(log_file);
-        cmd.stdout(std::process::Stdio::from(log_file))
-            .stderr(std::process::Stdio::from(stderr));
-    } else {
-        cmd.stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-    }
+    configure_ui_stdio(&mut cmd);
 
     let child = cmd.spawn().map_err(|e| match e.kind() {
         io::ErrorKind::NotFound => "Bun is not installed (missing 'bun' executable)".to_string(),

@@ -229,12 +229,7 @@ impl Presenter for TextPresenter {
         if result.found {
             println!("Found after {}ms", result.elapsed_ms);
         } else {
-            eprintln!(
-                "{}: {} Timeout after {}ms - not found",
-                PROGRAM_NAME,
-                Colors::error("Error:"),
-                result.elapsed_ms
-            );
+            println!("Timeout after {}ms - not found", result.elapsed_ms);
         }
     }
 

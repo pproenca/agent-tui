@@ -117,23 +117,31 @@ impl Application {
     fn execute(&self) -> Result<(), Box<dyn std::error::Error>> {
         let cli = Cli::parse();
         color_init(cli.no_color);
+        let format = cli.effective_format();
 
-        if self.handle_standalone_commands(&cli)? {
+        if self
+            .handle_standalone_commands(&cli)
+            .map_err(|e| self.wrap_error(e, format))?
+        {
             return Ok(());
         }
 
         let mut client: UnixSocketClient = match &cli.command {
-            Commands::Run { .. } => self.connect_to_daemon_autostart()?,
-            _ => self.connect_to_daemon_no_autostart()?,
+            Commands::Run { .. } => self
+                .connect_to_daemon_autostart()
+                .map_err(|e| self.wrap_error(e, format))?,
+            _ => self
+                .connect_to_daemon_no_autostart()
+                .map_err(|e| self.wrap_error(e, format))?,
         };
 
         if !matches!(cli.command, Commands::Daemon(_) | Commands::Version) {
             check_version_mismatch(&mut client);
         }
 
-        let format = cli.effective_format();
         let mut ctx = HandlerContext::new(&mut client, cli.session, format);
         self.dispatch_command(&mut ctx, &cli.command, cli.verbose)
+            .map_err(|e| self.wrap_error(e, format))
     }
 
     fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool, Box<dyn std::error::Error>> {
@@ -233,20 +241,7 @@ impl Application {
     }
 
     fn connect_to_daemon_autostart(&self) -> Result<UnixSocketClient, Box<dyn std::error::Error>> {
-        ensure_daemon().map_err(|e| {
-            eprintln!(
-                "{}: {} Failed to connect to daemon: {}",
-                PROGRAM_NAME,
-                Colors::error("Error:"),
-                e
-            );
-            eprintln!();
-            eprintln!("Troubleshooting:");
-            eprintln!("  1. Check if socket directory is writable (usually /tmp)");
-            eprintln!("  2. Try starting daemon manually: agent-tui daemon");
-            eprintln!("  3. Check current configuration: agent-tui env");
-            e.into()
-        })
+        ensure_daemon().map_err(Into::into)
     }
 
     fn connect_to_daemon_no_autostart(
@@ -516,14 +511,15 @@ impl Application {
     }
 
     fn handle_error(&self, e: Box<dyn std::error::Error>) -> i32 {
-        if let Some(reported) = e.downcast_ref::<crate::app::error::ReportedError>() {
-            return reported.exit_code;
-        }
-
         // Handle DaemonNotRunningError specially - no error message printed,
         // output was already shown by the handler, just return LSB exit code 3
         if e.downcast_ref::<DaemonNotRunningError>().is_some() {
             return exit_codes::NOT_RUNNING;
+        }
+
+        if let Some(cli_error) = e.downcast_ref::<crate::app::error::CliError>() {
+            print_cli_error(cli_error);
+            return cli_error.exit_code;
         }
 
         if let Some(client_error) = e.downcast_ref::<ClientError>() {
@@ -584,6 +580,85 @@ impl Application {
         } else {
             eprintln!("{}: {} {}", PROGRAM_NAME, Colors::error("Error:"), e);
             exit_codes::GENERAL_ERROR
+        }
+    }
+}
+
+impl Application {
+    fn wrap_error(
+        &self,
+        error: Box<dyn std::error::Error>,
+        format: OutputFormat,
+    ) -> Box<dyn std::error::Error> {
+        if error.downcast_ref::<DaemonNotRunningError>().is_some() {
+            return error;
+        }
+        if error
+            .downcast_ref::<crate::app::error::CliError>()
+            .is_some()
+        {
+            return error;
+        }
+        if format != OutputFormat::Json {
+            return error;
+        }
+
+        if let Some(client_error) = error.downcast_ref::<ClientError>() {
+            return Box::new(crate::app::error::CliError::new(
+                format,
+                client_error.to_string(),
+                Some(client_error.to_json()),
+                exit_code_for_client_error(client_error),
+            ));
+        }
+        if let Some(attach_error) = error.downcast_ref::<AttachError>() {
+            return Box::new(crate::app::error::CliError::new(
+                format,
+                attach_error.to_string(),
+                Some(attach_error.to_json()),
+                attach_error.exit_code(),
+            ));
+        }
+        if let Some(daemon_error) = error.downcast_ref::<DaemonError>() {
+            return Box::new(crate::app::error::CliError::new(
+                format,
+                daemon_error.to_string(),
+                None,
+                exit_codes::IOERR,
+            ));
+        }
+
+        Box::new(crate::app::error::CliError::new(
+            format,
+            error.to_string(),
+            None,
+            exit_codes::GENERAL_ERROR,
+        ))
+    }
+}
+
+fn print_cli_error(error: &crate::app::error::CliError) {
+    match error.format {
+        OutputFormat::Json => {
+            if let Some(json) = &error.json {
+                eprintln!("{}", serde_json::to_string_pretty(json).unwrap_or_default());
+            } else {
+                eprintln!(
+                    "{}",
+                    serde_json::json!({
+                        "success": false,
+                        "error": error.message
+                    })
+                );
+            }
+        }
+        OutputFormat::Text => {
+            eprintln!(
+                "{}: {} {}",
+                PROGRAM_NAME,
+                Colors::error("Error:"),
+                error.message
+            );
         }
     }
 }

@@ -1,5 +1,6 @@
 use std::io;
 
+use crate::app::commands::OutputFormat;
 use crate::infra::ipc::error_codes::{self, ErrorCategory};
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -20,23 +21,36 @@ pub enum AttachError {
 }
 
 #[derive(Debug)]
-pub struct ReportedError {
+pub struct CliError {
     pub exit_code: i32,
+    pub format: OutputFormat,
+    pub message: String,
+    pub json: Option<Value>,
 }
 
-impl ReportedError {
-    pub fn new(exit_code: i32) -> Self {
-        Self { exit_code }
+impl CliError {
+    pub fn new(
+        format: OutputFormat,
+        message: impl Into<String>,
+        json: Option<Value>,
+        exit_code: i32,
+    ) -> Self {
+        Self {
+            exit_code,
+            format,
+            message: message.into(),
+            json,
+        }
     }
 }
 
-impl std::fmt::Display for ReportedError {
+impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "error already reported")
+        write!(f, "{}", self.message)
     }
 }
 
-impl std::error::Error for ReportedError {}
+impl std::error::Error for CliError {}
 
 impl AttachError {
     pub fn code(&self) -> i32 {

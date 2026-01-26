@@ -21,7 +21,7 @@ use crate::app::commands::LiveStartArgs;
 use crate::app::commands::OutputFormat;
 use crate::app::commands::ScrollDirection;
 use crate::app::commands::WaitParams;
-use crate::app::error::{AttachError, ReportedError};
+use crate::app::error::{AttachError, CliError};
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -125,11 +125,15 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
                 if success {
                     self.presenter.present_value(result);
                 } else {
-                    eprintln!(
-                        "{}",
-                        serde_json::to_string_pretty(result).unwrap_or_default()
-                    );
-                    return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+                    let msg = result.str_or("message", "Unknown error");
+                    let message = format!("{}: {}", failure_prefix, msg);
+                    return Err(CliError::new(
+                        self.format,
+                        message,
+                        Some(result.clone()),
+                        super::exit_codes::GENERAL_ERROR,
+                    )
+                    .into());
                 }
             }
             OutputFormat::Text => {
@@ -138,9 +142,14 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
                     self.presenter.present_success(success_msg, warning);
                 } else {
                     let msg = result.str_or("message", "Unknown error");
-                    self.presenter
-                        .present_error(&format!("{}: {}", failure_prefix, msg));
-                    return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+                    let message = format!("{}: {}", failure_prefix, msg);
+                    return Err(CliError::new(
+                        self.format,
+                        message,
+                        Some(result.clone()),
+                        super::exit_codes::GENERAL_ERROR,
+                    )
+                    .into());
                 }
             }
         }
@@ -390,13 +399,19 @@ pub fn handle_wait<C: DaemonClient>(
 
     let wait_result = WaitResult::from_json(&result);
 
+    if wait_params.assert && !wait_result.found {
+        return Err(CliError::new(
+            ctx.format,
+            "Wait condition not met within timeout",
+            Some(result.clone()),
+            super::exit_codes::GENERAL_ERROR,
+        )
+        .into());
+    }
+
     match ctx.format {
         OutputFormat::Json => ctx.presenter().present_value(&result),
         OutputFormat::Text => ctx.presenter().present_wait_result(&wait_result),
-    }
-
-    if wait_params.assert && !wait_result.found {
-        return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
     }
     Ok(())
 }
@@ -856,25 +871,34 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
 
     let result = CleanupResult { cleaned, failures };
 
-    match ctx.format {
-        OutputFormat::Json => {
-            let failures_json: Vec<_> = result
-                .failures
-                .iter()
-                .map(|f| json!({"session": f.session_id, "error": f.error}))
-                .collect();
-            let output = json!({
-                "sessions_cleaned": result.cleaned,
-                "sessions_failed": result.failures.len(),
-                "failures": failures_json
-            });
-            ctx.presenter().present_value(&output);
-        }
-        OutputFormat::Text => ctx.presenter().present_cleanup(&result),
-    }
+    let failures_json: Vec<_> = result
+        .failures
+        .iter()
+        .map(|f| json!({"session": f.session_id, "error": f.error}))
+        .collect();
+    let output = json!({
+        "sessions_cleaned": result.cleaned,
+        "sessions_failed": result.failures.len(),
+        "failures": failures_json
+    });
 
-    if !result.failures.is_empty() {
-        return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+    if result.failures.is_empty() {
+        match ctx.format {
+            OutputFormat::Json => ctx.presenter().present_value(&output),
+            OutputFormat::Text => ctx.presenter().present_cleanup(&result),
+        }
+    } else {
+        let mut message = format!("Failed to clean up {} session(s)", result.failures.len());
+        for failure in &result.failures {
+            message.push_str(&format!("\n  {}: {}", failure.session_id, failure.error));
+        }
+        return Err(CliError::new(
+            ctx.format,
+            message,
+            Some(output),
+            super::exit_codes::GENERAL_ERROR,
+        )
+        .into());
     }
     Ok(())
 }
@@ -949,8 +973,15 @@ fn handle_select_multiple<C: DaemonClient>(
             if result.bool_or("success", false) {
                 println!("{}", serde_json::to_string_pretty(&result)?);
             } else {
-                eprintln!("{}", serde_json::to_string_pretty(&result)?);
-                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+                let msg = result.str_or("message", "Unknown error");
+                let message = format!("Multiselect failed: {}", msg);
+                return Err(CliError::new(
+                    ctx.format,
+                    message,
+                    Some(result.clone()),
+                    super::exit_codes::GENERAL_ERROR,
+                )
+                .into());
             }
         }
         OutputFormat::Text => {
@@ -961,12 +992,14 @@ fn handle_select_multiple<C: DaemonClient>(
                 );
             } else {
                 let msg = result.str_or("message", "Unknown error");
-                eprintln!(
-                    "agent-tui: {} Multiselect failed: {}",
-                    Colors::error("Error:"),
-                    msg
-                );
-                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+                let message = format!("Multiselect failed: {}", msg);
+                return Err(CliError::new(
+                    ctx.format,
+                    message,
+                    Some(result.clone()),
+                    super::exit_codes::GENERAL_ERROR,
+                )
+                .into());
             }
         }
     }
@@ -1000,8 +1033,15 @@ pub fn handle_scroll_into_view<C: DaemonClient>(
             if result.bool_or("success", false) {
                 println!("{}", serde_json::to_string_pretty(&result)?);
             } else {
-                eprintln!("{}", serde_json::to_string_pretty(&result)?);
-                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+                let msg = result.str_or("message", "Element not found");
+                let message = format!("Scroll into view failed: {}", msg);
+                return Err(CliError::new(
+                    ctx.format,
+                    message,
+                    Some(result.clone()),
+                    super::exit_codes::GENERAL_ERROR,
+                )
+                .into());
             }
         }
         OutputFormat::Text => {
@@ -1013,8 +1053,14 @@ pub fn handle_scroll_into_view<C: DaemonClient>(
                 );
             } else {
                 let msg = result.str_or("message", "Element not found");
-                eprintln!("agent-tui: {} {}", Colors::error("Error:"), msg);
-                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+                let message = format!("Scroll into view failed: {}", msg);
+                return Err(CliError::new(
+                    ctx.format,
+                    message,
+                    Some(result.clone()),
+                    super::exit_codes::GENERAL_ERROR,
+                )
+                .into());
             }
         }
     }
@@ -1074,8 +1120,15 @@ pub fn handle_toggle<C: DaemonClient>(
             if result.bool_or("success", false) {
                 println!("{}", serde_json::to_string_pretty(&result)?);
             } else {
-                eprintln!("{}", serde_json::to_string_pretty(&result)?);
-                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+                let msg = result.str_or("message", "Unknown error");
+                let message = format!("Toggle failed: {}", msg);
+                return Err(CliError::new(
+                    ctx.format,
+                    message,
+                    Some(result.clone()),
+                    super::exit_codes::GENERAL_ERROR,
+                )
+                .into());
             }
         }
         OutputFormat::Text => {
@@ -1088,12 +1141,14 @@ pub fn handle_toggle<C: DaemonClient>(
                 println!("{} is now {}", element_ref, state);
             } else {
                 let msg = result.str_or("message", "Unknown error");
-                eprintln!(
-                    "agent-tui: {} Toggle failed: {}",
-                    Colors::error("Error:"),
-                    msg
-                );
-                return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+                let message = format!("Toggle failed: {}", msg);
+                return Err(CliError::new(
+                    ctx.format,
+                    message,
+                    Some(result.clone()),
+                    super::exit_codes::GENERAL_ERROR,
+                )
+                .into());
             }
         }
     }
@@ -1124,7 +1179,13 @@ pub fn handle_attach<C: DaemonClient>(
 
     if interactive {
         if !result.bool_or("success", false) {
-            return Err(format!("Failed to attach to session: {}", session_id).into());
+            return Err(CliError::new(
+                ctx.format,
+                format!("Failed to attach to session: {}", session_id),
+                Some(result.clone()),
+                super::exit_codes::GENERAL_ERROR,
+            )
+            .into());
         }
 
         let mode = if interactive {
@@ -1137,13 +1198,29 @@ pub fn handle_attach<C: DaemonClient>(
     } else {
         match ctx.format {
             OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                if result.bool_or("success", false) {
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                } else {
+                    return Err(CliError::new(
+                        ctx.format,
+                        format!("Failed to attach to session: {}", session_id),
+                        Some(result.clone()),
+                        super::exit_codes::GENERAL_ERROR,
+                    )
+                    .into());
+                }
             }
             OutputFormat::Text => {
                 if result.bool_or("success", false) {
                     println!("Attached to session {}", Colors::session_id(&session_id));
                 } else {
-                    return Err(format!("Failed to attach to session: {}", session_id).into());
+                    return Err(CliError::new(
+                        ctx.format,
+                        format!("Failed to attach to session: {}", session_id),
+                        Some(result.clone()),
+                        super::exit_codes::GENERAL_ERROR,
+                    )
+                    .into());
                 }
             }
         }
@@ -1216,11 +1293,13 @@ pub fn handle_assert<C: DaemonClient>(
 ) -> HandlerResult {
     let parts: Vec<&str> = condition.splitn(2, ':').collect();
     if parts.len() != 2 {
-        eprintln!(
-            "agent-tui: {} Invalid condition format. Use: text:pattern, element:ref, or session:id",
-            Colors::error("Error:")
-        );
-        return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+        return Err(CliError::new(
+            ctx.format,
+            "Invalid condition format. Use: text:pattern, element:ref, or session:id",
+            None,
+            super::exit_codes::USAGE,
+        )
+        .into());
     }
 
     let (cond_type, cond_value) = (parts[0], parts[1]);
@@ -1250,12 +1329,16 @@ pub fn handle_assert<C: DaemonClient>(
             }
         }
         _ => {
-            eprintln!(
-                "agent-tui: {} Unknown condition type: {}. Use: text, element, or session",
-                Colors::error("Error:"),
-                cond_type
-            );
-            return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+            return Err(CliError::new(
+                ctx.format,
+                format!(
+                    "Unknown condition type: {}. Use: text, element, or session",
+                    cond_type
+                ),
+                None,
+                super::exit_codes::USAGE,
+            )
+            .into());
         }
     };
 
@@ -1264,20 +1347,31 @@ pub fn handle_assert<C: DaemonClient>(
         condition: condition.clone(),
     };
 
-    match ctx.format {
-        OutputFormat::Json => {
-            let output = json!({
-                "condition": condition,
-                "passed": passed
-            });
-            ctx.presenter().present_value(&output);
+    if assert_result.passed {
+        match ctx.format {
+            OutputFormat::Json => {
+                let output = json!({
+                    "condition": condition,
+                    "passed": passed
+                });
+                ctx.presenter().present_value(&output);
+            }
+            OutputFormat::Text => {
+                ctx.presenter().present_assert_result(&assert_result);
+            }
         }
-        OutputFormat::Text => {
-            ctx.presenter().present_assert_result(&assert_result);
-        }
-    }
-    if !assert_result.passed {
-        return Err(ReportedError::new(super::exit_codes::GENERAL_ERROR).into());
+    } else {
+        let output = json!({
+            "condition": condition,
+            "passed": passed
+        });
+        return Err(CliError::new(
+            ctx.format,
+            format!("Assertion failed: {}", assert_result.condition),
+            Some(output),
+            super::exit_codes::GENERAL_ERROR,
+        )
+        .into());
     }
     Ok(())
 }

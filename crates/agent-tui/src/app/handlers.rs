@@ -15,6 +15,7 @@ use crate::infra::ipc::params;
 use crate::infra::ipc::socket_path;
 
 use crate::adapters::presenter::{ElementView, Presenter, create_presenter};
+use crate::app::attach::DetachKeys;
 use crate::app::commands::FindParams;
 use crate::app::commands::LiveStartArgs;
 use crate::app::commands::OutputFormat;
@@ -1067,6 +1068,7 @@ pub fn handle_attach<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     session_id: String,
     interactive: bool,
+    detach_keys: Option<DetachKeys>,
 ) -> HandlerResult {
     use crate::app::attach;
 
@@ -1094,7 +1096,8 @@ pub fn handle_attach<C: DaemonClient>(
         } else {
             attach::AttachMode::Stream
         };
-        attach::attach_ipc(ctx.client, &session_id, mode)?;
+        let detach_keys = detach_keys.unwrap_or_default();
+        attach::attach_ipc(ctx.client, &session_id, mode, detach_keys)?;
     } else {
         match ctx.format {
             OutputFormat::Json => {
@@ -1121,6 +1124,10 @@ pub fn handle_env<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
         (
             "AGENT_TUI_TCP_PORT",
             std::env::var("AGENT_TUI_TCP_PORT").ok(),
+        ),
+        (
+            "AGENT_TUI_DETACH_KEYS",
+            std::env::var("AGENT_TUI_DETACH_KEYS").ok(),
         ),
         ("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR").ok()),
         ("NO_COLOR", std::env::var("NO_COLOR").ok()),

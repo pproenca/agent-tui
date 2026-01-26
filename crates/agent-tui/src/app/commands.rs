@@ -7,6 +7,8 @@ use clap::ValueHint;
 pub use clap_complete::Shell;
 use std::path::PathBuf;
 
+use crate::app::attach::DetachKeys;
+
 const AFTER_HELP: &str =
     "Use --help for full details and examples. Use --format json for machine-readable output.";
 
@@ -336,6 +338,7 @@ EXAMPLES:
     agent-tui sessions attach             # Attach to active session (TTY)
     agent-tui sessions attach abc123      # Attach to session by id (TTY)
     agent-tui sessions attach -T abc123   # Attach without TTY (stream output only)
+    agent-tui sessions attach --detach-keys 'ctrl-]'  # Custom detach sequence
     agent-tui sessions cleanup            # Remove dead sessions
     agent-tui sessions cleanup --all      # Remove all sessions
     agent-tui sessions status             # Show daemon health")]
@@ -422,13 +425,20 @@ pub enum SessionsCommand {
         session_id: String,
     },
 
-    /// Attach to a session (TTY by default)
+    /// Attach to a session (TTY by default; detach with Ctrl-P Ctrl-Q or --detach-keys)
     Attach {
         #[arg(value_name = "ID")]
         session_id: Option<String>,
         /// Disable TTY mode (stream output only)
         #[arg(short = 'T', long = "no-tty")]
         no_tty: bool,
+        /// Detach key sequence (docker-style, e.g. "ctrl-p,ctrl-q"; use "none" to disable)
+        #[arg(
+            long = "detach-keys",
+            value_name = "KEYS",
+            env = "AGENT_TUI_DETACH_KEYS"
+        )]
+        detach_keys: Option<DetachKeys>,
     },
 
     /// Remove dead/orphaned sessions
@@ -1342,7 +1352,8 @@ mod tests {
             command,
             Some(SessionsCommand::Attach {
                 session_id: None,
-                no_tty: false
+                no_tty: false,
+                detach_keys: None
             })
         ));
     }
@@ -1357,7 +1368,8 @@ mod tests {
             command,
             Some(SessionsCommand::Attach {
                 session_id: Some(_),
-                no_tty: false
+                no_tty: false,
+                detach_keys: None
             })
         ));
     }
@@ -1372,7 +1384,8 @@ mod tests {
             command,
             Some(SessionsCommand::Attach {
                 session_id: Some(_),
-                no_tty: true
+                no_tty: true,
+                detach_keys: None
             })
         ));
     }

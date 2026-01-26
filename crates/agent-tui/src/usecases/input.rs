@@ -21,6 +21,10 @@ impl<R: SessionRepository> KeystrokeUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> KeystrokeUseCase for KeystrokeUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, key = %input.key)
+    )]
     fn execute(&self, input: KeystrokeInput) -> Result<KeystrokeOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         session.keystroke(&input.key)?;
@@ -44,6 +48,10 @@ impl<R: SessionRepository> TypeUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> TypeUseCase for TypeUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, text_len = input.text.len())
+    )]
     fn execute(&self, input: TypeInput) -> Result<TypeOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         session.type_text(&input.text)?;
@@ -67,6 +75,10 @@ impl<R: SessionRepository> KeydownUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> KeydownUseCase for KeydownUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, key = %input.key)
+    )]
     fn execute(&self, input: KeydownInput) -> Result<KeydownOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         session.keydown(&input.key)?;
@@ -90,6 +102,10 @@ impl<R: SessionRepository> KeyupUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> KeyupUseCase for KeyupUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, key = %input.key)
+    )]
     fn execute(&self, input: KeyupInput) -> Result<KeyupOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         session.keyup(&input.key)?;

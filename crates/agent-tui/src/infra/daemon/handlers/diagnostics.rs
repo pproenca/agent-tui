@@ -1,5 +1,6 @@
 use crate::infra::ipc::{RpcRequest, RpcResponse};
 
+use super::common;
 use super::common::session_error_response;
 use crate::adapters::{
     health_output_to_response, metrics_output_to_response, parse_pty_read_input,
@@ -12,6 +13,7 @@ use crate::usecases::{
 };
 
 pub fn handle_health_uc<U: HealthUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "health").entered();
     let req_id = request.id;
     let input = HealthInput;
 
@@ -22,6 +24,7 @@ pub fn handle_health_uc<U: HealthUseCase>(usecase: &U, request: RpcRequest) -> R
 }
 
 pub fn handle_metrics_uc<U: MetricsUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "metrics").entered();
     let req_id = request.id;
     let input = MetricsInput;
 
@@ -32,6 +35,7 @@ pub fn handle_metrics_uc<U: MetricsUseCase>(usecase: &U, request: RpcRequest) ->
 }
 
 pub fn handle_pty_read_uc<U: PtyReadUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "pty_read").entered();
     let req_id = request.id;
     let input = parse_pty_read_input(&request);
 
@@ -42,6 +46,7 @@ pub fn handle_pty_read_uc<U: PtyReadUseCase>(usecase: &U, request: RpcRequest) -
 }
 
 pub fn handle_pty_write_uc<U: PtyWriteUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "pty_write").entered();
     let req_id = request.id;
     let input = match parse_pty_write_input(&request) {
         Ok(i) => i,
@@ -55,6 +60,7 @@ pub fn handle_pty_write_uc<U: PtyWriteUseCase>(usecase: &U, request: RpcRequest)
 }
 
 pub fn handle_shutdown_uc<U: ShutdownUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+    let _span = common::handler_span(&request, "shutdown").entered();
     let req_id = request.id;
     let output = usecase.execute(ShutdownInput);
     shutdown_output_to_response(req_id, output)

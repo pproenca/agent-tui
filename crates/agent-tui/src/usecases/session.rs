@@ -24,6 +24,17 @@ impl<R: SessionRepository> SpawnUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            command = %input.command,
+            args_len = input.args.len(),
+            cwd = ?input.cwd,
+            cols = input.cols,
+            rows = input.rows
+        )
+    )]
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SpawnError> {
         let session_id_str = input.session_id.map(|id| id.to_string());
         let command = input.command.clone();
@@ -74,6 +85,7 @@ impl<R: SessionRepository> KillUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> KillUseCase for KillUseCaseImpl<R> {
+    #[tracing::instrument(skip(self, input), fields(session = ?input.session_id))]
     fn execute(&self, input: SessionInput) -> Result<KillOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let id = session.session_id();
@@ -102,6 +114,7 @@ impl<R: SessionRepository> SessionsUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> SessionsUseCase for SessionsUseCaseImpl<R> {
+    #[tracing::instrument(skip(self))]
     fn execute(&self) -> SessionsOutput {
         let sessions = self.repository.list();
         let active_session = self.repository.active_session_id();
@@ -128,6 +141,7 @@ impl<R: SessionRepository> RestartUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> RestartUseCase for RestartUseCaseImpl<R> {
+    #[tracing::instrument(skip(self, input), fields(session = ?input.session_id))]
     fn execute(&self, input: SessionInput) -> Result<RestartOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
@@ -166,6 +180,7 @@ impl<R: SessionRepository> AttachUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> AttachUseCase for AttachUseCaseImpl<R> {
+    #[tracing::instrument(skip(self, input), fields(session = %input.session_id))]
     fn execute(&self, input: AttachInput) -> Result<AttachOutput, SessionError> {
         let session_id_str = input.session_id.to_string();
         let session = self.repository.resolve(Some(&session_id_str))?;
@@ -204,6 +219,10 @@ impl<R: SessionRepository> ResizeUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> ResizeUseCase for ResizeUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(session = ?input.session_id, cols = input.cols, rows = input.rows)
+    )]
     fn execute(&self, input: ResizeInput) -> Result<ResizeOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         session.resize(input.cols, input.rows)?;
@@ -232,6 +251,7 @@ impl<R: SessionRepository> CleanupUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> CleanupUseCase for CleanupUseCaseImpl<R> {
+    #[tracing::instrument(skip(self, input), fields(all = input.all))]
     fn execute(&self, input: CleanupInput) -> CleanupOutput {
         let sessions = self.repository.list();
         let mut cleaned = 0;
@@ -272,6 +292,14 @@ impl<R: SessionRepository> AssertUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> AssertUseCase for AssertUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            condition = %input.condition_type.as_str(),
+            value_len = input.value.len()
+        )
+    )]
     fn execute(&self, input: AssertInput) -> Result<AssertOutput, SessionError> {
         let condition = format!("{}:{}", input.condition_type.as_str(), input.value);
 

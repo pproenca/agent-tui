@@ -196,33 +196,43 @@ impl IpcTransport for InMemoryTransport {
         let (client, mut server) = UnixStream::pair()?;
         let handler = self.handler.clone();
 
-        std::thread::spawn(move || {
-            let reader_stream = match server.try_clone() {
-                Ok(stream) => stream,
-                Err(_) => return,
-            };
-            let mut reader = BufReader::new(reader_stream);
+        let span = tracing::debug_span!("ipc_in_memory");
+        let builder = std::thread::Builder::new().name("ipc-in-memory".to_string());
+        builder
+            .spawn(move || {
+                let _guard = span.enter();
+                let reader_stream = match server.try_clone() {
+                    Ok(stream) => stream,
+                    Err(_) => return,
+                };
+                let mut reader = BufReader::new(reader_stream);
 
-            loop {
-                let mut line = String::new();
-                match reader.read_line(&mut line) {
-                    Ok(0) => break,
-                    Ok(_) => {}
-                    Err(_) => break,
-                }
+                loop {
+                    let mut line = String::new();
+                    match reader.read_line(&mut line) {
+                        Ok(0) => break,
+                        Ok(_) => {}
+                        Err(_) => break,
+                    }
 
-                let request = line.trim_end_matches(['\r', '\n']).to_string();
-                let mut response = (handler)(request);
-                if !response.ends_with('\n') {
-                    response.push('\n');
-                }
+                    let request = line.trim_end_matches(['\r', '\n']).to_string();
+                    let mut response = (handler)(request);
+                    if !response.ends_with('\n') {
+                        response.push('\n');
+                    }
 
-                if server.write_all(response.as_bytes()).is_err() {
-                    break;
+                    if server.write_all(response.as_bytes()).is_err() {
+                        break;
+                    }
+                    let _ = server.flush();
                 }
-                let _ = server.flush();
-            }
-        });
+            })
+            .map_err(|err| {
+                ClientError::ConnectionFailed(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    err.to_string(),
+                ))
+            })?;
 
         Ok(ClientStream::Unix(client))
     }

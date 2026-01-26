@@ -17,12 +17,13 @@ use serde_json::json;
 use tokio::sync::{broadcast, watch};
 use tokio::time::MissedTickBehavior;
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::{info, warn};
+use tracing::{Instrument, info, warn};
 
 use crate::domain::session_types::SessionId;
 use crate::domain::{LivePreviewStartOutput, LivePreviewStatusOutput, LivePreviewStopOutput};
 use crate::usecases::ports::{
     LivePreviewError, LivePreviewOptions, LivePreviewService, SessionHandle, SessionRepository,
+    StreamCursor,
 };
 
 const ASCIINEMA_PLAYER_JS: &[u8] = include_bytes!(concat!(
@@ -40,6 +41,7 @@ const INDEX_HTML: &str = include_str!(concat!(
 
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const START_TIMEOUT: Duration = Duration::from_secs(2);
+const LIVE_PREVIEW_MAX_CHUNK_BYTES: usize = 64 * 1024;
 
 pub struct LivePreviewManager {
     repository: Arc<dyn SessionRepository>,
@@ -151,9 +153,15 @@ fn spawn_preview_server(
     let server_session_id = default_session_id.clone();
     let shutdown_tx_clone = shutdown_tx.clone();
     let thread_name = format!("live-preview-{}", default_session_id.as_str());
+    let thread_span = tracing::info_span!(
+        "live_preview_thread",
+        session = %session_id,
+        listen = %listen_addr
+    );
     let join = thread::Builder::new()
         .name(thread_name)
         .spawn(move || {
+            let _guard = thread_span.enter();
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
@@ -299,6 +307,7 @@ impl LivePreviewServerState {
             session,
             broadcaster: tx,
             snapshot: Arc::new(Mutex::new(snapshot)),
+            stream_cursor: Arc::new(Mutex::new(StreamCursor::default())),
         });
 
         self.sessions
@@ -309,9 +318,8 @@ impl LivePreviewServerState {
         let shutdown = self.shutdown.subscribe();
         let pump_state = Arc::clone(&session_state);
         let start_time = self.start_time;
-        tokio::spawn(async move {
-            pump_events(pump_state, start_time, shutdown).await;
-        });
+        let pump_span = tracing::debug_span!("live_preview_pump", session = %session_id.as_str());
+        tokio::spawn(pump_events(pump_state, start_time, shutdown).instrument(pump_span));
 
         Ok(session_state)
     }
@@ -327,12 +335,27 @@ struct SessionStreamState {
     session: SessionHandle,
     broadcaster: broadcast::Sender<LiveEvent>,
     snapshot: Arc<Mutex<SnapshotState>>,
+    stream_cursor: Arc<Mutex<StreamCursor>>,
 }
 
 #[derive(Clone)]
 enum LiveEvent {
-    Output { time: f64, seq: String },
-    Resize { time: f64, cols: u16, rows: u16 },
+    Output {
+        time: f64,
+        seq: String,
+    },
+    Resize {
+        time: f64,
+        cols: u16,
+        rows: u16,
+    },
+    Init {
+        time: f64,
+        cols: u16,
+        rows: u16,
+        seq: String,
+        text: String,
+    },
 }
 
 async fn pump_events(
@@ -351,20 +374,6 @@ async fn pump_events(
                 }
             }
             _ = interval.tick() => {
-                let session = Arc::clone(&state.session);
-                let update_result = tokio::task::spawn_blocking(move || session.update()).await;
-                match update_result {
-                    Ok(Ok(())) => {}
-                    Ok(Err(e)) => {
-                        warn!(error = %e, "Live preview session update failed");
-                        continue;
-                    }
-                    Err(e) => {
-                        warn!(error = %e, "Live preview session update task failed");
-                        continue;
-                    }
-                }
-
                 let (cols, rows) = state.session.size();
 
                 let mut snapshot = state.snapshot.lock().unwrap_or_else(|e| e.into_inner());
@@ -377,17 +386,42 @@ async fn pump_events(
                     snapshot.size = (cols, rows);
                 }
 
-                let output = state.session.live_preview_drain_output();
-                if !output.seq.is_empty() {
-                    if output.dropped_bytes > 0 {
-                        warn!(
-                            dropped_bytes = output.dropped_bytes,
-                            "Live preview output buffer overflow"
-                        );
+                let mut cursor = state
+                    .stream_cursor
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                let read = match state
+                    .session
+                    .stream_read(&mut cursor, LIVE_PREVIEW_MAX_CHUNK_BYTES, 0)
+                {
+                    Ok(read) => read,
+                    Err(e) => {
+                        warn!(error = %e, "Live preview stream read failed");
+                        continue;
                     }
+                };
+
+                if read.dropped_bytes > 0 {
+                    warn!(
+                        dropped_bytes = read.dropped_bytes,
+                        "Live preview stream dropped bytes, resetting"
+                    );
+                    let snapshot = state.session.live_preview_snapshot();
+                    let text = state.session.screen_text();
+                    let _ = state.broadcaster.send(LiveEvent::Init {
+                        time,
+                        cols: snapshot.cols,
+                        rows: snapshot.rows,
+                        seq: snapshot.seq,
+                        text,
+                    });
+                }
+
+                if !read.data.is_empty() {
+                    let seq = String::from_utf8_lossy(&read.data).to_string();
                     let _ = state
                         .broadcaster
-                        .send(LiveEvent::Output { time, seq: output.seq });
+                        .send(LiveEvent::Output { time, seq });
                 }
             }
         }
@@ -464,15 +498,23 @@ async fn handle_alis_socket(
     session_state: Arc<SessionStreamState>,
     start_time: Instant,
 ) -> Result<(), axum::Error> {
+    let session_label = session_state.session.session_id().to_string();
     let (sink, stream) = socket.split();
-    let drainer = tokio::spawn(stream.map(Ok).forward(sink::drain()));
+    let drain_span =
+        tracing::debug_span!("live_preview_ws_drain", kind = "alis", session = %session_label);
+    let drainer = tokio::spawn(stream.map(Ok).forward(sink::drain()).instrument(drain_span));
 
     let init_message = alis_init_message(&session_state, start_time.elapsed().as_secs_f64()).await;
     let init_stream = stream::iter(std::iter::once(Ok(init_message)));
     let events =
         BroadcastStream::new(session_state.broadcaster.subscribe()).filter_map(alis_message);
 
-    let result = init_stream.chain(events).forward(sink).await;
+    let ws_span = tracing::debug_span!("live_preview_ws", kind = "alis", session = %session_label);
+    let result = init_stream
+        .chain(events)
+        .forward(sink)
+        .instrument(ws_span)
+        .await;
 
     drainer.abort();
     result
@@ -480,7 +522,12 @@ async fn handle_alis_socket(
 
 async fn alis_init_message(state: &SessionStreamState, now: f64) -> ws::Message {
     let session = Arc::clone(&state.session);
-    let update_result = tokio::task::spawn_blocking(move || session.update()).await;
+    let update_span = tracing::Span::current();
+    let update_result = tokio::task::spawn_blocking(move || {
+        let _guard = update_span.enter();
+        session.update()
+    })
+    .await;
     if let Ok(Err(e)) = update_result {
         warn!(error = %e, "Live preview session update failed");
     }
@@ -505,7 +552,30 @@ async fn alis_message(
         Ok(LiveEvent::Resize { time, cols, rows }) => Some(Ok(ws::Message::Text(
             json!([time, "r", format!("{cols}x{rows}")]).to_string(),
         ))),
-        Err(e) => Some(Err(axum::Error::new(e))),
+        Ok(LiveEvent::Init {
+            time,
+            cols,
+            rows,
+            seq,
+            ..
+        }) => Some(Ok(ws::Message::Text(
+            json!({
+                "time": time,
+                "cols": cols,
+                "rows": rows,
+                "init": seq
+            })
+            .to_string(),
+        ))),
+        Err(e) => match e {
+            tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(count) => {
+                warn!(dropped = count, "Live preview broadcast lagged");
+                None
+            }
+            tokio_stream::wrappers::errors::BroadcastStreamRecvError::Closed => {
+                Some(Err(axum::Error::new(e)))
+            }
+        },
     }
 }
 
@@ -545,12 +615,20 @@ async fn handle_events_socket(
     session_state: Arc<SessionStreamState>,
     sub: Subscription,
 ) -> Result<(), axum::Error> {
+    let session_label = session_state.session.session_id().to_string();
     let (sink, stream) = socket.split();
-    let drainer = tokio::spawn(stream.map(Ok).forward(sink::drain()));
+    let drain_span =
+        tracing::debug_span!("live_preview_ws_drain", kind = "events", session = %session_label);
+    let drainer = tokio::spawn(stream.map(Ok).forward(sink::drain()).instrument(drain_span));
 
     let init = if sub.init {
         let session = Arc::clone(&session_state.session);
-        let update_result = tokio::task::spawn_blocking(move || session.update()).await;
+        let update_span = tracing::Span::current();
+        let update_result = tokio::task::spawn_blocking(move || {
+            let _guard = update_span.enter();
+            session.update()
+        })
+        .await;
         if let Ok(Err(e)) = update_result {
             warn!(error = %e, "Live preview session update failed");
         }
@@ -563,7 +641,13 @@ async fn handle_events_socket(
     let events = BroadcastStream::new(session_state.broadcaster.subscribe())
         .filter_map(move |event| events_message(event, sub));
 
-    let result = init_stream.chain(events).forward(sink).await;
+    let ws_span =
+        tracing::debug_span!("live_preview_ws", kind = "events", session = %session_label);
+    let result = init_stream
+        .chain(events)
+        .forward(sink)
+        .instrument(ws_span)
+        .await;
 
     drainer.abort();
     result
@@ -604,8 +688,35 @@ async fn events_message(
             })
             .to_string(),
         ))),
+        Ok(LiveEvent::Init {
+            cols,
+            rows,
+            seq,
+            text,
+            ..
+        }) if sub.init => Some(Ok(ws::Message::Text(
+            json!({
+                "type": "init",
+                "data": {
+                    "cols": cols,
+                    "rows": rows,
+                    "pid": 0,
+                    "seq": seq,
+                    "text": text
+                }
+            })
+            .to_string(),
+        ))),
         Ok(_) => None,
-        Err(e) => Some(Err(axum::Error::new(e))),
+        Err(e) => match e {
+            tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(count) => {
+                warn!(dropped = count, "Live preview events lagged");
+                None
+            }
+            tokio_stream::wrappers::errors::BroadcastStreamRecvError::Closed => {
+                Some(Err(axum::Error::new(e)))
+            }
+        },
     }
 }
 

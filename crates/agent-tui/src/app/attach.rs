@@ -554,7 +554,10 @@ enum StdinMessage {
 
 fn spawn_stdin_reader() -> mpsc::Receiver<StdinMessage> {
     let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
+    let span = tracing::debug_span!("attach_stdin_reader");
+    let builder = std::thread::Builder::new().name("attach-stdin".to_string());
+    if let Err(err) = builder.spawn(move || {
+        let _guard = span.enter();
         let mut stdin = io::stdin();
         let mut buf = [0u8; 4096];
         loop {
@@ -574,7 +577,10 @@ fn spawn_stdin_reader() -> mpsc::Receiver<StdinMessage> {
                 }
             }
         }
-    });
+    }) {
+        tracing::warn!(error = %err, "Failed to spawn stdin reader");
+        let _ = tx.send(StdinMessage::Error);
+    }
     rx
 }
 

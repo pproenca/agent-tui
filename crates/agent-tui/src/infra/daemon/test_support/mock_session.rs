@@ -4,7 +4,7 @@ use crate::domain::core::vom::Component;
 use std::sync::Mutex;
 
 use crate::domain::session_types::SessionId;
-use crate::usecases::ports::{LivePreviewOutput, LivePreviewSnapshot, SessionOps};
+use crate::usecases::ports::{LivePreviewSnapshot, SessionOps, StreamCursor, StreamRead};
 use crate::usecases::ports::{PtyError, SessionError};
 
 pub struct MockSession {
@@ -92,6 +92,19 @@ impl SessionOps for MockSession {
         Ok(0)
     }
 
+    fn stream_read(
+        &self,
+        cursor: &mut StreamCursor,
+        _max_bytes: usize,
+        _timeout_ms: i32,
+    ) -> Result<StreamRead, SessionError> {
+        Ok(StreamRead {
+            data: Vec::new(),
+            next_cursor: *cursor,
+            dropped_bytes: 0,
+        })
+    }
+
     fn analyze_screen(&self) -> Vec<Component> {
         self.components.clone()
     }
@@ -146,13 +159,6 @@ impl SessionOps for MockSession {
             cols: self.cols,
             rows: self.rows,
             seq: self.screen_text.clone(),
-        }
-    }
-
-    fn live_preview_drain_output(&self) -> LivePreviewOutput {
-        LivePreviewOutput {
-            seq: String::new(),
-            dropped_bytes: 0,
         }
     }
 }

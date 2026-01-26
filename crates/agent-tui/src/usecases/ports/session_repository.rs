@@ -13,9 +13,15 @@ pub struct LivePreviewSnapshot {
     pub seq: String,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StreamCursor {
+    pub seq: u64,
+}
+
 #[derive(Debug, Clone)]
-pub struct LivePreviewOutput {
-    pub seq: String,
+pub struct StreamRead {
+    pub data: Vec<u8>,
+    pub next_cursor: StreamCursor,
     pub dropped_bytes: u64,
 }
 
@@ -27,6 +33,12 @@ pub trait SessionOps: Send + Sync {
     fn find_element(&self, element_ref: &str) -> Option<Element>;
     fn pty_write(&self, data: &[u8]) -> Result<(), SessionError>;
     fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError>;
+    fn stream_read(
+        &self,
+        cursor: &mut StreamCursor,
+        max_bytes: usize,
+        timeout_ms: i32,
+    ) -> Result<StreamRead, SessionError>;
     fn analyze_screen(&self) -> Vec<Component>;
     fn click(&self, element_ref: &str) -> Result<(), SessionError>;
     fn keystroke(&self, key: &str) -> Result<(), SessionError>;
@@ -40,7 +52,6 @@ pub trait SessionOps: Send + Sync {
     fn command(&self) -> String;
     fn size(&self) -> (u16, u16);
     fn live_preview_snapshot(&self) -> LivePreviewSnapshot;
-    fn live_preview_drain_output(&self) -> LivePreviewOutput;
 }
 
 pub type SessionHandle = Arc<dyn SessionOps>;

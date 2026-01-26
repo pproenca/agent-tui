@@ -347,10 +347,8 @@ impl DaemonServer {
                 break;
             }
 
-            if sent_any {
-                if budget == 0 {
-                    continue;
-                }
+            if sent_any && budget == 0 {
+                continue;
             }
 
             if !subscription.wait(Some(ATTACH_STREAM_HEARTBEAT)) {

@@ -330,9 +330,10 @@ impl DaemonClient for UnixSocketClient {
     ) -> Result<StreamResponse, ClientError> {
         let request_id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
         let mut stream = self.transport.connect_stream()?;
+        let config = DaemonClientConfig::default();
 
-        stream.set_read_timeout(None)?;
-        stream.set_write_timeout(Some(DaemonClientConfig::default().write_timeout))?;
+        stream.set_read_timeout(Some(config.read_timeout))?;
+        stream.set_write_timeout(Some(config.write_timeout))?;
 
         let request = Request {
             jsonrpc: "2.0".to_string(),
@@ -351,6 +352,8 @@ impl DaemonClient for UnixSocketClient {
         reader.read_line(&mut response_line)?;
         let response: Response = serde_json::from_str(&response_line)?;
         let _ = response_to_result(response)?;
+
+        stream.set_read_timeout(None)?;
 
         Ok(StreamResponse { reader })
     }

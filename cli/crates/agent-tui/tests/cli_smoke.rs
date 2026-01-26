@@ -1,4 +1,6 @@
-use crate::common::{MockResponse, TEST_COLS, TEST_ROWS, TEST_SESSION_ID, TestHarness};
+mod common;
+
+use common::{MockResponse, TEST_COLS, TEST_ROWS, TEST_SESSION_ID, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
 
@@ -20,8 +22,7 @@ impl NoDaemonTestEnv {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ =
-                std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o777));
+            let _ = std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o777));
         }
         let socket_path = temp_dir.path().join("no-daemon.sock");
 

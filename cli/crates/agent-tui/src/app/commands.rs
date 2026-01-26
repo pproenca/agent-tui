@@ -749,6 +749,7 @@ pub enum OutputFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::error::ErrorKind;
     use clap::Parser;
 
     #[test]
@@ -776,6 +777,36 @@ mod tests {
         assert_eq!(cli.format, OutputFormat::Json);
         assert!(cli.no_color);
         assert!(cli.verbose);
+    }
+
+    #[test]
+    fn test_action_requires_ref() {
+        let err = Cli::try_parse_from(["agent-tui", "action"])
+            .err()
+            .expect("expected parse error");
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn test_action_defaults_to_click_when_only_ref_provided() {
+        let cli = Cli::parse_from(["agent-tui", "action", "@btn1"]);
+        let Commands::Action {
+            element_ref,
+            operation,
+        } = cli.command
+        else {
+            panic!("Expected Action command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@btn1");
+        assert!(operation.is_none());
+    }
+
+    #[test]
+    fn test_run_requires_command() {
+        let err = Cli::try_parse_from(["agent-tui", "run"])
+            .err()
+            .expect("expected parse error");
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
     }
 
     #[test]
@@ -1192,6 +1223,14 @@ mod tests {
     }
 
     #[test]
+    fn test_wait_requires_condition() {
+        let err = Cli::try_parse_from(["agent-tui", "wait"])
+            .err()
+            .expect("expected parse error");
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
     fn test_wait_defaults() {
         let cli = Cli::parse_from(["agent-tui", "wait", "Loading"]);
         let Commands::Wait { params } = cli.command else {
@@ -1352,6 +1391,17 @@ mod tests {
             panic!("Expected Sessions command, got {:?}", cli.command);
         };
         assert!(command.is_none());
+    }
+
+    #[test]
+    fn test_sessions_all_flag_rejected() {
+        let err = Cli::try_parse_from(["agent-tui", "sessions", "--all"])
+            .err()
+            .expect("expected parse error");
+        assert!(matches!(
+            err.kind(),
+            ErrorKind::UnknownArgument | ErrorKind::InvalidSubcommand
+        ));
     }
 
     #[test]

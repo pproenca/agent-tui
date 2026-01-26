@@ -401,7 +401,7 @@ test_snapshot_vom() {
 
     log_info "Taking accessibility snapshot..."
     local snapshot
-    snapshot=$(agent-tui screen --session "$SESSION_ID" 2>&1)
+    snapshot=$(agent-tui screenshot --session "$SESSION_ID" 2>&1)
 
     # Verify snapshot is non-empty
     if [[ -z "$snapshot" ]]; then
@@ -455,7 +455,7 @@ test_keystroke_interaction() {
     # Take another snapshot to verify UI changed
     log_info "Taking post-keystroke snapshot..."
     local snapshot_after
-    snapshot_after=$(agent-tui screen --session "$SESSION_ID" 2>&1)
+    snapshot_after=$(agent-tui screenshot --session "$SESSION_ID" 2>&1)
 
     if [[ -n "$snapshot_after" ]]; then
         log_pass "Post-keystroke snapshot captured"
@@ -544,7 +544,7 @@ test_type_changes_screen() {
 
     # Verify in snapshot
     local snapshot
-    snapshot=$(agent-tui screen --session "$bash_session" 2>&1)
+    snapshot=$(agent-tui screenshot --session "$bash_session" 2>&1)
     if grep -q "$marker" <<< "$snapshot"; then
         log_pass "Snapshot contains typed text"
     else
@@ -635,7 +635,7 @@ test_multi_session_management() {
     # Session B should still work
     log_info "Verifying session B still works..."
     local snapshot_b
-    snapshot_b=$(agent-tui screen --session "$sess_b" 2>&1)
+    snapshot_b=$(agent-tui screenshot --session "$sess_b" 2>&1)
     if [[ -n "$snapshot_b" ]]; then
         log_pass "Session B still functional"
     else
@@ -726,7 +726,7 @@ test_dead_session_operations() {
 
     # Operations on dead session should fail
     log_info "Testing operations on dead session..."
-    if agent-tui screen --session "$sess" 2>/dev/null; then
+    if agent-tui screenshot --session "$sess" 2>/dev/null; then
         log_fail "Screen on dead session should fail"
         return 1
     else
@@ -802,7 +802,7 @@ test_pty_roundtrip() {
     # Verify round-trip: marker should appear at least twice
     # (once in typed command, once in echo output)
     local snapshot
-    snapshot=$(agent-tui screen --session "$sess" 2>&1)
+    snapshot=$(agent-tui screenshot --session "$sess" 2>&1)
     local count
     count=$(grep -c "$marker" <<< "$snapshot" || echo 0)
 
@@ -847,7 +847,7 @@ test_double_click() {
 
     # Session should still be usable
     local snapshot
-    snapshot=$(agent-tui screen --session "$sess" 2>&1)
+    snapshot=$(agent-tui screenshot --session "$sess" 2>&1)
     if [[ -n "$snapshot" ]]; then
         log_pass "Session usable after dblclick"
     else
@@ -896,7 +896,7 @@ test_accessibility_snapshot() {
     # Get accessibility snapshot
     log_info "Taking accessibility snapshot..."
     local acc_snapshot
-    acc_snapshot=$(agent-tui screen -a --session "$sess" 2>&1)
+    acc_snapshot=$(agent-tui screenshot -a --session "$sess" 2>&1)
 
     if [[ -z "$acc_snapshot" ]]; then
         log_fail "Accessibility snapshot is empty"
@@ -994,7 +994,7 @@ test_screen_elements_flag() {
     # Test screen -e
     log_info "Testing screen -e flag..."
     local screen_output
-    screen_output=$(agent-tui screen -e --session "$sess" 2>&1)
+    screen_output=$(agent-tui screenshot -e --session "$sess" 2>&1)
 
     if grep -qi "Elements:\|element\|@e" <<< "$screen_output"; then
         log_pass "Screen -i shows elements section"
@@ -1034,7 +1034,7 @@ test_screen_strip_ansi() {
     # Get screen with --strip-ansi
     log_info "Testing screen --strip-ansi flag..."
     local screen_output
-    screen_output=$(agent-tui screen --strip-ansi --session "$sess" 2>&1)
+    screen_output=$(agent-tui screenshot --strip-ansi --session "$sess" 2>&1)
 
     # Check for absence of ANSI escape codes (starts with ESC [)
     if [[ "$screen_output" =~ $'\033\[' ]]; then
@@ -1075,7 +1075,7 @@ test_screen_include_cursor() {
     # Get screen with --include-cursor
     log_info "Testing screen --include-cursor flag..."
     local screen_output
-    screen_output=$(agent-tui screen --include-cursor --session "$sess" 2>&1)
+    screen_output=$(agent-tui screenshot --include-cursor --session "$sess" 2>&1)
 
     if grep -qi "cursor\|Cursor:" <<< "$screen_output"; then
         log_pass "Screen output includes cursor information"
@@ -1725,7 +1725,7 @@ test_run_custom_dimensions() {
     agent-tui wait "COLS:" --session "$sess" --timeout 3000 2>/dev/null || true
 
     local screen
-    screen=$(agent-tui screen --session "$sess" 2>&1)
+    screen=$(agent-tui screenshot --session "$sess" 2>&1)
 
     if grep -q "COLS:100\|COLUMNS.*100" <<< "$screen"; then
         log_pass "Columns set correctly to 100"
@@ -2018,7 +2018,7 @@ test_global_session_flag() {
     # Test using global --session flag (before subcommand)
     log_info "Testing global --session flag..."
     local screen_output
-    screen_output=$(agent-tui --session "$sess" screen 2>&1)
+    screen_output=$(agent-tui --session "$sess" screenshot 2>&1)
 
     if [[ -n "$screen_output" ]]; then
         log_pass "Global --session flag works"
@@ -2264,7 +2264,7 @@ test_trace_commands() {
     fi
 
     # Generate some trace data
-    agent-tui screen --session "$sess" 2>/dev/null || true
+    agent-tui screenshot --session "$sess" 2>/dev/null || true
 
     # View trace
     log_info "Testing trace -n 5..."
@@ -2407,7 +2407,7 @@ test_session_id_prefix_matching() {
 
     local screen_output
     local screen_exit=0
-    screen_output=$(agent-tui screen --session "$short_sess" 2>&1) || screen_exit=$?
+    screen_output=$(agent-tui screenshot --session "$short_sess" 2>&1) || screen_exit=$?
 
     if [[ -n "$screen_output" ]] && (( screen_exit == 0 )); then
         log_pass "Session ID prefix matching works"
@@ -2517,7 +2517,7 @@ test_long_command_output() {
     else
         # Check if at least some output was captured
         local screen
-        screen=$(agent-tui screen --session "$sess" 2>&1)
+        screen=$(agent-tui screenshot --session "$sess" 2>&1)
         if grep -q "Line" <<< "$screen"; then
             log_pass "Partial output captured"
         else

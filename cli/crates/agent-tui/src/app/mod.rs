@@ -17,10 +17,10 @@ use crate::infra::daemon::{DaemonError, start_daemon};
 use crate::infra::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
 use tracing::debug;
 
+use crate::adapters::presenter::create_presenter;
 use crate::app::attach::AttachError;
 use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs};
 use crate::app::handlers::HandlerContext;
-use crate::adapters::presenter::create_presenter;
 
 static ELEMENT_REF_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^@(e|btn|inp)\d+$").expect("Invalid element ref regex"));

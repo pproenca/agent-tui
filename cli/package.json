@@ -30,7 +30,6 @@
     "preversion": "just ready",
     "version": "echo 'ERROR: Use cargo xtask release <version|patch|minor|major> or just release-* instead' && exit 1",
     "postinstall": "node scripts/postinstall.js",
-    "prepack": "node scripts/sync-web.js",
     "prepare": "husky"
   },
   "workspaces": [
@@ -38,8 +37,7 @@
   ],
   "files": [
     "bin/agent-tui",
-    "scripts",
-    "web"
+    "scripts"
   ],
   "optionalDependencies": {
     "agent-tui-darwin-arm64": "0.3.8",

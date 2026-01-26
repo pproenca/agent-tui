@@ -1,10 +1,7 @@
 use std::collections::HashMap;
-use std::fs;
 use std::io;
 use std::io::IsTerminal;
 use std::path::PathBuf;
-use std::process::Command;
-use std::process::Stdio;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -15,6 +12,7 @@ use crate::common::Colors;
 use crate::common::ValueExt;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::DaemonClient;
+use crate::infra::ipc::ProcessController;
 use crate::infra::ipc::UnixProcessController;
 use crate::infra::ipc::params;
 use crate::infra::ipc::socket_path;
@@ -609,7 +607,23 @@ pub fn handle_live_start<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     args: LiveStartArgs,
 ) -> HandlerResult {
-    let state = start_live_preview_gateway(&args)?;
+    if args.listen.is_some() || args.allow_remote || args.max_viewers.is_some() {
+        eprintln!(
+            "{} Live preview is now served by the daemon API. Configure it via:",
+            Colors::info("Note:")
+        );
+        eprintln!("  AGENT_TUI_API_LISTEN / AGENT_TUI_API_ALLOW_REMOTE / AGENT_TUI_API_MAX_CONNECTIONS");
+    }
+
+    let state_path = api_state_path();
+    let state = wait_for_api_state(&state_path, Duration::from_secs(3)).ok_or_else(|| {
+        CliError::new(
+            ctx.format,
+            "API server is not available. Restart the daemon and try again.".to_string(),
+            None,
+            super::exit_codes::GENERAL_ERROR,
+        )
+    })?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -617,17 +631,37 @@ pub fn handle_live_start<C: DaemonClient>(
                 "running": true,
                 "pid": state.pid,
                 "listen": state.listen,
-                "url": state.url,
+                "http_url": state.http_url,
+                "ws_url": state.ws_url,
+                "token": state.token,
+                "api_version": state.api_version,
             });
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
-            println!("{}", state.url);
+            println!("API: {}", state.http_url);
+            println!("WS: {}", state.ws_url);
+            if let Some(api_version) = state.api_version.as_deref() {
+                println!("API version: {}", api_version);
+            }
+            if let Some(token) = state.token.as_deref() {
+                println!("Token: {}", token);
+            } else {
+                println!("Token: (disabled)");
+            }
         }
     }
 
     if args.open {
-        if let Err(err) = open_in_browser(&state.url, args.browser.as_deref()) {
+        let ui_url = std::env::var("AGENT_TUI_UI_URL").ok();
+        let target = ui_url.as_deref().unwrap_or(&state.http_url);
+        if ui_url.is_none() {
+            eprintln!(
+                "{} AGENT_TUI_UI_URL not set; opening API URL instead.",
+                Colors::warning("Warning:")
+            );
+        }
+        if let Err(err) = open_in_browser(target, args.browser.as_deref()) {
             eprintln!("Warning: failed to open browser: {}", err);
         }
     }
@@ -638,24 +672,21 @@ pub fn handle_live_start<C: DaemonClient>(
 pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     match ctx.format {
         OutputFormat::Json => {
-            let stopped = stop_live_preview_gateway()?;
-            let output = json!({ "stopped": stopped });
+            let output = json!({
+                "stopped": false,
+                "reason": "live preview is served by the daemon; stop the daemon to stop"
+            });
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
-            let stopped = stop_live_preview_gateway()?;
-            if stopped {
-                println!("Live preview stopped");
-            } else {
-                println!("Live preview: not running");
-            }
+            println!("Live preview is served by the daemon; run 'agent-tui daemon stop' to stop.");
         }
     }
     Ok(())
 }
 
 pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let status = live_preview_gateway_status();
+    let status = read_api_state_running(&api_state_path());
 
     match ctx.format {
         OutputFormat::Json => {
@@ -664,7 +695,10 @@ pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handl
                     "running": true,
                     "pid": state.pid,
                     "listen": state.listen,
-                    "url": state.url
+                    "http_url": state.http_url,
+                    "ws_url": state.ws_url,
+                    "token": state.token,
+                    "api_version": state.api_version
                 }),
                 None => json!({ "running": false }),
             };
@@ -672,7 +706,7 @@ pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handl
         }
         OutputFormat::Text => {
             if let Some(state) = status {
-                println!("Live preview: {}", state.url);
+                println!("Live preview API: {}", state.http_url);
             } else {
                 println!("Live preview: not running");
             }
@@ -765,216 +799,70 @@ pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerRe
 }
 
 #[derive(Debug, Clone)]
-struct LivePreviewGatewayState {
+struct ApiState {
     pid: u32,
-    url: String,
+    http_url: String,
+    ws_url: String,
     listen: String,
+    token: Option<String>,
+    api_version: Option<String>,
 }
 
-fn live_preview_state_path() -> PathBuf {
-    if let Ok(path) = std::env::var("AGENT_TUI_LIVE_STATE") {
+fn api_state_path() -> PathBuf {
+    if let Ok(path) = std::env::var("AGENT_TUI_API_STATE") {
         return PathBuf::from(path);
     }
     let home = std::env::var("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/tmp"));
-    home.join(".agent-tui").join("live-preview.json")
+    home.join(".agent-tui").join("api.json")
 }
 
-fn live_preview_log_path() -> PathBuf {
-    let home = std::env::var("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
-    home.join(".agent-tui").join("live-preview.log")
-}
-
-fn read_live_preview_state(path: &PathBuf) -> Option<LivePreviewGatewayState> {
-    let contents = fs::read_to_string(path).ok()?;
+fn read_api_state(path: &PathBuf) -> Option<ApiState> {
+    let contents = std::fs::read_to_string(path).ok()?;
     let value: Value = serde_json::from_str(&contents).ok()?;
-    Some(LivePreviewGatewayState {
+    Some(ApiState {
         pid: value.get("pid")?.as_u64()? as u32,
-        url: value.get("url")?.as_str()?.to_string(),
+        http_url: value.get("http_url")?.as_str()?.to_string(),
+        ws_url: value.get("ws_url")?.as_str()?.to_string(),
         listen: value.get("listen")?.as_str()?.to_string(),
+        token: value.get("token").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        api_version: value
+            .get("api_version")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
     })
 }
 
-fn is_process_running(pid: u32) -> bool {
-    // SAFETY: signal 0 is a standard POSIX existence check.
-    unsafe { libc::kill(pid as i32, 0) == 0 }
+fn is_api_process_running(pid: u32) -> bool {
+    let controller = UnixProcessController;
+    matches!(
+        controller.check_process(pid),
+        Ok(crate::infra::ipc::ProcessStatus::Running)
+            | Ok(crate::infra::ipc::ProcessStatus::NoPermission)
+    )
 }
 
-fn find_gateway_script() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("AGENT_TUI_LIVE_GATEWAY") {
-        let path = PathBuf::from(path);
-        if path.exists() {
-            return Some(path);
-        }
+fn read_api_state_running(path: &PathBuf) -> Option<ApiState> {
+    let state = read_api_state(path)?;
+    if is_api_process_running(state.pid) {
+        Some(state)
+    } else {
+        let _ = std::fs::remove_file(path);
+        None
     }
-
-    if let Ok(current) = std::env::current_dir() {
-        let candidate = current.join("web").join("live-preview.js");
-        if candidate.exists() {
-            return Some(candidate);
-        }
-        let candidate = current.join("..").join("web").join("live-preview.js");
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-
-    if let Ok(exe) = std::env::current_exe() {
-        let mut cursor = exe.as_path();
-        for _ in 0..5 {
-            if let Some(parent) = cursor.parent() {
-                let candidate = parent.join("web").join("live-preview.js");
-                if candidate.exists() {
-                    return Some(candidate);
-                }
-                cursor = parent;
-            }
-        }
-    }
-
-    None
 }
 
-fn wait_for_live_preview_state(
-    path: &PathBuf,
-    timeout: Duration,
-) -> Option<LivePreviewGatewayState> {
+fn wait_for_api_state(path: &PathBuf, timeout: Duration) -> Option<ApiState> {
     let deadline = Instant::now() + timeout;
     loop {
-        if let Some(state) = read_live_preview_state(path) {
-            if is_process_running(state.pid) {
-                return Some(state);
-            }
+        if let Some(state) = read_api_state_running(path) {
+            return Some(state);
         }
         if Instant::now() >= deadline {
             return None;
         }
         std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-fn start_live_preview_gateway(
-    args: &LiveStartArgs,
-) -> Result<LivePreviewGatewayState, Box<dyn std::error::Error>> {
-    let state_path = live_preview_state_path();
-    if let Some(state) = read_live_preview_state(&state_path) {
-        if is_process_running(state.pid) {
-            return Ok(state);
-        }
-        let _ = fs::remove_file(&state_path);
-    }
-
-    let script = find_gateway_script().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::NotFound,
-            "live preview gateway script not found",
-        )
-    })?;
-
-    let runtime = std::env::var("AGENT_TUI_LIVE_RUNTIME").unwrap_or_else(|_| "node".to_string());
-    let log_path = live_preview_log_path();
-    if let Some(parent) = log_path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-
-    let log_file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)?;
-    let log_err = log_file.try_clone()?;
-
-    let state_path_str = state_path.to_string_lossy().to_string();
-    let sock = socket_path();
-    let sock_str = sock.to_string_lossy().to_string();
-
-    let mut cmd = Command::new(&runtime);
-    cmd.arg(&script);
-    if let Some(listen) = args.listen.as_ref() {
-        cmd.args(["--listen", listen]);
-    }
-    if args.allow_remote {
-        cmd.arg("--allow-remote");
-    }
-    if let Some(max_viewers) = args.max_viewers {
-        cmd.args(["--max-viewers", &max_viewers.to_string()]);
-    }
-    cmd.args(["--state-file", &state_path_str]);
-    cmd.args(["--socket", &sock_str]);
-    cmd.stdin(Stdio::null());
-    cmd.stdout(Stdio::from(log_file));
-    cmd.stderr(Stdio::from(log_err));
-    if cmd.spawn().is_err() && runtime == "node" {
-        let mut fallback = Command::new("bun");
-        fallback.arg(&script);
-        if let Some(listen) = args.listen.as_ref() {
-            fallback.args(["--listen", listen]);
-        }
-        if args.allow_remote {
-            fallback.arg("--allow-remote");
-        }
-        if let Some(max_viewers) = args.max_viewers {
-            fallback.args(["--max-viewers", &max_viewers.to_string()]);
-        }
-        fallback.args(["--state-file", &state_path_str]);
-        fallback.args(["--socket", &sock_str]);
-        fallback.stdin(Stdio::null());
-        let log_file = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path)?;
-        let log_err = log_file.try_clone()?;
-        fallback.stdout(Stdio::from(log_file));
-        fallback.stderr(Stdio::from(log_err));
-        fallback.spawn()?;
-    }
-
-    wait_for_live_preview_state(&state_path, Duration::from_secs(5))
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::TimedOut,
-                format!(
-                    "live preview gateway failed to start (see {})",
-                    log_path.display()
-                ),
-            )
-        })
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-}
-
-fn stop_live_preview_gateway() -> Result<bool, Box<dyn std::error::Error>> {
-    let state_path = live_preview_state_path();
-    let Some(state) = read_live_preview_state(&state_path) else {
-        return Ok(false);
-    };
-
-    if is_process_running(state.pid) {
-        unsafe {
-            libc::kill(state.pid as i32, libc::SIGTERM);
-        }
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while Instant::now() < deadline {
-            if !is_process_running(state.pid) {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-    }
-
-    let _ = fs::remove_file(state_path);
-    Ok(true)
-}
-
-fn live_preview_gateway_status() -> Option<LivePreviewGatewayState> {
-    let state_path = live_preview_state_path();
-    let state = read_live_preview_state(&state_path)?;
-    if is_process_running(state.pid) {
-        Some(state)
-    } else {
-        let _ = fs::remove_file(state_path);
-        None
     }
 }
 
@@ -1412,6 +1300,35 @@ pub fn handle_env<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
             "AGENT_TUI_DETACH_KEYS",
             std::env::var("AGENT_TUI_DETACH_KEYS").ok(),
         ),
+        (
+            "AGENT_TUI_API_LISTEN",
+            std::env::var("AGENT_TUI_API_LISTEN").ok(),
+        ),
+        (
+            "AGENT_TUI_API_ALLOW_REMOTE",
+            std::env::var("AGENT_TUI_API_ALLOW_REMOTE").ok(),
+        ),
+        (
+            "AGENT_TUI_API_TOKEN",
+            std::env::var("AGENT_TUI_API_TOKEN").ok(),
+        ),
+        (
+            "AGENT_TUI_API_STATE",
+            std::env::var("AGENT_TUI_API_STATE").ok(),
+        ),
+        (
+            "AGENT_TUI_API_DISABLED",
+            std::env::var("AGENT_TUI_API_DISABLED").ok(),
+        ),
+        (
+            "AGENT_TUI_API_MAX_CONNECTIONS",
+            std::env::var("AGENT_TUI_API_MAX_CONNECTIONS").ok(),
+        ),
+        (
+            "AGENT_TUI_API_WS_QUEUE",
+            std::env::var("AGENT_TUI_API_WS_QUEUE").ok(),
+        ),
+        ("AGENT_TUI_UI_URL", std::env::var("AGENT_TUI_UI_URL").ok()),
         ("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR").ok()),
         ("NO_COLOR", std::env::var("NO_COLOR").ok()),
     ];
@@ -1627,9 +1544,22 @@ pub fn print_daemon_status_from_result(result: &serde_json::Value, format: Outpu
     let version_mismatch = cli_version != daemon_version;
     let commit_mismatch =
         cli_commit != "unknown" && daemon_commit != "unknown" && cli_commit != daemon_commit;
+    let api_state = read_api_state_running(&api_state_path());
 
     match format {
         OutputFormat::Json => {
+            let api_json = match api_state {
+                Some(state) => json!({
+                    "running": true,
+                    "pid": state.pid,
+                    "listen": state.listen,
+                    "http_url": state.http_url,
+                    "ws_url": state.ws_url,
+                    "token": state.token,
+                    "api_version": state.api_version
+                }),
+                None => json!({ "running": false }),
+            };
             println!(
                 "{}",
                 serde_json::json!({
@@ -1643,7 +1573,8 @@ pub fn print_daemon_status_from_result(result: &serde_json::Value, format: Outpu
                     "cli_version": cli_version,
                     "cli_commit": cli_commit,
                     "version_mismatch": version_mismatch,
-                    "commit_mismatch": commit_mismatch
+                    "commit_mismatch": commit_mismatch,
+                    "api": api_json
                 })
             );
         }
@@ -1660,6 +1591,17 @@ pub fn print_daemon_status_from_result(result: &serde_json::Value, format: Outpu
             println!("  Daemon commit: {}", daemon_commit);
             println!("  CLI version: {}", cli_version);
             println!("  CLI commit: {}", cli_commit);
+            if let Some(state) = api_state {
+                println!("  API: {}", state.http_url);
+                println!("  WS: {}", state.ws_url);
+                if let Some(token) = state.token.as_deref() {
+                    println!("  API token: {}", token);
+                } else {
+                    println!("  API token: (disabled)");
+                }
+            } else {
+                println!("  API: not running");
+            }
 
             if version_mismatch {
                 eprintln!();

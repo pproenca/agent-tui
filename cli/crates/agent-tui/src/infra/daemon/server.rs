@@ -18,6 +18,7 @@ use super::usecase_container::UseCaseContainer;
 use crate::infra::daemon::DaemonError;
 use crate::infra::daemon::DaemonMetrics;
 use crate::infra::daemon::SessionManager;
+use crate::infra::daemon::http_api::{ApiConfig, ApiServerError, ApiServerHandle, start_api_server};
 use crate::infra::daemon::transport::{
     TransportConnection, TransportError, TransportListener, UnixSocketConnection,
     UnixSocketListener,
@@ -213,6 +214,10 @@ impl DaemonServer {
             connection_cv: Arc::new(std::sync::Condvar::new()),
             metrics,
         }
+    }
+
+    fn session_manager_handle(&self) -> Arc<SessionManager> {
+        Arc::clone(&self.session_manager)
     }
 
     pub fn shutdown_all_sessions(&self) {
@@ -828,7 +833,12 @@ fn cleanup(
     lock_path: &std::path::Path,
     server: &DaemonServer,
     pool: ThreadPool,
+    api_handle: Option<ApiServerHandle>,
 ) {
+    if let Some(handle) = api_handle {
+        handle.shutdown();
+    }
+
     info!("Cleaning up sessions...");
     server.shutdown_all_sessions();
 
@@ -866,6 +876,23 @@ pub fn start_daemon() -> Result<(), DaemonError> {
         Arc::clone(&shutdown_notifier),
     ));
 
+    let api_handle = match start_api_server(
+        server.session_manager_handle(),
+        Arc::clone(&shutdown),
+        ApiConfig::from_env(),
+    ) {
+        Ok(handle) => Some(handle),
+        Err(ApiServerError::Disabled) => None,
+        Err(ApiServerError::Bind(reason)) => {
+            warn!(reason = %reason, "Failed to bind API server");
+            None
+        }
+        Err(ApiServerError::InvalidListen(reason)) => {
+            warn!(reason = %reason, "Invalid API listen address");
+            None
+        }
+    };
+
     let _signal_handler = SignalHandler::setup(Arc::clone(&shutdown), Some(shutdown_notifier))?;
 
     let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server))
@@ -876,7 +903,7 @@ pub fn start_daemon() -> Result<(), DaemonError> {
 
     info!("Shutting down daemon...");
     wait_for_connections(&server, 5);
-    cleanup(&socket_path, &lock_path, &server, pool);
+    cleanup(&socket_path, &lock_path, &server, pool, api_handle);
 
     Ok(())
 }

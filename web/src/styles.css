@@ -37,6 +37,10 @@ body {
   gap: 24px;
 }
 
+.app--terminal-focus .app__header {
+  display: none;
+}
+
 .app__header {
   display: flex;
   align-items: center;

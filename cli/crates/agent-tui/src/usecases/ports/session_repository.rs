@@ -14,6 +14,7 @@ pub struct LivePreviewSnapshot {
     pub cols: u16,
     pub rows: u16,
     pub seq: String,
+    pub stream_seq: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

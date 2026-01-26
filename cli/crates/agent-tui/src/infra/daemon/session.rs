@@ -183,6 +183,11 @@ impl StreamBuffer {
         crate::usecases::ports::StreamSubscription::new(rx)
     }
 
+    fn latest_seq(&self) -> u64 {
+        let state = self.state.read().unwrap_or_else(|e| e.into_inner());
+        state.next_seq
+    }
+
     fn notify_listeners(&self) {
         let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
         notifiers.retain(|sender| match sender.try_send(()) {
@@ -634,7 +639,13 @@ impl Session {
         let buffer = self.terminal.screen_buffer();
         let cursor = self.terminal.cursor();
         let seq = render_live_preview_init(&buffer, &cursor);
-        LivePreviewSnapshot { cols, rows, seq }
+        let stream_seq = self.stream.latest_seq();
+        LivePreviewSnapshot {
+            cols,
+            rows,
+            seq,
+            stream_seq,
+        }
     }
 
     pub fn analyze_screen(&self) -> Vec<crate::domain::core::Component> {

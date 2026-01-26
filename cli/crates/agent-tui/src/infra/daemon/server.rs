@@ -288,8 +288,9 @@ impl DaemonServer {
         );
         conn.write_response(&ready)?;
 
+        let stream_seq = session.live_preview_snapshot().stream_seq;
         let subscription = session.stream_subscribe();
-        let mut cursor = StreamCursor::default();
+        let mut cursor = StreamCursor { seq: stream_seq };
 
         loop {
             let mut budget = ATTACH_STREAM_MAX_TICK_BYTES;

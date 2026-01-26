@@ -261,7 +261,7 @@ async fn version_handler(
     Query(query): Query<TokenQuery>,
 ) -> Response {
     if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
-        return resp;
+        return *resp;
     }
     Json(json!({
         "api_version": state.api_version,
@@ -277,7 +277,7 @@ async fn health_handler(
     Query(query): Query<TokenQuery>,
 ) -> Response {
     if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
-        return resp;
+        return *resp;
     }
     let session_count = state.session_manager.session_count();
     let uptime_ms = state.start_time.elapsed().as_millis() as u64;
@@ -299,7 +299,7 @@ async fn sessions_handler(
     Query(query): Query<TokenQuery>,
 ) -> Response {
     if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
-        return resp;
+        return *resp;
     }
     let sessions = state.session_manager.list();
     let active = state.session_manager.active_session_id();
@@ -317,7 +317,7 @@ async fn snapshot_handler(
     Path(id): Path<String>,
 ) -> Response {
     if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
-        return resp;
+        return *resp;
     }
     let session_id = if id == "active" {
         None
@@ -347,7 +347,7 @@ async fn ws_handler(
     ws: WebSocketUpgrade,
 ) -> Response {
     if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
-        return resp;
+        return *resp;
     }
 
     let session_param = query.session.as_deref().filter(|s| *s != "active");
@@ -643,8 +643,8 @@ fn stream_live_preview(
             continue;
         }
 
-        if !subscription.wait(Some(LIVE_PREVIEW_STREAM_HEARTBEAT)) {
-            if sender
+        if !subscription.wait(Some(LIVE_PREVIEW_STREAM_HEARTBEAT))
+            && sender
                 .blocking_send(WsPayload::Text(
                     json!({
                         "event": "heartbeat",
@@ -653,9 +653,8 @@ fn stream_live_preview(
                     .to_string(),
                 ))
                 .is_err()
-            {
-                return;
-            }
+        {
+            return;
         }
     }
 }
@@ -664,7 +663,7 @@ fn require_auth(
     state: &ApiState,
     headers: &HeaderMap,
     query_token: Option<&str>,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     let Some(expected) = state.token.as_deref() else {
         return Ok(());
     };
@@ -687,7 +686,10 @@ fn require_auth(
     if candidate.as_deref() == Some(expected) {
         Ok(())
     } else {
-        Err(error_response(StatusCode::UNAUTHORIZED, "invalid token"))
+        Err(Box::new(error_response(
+            StatusCode::UNAUTHORIZED,
+            "invalid token",
+        )))
     }
 }
 

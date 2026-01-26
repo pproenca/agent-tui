@@ -1,0 +1,14 @@
+{
+  "name": "agent-tui-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts && bun --hot server.ts",
+    "serve": "bun server.ts"
+  },
+  "dependencies": {
+    "xterm": "^5.5.0",
+    "xterm-addon-fit": "^0.8.0"
+  }
+}

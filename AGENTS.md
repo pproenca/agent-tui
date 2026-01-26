@@ -10,3 +10,4 @@
 - CLI workspace (Cargo + npm package) lives in `cli/`; most Rust/Node commands should run there.
 - The root `justfile` sets `working-directory := "cli"` so `just` works from repo root.
 - The daemon exposes a versioned HTTP/WS API for live preview; frontends are external consumers of that API.
+- Bun web UI lives in `web/` and connects to the daemon API.

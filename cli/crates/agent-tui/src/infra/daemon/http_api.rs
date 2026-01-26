@@ -30,6 +30,7 @@ const DEFAULT_WS_QUEUE_CAPACITY: usize = 128;
 const LIVE_PREVIEW_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
 const LIVE_PREVIEW_STREAM_MAX_TICK_BYTES: usize = 256 * 1024;
 const LIVE_PREVIEW_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
+const OUTPUT_FRAME_DATA: u8 = 0x01;
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
@@ -133,6 +134,18 @@ struct TokenQuery {
 struct StreamQuery {
     token: Option<String>,
     session: Option<String>,
+    encoding: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OutputEncoding {
+    Base64,
+    Binary,
+}
+
+enum WsPayload {
+    Text(String),
+    Binary(Vec<u8>),
 }
 
 pub fn start_api_server(
@@ -338,6 +351,10 @@ async fn ws_handler(
     }
 
     let session_param = query.session.as_deref().filter(|s| *s != "active");
+    let output_encoding = match parse_output_encoding(query.encoding.as_deref()) {
+        Ok(encoding) => encoding,
+        Err(message) => return error_response(StatusCode::BAD_REQUEST, message),
+    };
     let session = match SessionRepository::resolve(state.session_manager.as_ref(), session_param) {
         Ok(session) => session,
         Err(err) => return error_response(StatusCode::NOT_FOUND, &err.to_string()),
@@ -351,7 +368,16 @@ async fn ws_handler(
     let session_id = session.session_id().to_string();
     let queue_capacity = state.ws_queue_capacity;
     ws.on_upgrade(move |socket| async move {
-        handle_ws(socket, state, session, session_id, permit, queue_capacity).await;
+        handle_ws(
+            socket,
+            state,
+            session,
+            session_id,
+            permit,
+            queue_capacity,
+            output_encoding,
+        )
+        .await;
     })
     .into_response()
 }
@@ -363,26 +389,36 @@ async fn handle_ws(
     session_id: String,
     _permit: tokio::sync::OwnedSemaphorePermit,
     queue_capacity: usize,
+    output_encoding: OutputEncoding,
 ) {
     let hello = json!({
         "event": "hello",
         "api_version": state.api_version,
         "daemon_version": state.daemon_version,
         "daemon_commit": state.daemon_commit,
-        "session_id": session_id
+        "session_id": session_id,
+        "output_encoding": match output_encoding {
+            OutputEncoding::Base64 => "base64",
+            OutputEncoding::Binary => "binary",
+        }
     });
     if socket.send(Message::Text(hello.to_string())).await.is_err() {
         return;
     }
 
-    let (tx, mut rx) = mpsc::channel::<String>(queue_capacity);
+    let (tx, mut rx) = mpsc::channel::<WsPayload>(queue_capacity);
     let stop = Arc::new(AtomicBool::new(false));
     let stop_for_thread = Arc::clone(&stop);
     let session_for_thread = Arc::clone(&session);
     thread::Builder::new()
         .name(format!("api-stream-{session_id}"))
         .spawn(move || {
-            stream_live_preview(session_for_thread, tx, stop_for_thread);
+            stream_live_preview(
+                session_for_thread,
+                tx,
+                stop_for_thread,
+                output_encoding,
+            );
         })
         .ok();
 
@@ -390,8 +426,13 @@ async fn handle_ws(
         tokio::select! {
             maybe = rx.recv() => {
                 match maybe {
-                    Some(payload) => {
+                    Some(WsPayload::Text(payload)) => {
                         if socket.send(Message::Text(payload)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(WsPayload::Binary(payload)) => {
+                        if socket.send(Message::Binary(payload)).await.is_err() {
                             break;
                         }
                     }
@@ -414,20 +455,21 @@ async fn handle_ws(
 
 fn stream_live_preview(
     session: SessionHandle,
-    sender: mpsc::Sender<String>,
+    sender: mpsc::Sender<WsPayload>,
     stop: Arc<AtomicBool>,
+    output_encoding: OutputEncoding,
 ) {
     let start_time = Instant::now();
 
     if let Err(err) = session.update() {
-        let _ = sender.blocking_send(error_event(&err.to_string()).to_string());
+        let _ = sender.blocking_send(WsPayload::Text(error_event(&err.to_string()).to_string()));
         return;
     }
 
     let snapshot = session.live_preview_snapshot();
     let session_id = session.session_id().to_string();
     if sender
-        .blocking_send(
+        .blocking_send(WsPayload::Text(
             json!({
                 "event": "ready",
                 "session_id": session_id,
@@ -435,14 +477,14 @@ fn stream_live_preview(
                 "rows": snapshot.rows
             })
             .to_string(),
-        )
+        ))
         .is_err()
     {
         return;
     }
 
     if sender
-        .blocking_send(
+        .blocking_send(WsPayload::Text(
             json!({
                 "event": "init",
                 "time": start_time.elapsed().as_secs_f64(),
@@ -451,7 +493,7 @@ fn stream_live_preview(
                 "init": snapshot.seq
             })
             .to_string(),
-        )
+        ))
         .is_err()
     {
         return;
@@ -478,33 +520,37 @@ fn stream_live_preview(
             let read = match session.stream_read(&mut cursor, max_chunk, 0) {
                 Ok(read) => read,
                 Err(err) => {
-                    let _ = sender.blocking_send(error_event(&err.to_string()).to_string());
+                    let _ = sender.blocking_send(WsPayload::Text(
+                        error_event(&err.to_string()).to_string(),
+                    ));
                     return;
                 }
             };
 
             if read.dropped_bytes > 0 {
                 if sender
-                    .blocking_send(
+                    .blocking_send(WsPayload::Text(
                         json!({
                             "event": "dropped",
                             "time": start_time.elapsed().as_secs_f64(),
                             "dropped_bytes": read.dropped_bytes
                         })
                         .to_string(),
-                    )
+                    ))
                     .is_err()
                 {
                     return;
                 }
 
                 if let Err(err) = session.update() {
-                    let _ = sender.blocking_send(error_event(&err.to_string()).to_string());
+                    let _ = sender.blocking_send(WsPayload::Text(
+                        error_event(&err.to_string()).to_string(),
+                    ));
                     return;
                 }
                 let snapshot = session.live_preview_snapshot();
                 if sender
-                    .blocking_send(
+                    .blocking_send(WsPayload::Text(
                         json!({
                             "event": "init",
                             "time": start_time.elapsed().as_secs_f64(),
@@ -513,7 +559,7 @@ fn stream_live_preview(
                             "init": snapshot.seq
                         })
                         .to_string(),
-                    )
+                    ))
                     .is_err()
                 {
                     return;
@@ -525,43 +571,55 @@ fn stream_live_preview(
             }
 
             if !read.data.is_empty() {
-                let data_b64 = STANDARD.encode(&read.data);
-                if sender
-                    .blocking_send(
-                        json!({
-                            "event": "output",
-                            "time": start_time.elapsed().as_secs_f64(),
-                            "data_b64": data_b64
-                        })
-                        .to_string(),
-                    )
-                    .is_err()
-                {
-                    return;
+                match output_encoding {
+                    OutputEncoding::Base64 => {
+                        let data_b64 = STANDARD.encode(&read.data);
+                        if sender
+                            .blocking_send(WsPayload::Text(
+                                json!({
+                                    "event": "output",
+                                    "time": start_time.elapsed().as_secs_f64(),
+                                    "data_b64": data_b64
+                                })
+                                .to_string(),
+                            ))
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                    OutputEncoding::Binary => {
+                        let mut frame = Vec::with_capacity(1 + read.data.len());
+                        frame.push(OUTPUT_FRAME_DATA);
+                        frame.extend_from_slice(&read.data);
+                        if sender.blocking_send(WsPayload::Binary(frame)).is_err() {
+                            return;
+                        }
+                    }
                 }
                 sent_any = true;
                 budget = budget.saturating_sub(read.data.len());
                 if read.closed {
-                    let _ = sender.blocking_send(
+                    let _ = sender.blocking_send(WsPayload::Text(
                         json!({
                             "event": "closed",
                             "time": start_time.elapsed().as_secs_f64()
                         })
                         .to_string(),
-                    );
+                    ));
                     return;
                 }
                 continue;
             }
 
             if read.closed {
-                let _ = sender.blocking_send(
+                let _ = sender.blocking_send(WsPayload::Text(
                     json!({
                         "event": "closed",
                         "time": start_time.elapsed().as_secs_f64()
                     })
                     .to_string(),
-                );
+                ));
                 return;
             }
 
@@ -571,7 +629,7 @@ fn stream_live_preview(
         let size = session.size();
         if size != last_size {
             if sender
-                .blocking_send(
+                .blocking_send(WsPayload::Text(
                     json!({
                         "event": "resize",
                         "time": start_time.elapsed().as_secs_f64(),
@@ -579,7 +637,7 @@ fn stream_live_preview(
                         "rows": size.1
                     })
                     .to_string(),
-                )
+                ))
                 .is_err()
             {
                 return;
@@ -594,13 +652,13 @@ fn stream_live_preview(
 
         if !subscription.wait(Some(LIVE_PREVIEW_STREAM_HEARTBEAT)) {
             if sender
-                .blocking_send(
+                .blocking_send(WsPayload::Text(
                     json!({
                         "event": "heartbeat",
                         "time": start_time.elapsed().as_secs_f64()
                     })
                     .to_string(),
-                )
+                ))
                 .is_err()
             {
                 return;
@@ -646,6 +704,14 @@ fn error_event(message: &str) -> serde_json::Value {
 
 fn error_response(status: StatusCode, message: &str) -> Response {
     (status, Json(json!({ "error": message }))).into_response()
+}
+
+fn parse_output_encoding(value: Option<&str>) -> Result<OutputEncoding, &'static str> {
+    match value.unwrap_or("base64").to_ascii_lowercase().as_str() {
+        "base64" => Ok(OutputEncoding::Base64),
+        "binary" => Ok(OutputEncoding::Binary),
+        _ => Err("invalid encoding; use 'base64' or 'binary'"),
+    }
 }
 
 fn bind_listener(

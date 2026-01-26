@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>agent-tui Live Preview</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/xterm.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="app__header">
+        <div>
+          <p class="app__eyebrow">agent-tui</p>
+          <h1 class="app__title">Live Preview</h1>
+          <p class="app__subtitle">Realtime terminal stream with binary WS output.</p>
+        </div>
+        <div class="status" id="status">
+          <span class="status__dot"></span>
+          <span class="status__text">Disconnected</span>
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="panel__row">
+          <label class="field">
+            <span class="field__label">API URL</span>
+            <input id="apiUrl" type="text" placeholder="http://127.0.0.1:PORT" />
+          </label>
+          <label class="field">
+            <span class="field__label">WS URL</span>
+            <input id="wsUrl" type="text" placeholder="ws://127.0.0.1:PORT/api/v1/stream" />
+          </label>
+        </div>
+        <div class="panel__row">
+          <label class="field">
+            <span class="field__label">Token</span>
+            <input id="token" type="text" placeholder="Optional" />
+          </label>
+          <label class="field">
+            <span class="field__label">Session</span>
+            <input id="session" type="text" placeholder="active" />
+          </label>
+          <label class="field field--compact">
+            <span class="field__label">Encoding</span>
+            <select id="encoding">
+              <option value="binary">binary</option>
+              <option value="base64">base64</option>
+            </select>
+          </label>
+          <button id="connectBtn" class="button">Connect</button>
+        </div>
+        <div class="panel__meta" id="meta"></div>
+      </section>
+
+      <section class="terminal">
+        <div id="terminal" class="terminal__viewport"></div>
+      </section>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

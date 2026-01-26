@@ -1,0 +1,205 @@
+asyncapi: 2.6.0
+info:
+  title: agent-tui Live Preview Stream
+  version: "1"
+  description: |
+    WebSocket stream for live terminal preview. Authentication is required unless the daemon
+    was started with API auth disabled.
+servers:
+  local:
+    url: ws://127.0.0.1:{port}/api/v1/stream
+    protocol: ws
+    description: Local daemon
+    variables:
+      port:
+        default: "PORT"
+channels:
+  /api/v1/stream:
+    description: Live preview event stream.
+    parameters:
+      session:
+        description: Session id or "active" to target the active session.
+        schema:
+          type: string
+          default: active
+      encoding:
+        description: Output encoding; "binary" sends raw output frames.
+        schema:
+          type: string
+          enum: [base64, binary]
+          default: base64
+      token:
+        description: Authentication token (if enabled).
+        schema:
+          type: string
+    bindings:
+      ws:
+        query:
+          type: object
+          properties:
+            session:
+              type: string
+            encoding:
+              type: string
+            token:
+              type: string
+    subscribe:
+      summary: Daemon publishes session preview events.
+      message:
+        oneOf:
+          - $ref: '#/components/messages/Hello'
+          - $ref: '#/components/messages/Ready'
+          - $ref: '#/components/messages/Init'
+          - $ref: '#/components/messages/OutputBase64'
+          - $ref: '#/components/messages/OutputBinary'
+          - $ref: '#/components/messages/Dropped'
+          - $ref: '#/components/messages/Resize'
+          - $ref: '#/components/messages/Heartbeat'
+          - $ref: '#/components/messages/Closed'
+          - $ref: '#/components/messages/Error'
+components:
+  messages:
+    Hello:
+      name: hello
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, api_version, daemon_version, daemon_commit, session_id, output_encoding]
+        properties:
+          event:
+            type: string
+            enum: [hello]
+          api_version:
+            type: string
+          daemon_version:
+            type: string
+          daemon_commit:
+            type: string
+          session_id:
+            type: string
+          output_encoding:
+            type: string
+            enum: [base64, binary]
+    Ready:
+      name: ready
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, session_id, cols, rows]
+        properties:
+          event:
+            type: string
+            enum: [ready]
+          session_id:
+            type: string
+          cols:
+            type: integer
+          rows:
+            type: integer
+    Init:
+      name: init
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, time, cols, rows, init]
+        properties:
+          event:
+            type: string
+            enum: [init]
+          time:
+            type: number
+          cols:
+            type: integer
+          rows:
+            type: integer
+          init:
+            type: string
+    OutputBase64:
+      name: output_base64
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, time, data_b64]
+        properties:
+          event:
+            type: string
+            enum: [output]
+          time:
+            type: number
+          data_b64:
+            type: string
+            description: Base64-encoded output bytes.
+    OutputBinary:
+      name: output_binary
+      contentType: application/octet-stream
+      payload:
+        type: string
+        format: binary
+      description: |
+        Binary output frame when encoding=binary. First byte is 0x01, remaining bytes are raw output.
+    Dropped:
+      name: dropped
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, time, dropped_bytes]
+        properties:
+          event:
+            type: string
+            enum: [dropped]
+          time:
+            type: number
+          dropped_bytes:
+            type: integer
+    Resize:
+      name: resize
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, time, cols, rows]
+        properties:
+          event:
+            type: string
+            enum: [resize]
+          time:
+            type: number
+          cols:
+            type: integer
+          rows:
+            type: integer
+    Heartbeat:
+      name: heartbeat
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, time]
+        properties:
+          event:
+            type: string
+            enum: [heartbeat]
+          time:
+            type: number
+    Closed:
+      name: closed
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, time]
+        properties:
+          event:
+            type: string
+            enum: [closed]
+          time:
+            type: number
+    Error:
+      name: error
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, message]
+        properties:
+          event:
+            type: string
+            enum: [error]
+          message:
+            type: string

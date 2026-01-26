@@ -8,6 +8,11 @@ Defaults
 - Token: generated on daemon start (unless disabled)
 - State file: ~/.agent-tui/api.json
 
+Specs
+- OpenAPI: docs/api/openapi.yaml
+- AsyncAPI: docs/api/asyncapi.yaml
+- Reference clients: docs/api/clients
+
 Configuration
 - AGENT_TUI_API_LISTEN=127.0.0.1:0
 - AGENT_TUI_API_ALLOW_REMOTE=1
@@ -70,8 +75,9 @@ Response:
   }
 
 WebSocket
-WS /api/v1/stream?session=<id>
+WS /api/v1/stream?session=<id>&encoding=<base64|binary>
 Use session=active to follow the active session.
+Use encoding=binary to receive raw output frames (no base64).
 
 First message (server -> client):
   {
@@ -99,6 +105,11 @@ Stream events (server -> client):
   { "event": "closed", "time": 9.87 }
 - error:
   { "event": "error", "message": "..." }
+
+Binary output frames (encoding=binary):
+- WebSocket binary message:
+  - byte 0: 0x01 (output frame type)
+  - bytes 1..n: raw terminal output bytes
 
 Example (curl)
   curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:PORT/api/v1/version

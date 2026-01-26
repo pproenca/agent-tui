@@ -374,7 +374,7 @@ CONFIGURATION:
     AGENT_TUI_API_ALLOW_REMOTE   Allow non-loopback bind (default: false)
     AGENT_TUI_API_TOKEN          Override token (or 'none' to disable)
     AGENT_TUI_API_STATE          State file path (default: ~/.agent-tui/api.json)
-    AGENT_TUI_UI_URL             Frontend URL to open with --open
+    AGENT_TUI_UI_URL             Frontend URL to open with --open (CLI appends api/ws/token/session)
 
 SECURITY:
     API is token-protected by default. Use --allow-remote only when needed.")]

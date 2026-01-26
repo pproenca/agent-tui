@@ -7,10 +7,14 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use crossterm::cursor;
 use crossterm::event;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
+use crossterm::execute;
+use crossterm::queue;
+use crossterm::style;
 use crossterm::terminal;
 use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
@@ -19,6 +23,7 @@ use serde_json::json;
 use crate::common::Colors;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::DaemonClient;
+use crate::infra::terminal::key_to_escape_sequence;
 
 pub use crate::app::error::AttachError;
 
@@ -30,7 +35,7 @@ impl TerminalGuard {
     fn new() -> Result<Self, AttachError> {
         enable_raw_mode().map_err(AttachError::Terminal)?;
         let mut stdout = io::stdout();
-        let _ = reset_terminal_modes(&mut stdout);
+        let _ = prepare_terminal(&mut stdout);
         Ok(Self)
     }
 }
@@ -211,34 +216,37 @@ fn render_initial_screen<C: DaemonClient>(
         return;
     }
 
-    if stdout.write_all(b"\x1b[2J\x1b[H").is_err() {
-        return;
-    }
-
-    if stdout.write_all(screenshot.as_bytes()).is_err() {
-        return;
-    }
+    let _ = queue!(
+        stdout,
+        terminal::Clear(terminal::ClearType::All),
+        cursor::MoveTo(0, 0),
+        style::SetAttribute(style::Attribute::Reset),
+        style::ResetColor,
+        style::Print(screenshot)
+    );
 
     if let Some(cursor) = snapshot.get("cursor") {
         let row = cursor
             .get("row")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0)
-            .saturating_add(1)
             .min(u16::MAX as u64) as u16;
         let col = cursor
             .get("col")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0)
-            .saturating_add(1)
             .min(u16::MAX as u64) as u16;
         let visible = cursor
             .get("visible")
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(true);
 
-        let _ = stdout.write_all(format!("\x1b[{row};{col}H").as_bytes());
-        let _ = stdout.write_all(if visible { b"\x1b[?25h" } else { b"\x1b[?25l" });
+        let _ = queue!(stdout, cursor::MoveTo(col, row));
+        if visible {
+            let _ = queue!(stdout, cursor::Show);
+        } else {
+            let _ = queue!(stdout, cursor::Hide);
+        }
     }
 
     let _ = stdout.flush();
@@ -251,6 +259,7 @@ fn attach_ipc_loop<C: DaemonClient>(
 ) -> Result<(), AttachError> {
     let mut stdout = io::stdout();
     let mut detach_detector = DetachDetector::new(detach_keys);
+    let mut hint_active = false;
 
     loop {
         if event::poll(Duration::from_millis(10)).unwrap_or(false) {
@@ -258,7 +267,26 @@ fn attach_ipc_loop<C: DaemonClient>(
                 Ok(Event::Key(key_event)) => {
                     if let Some(bytes) = key_event_to_bytes(&key_event) {
                         let (to_send, detach) = detach_detector.consume(&bytes);
+                        if !detach_keys.is_disabled() {
+                            let now_active = detach_detector.is_partial_match();
+                            if now_active != hint_active {
+                                render_detach_hint(
+                                    &mut stdout,
+                                    if now_active {
+                                        Some(
+                                            "Detach: sequence started, press remaining keys to detach",
+                                        )
+                                    } else {
+                                        None
+                                    },
+                                );
+                                hint_active = now_active;
+                            }
+                        }
                         if detach {
+                            if hint_active {
+                                render_detach_hint(&mut stdout, None);
+                            }
                             break;
                         }
 
@@ -271,6 +299,18 @@ fn attach_ipc_loop<C: DaemonClient>(
                             if let Err(e) = client.call("pty_write", Some(params)) {
                                 return Err(AttachError::PtyWrite(format_client_error(&e)));
                             }
+                        }
+                    }
+                }
+                Ok(Event::Paste(data)) => {
+                    if !data.is_empty() {
+                        let data_b64 = STANDARD.encode(data.as_bytes());
+                        let params = json!({
+                            "session": session_id,
+                            "data": data_b64
+                        });
+                        if let Err(e) = client.call("pty_write", Some(params)) {
+                            return Err(AttachError::PtyWrite(format_client_error(&e)));
                         }
                     }
                 }
@@ -389,8 +429,35 @@ fn format_client_error(error: &ClientError) -> String {
     msg
 }
 
+fn prepare_terminal(stdout: &mut impl Write) -> io::Result<()> {
+    execute!(
+        stdout,
+        terminal::EnterAlternateScreen,
+        terminal::Clear(terminal::ClearType::All),
+        cursor::MoveTo(0, 0),
+        style::SetAttribute(style::Attribute::Reset),
+        style::ResetColor,
+        terminal::EnableLineWrap,
+        cursor::Show,
+        event::DisableMouseCapture,
+        event::DisableFocusChange,
+        event::EnableBracketedPaste
+    )?;
+    stdout.flush()
+}
+
 fn reset_terminal_modes(stdout: &mut impl Write) -> io::Result<()> {
-    stdout.write_all(b"\x1b[0m\x1b(B\x1b[?25h\x1b[?7h\x1b[?6l\x1b[r\x1b[?1l\x1b>\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?2004l")?;
+    execute!(
+        stdout,
+        style::SetAttribute(style::Attribute::Reset),
+        style::ResetColor,
+        cursor::Show,
+        terminal::EnableLineWrap,
+        event::DisableMouseCapture,
+        event::DisableFocusChange,
+        event::DisableBracketedPaste,
+        terminal::LeaveAlternateScreen
+    )?;
     stdout.flush()
 }
 
@@ -406,6 +473,10 @@ impl DetachDetector {
             sequence: detach_keys.bytes().to_vec(),
             matched: 0,
         }
+    }
+
+    fn is_partial_match(&self) -> bool {
+        self.matched > 0
     }
 
     fn consume(&mut self, bytes: &[u8]) -> (Vec<u8>, bool) {
@@ -445,6 +516,34 @@ impl DetachDetector {
     }
 }
 
+fn render_detach_hint(stdout: &mut impl Write, message: Option<&str>) {
+    let (cols, rows) = match terminal::size() {
+        Ok(size) => size,
+        Err(_) => return,
+    };
+    let row = rows.saturating_sub(1);
+    let mut line = message.unwrap_or("").to_string();
+    let max_len = cols as usize;
+    if line.len() > max_len {
+        line.truncate(max_len);
+    }
+    if line.len() < max_len {
+        let pad = max_len - line.len();
+        line.reserve(pad);
+        line.extend(std::iter::repeat_n(' ', pad));
+    }
+    let _ = queue!(
+        stdout,
+        cursor::SavePosition,
+        cursor::MoveTo(0, row),
+        style::SetAttribute(style::Attribute::Reset),
+        style::ResetColor,
+        style::Print(line),
+        cursor::RestorePosition
+    );
+    let _ = stdout.flush();
+}
+
 enum StdinMessage {
     Data(Vec<u8>),
     Eof,
@@ -478,76 +577,86 @@ fn spawn_stdin_reader() -> mpsc::Receiver<StdinMessage> {
 }
 
 fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
-    use KeyCode::*;
-
-    let ctrl = key_event.modifiers.contains(KeyModifiers::CONTROL);
-    let alt = key_event.modifiers.contains(KeyModifiers::ALT);
-
     match key_event.code {
-        Char(c) => {
-            if ctrl {
-                if c.is_ascii_lowercase() {
-                    Some(vec![c as u8 - b'a' + 1])
-                } else if c.is_ascii_uppercase() {
-                    Some(vec![c as u8 - b'A' + 1])
-                } else {
-                    match c {
-                        '[' | '3' => Some(vec![0x1b]),
-                        '\\' | '4' => Some(vec![0x1c]),
-                        ']' | '5' => Some(vec![0x1d]),
-                        '^' | '6' => Some(vec![0x1e]),
-                        '_' | '7' => Some(vec![0x1f]),
-                        '?' | '8' => Some(vec![0x7f]),
-                        ' ' | '2' | '@' => Some(vec![0x00]),
-                        _ => None,
-                    }
-                }
-            } else if alt {
-                Some(vec![0x1b, c as u8])
-            } else {
-                let mut buf = [0u8; 4];
-                let s = c.encode_utf8(&mut buf);
-                Some(s.as_bytes().to_vec())
-            }
+        KeyCode::Char(c) => key_char_to_bytes(c, key_event.modifiers),
+        KeyCode::F(n) => {
+            let key = format!("F{n}");
+            key_with_modifiers_to_bytes(&key, key_event.modifiers)
         }
-        Enter => Some(vec![b'\r']),
-        Tab => {
-            if key_event.modifiers.contains(KeyModifiers::SHIFT) {
-                Some(vec![0x1b, b'[', b'Z'])
-            } else {
-                Some(vec![b'\t'])
-            }
+        KeyCode::BackTab => key_to_escape_sequence("Shift+Tab"),
+        _ => {
+            let base = keycode_to_name(&key_event.code)?;
+            key_with_modifiers_to_bytes(base, key_event.modifiers)
         }
-        Backspace => Some(vec![0x7f]),
-        Delete => Some(vec![0x1b, b'[', b'3', b'~']),
-        Esc => Some(vec![0x1b]),
-        Up => Some(vec![0x1b, b'[', b'A']),
-        Down => Some(vec![0x1b, b'[', b'B']),
-        Right => Some(vec![0x1b, b'[', b'C']),
-        Left => Some(vec![0x1b, b'[', b'D']),
-        Home => Some(vec![0x1b, b'[', b'H']),
-        End => Some(vec![0x1b, b'[', b'F']),
-        PageUp => Some(vec![0x1b, b'[', b'5', b'~']),
-        PageDown => Some(vec![0x1b, b'[', b'6', b'~']),
-        Insert => Some(vec![0x1b, b'[', b'2', b'~']),
-        F(n) => {
-            let seq = match n {
-                1 => vec![0x1b, b'O', b'P'],
-                2 => vec![0x1b, b'O', b'Q'],
-                3 => vec![0x1b, b'O', b'R'],
-                4 => vec![0x1b, b'O', b'S'],
-                5 => vec![0x1b, b'[', b'1', b'5', b'~'],
-                6 => vec![0x1b, b'[', b'1', b'7', b'~'],
-                7 => vec![0x1b, b'[', b'1', b'8', b'~'],
-                8 => vec![0x1b, b'[', b'1', b'9', b'~'],
-                9 => vec![0x1b, b'[', b'2', b'0', b'~'],
-                10 => vec![0x1b, b'[', b'2', b'1', b'~'],
-                11 => vec![0x1b, b'[', b'2', b'3', b'~'],
-                12 => vec![0x1b, b'[', b'2', b'4', b'~'],
-                _ => return None,
-            };
-            Some(seq)
-        }
+    }
+}
+
+fn key_char_to_bytes(c: char, modifiers: KeyModifiers) -> Option<Vec<u8>> {
+    if modifiers.contains(KeyModifiers::CONTROL) {
+        let key = format_modified_char("Ctrl", c);
+        return key_to_escape_sequence(&key);
+    }
+
+    if modifiers.contains(KeyModifiers::ALT) {
+        let key = format_modified_char("Alt", c);
+        return key_to_escape_sequence(&key);
+    }
+
+    let mut buf = [0u8; 4];
+    let s = c.encode_utf8(&mut buf);
+    Some(s.as_bytes().to_vec())
+}
+
+fn key_with_modifiers_to_bytes(base: &str, modifiers: KeyModifiers) -> Option<Vec<u8>> {
+    if modifiers.contains(KeyModifiers::SHIFT) && base == "Tab" {
+        return key_to_escape_sequence("Shift+Tab");
+    }
+
+    if modifiers.contains(KeyModifiers::CONTROL) {
+        let key = format_modified_key("Ctrl", base);
+        return key_to_escape_sequence(&key);
+    }
+
+    if modifiers.contains(KeyModifiers::ALT) {
+        let key = format_modified_key("Alt", base);
+        return key_to_escape_sequence(&key);
+    }
+
+    key_to_escape_sequence(base)
+}
+
+fn format_modified_key(prefix: &str, base: &str) -> String {
+    let mut key = String::with_capacity(prefix.len() + 1 + base.len());
+    key.push_str(prefix);
+    key.push('+');
+    key.push_str(base);
+    key
+}
+
+fn format_modified_char(prefix: &str, c: char) -> String {
+    let mut key = String::with_capacity(prefix.len() + 2);
+    key.push_str(prefix);
+    key.push('+');
+    key.push(c);
+    key
+}
+
+fn keycode_to_name(code: &KeyCode) -> Option<&'static str> {
+    match code {
+        KeyCode::Enter => Some("Enter"),
+        KeyCode::Tab => Some("Tab"),
+        KeyCode::Backspace => Some("Backspace"),
+        KeyCode::Delete => Some("Delete"),
+        KeyCode::Esc => Some("Escape"),
+        KeyCode::Up => Some("ArrowUp"),
+        KeyCode::Down => Some("ArrowDown"),
+        KeyCode::Right => Some("ArrowRight"),
+        KeyCode::Left => Some("ArrowLeft"),
+        KeyCode::Home => Some("Home"),
+        KeyCode::End => Some("End"),
+        KeyCode::PageUp => Some("PageUp"),
+        KeyCode::PageDown => Some("PageDown"),
+        KeyCode::Insert => Some("Insert"),
         _ => None,
     }
 }
@@ -635,31 +744,34 @@ mod tests {
     #[test]
     fn test_key_event_to_bytes_char() {
         let event = event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
-        assert_eq!(key_event_to_bytes(&event), Some(vec![b'a']));
+        assert_eq!(key_event_to_bytes(&event), key_to_escape_sequence("a"));
     }
 
     #[test]
     fn test_key_event_to_bytes_ctrl() {
         let event = event::KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        assert_eq!(key_event_to_bytes(&event), Some(vec![0x03]));
+        assert_eq!(key_event_to_bytes(&event), key_to_escape_sequence("Ctrl+C"));
     }
 
     #[test]
     fn test_key_event_to_bytes_enter() {
         let event = event::KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
-        assert_eq!(key_event_to_bytes(&event), Some(vec![b'\r']));
+        assert_eq!(key_event_to_bytes(&event), key_to_escape_sequence("Enter"));
     }
 
     #[test]
     fn test_key_event_to_bytes_arrow() {
         let event = event::KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
-        assert_eq!(key_event_to_bytes(&event), Some(vec![0x1b, b'[', b'A']));
+        assert_eq!(
+            key_event_to_bytes(&event),
+            key_to_escape_sequence("ArrowUp")
+        );
     }
 
     #[test]
     fn test_key_event_to_bytes_f1() {
         let event = event::KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
-        assert_eq!(key_event_to_bytes(&event), Some(vec![0x1b, b'O', b'P']));
+        assert_eq!(key_event_to_bytes(&event), key_to_escape_sequence("F1"));
     }
 
     #[test]
@@ -677,10 +789,22 @@ mod tests {
         render_initial_screen(&mut client, "sess1", &mut buffer);
 
         let output = String::from_utf8_lossy(&buffer);
-        assert!(output.contains("\x1b[2J\x1b[H"));
+        let mut expected_prefix = Vec::new();
+        queue!(
+            expected_prefix,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(0, 0),
+            style::SetAttribute(style::Attribute::Reset),
+            style::ResetColor
+        )
+        .unwrap();
+        let expected_prefix = String::from_utf8_lossy(&expected_prefix);
+        assert!(output.contains(expected_prefix.as_ref()));
         assert!(output.contains("hello\nworld"));
-        assert!(output.contains("\x1b[2;3H"));
-        assert!(output.contains("\x1b[?25h"));
+        let mut expected_cursor = Vec::new();
+        queue!(expected_cursor, cursor::MoveTo(2, 1), cursor::Show).unwrap();
+        let expected_cursor = String::from_utf8_lossy(&expected_cursor);
+        assert!(output.contains(expected_cursor.as_ref()));
 
         assert_eq!(client.call_count("snapshot"), 1);
         let mut params = client.params_for("snapshot");

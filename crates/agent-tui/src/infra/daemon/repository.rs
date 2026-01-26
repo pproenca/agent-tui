@@ -50,7 +50,7 @@ impl SessionOps for SessionHandleImpl {
     }
 
     fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
-        let session_guard = mutex_lock_or_recover(&self.inner);
+        let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.pty_try_read(buf, timeout_ms)
     }
 

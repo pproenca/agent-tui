@@ -136,7 +136,7 @@ impl Application {
         }
 
         let mut client: UnixSocketClient = match &cli.command {
-            Commands::Run { .. } => self
+            Commands::Run { .. } | Commands::Live { .. } => self
                 .connect_to_daemon_autostart()
                 .map_err(|e| self.wrap_error(e, format))?,
             _ => self

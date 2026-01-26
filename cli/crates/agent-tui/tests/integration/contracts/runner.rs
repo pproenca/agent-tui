@@ -16,6 +16,7 @@ struct Fixture {
 pub fn run_fixture(file: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
+        .join("integration")
         .join("contracts")
         .join("fixtures")
         .join(file);

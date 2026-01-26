@@ -1,7 +1,4 @@
-#[path = "common/mod.rs"]
-mod common;
-
-use common::{MockResponse, TEST_COLS, TEST_ROWS, TEST_SESSION_ID, TestHarness};
+use crate::common::{MockResponse, TEST_COLS, TEST_ROWS, TEST_SESSION_ID, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
 

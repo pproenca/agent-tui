@@ -6,4 +6,4 @@ mod runner;
 fn contracts_health_fixture() {
     runner::run_fixture("health.json");
 }
-// Declared as a unit test module within the main crate; no separate test target needed.
+// Declared as an integration test module; loaded by tests/integration.rs.

@@ -9,10 +9,14 @@ use tokio::runtime::Runtime;
 
 // Shared runtime keeps the mock daemon server running while CLI processes execute.
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+    let worker_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(2)
+        .min(4);
     tokio::runtime::Builder::new_multi_thread()
         .enable_time()
         .enable_io()
-        .worker_threads(1)
+        .worker_threads(worker_threads)
         .build()
         .expect("Failed to create tokio runtime")
 });

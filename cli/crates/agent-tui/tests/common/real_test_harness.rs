@@ -30,7 +30,9 @@ impl RealTestHarness {
             .stderr(Stdio::null());
 
         let mut daemon = daemon_cmd.spawn().expect("Failed to start daemon");
-        wait_for_socket(&socket_path, &mut daemon, Duration::from_secs(5));
+        let start_timeout =
+            timeout_from_env("AGENT_TUI_E2E_START_TIMEOUT_MS", Duration::from_secs(5));
+        wait_for_socket(&socket_path, &mut daemon, start_timeout);
 
         Self {
             _temp_dir: temp_dir,
@@ -65,7 +67,9 @@ impl RealTestHarness {
             .stderr(Stdio::null())
             .status();
 
-        self.wait_for_exit_inner(Duration::from_secs(3));
+        let stop_timeout =
+            timeout_from_env("AGENT_TUI_E2E_STOP_TIMEOUT_MS", Duration::from_secs(3));
+        self.wait_for_exit_inner(stop_timeout);
     }
 
     fn is_daemon_exited(&mut self) -> bool {
@@ -118,4 +122,12 @@ fn wait_for_socket(socket_path: &Path, daemon: &mut Child, timeout: Duration) {
         "Timed out waiting for daemon socket to appear at {}",
         socket_path.display()
     );
+}
+
+fn timeout_from_env(var: &str, default: Duration) -> Duration {
+    std::env::var(var)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(default)
 }

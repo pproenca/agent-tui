@@ -1,10 +1,11 @@
 use crate::common::RealTestHarness;
+use crate::e2e::support::shared_harness;
 use predicates::prelude::*;
 use std::time::Duration;
 
 #[test]
 fn e2e_daemon_status_reports_running() {
-    let harness = RealTestHarness::new();
+    let harness = shared_harness();
 
     harness
         .run(&["--no-color", "daemon", "status"])
@@ -17,7 +18,7 @@ fn e2e_daemon_status_reports_running() {
 
 #[test]
 fn e2e_sessions_empty_on_fresh_daemon() {
-    let harness = RealTestHarness::new();
+    let harness = shared_harness();
 
     harness
         .run(&["--no-color", "sessions"])
@@ -27,7 +28,7 @@ fn e2e_sessions_empty_on_fresh_daemon() {
 
 #[test]
 fn e2e_daemon_stop_shuts_down() {
-    let mut harness = RealTestHarness::new();
+    let mut harness = shared_harness();
 
     harness
         .run(&["--no-color", "daemon", "stop"])
@@ -43,4 +44,6 @@ fn e2e_daemon_stop_shuts_down() {
         .run(&["--no-color", "daemon", "status"])
         .code(3)
         .stdout(predicate::str::contains("Daemon is not running"));
+
+    *harness = RealTestHarness::new();
 }

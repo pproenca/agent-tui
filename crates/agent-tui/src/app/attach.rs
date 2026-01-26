@@ -1,6 +1,7 @@
 use std::io;
 use std::io::Read;
 use std::io::Write;
+use std::str::FromStr;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -48,10 +49,85 @@ pub enum AttachMode {
     Stream,
 }
 
+#[derive(Debug, Clone)]
+pub struct DetachKeys {
+    sequence: Vec<u8>,
+    display: String,
+}
+
+impl DetachKeys {
+    pub fn is_disabled(&self) -> bool {
+        self.sequence.is_empty()
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.sequence
+    }
+
+    pub fn display(&self) -> &str {
+        &self.display
+    }
+
+    fn disabled() -> Self {
+        Self {
+            sequence: Vec::new(),
+            display: "disabled".to_string(),
+        }
+    }
+}
+
+impl Default for DetachKeys {
+    fn default() -> Self {
+        Self {
+            sequence: vec![0x10, 0x11],
+            display: "Ctrl-P Ctrl-Q".to_string(),
+        }
+    }
+}
+
+impl FromStr for DetachKeys {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err("detach keys cannot be empty".to_string());
+        }
+
+        if trimmed.eq_ignore_ascii_case("none") {
+            return Ok(Self::disabled());
+        }
+
+        let tokens: Vec<&str> = trimmed
+            .split(',')
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+            .collect();
+
+        if tokens.is_empty() {
+            return Err("detach keys cannot be empty".to_string());
+        }
+
+        let mut sequence = Vec::with_capacity(tokens.len());
+        let mut display_tokens = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            let (byte, display) = parse_detach_key_token(token)?;
+            sequence.push(byte);
+            display_tokens.push(display);
+        }
+
+        Ok(Self {
+            sequence,
+            display: display_tokens.join(" "),
+        })
+    }
+}
+
 pub fn attach_ipc<C: DaemonClient>(
     client: &mut C,
     session_id: &str,
     mode: AttachMode,
+    detach_keys: DetachKeys,
 ) -> Result<(), AttachError> {
     eprintln!(
         "{} Attaching to session {}...",
@@ -61,11 +137,18 @@ pub fn attach_ipc<C: DaemonClient>(
 
     match mode {
         AttachMode::Tty => {
-            eprintln!(
-                "{} Press {} to detach.",
-                Colors::success("Connected!"),
-                Colors::bold("Ctrl-P Ctrl-Q")
-            );
+            if detach_keys.is_disabled() {
+                eprintln!(
+                    "{} Detach keys disabled (use --detach-keys to enable).",
+                    Colors::success("Connected!")
+                );
+            } else {
+                eprintln!(
+                    "{} Press {} to detach.",
+                    Colors::success("Connected!"),
+                    Colors::bold(detach_keys.display())
+                );
+            }
             eprintln!();
 
             let term_guard = TerminalGuard::new()?;
@@ -81,7 +164,7 @@ pub fn attach_ipc<C: DaemonClient>(
             let mut stdout = io::stdout();
             render_initial_screen(client, session_id, &mut stdout);
 
-            let result = attach_ipc_loop(client, session_id);
+            let result = attach_ipc_loop(client, session_id, &detach_keys);
 
             drop(term_guard);
 
@@ -161,9 +244,13 @@ fn render_initial_screen<C: DaemonClient>(
     let _ = stdout.flush();
 }
 
-fn attach_ipc_loop<C: DaemonClient>(client: &mut C, session_id: &str) -> Result<(), AttachError> {
+fn attach_ipc_loop<C: DaemonClient>(
+    client: &mut C,
+    session_id: &str,
+    detach_keys: &DetachKeys,
+) -> Result<(), AttachError> {
     let mut stdout = io::stdout();
-    let mut detach_detector = DetachDetector::default();
+    let mut detach_detector = DetachDetector::new(detach_keys);
 
     loop {
         if event::poll(Duration::from_millis(10)).unwrap_or(false) {
@@ -307,34 +394,54 @@ fn reset_terminal_modes(stdout: &mut impl Write) -> io::Result<()> {
     stdout.flush()
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct DetachDetector {
-    pending_ctrl_p: bool,
+    sequence: Vec<u8>,
+    matched: usize,
 }
 
 impl DetachDetector {
+    fn new(detach_keys: &DetachKeys) -> Self {
+        Self {
+            sequence: detach_keys.bytes().to_vec(),
+            matched: 0,
+        }
+    }
+
     fn consume(&mut self, bytes: &[u8]) -> (Vec<u8>, bool) {
         let mut output = Vec::new();
         for &byte in bytes {
-            if self.pending_ctrl_p {
-                if byte == 0x11 {
-                    self.pending_ctrl_p = false;
-                    return (output, true);
-                }
-                output.push(0x10);
-                output.push(byte);
-                self.pending_ctrl_p = false;
-                continue;
+            if self.consume_byte(byte, &mut output) {
+                return (output, true);
             }
-
-            if byte == 0x10 {
-                self.pending_ctrl_p = true;
-                continue;
-            }
-
-            output.push(byte);
         }
         (output, false)
+    }
+
+    fn consume_byte(&mut self, byte: u8, output: &mut Vec<u8>) -> bool {
+        if self.sequence.is_empty() {
+            output.push(byte);
+            return false;
+        }
+
+        if byte == self.sequence[self.matched] {
+            self.matched += 1;
+            if self.matched == self.sequence.len() {
+                self.matched = 0;
+                return true;
+            }
+            return false;
+        }
+
+        if self.matched > 0 {
+            output.extend_from_slice(&self.sequence[..self.matched]);
+            self.matched = 0;
+            output.push(byte);
+            return false;
+        }
+
+        output.push(byte);
+        false
     }
 }
 
@@ -445,6 +552,80 @@ fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
     }
 }
 
+fn parse_detach_key_token(token: &str) -> Result<(u8, String), String> {
+    let trimmed = token.trim();
+    if trimmed.is_empty() {
+        return Err("detach keys cannot be empty".to_string());
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("ctrl-") || lower.starts_with("control-") {
+        let split_pos = trimmed.find('-').unwrap_or(0);
+        let rest = trimmed[split_pos + 1..].trim();
+        if rest.is_empty() {
+            return Err("detach keys: ctrl- requires a key (e.g. ctrl-p)".to_string());
+        }
+
+        let ch = if rest.eq_ignore_ascii_case("space") {
+            ' '
+        } else if rest.chars().count() == 1 {
+            rest.chars().next().unwrap()
+        } else {
+            return Err(format!("detach keys: unsupported ctrl key '{}'", rest));
+        };
+
+        let byte = ctrl_char_to_byte(ch)
+            .ok_or_else(|| format!("detach keys: unsupported ctrl key '{}'", rest))?;
+        let display = format!("Ctrl-{}", display_char(ch));
+        return Ok((byte, display));
+    }
+
+    if lower == "space" {
+        return Ok((b' ', "Space".to_string()));
+    }
+
+    if trimmed.chars().count() == 1 {
+        let ch = trimmed.chars().next().unwrap();
+        if !ch.is_ascii() {
+            return Err("detach keys must be ASCII".to_string());
+        }
+        let display = display_char(ch);
+        return Ok((ch as u8, display));
+    }
+
+    Err(format!("detach keys: unsupported token '{}'", trimmed))
+}
+
+fn ctrl_char_to_byte(ch: char) -> Option<u8> {
+    if ch.is_ascii_lowercase() {
+        return Some(ch as u8 - b'a' + 1);
+    }
+    if ch.is_ascii_uppercase() {
+        return Some(ch as u8 - b'A' + 1);
+    }
+
+    match ch {
+        '[' => Some(0x1b),
+        '\\' => Some(0x1c),
+        ']' => Some(0x1d),
+        '^' => Some(0x1e),
+        '_' => Some(0x1f),
+        '?' => Some(0x7f),
+        ' ' | '@' => Some(0x00),
+        _ => None,
+    }
+}
+
+fn display_char(ch: char) -> String {
+    if ch == ' ' {
+        return "Space".to_string();
+    }
+    if ch.is_ascii_alphabetic() {
+        return ch.to_ascii_uppercase().to_string();
+    }
+    ch.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,7 +693,8 @@ mod tests {
 
     #[test]
     fn test_detach_detector_ctrl_p_ctrl_q_detaches() {
-        let mut detector = DetachDetector::default();
+        let detach_keys = DetachKeys::default();
+        let mut detector = DetachDetector::new(&detach_keys);
         let (out, detach) = detector.consume(&[0x10]);
         assert!(out.is_empty());
         assert!(!detach);
@@ -524,7 +706,8 @@ mod tests {
 
     #[test]
     fn test_detach_detector_passes_through_non_sequence() {
-        let mut detector = DetachDetector::default();
+        let detach_keys = DetachKeys::default();
+        let mut detector = DetachDetector::new(&detach_keys);
         let (out, detach) = detector.consume(b"ab");
         assert_eq!(out, b"ab");
         assert!(!detach);
@@ -532,7 +715,8 @@ mod tests {
 
     #[test]
     fn test_detach_detector_ctrl_p_followed_by_key_sends_both() {
-        let mut detector = DetachDetector::default();
+        let detach_keys = DetachKeys::default();
+        let mut detector = DetachDetector::new(&detach_keys);
         let (out, detach) = detector.consume(&[0x10, b'a']);
         assert_eq!(out, vec![0x10, b'a']);
         assert!(!detach);
@@ -540,9 +724,29 @@ mod tests {
 
     #[test]
     fn test_detach_detector_ctrl_p_ctrl_p_sends_two() {
-        let mut detector = DetachDetector::default();
+        let detach_keys = DetachKeys::default();
+        let mut detector = DetachDetector::new(&detach_keys);
         let (out, detach) = detector.consume(&[0x10, 0x10]);
         assert_eq!(out, vec![0x10, 0x10]);
         assert!(!detach);
+    }
+
+    #[test]
+    fn test_detach_keys_from_str_default() {
+        let keys = "ctrl-p,ctrl-q".parse::<DetachKeys>().unwrap();
+        assert_eq!(keys.bytes(), &[0x10, 0x11]);
+        assert_eq!(keys.display(), "Ctrl-P Ctrl-Q");
+    }
+
+    #[test]
+    fn test_detach_keys_from_str_none() {
+        let keys = "none".parse::<DetachKeys>().unwrap();
+        assert!(keys.is_disabled());
+    }
+
+    #[test]
+    fn test_detach_keys_invalid_token() {
+        let err = "ctrl-".parse::<DetachKeys>().unwrap_err();
+        assert!(err.contains("ctrl-"));
     }
 }

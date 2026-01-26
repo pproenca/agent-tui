@@ -387,10 +387,14 @@ impl Application {
                     Some(SessionsCommand::Show { session_id }) => {
                         handlers::handle_session_show(ctx, session_id.clone())?
                     }
-                    Some(SessionsCommand::Attach { session_id, no_tty }) => {
+                    Some(SessionsCommand::Attach {
+                        session_id,
+                        no_tty,
+                        detach_keys,
+                    }) => {
                         let attach_id =
                             handlers::resolve_attach_session_id(ctx, session_id.clone())?;
-                        handlers::handle_attach(ctx, attach_id, !*no_tty)?
+                        handlers::handle_attach(ctx, attach_id, !*no_tty, detach_keys.clone())?
                     }
                     Some(SessionsCommand::Cleanup { all }) => handlers::handle_cleanup(ctx, *all)?,
                     Some(SessionsCommand::Status) => handlers::handle_health(ctx, verbose)?,

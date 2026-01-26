@@ -1,145 +1,56 @@
 #!/usr/bin/env node
 
 /**
- * postinstall.js - Downloads the correct agent-tui binary for the current platform
+ * postinstall.js - Verifies the platform-specific binary is installed via npm.
  *
- * This script runs after npm install and ensures the native binary is available.
- * It will:
- * 1. Check if the binary already exists (bundled in npm package)
- * 2. If not, download from GitHub releases
+ * This script runs after npm install and ensures the native binary is available
+ * in the matching optional dependency package.
  */
 
 const fs = require('fs');
-const https = require('https');
 const path = require('path');
-const { createWriteStream } = require('fs');
-
-const REPO = 'pproenca/agent-tui';
-const BIN_DIR = path.join(__dirname, '..', 'bin');
-
-function getPlatformArch() {
-  const platform = process.platform;
-  const arch = process.arch;
-
-  const platformMap = {
-    'darwin': 'darwin',
-    'linux': 'linux'
-  };
-
-  const archMap = {
-    'x64': 'x64',
-    'arm64': 'arm64'
-  };
-
-  const mappedPlatform = platformMap[platform];
-  const mappedArch = archMap[arch];
-
-  if (!mappedPlatform || !mappedArch) {
-    return null;
-  }
-
-  return `${mappedPlatform}-${mappedArch}`;
-}
-
-function getBinaryName(platformArch) {
-  const name = `agent-tui-${platformArch}`;
-  return process.platform === 'win32' ? `${name}.exe` : name;
-}
-
-function getPackageVersion() {
-  const packageJson = require('../package.json');
-  return packageJson.version;
-}
-
-async function downloadFile(url, dest) {
-  return new Promise((resolve, reject) => {
-    const follow = (url, redirectCount = 0) => {
-      if (redirectCount > 5) {
-        reject(new Error('Too many redirects'));
-        return;
-      }
-
-      const protocol = url.startsWith('https') ? https : require('http');
-      protocol.get(url, (response) => {
-        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          follow(response.headers.location, redirectCount + 1);
-          return;
-        }
-
-        if (response.statusCode !== 200) {
-          reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
-          return;
-        }
-
-        const file = createWriteStream(dest);
-        response.pipe(file);
-        file.on('finish', () => {
-          file.close();
-          resolve();
-        });
-        file.on('error', (err) => {
-          fs.unlink(dest, () => { });
-          reject(err);
-        });
-      }).on('error', reject);
-    };
-
-    follow(url);
-  });
-}
+const { resolveBinaryPath } = require('./platform');
 
 async function main() {
-  const platformArch = getPlatformArch();
+  const resolved = resolveBinaryPath();
 
-  if (!platformArch) {
-    console.log(`Unsupported platform: ${process.platform}-${process.arch}`);
-    console.log('You can build from source: cargo install agent-tui');
-    process.exit(0);
+  if (!resolved.platformArch) {
+    const message = [
+      `Unsupported platform: ${process.platform}-${process.arch}`,
+      'You can build from source: cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui',
+    ];
+    message.forEach((line) => console.error(line));
+    process.exit(1);
   }
 
-  const binaryName = getBinaryName(platformArch);
-  const binaryPath = path.join(BIN_DIR, binaryName);
-
-  if (fs.existsSync(binaryPath)) {
-    console.log(`Binary already exists: ${binaryName}`);
-    if (process.platform !== 'win32') {
-      fs.chmodSync(binaryPath, 0o755);
-    }
-    return;
+  if (!resolved.binPath) {
+    const message = [
+      `Missing platform package: ${resolved.pkgName}`,
+      'Ensure the matching optional dependency is installed.',
+      'You can build from source: cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui',
+    ];
+    message.forEach((line) => console.error(line));
+    process.exit(1);
   }
 
-  const version = getPackageVersion();
-  const tag = `v${version}`;
-  const downloadUrl = `https://github.com/${REPO}/releases/download/${tag}/${binaryName}`;
-
-  console.log(`Downloading agent-tui ${version} for ${platformArch}...`);
-  console.log(`URL: ${downloadUrl}`);
-
-  try {
-    if (!fs.existsSync(BIN_DIR)) {
-      fs.mkdirSync(BIN_DIR, { recursive: true });
-    }
-
-    await downloadFile(downloadUrl, binaryPath);
-
-    if (process.platform !== 'win32') {
-      fs.chmodSync(binaryPath, 0o755);
-    }
-
-    console.log(`Successfully installed agent-tui ${version}`);
-  } catch (error) {
-    console.error(`Failed to download binary: ${error.message}`);
-    console.log('');
-    console.log('Alternative installation methods:');
-    console.log('  1. Install via cargo: cargo install agent-tui');
-    console.log('  2. Download manually from: https://github.com/' + REPO + '/releases');
-    console.log('');
-
-    process.exit(0);
+  if (!fs.existsSync(resolved.binPath)) {
+    const message = [
+      `Binary not found: ${resolved.binPath}`,
+      'Ensure the matching optional dependency ships the binary.',
+    ];
+    message.forEach((line) => console.error(line));
+    process.exit(1);
   }
+
+  if (process.platform !== 'win32') {
+    fs.chmodSync(resolved.binPath, 0o755);
+  }
+
+  const relPath = path.relative(process.cwd(), resolved.binPath);
+  console.log(`Installed agent-tui binary: ${relPath}`);
 }
 
 main().catch((error) => {
   console.error('Postinstall error:', error.message);
-  process.exit(0);
+  process.exit(1);
 });

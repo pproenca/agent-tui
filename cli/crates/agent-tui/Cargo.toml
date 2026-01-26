@@ -7,6 +7,7 @@ repository.workspace = true
 description = "CLI tool for AI agents to interact with TUI applications"
 keywords = ["tui", "terminal", "ai", "agent", "automation"]
 categories = ["command-line-utilities", "development-tools"]
+publish = false
 
 [[bin]]
 name = "agent-tui"

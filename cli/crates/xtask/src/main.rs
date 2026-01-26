@@ -132,7 +132,7 @@ enum DistCommand {
         #[arg(long, default_value = "artifacts")]
         input: PathBuf,
         /// Output directory for npm binaries.
-        #[arg(long, default_value = "bin")]
+        #[arg(long, default_value = "npm")]
         output: PathBuf,
     },
 }
@@ -196,6 +196,29 @@ fn cargo_toml_path(root: &Path) -> PathBuf {
 
 fn package_json_path(root: &Path) -> PathBuf {
     root.join("package.json")
+}
+
+fn npm_platform_package_paths(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let npm_root = root.join("npm");
+    if !npm_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(npm_root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let package_json = path.join("package.json");
+        if package_json.exists() {
+            paths.push(package_json);
+        }
+    }
+
+    paths.sort();
+    Ok(paths)
 }
 
 fn read_versions(root: &Path) -> Result<(String, String), Box<dyn Error>> {
@@ -266,8 +289,19 @@ fn write_package_version(path: &Path, version: &str) -> Result<(), Box<dyn Error
 fn version_check(quiet: bool) -> Result<(), Box<dyn Error>> {
     let root = repo_root();
     let (cargo_version, package_version) = read_versions(&root)?;
+    let npm_paths = npm_platform_package_paths(&root)?;
 
     if cargo_version == package_version {
+        for path in npm_paths {
+            let npm_version = read_package_version(&path)?;
+            if npm_version != package_version {
+                return Err(format!(
+                    "Version mismatch detected!\n  package.json: {package_version}\n  {}: {npm_version}",
+                    path.display()
+                )
+                .into());
+            }
+        }
         if !quiet {
             println!("Version check passed: {cargo_version}");
         }
@@ -332,6 +366,7 @@ fn release(version_or_bump: &str) -> Result<(), Box<dyn Error>> {
     let root = repo_root();
     let cargo_path = cargo_toml_path(&root);
     let package_path = package_json_path(&root);
+    let npm_paths = npm_platform_package_paths(&root)?;
 
     let current_version = read_cargo_version(&cargo_path)?;
     let target_version = if matches!(version_or_bump, "major" | "minor" | "patch") {
@@ -351,6 +386,9 @@ fn release(version_or_bump: &str) -> Result<(), Box<dyn Error>> {
 
     println!("Updating package.json...");
     write_package_version(&package_path, &target_version)?;
+    for path in &npm_paths {
+        write_package_version(path, &target_version)?;
+    }
 
     println!("Updating Cargo.toml...");
     write_cargo_version(&cargo_path, &target_version)?;
@@ -358,6 +396,9 @@ fn release(version_or_bump: &str) -> Result<(), Box<dyn Error>> {
     println!("Staging changes...");
     let mut git_add = command_in_root(&root, "git");
     git_add.arg("add").arg(&package_path).arg(&cargo_path);
+    for path in npm_paths {
+        git_add.arg(path);
+    }
     run_command(git_add)?;
 
     println!("Committing...");
@@ -702,19 +743,25 @@ fn dist_npm(input: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
         return Err(format!("Artifacts directory not found: {}", input.display()).into());
     }
 
-    fs::create_dir_all(output)?;
-
     for name in required_artifacts(DistKind::Npm) {
         let path = artifact_path(input, name);
         if !path.exists() {
             return Err(format!("Missing artifact: {}", path.display()).into());
         }
-        let dest = output.join(name);
+        let package_dir = output.join(name);
+        let package_json = package_dir.join("package.json");
+        if !package_json.exists() {
+            return Err(format!("Missing npm package: {}", package_json.display()).into());
+        }
+
+        let bin_dir = package_dir.join("bin");
+        fs::create_dir_all(&bin_dir)?;
+        let dest = bin_dir.join("agent-tui");
         fs::copy(&path, &dest)?;
         make_executable(&dest)?;
     }
 
-    println!("Prepared npm binaries in {}", output.display());
+    println!("Prepared npm platform packages in {}", output.display());
     Ok(())
 }
 

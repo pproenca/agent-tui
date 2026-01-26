@@ -1,72 +1,34 @@
-#!/bin/sh
-# agent-tui entry point
-# Finds and executes the correct platform binary
+#!/usr/bin/env node
 
-set -e
+const { spawnSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { resolveBinaryPath } = require('../scripts/platform');
 
-# Get the directory where this script is located
-# Resolve symlinks to get the real script location (needed for npm global installs)
-SCRIPT="$0"
-while [ -L "$SCRIPT" ]; do
-    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
-    SCRIPT="$(readlink "$SCRIPT")"
-    # Handle relative symlinks
-    case "$SCRIPT" in
-        /*) ;;
-        *) SCRIPT="$SCRIPT_DIR/$SCRIPT" ;;
-    esac
-done
-SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
+function main() {
+  const resolved = resolveBinaryPath();
 
-# Detect platform and architecture
-detect_platform() {
-    OS="$(uname -s)"
-    ARCH="$(uname -m)"
+  if (!resolved.platformArch) {
+    console.error(`Unsupported platform: ${process.platform}-${process.arch}`);
+    console.error('You can build from source: cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui');
+    process.exit(1);
+  }
 
-    case "$OS" in
-        Linux)
-            PLATFORM="linux"
-            ;;
-        Darwin)
-            PLATFORM="darwin"
-            ;;
-        *)
-            echo "Unsupported platform: $OS" >&2
-            exit 1
-            ;;
-    esac
+  if (!resolved.binPath || !fs.existsSync(resolved.binPath)) {
+    const target = resolved.binPath ? path.relative(process.cwd(), resolved.binPath) : resolved.pkgName;
+    console.error(`Binary not found for ${resolved.platformArch}: ${target}`);
+    console.error('Reinstall the package to ensure the platform binary is present.');
+    process.exit(1);
+  }
 
-    case "$ARCH" in
-        x86_64|amd64)
-            ARCH="x64"
-            ;;
-        arm64|aarch64)
-            ARCH="arm64"
-            ;;
-        *)
-            echo "Unsupported architecture: $ARCH" >&2
-            exit 1
-            ;;
-    esac
+  const result = spawnSync(resolved.binPath, process.argv.slice(2), { stdio: 'inherit' });
 
-    echo "${PLATFORM}-${ARCH}"
+  if (result.error) {
+    console.error(`Failed to launch agent-tui: ${result.error.message}`);
+    process.exit(1);
+  }
+
+  process.exit(result.status ?? 0);
 }
 
-PLATFORM_ARCH="$(detect_platform)"
-BINARY_NAME="agent-tui-${PLATFORM_ARCH}"
-
-BINARY_PATH="${SCRIPT_DIR}/${BINARY_NAME}"
-
-# Check if the binary exists
-if [ ! -f "$BINARY_PATH" ]; then
-    echo "Binary not found: $BINARY_PATH" >&2
-    echo "Please run 'npm install' to download the binary for your platform." >&2
-    echo "Or install via: cargo install agent-tui" >&2
-    exit 1
-fi
-
-# Make sure it's executable
-chmod +x "$BINARY_PATH" 2>/dev/null || true
-
-# Execute the binary with all arguments
-exec "$BINARY_PATH" "$@"
+main();

@@ -141,6 +141,8 @@ temp/
 node_modules/
 # Downloaded platform binaries (postinstall creates these)
 bin/agent-tui-*
+# Packed web assets (generated during npm prepack)
+cli/web/
 
 # ============================================
 # Python

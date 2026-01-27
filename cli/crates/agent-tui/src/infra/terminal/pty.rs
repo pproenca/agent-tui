@@ -303,8 +303,10 @@ pub(crate) enum ReadEvent {
     Error(String),
 }
 
+const PTY_READ_CHANNEL_CAPACITY: usize = 256;
+
 fn spawn_reader(mut reader: Box<dyn Read + Send>) -> channel::Receiver<ReadEvent> {
-    let (tx, rx) = channel::unbounded();
+    let (tx, rx) = channel::bounded(PTY_READ_CHANNEL_CAPACITY);
     let span = tracing::debug_span!("pty_reader");
     let builder = std::thread::Builder::new().name("pty-reader".to_string());
     let tx_thread = tx.clone();

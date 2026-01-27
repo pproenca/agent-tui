@@ -221,7 +221,7 @@ mod tests {
         }
 
         fn stream_subscribe(&self) -> StreamSubscription {
-            let (_sender, receiver) = channel::unbounded();
+            let (_sender, receiver) = channel::bounded(1);
             StreamSubscription::new(receiver)
         }
 

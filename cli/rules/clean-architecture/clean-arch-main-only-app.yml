@@ -1,0 +1,21 @@
+id: clean-arch-main-only-app
+language: rust
+severity: warning
+message: "main.rs should only depend on app; compose via Application."
+note: |
+  main.rs is the composition root and should avoid wiring outer layers directly.
+  Import the app entrypoint only.
+
+  Guidance:
+  - If you need a new dependency in main, thread it through app::Application instead.
+  - If it is temporary debugging code, keep it short-lived and remove before release.
+files:
+  - "crates/agent-tui/src/main.rs"
+rule:
+  kind: use_declaration
+  any:
+    - regex: "^use (crate|agent_tui)::domain::"
+    - regex: "^use (crate|agent_tui)::usecases::"
+    - regex: "^use (crate|agent_tui)::adapters::"
+    - regex: "^use (crate|agent_tui)::infra::"
+    - regex: "^use (crate|agent_tui)::common::"

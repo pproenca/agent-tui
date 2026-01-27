@@ -67,6 +67,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v1
+
       - name: Resolve head SHA
         id: sha
         run: |
@@ -125,8 +128,8 @@ jobs:
         working-directory: cli
         run: |
           set -euo pipefail
-          cargo xtask version check --quiet
-          VERSION=$(cargo xtask version current)
+          bun scripts/xtask.ts version check --quiet
+          VERSION=$(bun scripts/xtask.ts version current)
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             INPUT_VERSION="${{ inputs.version }}"
@@ -138,13 +141,13 @@ jobs:
               exit 1
             fi
 
-            cargo xtask version assert-tag "$TAG_NAME"
+            bun scripts/xtask.ts version assert-tag "$TAG_NAME"
             DRY_RUN="${{ steps.resolve.outputs.dry_run }}"
           else
             TAG_NAME="${GITHUB_REF#refs/tags/}"
             echo "Git tag version: $TAG_NAME"
 
-            cargo xtask version assert-tag "$TAG_NAME"
+            bun scripts/xtask.ts version assert-tag "$TAG_NAME"
 
             DRY_RUN="${{ steps.resolve.outputs.dry_run }}"
           fi
@@ -180,6 +183,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v1
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -189,11 +195,11 @@ jobs:
 
       - name: Verify release artifacts
         working-directory: cli
-        run: cargo xtask dist verify --input artifacts --kind release
+        run: bun scripts/xtask.ts dist verify --input artifacts --kind release
 
       - name: Prepare release assets
         working-directory: cli
-        run: cargo xtask dist release --input artifacts --output release
+        run: bun scripts/xtask.ts dist release --input artifacts --output release
 
       - name: Generate build provenance attestation
         if: needs.validate.outputs.dry_run != 'true'
@@ -239,6 +245,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v1
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -258,11 +267,11 @@ jobs:
 
       - name: Verify npm artifacts
         working-directory: cli
-        run: cargo xtask dist verify --input artifacts --kind npm
+        run: bun scripts/xtask.ts dist verify --input artifacts --kind npm
 
       - name: Prepare npm package
         working-directory: cli
-        run: cargo xtask dist npm --input artifacts --output bin
+        run: bun scripts/xtask.ts dist npm --input artifacts --output bin
 
       - name: Publish to npm with provenance
         working-directory: cli
@@ -313,6 +322,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v1
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -332,11 +344,11 @@ jobs:
 
       - name: Verify npm artifacts
         working-directory: cli
-        run: cargo xtask dist verify --input artifacts --kind npm
+        run: bun scripts/xtask.ts dist verify --input artifacts --kind npm
 
       - name: Prepare npm package
         working-directory: cli
-        run: cargo xtask dist npm --input artifacts --output bin
+        run: bun scripts/xtask.ts dist npm --input artifacts --output bin
 
       - name: Check if version already published (npm)
         id: npm-check

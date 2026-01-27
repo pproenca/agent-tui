@@ -23,14 +23,13 @@ Long-running refactor to move agent-tui’s tests to a lean, behaviour-first arc
 - **Domain:** Property tests for selectors/VOM and invariant checks; deduplicated example lists.
 - **System/E2E:** 4–6 real-daemon workflows + 1 failure + 1 lock/timeout case, written in Rust (replaces large bash suite).
 - **CI:** `cargo nextest` tiered filters on PRs; nightly runs system + contract-vs-real + mutation on domain/use-case; coverage reported via llvm-cov; runtime/flake budgets enforced.
-- **Docker:** Lean image; E2E exercised via Rust binary (or minimal bash) with the same assertions as system suite.
 
 ## Work Streams & Order
 1) **Prune & Harness:** Remove no-op/call-count tests; introduce Harness v2 with shared runtime and fault injection.
 2) **Contracts:** Add `tests/contracts/` fixtures + runner; convert first CLI file to golden snapshot style.
 3) **Use Cases:** Refactor to in-memory repos and outcome-based sad-path tables; drop interaction assertions.
 4) **Domain Props:** Add property tests for selector/VOM invariants; prune duplicate example tests.
-5) **System/E2E:** Recreate minimal Rust E2E suite against real daemon; trim/replace `docker/e2e-tests.sh`; fix `just test-e2e` target.
+5) **System/E2E:** Recreate minimal Rust E2E suite against real daemon; fix `just test-e2e` target.
 6) **CI Matrix:** Switch to nextest tiers; gate PRs on fast tiers; move system/mutation to nightly; publish coverage and runtime budgets.
 7) **Quality Gates:** Add contract drift check; set flake/runtime budgets; informational coverage thresholds (domain 85/70 line/branch, adapters 70).
 

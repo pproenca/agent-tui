@@ -16,7 +16,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agent-tui"
-version = "0.3.8"
+version = "0.3.9"
 dependencies = [
  "assert_cmd",
  "axum",
@@ -3631,7 +3631,7 @@ checksum = "9edde0db4769d2dc68579893f2306b26c6ecfbe0ef499b013d731b7b9247e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.3.8"
+version = "0.3.9"
 dependencies = [
  "clap",
  "hex",

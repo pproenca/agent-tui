@@ -8,53 +8,69 @@
     <link rel="stylesheet" href="/xterm.css" />
   </head>
   <body>
-    <div class="app">
+    <div class="app app--terminal-focus">
       <header class="app__header">
         <div>
           <p class="app__eyebrow">agent-tui</p>
           <h1 class="app__title">Live Preview</h1>
           <p class="app__subtitle">Realtime terminal stream with binary WS output.</p>
         </div>
+      </header>
+
+      <div class="toolbar">
         <div class="status" id="status">
           <span class="status__dot"></span>
           <span class="status__text">Disconnected</span>
         </div>
-      </header>
+        <button id="settingsBtn" class="button button--ghost" type="button">Settings</button>
+      </div>
 
-      <section class="panel">
-        <div class="panel__row panel__row--primary">
-          <label class="field field--grow">
-            <span class="field__label">API URL</span>
-            <input id="apiUrl" type="text" placeholder="http://127.0.0.1:PORT" />
-          </label>
-          <button id="connectBtn" class="button">Connect</button>
-        </div>
-        <details class="panel__advanced">
-          <summary class="panel__summary">Advanced</summary>
-          <div class="panel__row">
-            <label class="field">
-              <span class="field__label">WS URL</span>
-              <input id="wsUrl" type="text" placeholder="ws://127.0.0.1:PORT/api/v1/stream" />
-            </label>
-            <label class="field">
-              <span class="field__label">Token</span>
-              <input id="token" type="text" placeholder="Required unless disabled" />
-            </label>
-            <label class="field">
-              <span class="field__label">Session</span>
-              <input id="session" type="text" placeholder="active" />
-            </label>
-            <label class="field field--compact">
-              <span class="field__label">Encoding</span>
-              <select id="encoding">
-                <option value="binary">binary</option>
-                <option value="base64">base64</option>
-              </select>
-            </label>
+      <dialog class="settings" id="settingsDialog" aria-labelledby="settingsTitle">
+        <div class="settings__shell" role="document">
+          <div class="settings__header">
+            <div>
+              <p class="settings__eyebrow">agent-tui</p>
+              <h2 class="settings__title" id="settingsTitle">Connection settings</h2>
+            </div>
+            <button id="settingsClose" class="button button--subtle" type="button">Close</button>
           </div>
-        </details>
-        <div class="panel__meta" id="meta"></div>
-      </section>
+
+          <section class="panel">
+            <div class="panel__row panel__row--primary">
+              <label class="field field--grow">
+                <span class="field__label">API URL</span>
+                <input id="apiUrl" type="text" placeholder="http://127.0.0.1:PORT" />
+              </label>
+              <button id="connectBtn" class="button" type="button">Connect</button>
+            </div>
+            <details class="panel__advanced">
+              <summary class="panel__summary">Advanced</summary>
+              <div class="panel__row">
+                <label class="field">
+                  <span class="field__label">WS URL</span>
+                  <input id="wsUrl" type="text" placeholder="ws://127.0.0.1:PORT/api/v1/stream" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Token</span>
+                  <input id="token" type="text" placeholder="Required unless disabled" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Session</span>
+                  <input id="session" type="text" placeholder="active" />
+                </label>
+                <label class="field field--compact">
+                  <span class="field__label">Encoding</span>
+                  <select id="encoding">
+                    <option value="binary">binary</option>
+                    <option value="base64">base64</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+            <div class="panel__meta" id="meta"></div>
+          </section>
+        </div>
+      </dialog>
 
       <section class="terminal">
         <div id="terminal" class="terminal__viewport"></div>

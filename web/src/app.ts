@@ -10,6 +10,9 @@ const connectBtn = document.getElementById("connectBtn") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const statusText = statusEl.querySelector(".status__text") as HTMLSpanElement;
 const metaEl = document.getElementById("meta") as HTMLDivElement;
+const settingsDialog = document.getElementById("settingsDialog") as HTMLDialogElement | null;
+const settingsBtn = document.getElementById("settingsBtn") as HTMLButtonElement | null;
+const settingsClose = document.getElementById("settingsClose") as HTMLButtonElement | null;
 
 const params = new URLSearchParams(window.location.search);
 const decoder = new TextDecoder();
@@ -38,6 +41,16 @@ fitAddon.fit();
 window.addEventListener("resize", () => fitAddon.fit());
 
 let socket: WebSocket | null = null;
+
+function openSettings() {
+  if (!settingsDialog) {
+    return;
+  }
+  if (settingsDialog.open) {
+    return;
+  }
+  settingsDialog.showModal();
+}
 
 function setStatus(text: string, connected: boolean) {
   statusText.textContent = text;
@@ -206,6 +219,7 @@ async function connect() {
   const wsUrl = buildWsUrl();
   if (!wsUrl) {
     setMeta("Provide an API or WS URL.");
+    openSettings();
     return;
   }
   const tokenMissing = !tokenInput.value.trim();
@@ -223,6 +237,9 @@ async function connect() {
   socket.addEventListener("open", () => {
     setStatus("Connected", true);
     connectBtn.textContent = "Disconnect";
+    if (settingsDialog?.open) {
+      settingsDialog.close();
+    }
   });
 
   socket.addEventListener("message", (event) => {
@@ -250,6 +267,20 @@ connectBtn.addEventListener("click", () => {
     disconnect();
   } else {
     void connect();
+  }
+});
+
+settingsBtn?.addEventListener("click", () => {
+  openSettings();
+});
+
+settingsClose?.addEventListener("click", () => {
+  settingsDialog?.close();
+});
+
+settingsDialog?.addEventListener("click", (event) => {
+  if (event.target === settingsDialog) {
+    settingsDialog.close();
   }
 });
 

@@ -173,11 +173,6 @@ Run with `cargo test`. Tests are co-located in source files.
 
 Each E2E workflow test spawns an isolated daemon instance on a unique socket, allowing parallel execution.
 
-### E2E Scripts (`docker/`)
-
-Shell scripts for full system testing:
-- `docker/e2e-tests.sh` - Real-daemon E2E checks in Docker
-
 ## Code Style
 
 ### Rust

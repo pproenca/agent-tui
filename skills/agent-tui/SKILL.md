@@ -2,11 +2,42 @@
 name: agent-tui
 description: >
   Drive terminal UI (TUI) applications programmatically for testing, automation, and inspection.
-  Use when: automating CLI/TUI interactions, regression testing terminal apps, verifying interactive behavior, or extracting structured data from terminal UIs.
+  Use when: automating CLI/TUI interactions, regression testing terminal apps, verifying interactive behavior, extracting structured data from terminal UIs.
+  Also use when: user asks "what is agent-tui", "what does agent-tui do", "demo agent-tui", "show me agent-tui", "how does agent-tui work", or wants to see it in action.
   Do NOT use for: web browsers, GUI apps, or non-terminal interfaces—those need different tools.
 ---
 
 # Terminal Automation Mastery
+
+## Prerequisites
+
+- **Supported OS**: macOS or Linux (Windows not supported yet).
+- **Verify install**:
+
+```bash
+agent-tui --version
+```
+
+If not installed, use one of:
+
+```bash
+# Recommended: one-line install (macOS/Linux)
+curl -fsSL https://raw.githubusercontent.com/pproenca/agent-tui/master/install.sh | sh
+```
+
+```bash
+# Package manager
+npm i -g agent-tui
+pnpm add -g agent-tui
+bun add -g agent-tui
+```
+
+```bash
+# Build from source
+cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui
+```
+
+If you used the install script, ensure `~/.local/bin` is on your PATH.
 
 ## Philosophy: Why Terminal Automation Is Different
 
@@ -215,6 +246,21 @@ Before automating any TUI, gather this information:
 
 If any of these are unclear, ask before running.
 
+## Demo Mode: Showing What agent-tui Can Do
+
+When a user asks what agent-tui is, wants a demo, or asks "show me how it works":
+
+1. **Don't explain—demonstrate.** Actions speak louder than words.
+2. **Use the live preview** so they can watch in real-time.
+3. **Run `top`**—it's universal and shows dynamic real-time updates.
+
+For the complete demo script, see `references/demo.md`.
+
+**Quick demo trigger phrases:**
+- "What is agent-tui?" / "What does agent-tui do?"
+- "Demo agent-tui" / "Show me agent-tui"
+- "How does agent-tui work?" / "See it in action"
+
 ## Failure Recovery
 
 | Symptom | Diagnosis | Solution |
@@ -288,6 +334,7 @@ For deeper reference material:
 
 | Topic | Reference | Load When |
 |-------|-----------|-----------|
+| Demo/introduction | `references/demo.md` | User asks what agent-tui is or wants a demo |
 | Full command syntax | `references/command-atlas.md` | Need specific flags/options |
 | Decision flowcharts | `references/decision-tree.md` | Unsure which approach |
 | Session management | `references/session-lifecycle.md` | Multiple sessions, concurrency |

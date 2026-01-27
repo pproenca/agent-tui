@@ -1,5 +1,6 @@
 ruleDirs:
   - clean-architecture
+  - event-driven
   - rust-codemods
 testConfigs:
   - testDir: tests

@@ -254,10 +254,6 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install dependencies
-        working-directory: cli
-        run: npm ci --ignore-scripts
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -308,10 +304,6 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies
-        working-directory: cli
-        run: npm ci --ignore-scripts
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4

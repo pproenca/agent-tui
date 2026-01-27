@@ -58,6 +58,7 @@ tags
 # ============================================
 # macOS
 .DS_Store
+cli/package-lock.json
 .AppleDouble
 .LSOverride
 ._*

@@ -51,7 +51,7 @@ function printUsage() {
   console.log(
     [
       "Usage:",
-      "  xtask version <check|current|assert-tag|assert-input>",
+      "  xtask version <check|current|assert-tag|assert-input|set>",
       "  xtask release <version|major|minor|patch> [--yes]",
       "  xtask ci",
       "  xtask architecture check",
@@ -88,6 +88,13 @@ function versionCommand(args: string[]) {
         throw new Error("Missing version argument");
       }
       return assertInput(version);
+    }
+    case "set": {
+      const version = rest[0];
+      if (!version) {
+        throw new Error("Missing version argument");
+      }
+      return setVersion(version);
     }
     default:
       throw new Error(`Unknown version subcommand: ${subcommand}`);
@@ -448,25 +455,13 @@ function assertInput(version: string) {
   }
 }
 
-function release(
-  versionOrBump: string,
-  options: { confirm: boolean },
-) {
+function setVersion(version: string) {
+  const targetVersion = ensureSemver(version);
   const cargoPath = cargoTomlPath(ROOT);
   const packagePath = packageJsonPath(ROOT);
   const npmPaths = npmPlatformPackagePaths(ROOT);
 
-  const currentVersion = readCargoVersion(cargoPath);
-  const targetVersion = isBump(versionOrBump)
-    ? bumpVersion(currentVersion, versionOrBump)
-    : ensureSemver(versionOrBump);
-
-  const tag = `v${targetVersion}`;
-
-  ensureGitClean(ROOT);
-  ensureTagAbsent(ROOT, tag);
-
-  console.log(`Releasing version ${targetVersion}...`);
+  console.log(`Setting version to ${targetVersion}...`);
 
   console.log("Updating package.json...");
   writePackageVersion(packagePath, targetVersion);
@@ -477,28 +472,31 @@ function release(
   console.log("Updating Cargo.toml...");
   writeCargoVersion(cargoPath, targetVersion);
 
-  const status = gitStatusShort(ROOT);
+  console.log("Done.");
+}
+
+function release(
+  versionOrBump: string,
+  options: { confirm: boolean },
+) {
+  const cargoPath = cargoTomlPath(ROOT);
+  const currentVersion = latestTagVersion(ROOT) ?? readCargoVersion(cargoPath);
+  const targetVersion = isBump(versionOrBump)
+    ? bumpVersion(currentVersion, versionOrBump)
+    : ensureSemver(versionOrBump);
+
+  const tag = `v${targetVersion}`;
+
+  ensureGitClean(ROOT);
+  ensureTagAbsent(ROOT, tag);
+
+  console.log(`Releasing version ${targetVersion}...`);
   if (options.confirm) {
-    console.log("Changes to be released:");
-    console.log(status ? status : "(no changes detected)");
-    if (!confirmProceed("Stage, commit, push, and tag these changes?")) {
-      console.log("Release aborted before staging.");
+    if (!confirmProceed(`Create and push tag ${tag}?`)) {
+      console.log("Release aborted before tagging.");
       return;
     }
   }
-
-  console.log("Staging changes...");
-  runCommand("git", ["add", "-A"], { cwd: ROOT });
-
-  console.log("Committing...");
-  runCommand(
-    "git",
-    ["commit", "-m", `chore: bump version to ${targetVersion}`],
-    { cwd: ROOT },
-  );
-
-  console.log("Pushing commit...");
-  runCommand("git", ["push"], { cwd: ROOT });
 
   console.log(`Creating tag ${tag}...`);
   runCommand("git", ["tag", "-a", tag, "-m", `Release ${targetVersion}`], {
@@ -508,7 +506,7 @@ function release(
   console.log(`Pushing tag ${tag}...`);
   runCommand("git", ["push", "origin", tag], { cwd: ROOT });
 
-  console.log(`Done! Release ${targetVersion} pushed and tagged.`);
+  console.log(`Done! Release tag ${tag} pushed.`);
 }
 
 function isBump(value: string) {
@@ -544,6 +542,24 @@ function bumpVersion(current: string, bump: string) {
     default:
       return current;
   }
+}
+
+function latestTagVersion(root: string) {
+  const result = spawnSync("git", ["tag", "--list", "v*", "--sort=-v:refname"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    throw new Error("Command failed: git tag --list v* --sort=-v:refname");
+  }
+  const tag = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (!tag) {
+    return null;
+  }
+  return ensureSemver(normalizeTag(tag));
 }
 
 function ensureGitClean(root: string) {

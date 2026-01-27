@@ -38,10 +38,10 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag_name: ${{ steps.version.outputs.tag_name }}
-      dry_run: ${{ steps.version.outputs.dry_run }}
+      dry_run: ${{ steps.resolve.outputs.dry_run }}
       prerelease: ${{ steps.version.outputs.prerelease }}
-      run_id: ${{ steps.ci-run.outputs.run_id }}
       head_sha: ${{ steps.sha.outputs.head_sha }}
+      ref: ${{ steps.resolve.outputs.ref }}
 
     steps:
       - name: Resolve release ref
@@ -64,136 +64,38 @@ jobs:
           ref: ${{ steps.resolve.outputs.ref }}
           fetch-depth: 0
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Setup bun
         uses: oven-sh/setup-bun@v1
+
+      - name: Validate version consistency
+        working-directory: cli
+        run: bun scripts/xtask.ts version check --quiet
 
       - name: Resolve head SHA
         id: sha
         run: |
           echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve CI run
-        id: ci-run
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const headSha = '${{ steps.sha.outputs.head_sha }}';
-            const ref = '${{ steps.resolve.outputs.ref }}';
-            const tagName = ref.startsWith('refs/tags/') ? ref.slice('refs/tags/'.length) : null;
-            const { owner, repo } = context.repo;
-            const maxAttempts = 20;
-            const delayMs = 30000;
-            let match = null;
-            let matchArtifacts = null;
-
-            const requiredArtifacts = [
-              'agent-tui-linux-x64',
-              'agent-tui-linux-arm64',
-              'agent-tui-linux-x64-musl',
-              'agent-tui-linux-arm64-musl',
-              'agent-tui-darwin-x64',
-              'agent-tui-darwin-arm64',
-            ];
-
-            const hasAllArtifacts = (names) =>
-              requiredArtifacts.every((name) => names.includes(name));
-
-            const preferredRun = (run) =>
-              tagName && run.head_branch === tagName ? 1 : 0;
-
-            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-              const runs = await github.rest.actions.listWorkflowRuns({
-                owner,
-                repo,
-                workflow_id: 'ci.yml',
-                per_page: 100,
-              });
-
-              const candidates = runs.data.workflow_runs
-                .filter(
-                  (run) =>
-                    run.head_sha === headSha &&
-                    run.conclusion === 'success' &&
-                    run.event !== 'pull_request',
-                )
-                .sort((a, b) => {
-                  const pref = preferredRun(b) - preferredRun(a);
-                  if (pref !== 0) return pref;
-                  return new Date(b.created_at) - new Date(a.created_at);
-                });
-
-              for (const run of candidates) {
-                const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
-                  owner,
-                  repo,
-                  run_id: run.id,
-                  per_page: 100,
-                });
-                const names = artifacts.data.artifacts.map((artifact) => artifact.name);
-                core.info(`CI run ${run.id} artifacts: ${names.join(', ') || 'none'}`);
-                if (hasAllArtifacts(names)) {
-                  match = run;
-                  matchArtifacts = names;
-                  break;
-                }
-              }
-
-              if (match) {
-                break;
-              }
-
-              const inProgress = runs.data.workflow_runs.find(run =>
-                run.head_sha === headSha && run.status !== 'completed'
-              );
-
-              if (!inProgress || attempt === maxAttempts) {
-                break;
-              }
-
-              core.info(`Waiting for CI run for ${headSha}... (attempt ${attempt}/${maxAttempts})`);
-              await new Promise(resolve => setTimeout(resolve, delayMs));
-            }
-
-            if (!match) {
-              core.setFailed(
-                `No successful CI run found for ${headSha} with required release artifacts. Ensure CI completed on the release tag.`,
-              );
-              return;
-            }
-
-            core.info(`Selected CI run ${match.id} with artifacts: ${matchArtifacts.join(', ')}`);
-            core.setOutput('run_id', match.id.toString());
-
-      - name: Validate versions
+      - name: Resolve release version
         id: version
-        working-directory: cli
         run: |
           set -euo pipefail
-          bun scripts/xtask.ts version check --quiet
-          VERSION=$(bun scripts/xtask.ts version current)
-
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             INPUT_VERSION="${{ inputs.version }}"
-            echo "Input version: $INPUT_VERSION"
-
-            TAG_NAME="v$INPUT_VERSION"
+            VERSION="$INPUT_VERSION"
+            TAG_NAME="v$VERSION"
             if ! git tag --points-at HEAD --list "$TAG_NAME" | grep -q "$TAG_NAME"; then
               echo "::error::Tag $TAG_NAME does not point at the selected ref"
               exit 1
             fi
-
-            bun scripts/xtask.ts version assert-tag "$TAG_NAME"
-            DRY_RUN="${{ steps.resolve.outputs.dry_run }}"
           else
             TAG_NAME="${GITHUB_REF#refs/tags/}"
-            echo "Git tag version: $TAG_NAME"
+            VERSION="${TAG_NAME#v}"
+          fi
 
-            bun scripts/xtask.ts version assert-tag "$TAG_NAME"
-
-            DRY_RUN="${{ steps.resolve.outputs.dry_run }}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+([.-].+)?$ ]]; then
+            echo "::error::Invalid version: $VERSION"
+            exit 1
           fi
 
           if [[ "$VERSION" == *-* ]]; then
@@ -204,13 +106,90 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
-          echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
-          echo "All versions match: $VERSION"
+
+  build-artifacts:
+    name: Build Release Artifacts (${{ matrix.artifact }})
+    needs: [validate]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: agent-tui-linux-x64
+            build: cross
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact: agent-tui-linux-arm64
+            build: cross
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: agent-tui-linux-x64-musl
+            build: cross
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            artifact: agent-tui-linux-arm64-musl
+            build: cross
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: agent-tui-darwin-x64
+            build: cargo
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: agent-tui-darwin-arm64
+            build: cargo
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Set release version
+        working-directory: cli
+        run: bun scripts/xtask.ts version set "${{ needs.validate.outputs.version }}"
+
+      - name: Install cross
+        if: matrix.build == 'cross'
+        uses: taiki-e/install-action@cross
+
+      - name: Add Rust target
+        if: matrix.build == 'cargo'
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build artifact
+        working-directory: cli
+        env:
+          AGENT_TUI_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          if [ "${{ matrix.build }}" = "cross" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          cp "cli/target/${{ matrix.target }}/release/agent-tui" "dist/${{ matrix.artifact }}"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+          if-no-files-found: error
 
   release:
     name: Create GitHub Release
-    needs: [validate]
+    needs: [validate, build-artifacts]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -233,8 +212,6 @@ jobs:
       - name: Download Linux release artifacts
         uses: actions/download-artifact@v4
         with:
-          run-id: ${{ needs.validate.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: cli/artifacts
           pattern: agent-tui-linux-*
           if-no-files-found: error
@@ -242,8 +219,6 @@ jobs:
       - name: Download macOS release artifacts
         uses: actions/download-artifact@v4
         with:
-          run-id: ${{ needs.validate.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: cli/artifacts
           pattern: agent-tui-darwin-*
           if-no-files-found: error
@@ -312,9 +287,11 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          run-id: ${{ needs.validate.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: cli/artifacts
+
+      - name: Set release version
+        working-directory: cli
+        run: bun scripts/xtask.ts version set "${{ needs.validate.outputs.version }}"
 
       - name: Verify npm artifacts
         working-directory: cli
@@ -384,9 +361,11 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          run-id: ${{ needs.validate.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: cli/artifacts
+
+      - name: Set release version
+        working-directory: cli
+        run: bun scripts/xtask.ts version set "${{ needs.validate.outputs.version }}"
 
       - name: Verify npm artifacts
         working-directory: cli

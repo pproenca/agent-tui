@@ -53,6 +53,11 @@ jobs:
         working-directory: cli
         run: bun scripts/xtask.ts version check
 
+      - name: Assert tag matches version
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: cli
+        run: bun scripts/xtask.ts version assert-tag "${GITHUB_REF}"
+
   lint:
     name: Clippy
     runs-on: ubuntu-latest
@@ -124,6 +129,7 @@ jobs:
 
   build:
     name: Build & Test (${{ matrix.os }})
+    needs: [version-check]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -235,7 +241,7 @@ jobs:
   publish-check:
     name: Publish Dry-Run
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     steps:
       - uses: actions/checkout@v4
 
@@ -248,10 +254,13 @@ jobs:
           node-version: '20'
 
       - name: Cargo publish dry-run
+        working-directory: cli
         run: cargo publish --dry-run -p agent-tui
 
       - name: npm ci (validate package-lock.json)
+        working-directory: cli
         run: npm ci --ignore-scripts
 
       - name: npm pack (validate package)
+        working-directory: cli
         run: npm pack --dry-run

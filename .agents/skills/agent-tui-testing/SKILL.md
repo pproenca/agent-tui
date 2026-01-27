@@ -5,8 +5,6 @@ description: Use agent-tui to run, inspect, and drive TUI apps with snapshots, s
 
 # Agent TUI Testing Skill
 
-Use this skill when the user wants an agent to drive a TUI program end-to-end using `agent-tui`.
-
 ## Goals
 - Start a TUI app under agent control.
 - Capture snapshots and detect elements.
@@ -16,8 +14,9 @@ Use this skill when the user wants an agent to drive a TUI program end-to-end us
 - Cleanly exit and kill the session.
 
 ## Prereqs
-- `agent-tui` installed and on PATH.
-- Daemon running. If unsure, run `agent-tui daemon start` or use `agent-tui run ...` which auto-starts.
+- Install `agent-tui` globally: `npm i -g agent-tui` or `pnpm i -g agent-tui`.
+- Verify on PATH: `agent-tui --version`.
+- Ensure daemon running. If unsure, run `agent-tui daemon start` or use `agent-tui run ...` which auto-starts.
 - Prefer `--format json` (or `--json`) for automation.
 
 ## Core Workflow (Agent Loop)

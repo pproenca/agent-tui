@@ -693,6 +693,7 @@ pub fn handle_live_start<C: DaemonClient>(
 
 pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let ui_result = stop_ui_server();
+    let ui_error = ui_result.as_ref().err().cloned();
     match ctx.format {
         OutputFormat::Json => {
             let mut output = json!({
@@ -710,6 +711,15 @@ pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handler
                 Err(err) => json!({ "stopped": false, "error": err }),
             };
             output["ui"] = ui_payload;
+            if let Some(err) = ui_error {
+                return Err(CliError::new(
+                    ctx.format,
+                    format!("Failed to stop UI server: {}", err),
+                    Some(output),
+                    super::exit_codes::GENERAL_ERROR,
+                )
+                .into());
+            }
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
@@ -733,6 +743,15 @@ pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handler
             }
             println!("Live preview is served by the daemon; run 'agent-tui daemon stop' to stop.");
         }
+    }
+    if let Some(err) = ui_error {
+        return Err(CliError::new(
+            ctx.format,
+            format!("Failed to stop UI server: {}", err),
+            None,
+            super::exit_codes::GENERAL_ERROR,
+        )
+        .into());
     }
     Ok(())
 }
@@ -1508,7 +1527,7 @@ pub fn handle_attach<C: DaemonClient>(
     Ok(())
 }
 
-pub fn handle_env<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
+pub fn handle_env(format: OutputFormat) -> HandlerResult {
     let vars = [
         (
             "AGENT_TUI_TRANSPORT",
@@ -1562,7 +1581,7 @@ pub fn handle_env<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
         ("NO_COLOR", std::env::var("NO_COLOR").ok()),
     ];
 
-    match ctx.format {
+    match format {
         OutputFormat::Json => {
             let env_map: HashMap<&str, Option<String>> = vars.iter().cloned().collect();
             println!(

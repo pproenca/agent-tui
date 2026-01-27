@@ -51,7 +51,7 @@ EXAMPLES:
     agent-tui press ArrowDown ArrowDown Enter
 
     # Use text selectors for readable scripts
-    agent-tui @"Yes, proceed"             # Click by exact text
+    agent-tui '@"Yes, proceed"'           # Click by exact text (quote to preserve spaces)
     agent-tui :Submit                     # Click element containing "Submit"
 
     # Check daemon status
@@ -214,6 +214,67 @@ EXAMPLES:
         /// Include cursor position in output
         #[arg(long, help_heading = "Output Options")]
         include_cursor: bool,
+    },
+
+    /// Find elements by role, name, or text
+    #[command(long_about = "\
+Find elements in the current session.
+
+Returns element refs that match the provided filters. Use --exact for
+exact text matching.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui find --role button
+    agent-tui find --text \"Submit\"
+    agent-tui find --name \"Search\" --exact")]
+    Find {
+        #[command(flatten)]
+        params: FindParams,
+    },
+
+    /// Count elements by role, name, or text
+    #[command(long_about = "\
+Count elements that match the provided filters.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui count --role button
+    agent-tui count --text \"Error\"")]
+    Count {
+        #[command(flatten)]
+        params: CountParams,
+    },
+
+    /// Resize the session terminal
+    #[command(long_about = "\
+Resize the current session terminal.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui resize --cols 120 --rows 40")]
+    Resize {
+        /// Terminal columns
+        #[arg(long, value_name = "COLS")]
+        cols: u16,
+
+        /// Terminal rows
+        #[arg(long, value_name = "ROWS")]
+        rows: u16,
+    },
+
+    /// Restart the current session
+    #[command(long_about = "\
+Restart the current session command, creating a new session.")]
+    Restart,
+
+    /// Scroll an element into view
+    #[command(long_about = "\
+Scroll the viewport until the element is visible.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui scroll-into-view @e1")]
+    ScrollIntoView {
+        /// Element ref to scroll into view
+        #[arg(value_name = "REF")]
+        element_ref: String,
     },
 
     /// Perform an action on an element by reference
@@ -744,6 +805,18 @@ pub struct FindParams {
 
     #[arg(long)]
     pub exact: bool,
+}
+
+#[derive(Debug, Clone, Default, Args)]
+pub struct CountParams {
+    #[arg(long, value_name = "ROLE")]
+    pub role: Option<String>,
+
+    #[arg(long, value_name = "NAME")]
+    pub name: Option<String>,
+
+    #[arg(long, value_name = "TEXT")]
+    pub text: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum, Default, PartialEq)]
@@ -1604,42 +1677,47 @@ mod tests {
         ));
     }
 
-    // Note: With external_subcommand, unknown commands are captured as External.
-    // These "removed" commands will be caught at runtime with validation errors.
     #[test]
-    fn test_count_command_becomes_external() {
+    fn test_count_command_parses() {
         let cli = Cli::parse_from(["agent-tui", "count", "--role", "button"]);
-        assert!(
-            matches!(cli.command, Commands::External(_)),
-            "Unknown command should be captured as External"
-        );
+        let Commands::Count { params } = cli.command else {
+            panic!("Expected Count command, got {:?}", cli.command);
+        };
+        assert_eq!(params.role, Some("button".to_string()));
     }
 
     #[test]
-    fn test_find_command_becomes_external() {
-        let cli = Cli::parse_from(["agent-tui", "find", "--role", "button"]);
-        assert!(
-            matches!(cli.command, Commands::External(_)),
-            "Unknown command should be captured as External"
-        );
+    fn test_find_command_parses() {
+        let cli = Cli::parse_from(["agent-tui", "find", "--name", "Search"]);
+        let Commands::Find { params } = cli.command else {
+            panic!("Expected Find command, got {:?}", cli.command);
+        };
+        assert_eq!(params.name, Some("Search".to_string()));
     }
 
     #[test]
-    fn test_restart_command_becomes_external() {
+    fn test_restart_command_parses() {
         let cli = Cli::parse_from(["agent-tui", "restart"]);
-        assert!(
-            matches!(cli.command, Commands::External(_)),
-            "Unknown command should be captured as External"
-        );
+        assert!(matches!(cli.command, Commands::Restart));
     }
 
     #[test]
-    fn test_resize_command_becomes_external() {
-        let cli = Cli::parse_from(["agent-tui", "resize", "--cols", "80"]);
-        assert!(
-            matches!(cli.command, Commands::External(_)),
-            "Unknown command should be captured as External"
-        );
+    fn test_resize_command_parses() {
+        let cli = Cli::parse_from(["agent-tui", "resize", "--cols", "80", "--rows", "24"]);
+        let Commands::Resize { cols, rows } = cli.command else {
+            panic!("Expected Resize command, got {:?}", cli.command);
+        };
+        assert_eq!(cols, 80);
+        assert_eq!(rows, 24);
+    }
+
+    #[test]
+    fn test_scroll_into_view_command_parses() {
+        let cli = Cli::parse_from(["agent-tui", "scroll-into-view", "@e1"]);
+        let Commands::ScrollIntoView { element_ref } = cli.command else {
+            panic!("Expected ScrollIntoView command, got {:?}", cli.command);
+        };
+        assert_eq!(element_ref, "@e1");
     }
 
     // Phase 1: Press and Type commands

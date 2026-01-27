@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "crates/agent-tui",
-    "crates/xtask",
 ]
 resolver = "2"
 

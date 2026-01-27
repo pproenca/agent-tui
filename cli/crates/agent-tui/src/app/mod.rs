@@ -182,6 +182,10 @@ impl Application {
                 generate(*shell, &mut cmd, "agent-tui", &mut std::io::stdout());
                 Ok(true)
             }
+            Commands::Env => {
+                handlers::handle_env(cli.effective_format())?;
+                Ok(true)
+            }
             _ => Ok(false),
         }
     }
@@ -338,6 +342,19 @@ impl Application {
                 }
             }
 
+            Commands::Find { params } => handlers::handle_find(ctx, params.clone())?,
+            Commands::Count { params } => handlers::handle_count(
+                ctx,
+                params.role.clone(),
+                params.name.clone(),
+                params.text.clone(),
+            )?,
+            Commands::Resize { cols, rows } => handlers::handle_resize(ctx, *cols, *rows)?,
+            Commands::Restart => handlers::handle_restart(ctx)?,
+            Commands::ScrollIntoView { element_ref } => {
+                handlers::handle_scroll_into_view(ctx, element_ref.clone())?
+            }
+
             Commands::Action {
                 element_ref,
                 operation,
@@ -436,7 +453,7 @@ impl Application {
             },
 
             Commands::Version => handlers::handle_version(ctx)?,
-            Commands::Env => handlers::handle_env(ctx)?,
+            Commands::Env => handlers::handle_env(ctx.format)?,
 
             Commands::External(args) => self.dispatch_selector_action(ctx, args)?,
         }

@@ -78,6 +78,15 @@ fn smoke_no_autostart_daemon_status() {
 }
 
 #[test]
+fn smoke_env_without_daemon() {
+    let env = NoDaemonTestEnv::new();
+
+    env.run(&["env"])
+        .success()
+        .stdout(predicate::str::contains("Environment"));
+}
+
+#[test]
 fn smoke_sessions_empty() {
     let harness = TestHarness::new();
 

@@ -6,9 +6,6 @@
     "url": "https://github.com/pproenca/agent-tui/issues"
   },
   "description": "CLI tool for AI agents to interact with TUI applications",
-  "devDependencies": {
-    "husky": "^9.1.7"
-  },
   "engines": {
     "node": ">=16"
   },
@@ -40,12 +37,11 @@
   },
   "scripts": {
     "build:native": "cargo build --release -p agent-tui && node scripts/copy-native.js",
-    "dist:npm": "cargo xtask dist npm",
+    "dist:npm": "bun scripts/xtask.ts dist npm",
     "postinstall": "node scripts/postinstall.js",
-    "prepare": "husky",
     "preversion": "just ready",
-    "version": "echo 'ERROR: Use cargo xtask release <version|patch|minor|major> or just release-* instead' && exit 1",
-    "version:check": "cargo xtask version check"
+    "version": "echo 'ERROR: Use bun scripts/xtask.ts release <version|patch|minor|major> or just release-* instead' && exit 1",
+    "version:check": "bun scripts/xtask.ts version check"
   },
   "version": "0.3.9",
   "workspaces": [

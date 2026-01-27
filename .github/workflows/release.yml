@@ -279,27 +279,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  publish-crates:
-    name: Publish to crates.io
-    needs: [release, validate, publish-validate]
-    if: needs.validate.outputs.dry_run != 'true' && needs.publish-validate.outputs.crates_skip != 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.validate.outputs.head_sha }}
-          fetch-depth: 0
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Publish to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        working-directory: cli
-        run: cargo publish -p agent-tui
-
   publish-validate:
     name: Publish Dry Runs
     needs: [release, validate]
@@ -311,7 +290,6 @@ jobs:
       id-token: write
     outputs:
       npm_skip: ${{ steps.npm-check.outputs.skip }}
-      crates_skip: ${{ steps.crates-check.outputs.skip }}
 
     steps:
       - uses: actions/checkout@v4
@@ -370,20 +348,3 @@ jobs:
         run: npm publish --access public --dry-run
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Check if version already published (crates.io)
-        id: crates-check
-        working-directory: cli
-        run: |
-          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-          if cargo search agent-tui --limit 1 | grep -q "agent-tui = \"$VERSION\""; then
-            echo "Version $VERSION already published to crates.io"
-            echo "skip=true" >> $GITHUB_OUTPUT
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Verify crates publish (dry-run)
-        if: steps.crates-check.outputs.skip != 'true'
-        working-directory: cli
-        run: cargo publish --dry-run -p agent-tui

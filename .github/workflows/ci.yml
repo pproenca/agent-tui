@@ -253,10 +253,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Cargo publish dry-run
-        working-directory: cli
-        run: cargo publish --dry-run -p agent-tui
-
       - name: npm ci (validate package-lock.json)
         working-directory: cli
         run: npm ci --ignore-scripts

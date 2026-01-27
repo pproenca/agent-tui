@@ -35,18 +35,13 @@ const UI_INDEX_HTML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/web/index.html"
 ));
-const UI_APP_JS: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/assets/web/app.js"
-));
+const UI_APP_JS: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/web/app.js"));
 const UI_STYLES_CSS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/web/styles.css"
 ));
-const UI_XTERM_CSS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/assets/web/xterm.css"
-));
+const UI_XTERM_CSS: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/web/xterm.css"));
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {

@@ -67,6 +67,7 @@ watch: _ensure-cargo-watch
     cargo watch -x "build"
 
 # Release with a version or bump (patch/minor/major).
+# Usage: just release bump=patch|minor|major|x.y.z
 release bump="patch": _ensure-bun
     bun scripts/xtask.ts release {{bump}}
 

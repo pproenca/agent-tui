@@ -40,7 +40,7 @@
     "dist:npm": "bun scripts/xtask.ts dist npm",
     "postinstall": "node scripts/postinstall.js",
     "preversion": "just ready",
-    "version": "echo 'ERROR: Use bun scripts/xtask.ts release <version|patch|minor|major> or just release-* instead' && exit 1",
+    "version": "echo 'ERROR: Use just release bump=patch|minor|major|x.y.z' && exit 1",
     "version:check": "bun scripts/xtask.ts version check"
   },
   "version": "0.3.11",

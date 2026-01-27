@@ -1,5 +1,5 @@
-use crate::adapters::{RpcValue, RpcValueRef};
 use crate::adapters::ipc::ClientError;
+use crate::adapters::{RpcValue, RpcValueRef};
 use crate::common::Colors;
 
 pub trait Presenter {

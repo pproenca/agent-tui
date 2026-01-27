@@ -5,8 +5,15 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::adapters::ipc::ClientError;
+use crate::adapters::ipc::DaemonClient;
+use crate::adapters::ipc::params;
+use crate::adapters::{RpcStream, RpcValue, call_stream_with_params, call_with_params};
+use crate::common::Colors;
+use crate::infra::terminal::key_to_escape_sequence;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use crossbeam_channel as channel;
 use crossterm::cursor;
 use crossterm::event;
 use crossterm::event::Event;
@@ -18,13 +25,6 @@ use crossterm::style;
 use crossterm::terminal;
 use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
-use crate::adapters::ipc::ClientError;
-use crate::adapters::ipc::DaemonClient;
-use crate::adapters::ipc::params;
-use crate::adapters::{RpcStream, RpcValue, call_stream_with_params, call_with_params};
-use crate::common::Colors;
-use crate::infra::terminal::key_to_escape_sequence;
-use crossbeam_channel as channel;
 
 pub use crate::app::error::AttachError;
 
@@ -212,9 +212,7 @@ fn render_initial_screen<C: DaemonClient>(
     };
 
     let rendered = snapshot.get("rendered").and_then(|v| v.as_str());
-    let screenshot = snapshot
-        .get("screenshot")
-        .and_then(|v| v.as_str());
+    let screenshot = snapshot.get("screenshot").and_then(|v| v.as_str());
 
     let screen = match rendered.or(screenshot) {
         Some(screen) => screen,
@@ -641,10 +639,7 @@ fn parse_stream_event(value: RpcValue) -> Result<Option<AttachStreamEvent>, Atta
 
     match event {
         "output" => {
-            let data_b64 = value
-                .get("data")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let data_b64 = value.get("data").and_then(|v| v.as_str()).unwrap_or("");
             if data_b64.is_empty() {
                 return Ok(None);
             }
@@ -1038,12 +1033,10 @@ mod tests {
     fn test_parse_stream_event_output() {
         let payload = STANDARD.encode(b"hello");
         let value = RpcValue::new(
-            serde_json::from_str(
-                &format!(
-                    r#"{{"event":"output","data":"{}","dropped_bytes":2}}"#,
-                    payload
-                ),
-            )
+            serde_json::from_str(&format!(
+                r#"{{"event":"output","data":"{}","dropped_bytes":2}}"#,
+                payload
+            ))
             .unwrap(),
         );
         let event = parse_stream_event(value).unwrap().unwrap();

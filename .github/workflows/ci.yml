@@ -238,6 +238,75 @@ jobs:
         if: always()
         run: agent-tui daemon stop || true
 
+  release-artifacts:
+    name: Build Release Artifacts (${{ matrix.artifact }})
+    needs: [version-check]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: agent-tui-linux-x64
+            build: cross
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact: agent-tui-linux-arm64
+            build: cross
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: agent-tui-linux-x64-musl
+            build: cross
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            artifact: agent-tui-linux-arm64-musl
+            build: cross
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: agent-tui-darwin-x64
+            build: cargo
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: agent-tui-darwin-arm64
+            build: cargo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cross
+        if: matrix.build == 'cross'
+        uses: taiki-e/install-action@cross
+
+      - name: Add Rust target
+        if: matrix.build == 'cargo'
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build artifact
+        working-directory: cli
+        run: |
+          if [ "${{ matrix.build }}" = "cross" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          cp "cli/target/${{ matrix.target }}/release/agent-tui" "dist/${{ matrix.artifact }}"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+          if-no-files-found: error
+
   publish-check:
     name: Publish Dry-Run
     runs-on: ubuntu-latest

@@ -81,10 +81,28 @@ jobs:
         with:
           script: |
             const headSha = '${{ steps.sha.outputs.head_sha }}';
+            const ref = '${{ steps.resolve.outputs.ref }}';
+            const tagName = ref.startsWith('refs/tags/') ? ref.slice('refs/tags/'.length) : null;
             const { owner, repo } = context.repo;
             const maxAttempts = 20;
             const delayMs = 30000;
             let match = null;
+            let matchArtifacts = null;
+
+            const requiredArtifacts = [
+              'agent-tui-linux-x64',
+              'agent-tui-linux-arm64',
+              'agent-tui-linux-x64-musl',
+              'agent-tui-linux-arm64-musl',
+              'agent-tui-darwin-x64',
+              'agent-tui-darwin-arm64',
+            ];
+
+            const hasAllArtifacts = (names) =>
+              requiredArtifacts.every((name) => names.includes(name));
+
+            const preferredRun = (run) =>
+              tagName && run.head_branch === tagName ? 1 : 0;
 
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
               const runs = await github.rest.actions.listWorkflowRuns({
@@ -94,11 +112,34 @@ jobs:
                 per_page: 100,
               });
 
-              match = runs.data.workflow_runs.find(run =>
-                run.head_sha === headSha &&
-                run.conclusion === 'success' &&
-                run.event !== 'pull_request'
-              );
+              const candidates = runs.data.workflow_runs
+                .filter(
+                  (run) =>
+                    run.head_sha === headSha &&
+                    run.conclusion === 'success' &&
+                    run.event !== 'pull_request',
+                )
+                .sort((a, b) => {
+                  const pref = preferredRun(b) - preferredRun(a);
+                  if (pref !== 0) return pref;
+                  return new Date(b.created_at) - new Date(a.created_at);
+                });
+
+              for (const run of candidates) {
+                const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner,
+                  repo,
+                  run_id: run.id,
+                  per_page: 100,
+                });
+                const names = artifacts.data.artifacts.map((artifact) => artifact.name);
+                core.info(`CI run ${run.id} artifacts: ${names.join(', ') || 'none'}`);
+                if (hasAllArtifacts(names)) {
+                  match = run;
+                  matchArtifacts = names;
+                  break;
+                }
+              }
 
               if (match) {
                 break;
@@ -117,10 +158,13 @@ jobs:
             }
 
             if (!match) {
-              core.setFailed(`No successful CI run found for ${headSha}. Ensure CI completed on the release tag.`);
+              core.setFailed(
+                `No successful CI run found for ${headSha} with required release artifacts. Ensure CI completed on the release tag.`,
+              );
               return;
             }
 
+            core.info(`Selected CI run ${match.id} with artifacts: ${matchArtifacts.join(', ')}`);
             core.setOutput('run_id', match.id.toString());
 
       - name: Validate versions

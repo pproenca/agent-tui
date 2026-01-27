@@ -310,6 +310,7 @@ select {
   padding: var(--space-6);
   box-shadow: var(--shadow);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 0;
 }
 
 input:focus-visible,
@@ -322,6 +323,8 @@ select:focus-visible,
 
 .terminal__viewport {
   min-height: 360px;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .xterm {

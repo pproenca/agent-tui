@@ -307,6 +307,13 @@ fn print_install_guidance(shell: Shell) {
                 Colors::dim("Re-run this after upgrading agent-tui to refresh the file.")
             );
         }
+        _ => {
+            println!(
+                "Run: {} completions <shell> --print",
+                PROGRAM_NAME
+            );
+            println!("Known shells: {}", supported_shells());
+        }
     }
     println!();
 }
@@ -350,6 +357,7 @@ fn shell_label(shell: Shell) -> &'static str {
         Shell::Fish => "fish",
         Shell::PowerShell => "powershell",
         Shell::Elvish => "elvish",
+        _ => "unknown",
     }
 }
 
@@ -366,6 +374,7 @@ fn default_completion_path(shell: Shell) -> Option<PathBuf> {
         ),
         Shell::Elvish => Some(home.join(".elvish").join("lib").join("agent-tui.elv")),
         Shell::PowerShell => None,
+        _ => None,
     }
 }
 

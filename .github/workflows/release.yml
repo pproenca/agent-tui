@@ -402,7 +402,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
-          PACKAGES=$(node -p "const pkg=require('./package.json'); const deps=Object.keys(pkg.optionalDependencies||{}).filter((name)=>name.startsWith('agent-tui-')); console.log([...deps, pkg.name].join(' '));")
+          PACKAGES=$(node -p "const pkg=require('./package.json'); const deps=Object.keys(pkg.optionalDependencies||{}).filter((name)=>name.startsWith('agent-tui-')); [...deps, pkg.name].join(' ')")
           missing=()
           for name in $PACKAGES; do
             if npm view "${name}@${VERSION}" version >/dev/null 2>&1; then

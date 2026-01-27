@@ -1,12 +1,10 @@
 id: clean-arch-usecases-no-infrastructure
 language: rust
 severity: error
-message: "Use case layer must not import from infrastructure or app modules."
+message: "Use cases must not depend on adapters, app, or infrastructure."
 note: |
-  Clean Architecture: Use cases orchestrate domain logic via repository traits.
-  They should not depend on:
-  - infra/* (I/O, daemon management, IPC, terminal integration)
-  - app/* (CLI/UI orchestration)
+  Use cases orchestrate domain logic and depend only on domain + ports.
+  Adapters and infra are outer layers.
 files:
   - "crates/agent-tui/src/usecases/**/*.rs"
 rule:
@@ -14,5 +12,7 @@ rule:
   any:
     - regex: "^use crate::infra::"
     - regex: "^use crate::app::"
+    - regex: "^use crate::adapters::"
   not:
-    regex: "^use crate::infra::daemon::test_support::"
+    any:
+      - regex: "^use crate::infra::daemon::test_support(::|;)"

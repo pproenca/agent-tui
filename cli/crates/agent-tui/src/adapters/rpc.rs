@@ -1,9 +1,10 @@
-use crate::infra::ipc::{RpcRequest, RpcResponse, params};
+use crate::adapters::ipc::{RpcRequest, RpcResponse, params};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde_json::{Value, json};
 
 use super::snapshot_adapters::session_info_to_json;
+use crate::adapters::daemon::DomainError;
 use crate::domain::{
     AccessibilitySnapshotInput, AttachInput, AttachOutput, CleanupInput, CleanupOutput, ClearInput,
     ClickInput, CountInput, CountOutput, DomainElement, DoubleClickInput, ElementStateInput,
@@ -16,7 +17,7 @@ use crate::domain::{
     ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, ToggleInput,
     ToggleOutput, TypeInput, VisibilityOutput, WaitInput, WaitOutput,
 };
-use crate::infra::daemon::{DomainError, SessionError};
+use crate::usecases::ports::SessionError;
 
 pub fn parse_session_id(session: Option<String>) -> Option<SessionId> {
     session.and_then(|s| {

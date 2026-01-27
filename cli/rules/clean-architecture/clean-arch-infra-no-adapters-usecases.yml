@@ -1,0 +1,18 @@
+id: clean-arch-infra-no-adapters-usecases
+language: rust
+severity: error
+message: "Infra may depend on domain and ports only. No adapters/app/usecases (except ports)."
+note: |
+  Infrastructure implements ports defined by use cases.
+  It must not depend on adapters or app, and must not depend on usecases beyond ports.
+files:
+  - "crates/agent-tui/src/infra/**/*.rs"
+rule:
+  kind: use_declaration
+  any:
+    - regex: "^use crate::adapters::"
+    - regex: "^use crate::app::"
+    - regex: "^use crate::usecases::"
+  not:
+    any:
+      - regex: "^use crate::usecases::ports(::|;)"

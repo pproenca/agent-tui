@@ -1,4 +1,4 @@
-use crate::infra::ipc::{
+use crate::adapters::ipc::{
     AccessibilitySnapshotDto, BoundsDto, ElementRefDto, RefMapDto, SnapshotStatsDto,
 };
 

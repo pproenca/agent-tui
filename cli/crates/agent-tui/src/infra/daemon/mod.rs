@@ -1,27 +1,18 @@
 #![deny(clippy::all)]
 mod config;
-mod error;
 mod file_lock;
-pub mod handlers;
-mod http_api;
 mod lock_helpers;
 mod metrics;
 mod pty_session;
 mod repository;
-mod router;
-mod server;
 mod session;
 mod signal_handler;
 mod terminal_state;
 #[cfg(test)]
 pub mod test_support;
-pub mod transport;
-mod usecase_container;
 
 pub use crate::usecases::ports::SessionError;
 pub use config::DaemonConfig;
-pub use error::DaemonError;
-pub use error::DomainError;
 pub use file_lock::LockFile;
 pub use file_lock::remove_lock_file;
 pub use lock_helpers::LOCK_TIMEOUT;
@@ -30,8 +21,6 @@ pub use lock_helpers::acquire_session_lock;
 pub use metrics::DaemonMetrics;
 pub use pty_session::PtySession;
 pub use repository::SessionSnapshot;
-pub use router::Router;
-pub use server::start_daemon;
 pub use session::DEFAULT_MAX_SESSIONS;
 pub use session::PersistedSession;
 pub use session::Session;
@@ -39,16 +28,7 @@ pub use session::SessionId;
 pub use session::SessionInfo;
 pub use session::SessionManager;
 pub use session::SessionPersistence;
+pub use signal_handler::SignalHandler;
 pub use terminal_state::TerminalState;
-pub use usecase_container::ElementUseCases;
-pub use usecase_container::InputUseCases;
-pub use usecase_container::SessionUseCases;
-pub use usecase_container::UseCaseContainer;
-
-pub use transport::TransportConnection;
-pub use transport::TransportError;
-pub use transport::TransportListener;
-pub use transport::unix_socket::UnixSocketConnection;
-pub use transport::unix_socket::UnixSocketListener;
 
 pub type Result<T> = std::result::Result<T, SessionError>;

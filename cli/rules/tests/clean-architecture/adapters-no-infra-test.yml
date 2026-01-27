@@ -1,0 +1,7 @@
+id: clean-arch-adapters-no-infra
+valid:
+  - "use crate::usecases::ports::SessionRepository;"
+  - "use crate::domain::SessionId;"
+invalid:
+  - "use crate::infra::daemon::Session;"
+  - "use crate::infra::ipc::DaemonClient;"

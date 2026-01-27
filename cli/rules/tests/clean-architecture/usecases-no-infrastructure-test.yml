@@ -1,11 +1,9 @@
 id: clean-arch-usecases-no-infrastructure
 valid:
   - "use crate::domain::SessionId;"
-  - "use crate::domain::SessionInfo;"
   - "use crate::usecases::ports::SessionRepository;"
-  - "use std::sync::Arc;"
+  - "use crate::infra::daemon::test_support::MockSessionRepository;"
 invalid:
-  - "use crate::infra::daemon::server::DaemonServer;"
   - "use crate::infra::daemon::Session;"
-  - "use crate::infra::ipc::DaemonClient;"
-  - "use crate::app::handlers::handle_spawn;"
+  - "use crate::adapters::rpc::Response;"
+  - "use crate::app::handlers::HandlerResult;"

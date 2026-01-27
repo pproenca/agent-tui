@@ -1,6 +1,5 @@
 use crate::common::error_codes::{self, ErrorCategory};
 use crate::usecases::ports::PtyError as PortPtyError;
-use serde_json::{Value, json};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -17,6 +16,12 @@ pub enum PtyError {
     Resize(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PtyErrorContext {
+    pub operation: &'static str,
+    pub reason: String,
+}
+
 impl PtyError {
     pub fn code(&self) -> i32 {
         error_codes::PTY_ERROR
@@ -26,28 +31,10 @@ impl PtyError {
         ErrorCategory::External
     }
 
-    pub fn context(&self) -> Value {
-        match self {
-            PtyError::Open(reason) => json!({
-                "operation": "open",
-                "reason": reason
-            }),
-            PtyError::Spawn(reason) => json!({
-                "operation": "spawn",
-                "reason": reason
-            }),
-            PtyError::Write(reason) => json!({
-                "operation": "write",
-                "reason": reason
-            }),
-            PtyError::Read(reason) => json!({
-                "operation": "read",
-                "reason": reason
-            }),
-            PtyError::Resize(reason) => json!({
-                "operation": "resize",
-                "reason": reason
-            }),
+    pub fn context(&self) -> PtyErrorContext {
+        PtyErrorContext {
+            operation: self.operation(),
+            reason: self.reason().to_string(),
         }
     }
 
@@ -137,8 +124,8 @@ mod tests {
     fn test_pty_error_context() {
         let err = PtyError::Spawn("command not found".into());
         let ctx = err.context();
-        assert_eq!(ctx["operation"], "spawn");
-        assert_eq!(ctx["reason"], "command not found");
+        assert_eq!(ctx.operation, "spawn");
+        assert_eq!(ctx.reason, "command not found");
     }
 
     #[test]

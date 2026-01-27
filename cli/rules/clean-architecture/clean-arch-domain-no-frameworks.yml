@@ -1,19 +1,34 @@
 id: clean-arch-domain-no-frameworks
 language: rust
 severity: error
-message: "Domain layer must not depend on framework crates. Move serialization to adapters/infrastructure."
+message: "Domain layer must remain framework-agnostic. Move runtime/framework crates to adapters or infra."
 note: |
-  Clean Architecture: Domain types should be pure Rust with no framework dependencies.
-  - serde: Handle serialization in adapter layer
-  - chrono: Handle datetime in infrastructure layer
-  - tokio: Async runtime is infrastructure concern
-  - tracing: Logging is infrastructure concern
+  Domain code should be pure business rules with no framework/runtime dependencies.
+  Allowed: pure utility crates (e.g., uuid, regex) and thiserror for domain errors.
+  Disallowed: async runtimes, web frameworks, RPC/ORM stacks, CLI/terminal crates, logging frameworks.
 files:
   - "crates/agent-tui/src/domain/**/*.rs"
 rule:
   kind: use_declaration
   any:
-    - regex: "^use serde(::|;)"
-    - regex: "^use chrono(::|;)"
     - regex: "^use tokio(::|;)"
+    - regex: "^use async_std(::|;)"
     - regex: "^use tracing(::|;)"
+    - regex: "^use log(::|;)"
+    - regex: "^use serde(::|;)"
+    - regex: "^use serde_json(::|;)"
+    - regex: "^use clap(::|;)"
+    - regex: "^use crossterm(::|;)"
+    - regex: "^use ratatui(::|;)"
+    - regex: "^use reqwest(::|;)"
+    - regex: "^use axum(::|;)"
+    - regex: "^use hyper(::|;)"
+    - regex: "^use tower(::|;)"
+    - regex: "^use tower_http(::|;)"
+    - regex: "^use warp(::|;)"
+    - regex: "^use actix(::|;)"
+    - regex: "^use tonic(::|;)"
+    - regex: "^use sqlx(::|;)"
+    - regex: "^use sea_orm(::|;)"
+    - regex: "^use diesel(::|;)"
+    - regex: "^use rusqlite(::|;)"

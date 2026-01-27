@@ -9,15 +9,15 @@ use std::time::Instant;
 use serde_json::Value;
 use serde_json::json;
 
+use crate::adapters::ValueExt;
+use crate::adapters::ipc::ClientError;
+use crate::adapters::ipc::DaemonClient;
+use crate::adapters::ipc::ProcessController;
+use crate::adapters::ipc::Signal;
+use crate::adapters::ipc::UnixProcessController;
+use crate::adapters::ipc::params;
+use crate::adapters::ipc::socket_path;
 use crate::common::Colors;
-use crate::common::ValueExt;
-use crate::infra::ipc::ClientError;
-use crate::infra::ipc::DaemonClient;
-use crate::infra::ipc::ProcessController;
-use crate::infra::ipc::Signal;
-use crate::infra::ipc::UnixProcessController;
-use crate::infra::ipc::params;
-use crate::infra::ipc::socket_path;
 
 use crate::adapters::presenter::{ElementView, Presenter, create_presenter};
 use crate::app::attach::DetachKeys;
@@ -956,8 +956,8 @@ fn is_process_running(pid: u32) -> bool {
     let controller = UnixProcessController;
     matches!(
         controller.check_process(pid),
-        Ok(crate::infra::ipc::ProcessStatus::Running)
-            | Ok(crate::infra::ipc::ProcessStatus::NoPermission)
+        Ok(crate::adapters::ipc::ProcessStatus::Running)
+            | Ok(crate::adapters::ipc::ProcessStatus::NoPermission)
     )
 }
 
@@ -1044,7 +1044,7 @@ fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     loop {
         match controller.check_process(pid) {
-            Ok(crate::infra::ipc::ProcessStatus::NotFound) => return true,
+            Ok(crate::adapters::ipc::ProcessStatus::NotFound) => return true,
             Ok(_) => {}
             Err(_) => {}
         }
@@ -1721,7 +1721,7 @@ pub enum StopResult {
 
 /// Core daemon restart logic that doesn't require an active client connection.
 pub fn restart_daemon_core() -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    use crate::infra::ipc::{
+    use crate::adapters::ipc::{
         PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background,
     };
 
@@ -1750,7 +1750,9 @@ pub fn restart_daemon_core() -> Result<Vec<String>, Box<dyn std::error::Error>> 
 /// Core daemon stop logic that doesn't require an active client connection.
 /// Returns `Ok(StopResult)` on success, including when daemon is already stopped (idempotent).
 pub fn stop_daemon_core(force: bool) -> Result<StopResult, Box<dyn std::error::Error>> {
-    use crate::infra::ipc::{PidLookupResult, UnixSocketClient, daemon_lifecycle, get_daemon_pid};
+    use crate::adapters::ipc::{
+        PidLookupResult, UnixSocketClient, daemon_lifecycle, get_daemon_pid,
+    };
 
     let pid = match get_daemon_pid() {
         PidLookupResult::Found(pid) => pid,
@@ -1988,7 +1990,7 @@ mod tests {
             self.output.borrow_mut().push(format!("value: {}", value));
         }
 
-        fn present_client_error(&self, error: &crate::infra::ipc::ClientError) {
+        fn present_client_error(&self, error: &crate::adapters::ipc::ClientError) {
             self.output
                 .borrow_mut()
                 .push(format!("client_error: {}", error));

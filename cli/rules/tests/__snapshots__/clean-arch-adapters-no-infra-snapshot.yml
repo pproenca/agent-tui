@@ -1,0 +1,14 @@
+id: clean-arch-adapters-no-infra
+snapshots:
+  use crate::infra::daemon::Session;:
+    labels:
+    - source: use crate::infra::daemon::Session;
+      style: primary
+      start: 0
+      end: 34
+  use crate::infra::ipc::DaemonClient;:
+    labels:
+    - source: use crate::infra::ipc::DaemonClient;
+      style: primary
+      start: 0
+      end: 36

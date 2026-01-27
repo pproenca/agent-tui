@@ -6,15 +6,17 @@ use std::sync::LazyLock;
 
 pub mod attach;
 pub mod commands;
+pub mod daemon;
 pub mod error;
 pub mod handlers;
 
+use crate::adapters::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
 use crate::app::commands::OutputFormat;
+use crate::app::daemon::start_daemon;
+use crate::common::DaemonError;
 use crate::common::key_names::is_key_name;
 use crate::common::telemetry;
 use crate::common::{Colors, color_init};
-use crate::infra::daemon::{DaemonError, start_daemon};
-use crate::infra::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
 use tracing::debug;
 
 use crate::adapters::presenter::create_presenter;
@@ -161,7 +163,7 @@ impl Application {
                 Ok(true)
             }
             Commands::Daemon(DaemonCommand::Start { foreground: false }) => {
-                crate::infra::ipc::start_daemon_background()?;
+                crate::adapters::ipc::start_daemon_background()?;
                 println!("Daemon started in background");
                 Ok(true)
             }
@@ -540,7 +542,7 @@ impl Application {
         text: &str,
         exact: bool,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        use crate::infra::ipc::params;
+        use crate::adapters::ipc::params;
 
         let find_params = params::FindParams {
             session: ctx.session.clone(),
@@ -720,7 +722,7 @@ impl Default for Application {
 }
 
 fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
-    use crate::infra::ipc::version::{VersionCheckResult, check_version};
+    use crate::adapters::ipc::version::{VersionCheckResult, check_version};
 
     match check_version(client, env!("AGENT_TUI_VERSION"), env!("AGENT_TUI_GIT_SHA")) {
         VersionCheckResult::Match => {}
@@ -760,7 +762,7 @@ fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
 }
 
 fn exit_code_for_client_error(error: &ClientError) -> i32 {
-    use crate::infra::ipc::error_codes::ErrorCategory;
+    use crate::adapters::ipc::error_codes::ErrorCategory;
 
     if matches!(error, ClientError::DaemonNotRunning) {
         return exit_codes::UNAVAILABLE;

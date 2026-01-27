@@ -1,17 +1,16 @@
 id: clean-arch-usecases-no-task-spawning
 language: rust
 severity: error
-message: "Use cases should not spawn async tasks. Task spawning is an infrastructure concern."
+message: "Use cases should not spawn tasks or threads. Spawning belongs in infra."
 note: |
-  Spawning tasks (tokio::spawn, task::spawn) is an infrastructure concern.
-  Use cases should be pure business logic orchestration.
-  - If you need concurrent execution, the infrastructure layer should handle spawning
-  - Use cases return results; infrastructure decides how to execute them
+  Use cases should be deterministic and orchestration-focused.
+  Spawn tasks/threads in infra where runtime concerns are handled.
 files:
   - "crates/agent-tui/src/usecases/**/*.rs"
 rule:
   any:
     - pattern: tokio::spawn($$$ARGS)
     - pattern: tokio::task::spawn($$$ARGS)
-    - pattern: task::spawn($$$ARGS)
-    - pattern: spawn($FUTURE)
+    - pattern: tokio::task::spawn_blocking($$$ARGS)
+    - pattern: tokio::task::spawn_local($$$ARGS)
+    - pattern: std::thread::spawn($$$ARGS)

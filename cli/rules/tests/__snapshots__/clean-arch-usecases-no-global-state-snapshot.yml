@@ -24,3 +24,21 @@ snapshots:
       style: primary
       start: 0
       end: 30
+  use std::sync::LazyLock;:
+    labels:
+    - source: use std::sync::LazyLock;
+      style: primary
+      start: 0
+      end: 24
+  use std::sync::Once;:
+    labels:
+    - source: use std::sync::Once;
+      style: primary
+      start: 0
+      end: 20
+  use std::sync::OnceLock;:
+    labels:
+    - source: use std::sync::OnceLock;
+      style: primary
+      start: 0
+      end: 24

@@ -1,0 +1,12 @@
+id: clean-arch-adapters-no-infra
+language: rust
+severity: error
+message: "Adapters should not depend on infra. Use ports/usecases instead."
+note: |
+  Adapters translate between external interfaces and use cases.
+  Infra implements ports; adapters should not import infra types directly.
+files:
+  - "crates/agent-tui/src/adapters/**/*.rs"
+rule:
+  kind: use_declaration
+  regex: "^use crate::infra::"

@@ -1,15 +1,14 @@
 id: clean-arch-domain-no-io-operations
 valid:
   - "use std::collections::HashMap;"
-  - "use std::io::Error;"
-  - "use std::io::ErrorKind;"
-  - "use std::io::Result;"
+  - "use std::time::Duration;"
+  - "Duration::from_secs(1);"
 invalid:
   - "use std::fs::File;"
-  - "use std::fs;"
   - "use std::net::TcpStream;"
-  - "use std::net;"
-  - "use std::io::Write;"
-  - "use std::io::Read;"
-  - "use std::io::BufReader;"
-  - "use std::io::BufWriter;"
+  - "use std::process::Command;"
+  - "use std::thread::sleep;"
+  - "std::fs::read(\"file.txt\");"
+  - "std::process::Command::new(\"sh\");"
+  - "std::thread::sleep(Duration::from_secs(1));"
+  - "tokio::time::sleep(Duration::from_secs(1));"

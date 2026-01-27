@@ -718,7 +718,8 @@ impl SessionManager {
             .map(SessionId::new)
             .unwrap_or_else(generate_session_id);
 
-        let pty = PtyHandle::spawn(command, args, cwd, env, cols, rows)?;
+        let pty = PtyHandle::spawn(command, args, cwd, env, cols, rows)
+            .map_err(|e| SessionError::Pty(e.into()))?;
         let pid = pty.pid().unwrap_or(0);
 
         let session = Session::new(id.clone(), command.to_string(), pty, cols, rows);

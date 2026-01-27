@@ -1,7 +1,7 @@
 use std::io;
 
+use crate::adapters::ipc::error_codes::{self, ErrorCategory};
 use crate::app::commands::OutputFormat;
-use crate::infra::ipc::error_codes::{self, ErrorCategory};
 use serde_json::{Value, json};
 use thiserror::Error;
 

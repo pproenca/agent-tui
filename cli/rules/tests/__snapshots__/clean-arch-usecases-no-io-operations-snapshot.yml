@@ -1,0 +1,32 @@
+id: clean-arch-usecases-no-io-operations
+snapshots:
+  std::fs::read("file.txt");:
+    labels:
+    - source: std::fs::read("file.txt")
+      style: primary
+      start: 0
+      end: 25
+  std::process::Command::new("sh");:
+    labels:
+    - source: std::process::Command::new("sh")
+      style: primary
+      start: 0
+      end: 32
+  std::thread::sleep(Duration::from_secs(1));:
+    labels:
+    - source: std::thread::sleep(Duration::from_secs(1))
+      style: primary
+      start: 0
+      end: 42
+  tokio::time::sleep(Duration::from_secs(1));:
+    labels:
+    - source: tokio::time::sleep(Duration::from_secs(1))
+      style: primary
+      start: 0
+      end: 42
+  use std::fs::File;:
+    labels:
+    - source: use std::fs::File;
+      style: primary
+      start: 0
+      end: 18

@@ -1,0 +1,7 @@
+id: clean-arch-no-process-exit-outside-main
+valid:
+  - "return 1;"
+  - "std::process::Command::new(\"sh\");"
+invalid:
+  - "std::process::exit(1);"
+  - "::std::process::exit(2);"

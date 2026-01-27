@@ -1,0 +1,25 @@
+id: clean-arch-no-serde-json-outside-adapters
+language: rust
+severity: error
+message: "serde_json::Value and JSON macros must be confined to adapters (and CLI app layer)."
+note: |
+  Keep dynamic JSON (serde_json::Value, json! macro, to_value/from_value) out of domain,
+  usecases, infra, and common. The CLI app layer is treated as an interface adapter.
+  Typed serialization is allowed in infra for persistence.
+files:
+  - "crates/agent-tui/src/domain/**/*.rs"
+  - "crates/agent-tui/src/usecases/**/*.rs"
+  - "crates/agent-tui/src/infra/**/*.rs"
+  - "crates/agent-tui/src/common/**/*.rs"
+rule:
+  any:
+    - kind: use_declaration
+      any:
+        - regex: "^use serde_json::Value"
+        - regex: "^use serde_json::value::Value"
+        - regex: "^use serde_json::json"
+    - pattern: serde_json::Value
+    - pattern: serde_json::value::Value
+    - pattern: serde_json::json!($$$)
+    - pattern: serde_json::to_value($$$)
+    - pattern: serde_json::from_value($$$)

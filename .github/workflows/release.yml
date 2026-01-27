@@ -322,7 +322,7 @@ jobs:
 
       - name: Prepare npm package
         working-directory: cli
-        run: bun scripts/xtask.ts dist npm --input artifacts --output bin
+        run: bun scripts/xtask.ts dist npm --input artifacts --output npm
 
       - name: Publish to npm with provenance
         working-directory: cli
@@ -373,7 +373,7 @@ jobs:
 
       - name: Prepare npm package
         working-directory: cli
-        run: bun scripts/xtask.ts dist npm --input artifacts --output bin
+        run: bun scripts/xtask.ts dist npm --input artifacts --output npm
 
       - name: Check if version already published (npm)
         id: npm-check

@@ -352,11 +352,11 @@ mod tests {
 
     fn create_test_usecases() -> UseCaseContainer<TestRepository> {
         let session_repo = Arc::new(TestRepository::default());
-        let metrics = Arc::new(TestMetrics::default());
+        let metrics = Arc::new(TestMetrics);
         let start_time = Instant::now();
         let active_connections = Arc::new(AtomicUsize::new(0));
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        let shutdown_notifier = Arc::new(NoopShutdownNotifier::default());
+        let shutdown_notifier = Arc::new(NoopShutdownNotifier);
         UseCaseContainer::new(
             session_repo,
             metrics,

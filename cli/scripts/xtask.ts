@@ -299,24 +299,51 @@ function updateTomlVersion(contents: string, section: string, version: string) {
 }
 
 function readPackageVersion(filePath: string) {
-  const contents = fs.readFileSync(filePath, "utf8");
-  const json = JSON.parse(contents) as { version?: string };
+  const json = readPackageJson(filePath) as { version?: string };
   if (!json.version) {
     throw new Error("Could not find version in package.json");
   }
   return json.version;
 }
 
-function writePackageVersion(filePath: string, version: string) {
+function readPackageJson(filePath: string) {
   const contents = fs.readFileSync(filePath, "utf8");
-  const json = JSON.parse(contents) as Record<string, unknown>;
+  return JSON.parse(contents) as Record<string, unknown>;
+}
+
+function updateOptionalDependencies(
+  json: Record<string, unknown>,
+  version: string,
+) {
+  const optionalDeps = json.optionalDependencies;
+  if (!optionalDeps || typeof optionalDeps !== "object") {
+    return;
+  }
+  const deps = optionalDeps as Record<string, string>;
+  for (const name of Object.keys(deps)) {
+    if (name.startsWith("agent-tui-")) {
+      deps[name] = version;
+    }
+  }
+}
+
+function writePackageVersion(filePath: string, version: string) {
+  const json = readPackageJson(filePath);
   json.version = version;
+  updateOptionalDependencies(json, version);
   fs.writeFileSync(filePath, `${JSON.stringify(json, null, 2)}\n`, "utf8");
 }
 
 function versionCheck(quiet: boolean) {
   const { cargoVersion, packageVersion } = readVersions(ROOT);
   const npmPaths = npmPlatformPackagePaths(ROOT);
+  const packageJson = readPackageJson(packageJsonPath(ROOT));
+  const optionalDeps =
+    typeof packageJson.optionalDependencies === "object" &&
+    packageJson.optionalDependencies
+      ? (packageJson.optionalDependencies as Record<string, string>)
+      : null;
+  const npmPackageNames = new Set<string>();
 
   if (cargoVersion !== packageVersion) {
     throw new Error(
@@ -325,11 +352,46 @@ function versionCheck(quiet: boolean) {
   }
 
   for (const npmPath of npmPaths) {
-    const npmVersion = readPackageVersion(npmPath);
+    const npmJson = readPackageJson(npmPath);
+    const npmVersion = npmJson.version;
+    const npmName = npmJson.name;
+    if (!npmVersion || !npmName) {
+      throw new Error(`Could not find name/version in ${npmPath}`);
+    }
+    npmPackageNames.add(npmName);
     if (npmVersion !== packageVersion) {
       throw new Error(
         `Version mismatch detected!\n  package.json: ${packageVersion}\n  ${npmPath}: ${npmVersion}`,
       );
+    }
+  }
+
+  if (npmPackageNames.size > 0 && !optionalDeps) {
+    throw new Error("Missing optionalDependencies in package.json");
+  }
+
+  if (optionalDeps) {
+    for (const [name, version] of Object.entries(optionalDeps)) {
+      if (!name.startsWith("agent-tui-")) {
+        continue;
+      }
+      if (version !== packageVersion) {
+        throw new Error(
+          `Version mismatch detected!\n  package.json: ${packageVersion}\n  optionalDependencies.${name}: ${version}`,
+        );
+      }
+      if (!npmPackageNames.has(name)) {
+        throw new Error(
+          `Optional dependency ${name} has no matching npm package under npm/`,
+        );
+      }
+    }
+    for (const npmName of npmPackageNames) {
+      if (!optionalDeps[npmName]) {
+        throw new Error(
+          `Missing optionalDependencies entry for ${npmName} in package.json`,
+        );
+      }
     }
   }
 

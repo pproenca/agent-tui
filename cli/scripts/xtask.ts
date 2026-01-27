@@ -481,7 +481,7 @@ function release(
   if (options.confirm) {
     console.log("Changes to be released:");
     console.log(status ? status : "(no changes detected)");
-    if (!confirmProceed("Stage, commit, and tag these changes?")) {
+    if (!confirmProceed("Stage, commit, push, and tag these changes?")) {
       console.log("Release aborted before staging.");
       return;
     }
@@ -497,15 +497,18 @@ function release(
     { cwd: ROOT },
   );
 
+  console.log("Pushing commit...");
+  runCommand("git", ["push"], { cwd: ROOT });
+
   console.log(`Creating tag ${tag}...`);
   runCommand("git", ["tag", "-a", tag, "-m", `Release ${targetVersion}`], {
     cwd: ROOT,
   });
 
-  console.log(`Done! Release ${targetVersion} prepared.`);
-  console.log("Nothing has been pushed yet. To publish when ready, run:");
-  console.log("  git push");
-  console.log(`  git push origin ${tag}`);
+  console.log(`Pushing tag ${tag}...`);
+  runCommand("git", ["push", "origin", tag], { cwd: ROOT });
+
+  console.log(`Done! Release ${targetVersion} pushed and tagged.`);
 }
 
 function isBump(value: string) {

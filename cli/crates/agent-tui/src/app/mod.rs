@@ -408,8 +408,14 @@ impl Application {
             }
 
             Commands::Press { keys } => {
-                for key in keys {
+                const PRESS_INTER_KEY_DELAY_MS: u64 = 50;
+                for (idx, key) in keys.iter().enumerate() {
                     handlers::handle_press(ctx, key.to_string())?;
+                    if idx + 1 < keys.len() {
+                        std::thread::sleep(std::time::Duration::from_millis(
+                            PRESS_INTER_KEY_DELAY_MS,
+                        ));
+                    }
                 }
             }
 

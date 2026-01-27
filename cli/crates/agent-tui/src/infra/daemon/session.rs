@@ -310,13 +310,14 @@ fn spawn_pump(
     session: Arc<Mutex<Session>>,
     thread_name: String,
 ) -> (channel::Sender<PumpCommand>, thread::JoinHandle<()>) {
-    let (tx, rx) = channel::unbounded();
+    const PUMP_COMMAND_CHANNEL_CAPACITY: usize = 64;
+    let (tx, rx) = channel::bounded(PUMP_COMMAND_CHANNEL_CAPACITY);
     let pty_rx = {
         let mut sess = mutex_lock_or_recover(&session);
         sess.take_pty_rx()
     }
     .unwrap_or_else(|| {
-        let (_tx, rx) = channel::unbounded();
+        let (_tx, rx) = channel::bounded(1);
         rx
     });
     let join = thread::Builder::new()
@@ -459,7 +460,7 @@ impl Session {
 
     pub fn request_flush(&self) -> Option<channel::Receiver<()>> {
         if let Some(tx) = self.pump_tx.as_ref() {
-            let (ack_tx, ack_rx) = channel::unbounded();
+            let (ack_tx, ack_rx) = channel::bounded(1);
             if tx.send(PumpCommand::Flush(ack_tx)).is_ok() {
                 return Some(ack_rx);
             }

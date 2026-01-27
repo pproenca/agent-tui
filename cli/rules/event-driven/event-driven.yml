@@ -5,6 +5,11 @@ message: "Avoid std::thread::sleep in async contexts; use tokio::time::sleep or 
 note: |
   Blocking sleeps halt the async runtime thread and can starve other tasks.
   Use tokio::time::sleep for async delays, or spawn_blocking for blocking work.
+
+  Guidance:
+  - If the call runs on an async runtime thread, replace with tokio::time::sleep.
+  - If you must block, move the work into spawn_blocking and document why.
+  - If it only appears in tests or one-off tooling, consider a narrow, documented exception.
 rule:
   any:
     - all:

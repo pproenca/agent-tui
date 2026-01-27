@@ -557,8 +557,10 @@ enum StdinMessage {
     Error,
 }
 
+const ATTACH_STDIN_CHANNEL_CAPACITY: usize = 64;
+
 fn spawn_stdin_reader() -> channel::Receiver<StdinMessage> {
-    let (tx, rx) = channel::unbounded();
+    let (tx, rx) = channel::bounded(ATTACH_STDIN_CHANNEL_CAPACITY);
     let span = tracing::debug_span!("attach_stdin_reader");
     let builder = std::thread::Builder::new().name("attach-stdin".to_string());
     let tx_thread = tx.clone();
@@ -598,8 +600,10 @@ enum EventMessage {
     Error,
 }
 
+const ATTACH_EVENT_CHANNEL_CAPACITY: usize = 256;
+
 fn spawn_event_reader() -> channel::Receiver<EventMessage> {
-    let (tx, rx) = channel::unbounded();
+    let (tx, rx) = channel::bounded(ATTACH_EVENT_CHANNEL_CAPACITY);
     let span = tracing::debug_span!("attach_event_reader");
     let builder = std::thread::Builder::new().name("attach-events".to_string());
     let tx_thread = tx.clone();

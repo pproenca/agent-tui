@@ -46,9 +46,12 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v1
+
       - name: Check versions match
         working-directory: cli
-        run: cargo xtask version check
+        run: bun scripts/xtask.ts version check
 
   lint:
     name: Clippy
@@ -112,9 +115,12 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v1
+
       - name: Run architecture checks
         working-directory: cli
-        run: cargo xtask architecture check
+        run: bun scripts/xtask.ts architecture check
 
   build:
     name: Build & Test (${{ matrix.os }})

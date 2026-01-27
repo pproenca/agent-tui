@@ -131,24 +131,16 @@ fn handle_completions_command(
     yes: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if install {
-        let shell = resolve_shell(shell).ok_or_else(|| {
-            format!(
-                "Shell not specified. Use one of: {}",
-                supported_shells()
-            )
-        })?;
+        let shell = resolve_shell(shell)
+            .ok_or_else(|| format!("Shell not specified. Use one of: {}", supported_shells()))?;
         run_completions_wizard(shell, true, yes)?;
         return Ok(());
     }
 
     let stdout_tty = io::stdout().is_terminal();
     if print || !stdout_tty {
-        let shell = resolve_shell(shell).ok_or_else(|| {
-            format!(
-                "Shell not specified. Use one of: {}",
-                supported_shells()
-            )
-        })?;
+        let shell = resolve_shell(shell)
+            .ok_or_else(|| format!("Shell not specified. Use one of: {}", supported_shells()))?;
         let mut cmd = Cli::command();
         generate(shell, &mut cmd, PROGRAM_NAME, &mut io::stdout());
         return Ok(());
@@ -179,18 +171,16 @@ fn run_completions_wizard(
 
     let Some(install_path) = default_completion_path(shell) else {
         println!(
-            "{} {}",
-            Colors::warning("Note:"),
-            "Automatic install isn't supported for this shell."
+            "{} Automatic install isn't supported for this shell.",
+            Colors::warning("Note:")
         );
         return Ok(());
     };
 
     if matches!(shell, Shell::Bash | Shell::Zsh) {
         println!(
-            "{} {}",
-            Colors::dim("Optional:"),
-            "install a static completion file (not required if you use the line above)."
+            "{} install a static completion file (not required if you use the line above).",
+            Colors::dim("Optional:")
         );
     }
 
@@ -199,23 +189,23 @@ fn run_completions_wizard(
     match status {
         CompletionStatus::UpToDate => {
             println!(
-                "{} {}",
+                "{} Completions are up-to-date at {}",
                 Colors::success("✓"),
-                format!("Completions are up-to-date at {}", install_path.display())
+                install_path.display()
             );
         }
         CompletionStatus::OutOfDate => {
             println!(
-                "{} {}",
+                "{} Completions are out of date at {}",
                 Colors::warning("⚠"),
-                format!("Completions are out of date at {}", install_path.display())
+                install_path.display()
             );
         }
         CompletionStatus::Missing => {
             println!(
-                "{} {}",
+                "{} No completion file found at {}",
                 Colors::warning("⚠"),
-                format!("No completion file found at {}", install_path.display())
+                install_path.display()
             );
         }
     }
@@ -227,7 +217,10 @@ fn run_completions_wizard(
         return Ok(());
     }
 
-    if matches!(status, CompletionStatus::OutOfDate | CompletionStatus::Missing) {
+    if matches!(
+        status,
+        CompletionStatus::OutOfDate | CompletionStatus::Missing
+    ) {
         let stdin_tty = io::stdin().is_terminal();
         if yes || (stdin_tty && prompt_yes_no("Install/update completions now?", true)?) {
             let outcome = install_completions(&script, &install_path)?;
@@ -251,10 +244,7 @@ fn supported_shells() -> &'static str {
 
 fn print_shell_detection_help() {
     println!("{}", Colors::warning("Shell not detected."));
-    println!(
-        "Run: {} completions <shell>",
-        PROGRAM_NAME
-    );
+    println!("Run: {} completions <shell>", PROGRAM_NAME);
     println!("Supported shells: {}", supported_shells());
 }
 
@@ -279,9 +269,7 @@ fn print_install_guidance(shell: Shell) {
         }
         Shell::PowerShell => {
             println!("Add this to $PROFILE:");
-            println!(
-                "  agent-tui completions powershell --print | Out-String | Invoke-Expression"
-            );
+            println!("  agent-tui completions powershell --print | Out-String | Invoke-Expression");
             println!(
                 "{}",
                 Colors::dim("This keeps completions in sync with your installed agent-tui.")
@@ -299,19 +287,14 @@ fn print_install_guidance(shell: Shell) {
         }
         Shell::Elvish => {
             println!("Install a completion file:");
-            println!(
-                "  agent-tui completions elvish --print > ~/.elvish/lib/agent-tui.elv"
-            );
+            println!("  agent-tui completions elvish --print > ~/.elvish/lib/agent-tui.elv");
             println!(
                 "{}",
                 Colors::dim("Re-run this after upgrading agent-tui to refresh the file.")
             );
         }
         _ => {
-            println!(
-                "Run: {} completions <shell> --print",
-                PROGRAM_NAME
-            );
+            println!("Run: {} completions <shell> --print", PROGRAM_NAME);
             println!("Known shells: {}", supported_shells());
         }
     }
@@ -439,23 +422,23 @@ fn print_install_outcome(outcome: InstallOutcome) {
     match outcome {
         InstallOutcome::Installed(path) => {
             println!(
-                "{} {}",
+                "{} Installed completions to {}",
                 Colors::success("✓"),
-                format!("Installed completions to {}", path.display())
+                path.display()
             );
         }
         InstallOutcome::Updated(path) => {
             println!(
-                "{} {}",
+                "{} Updated completions at {}",
                 Colors::success("✓"),
-                format!("Updated completions at {}", path.display())
+                path.display()
             );
         }
         InstallOutcome::AlreadyUpToDate(path) => {
             println!(
-                "{} {}",
+                "{} Completions already up-to-date at {}",
                 Colors::success("✓"),
-                format!("Completions already up-to-date at {}", path.display())
+                path.display()
             );
         }
     }
@@ -471,9 +454,7 @@ fn print_static_install_note(shell: Shell) {
         ),
         Shell::Zsh => println!(
             "{}",
-            Colors::dim(
-                "Note: ensure ~/.zsh/completions is in $fpath and compinit is enabled."
-            )
+            Colors::dim("Note: ensure ~/.zsh/completions is in $fpath and compinit is enabled.")
         ),
         _ => {}
     }

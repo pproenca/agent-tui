@@ -42,3 +42,39 @@ snapshots:
       style: secondary
       start: 0
       end: 114
+  ? |
+    fn bad_sleep_in_async_block() {
+        tokio::spawn(async {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        });
+    }
+  : labels:
+    - source: std::thread::sleep(std::time::Duration::from_millis(10))
+      style: primary
+      start: 65
+      end: 121
+    - source: |-
+        async {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+      style: secondary
+      start: 49
+      end: 128
+  ? |
+    fn bad_sleep_in_async_move_block() {
+        tokio::spawn(async move {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        });
+    }
+  : labels:
+    - source: std::thread::sleep(std::time::Duration::from_millis(10))
+      style: primary
+      start: 75
+      end: 131
+    - source: |-
+        async move {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+      style: secondary
+      start: 54
+      end: 138

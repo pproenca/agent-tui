@@ -41,6 +41,10 @@ fitAddon.fit();
 window.addEventListener("resize", () => fitAddon.fit());
 
 let socket: WebSocket | null = null;
+let socketState: { reason: DisconnectReason | null } | null = null;
+let closedNoticeSent = false;
+
+type DisconnectReason = "manual" | "reconnect" | "server" | "error";
 
 function openSettings() {
   if (!settingsDialog) {
@@ -63,6 +67,35 @@ function setStatus(text: string, connected: boolean) {
 
 function setMeta(text: string) {
   metaEl.textContent = text;
+}
+
+function showTerminationNotice() {
+  setMeta("Session terminated.");
+  if (!closedNoticeSent) {
+    closedNoticeSent = true;
+    term.write("\r\n\x1b[90m[session terminated]\x1b[0m\r\n");
+  }
+}
+
+function finalizeDisconnect(reason: DisconnectReason) {
+  connectBtn.textContent = "Connect";
+  setStatus("Disconnected", false);
+  if (reason === "server") {
+    showTerminationNotice();
+  } else if (reason === "error") {
+    setMeta("Socket error.");
+  }
+}
+
+function disconnect(reason: DisconnectReason = "manual") {
+  if (!socket) {
+    finalizeDisconnect(reason);
+    return;
+  }
+  if (socketState) {
+    socketState.reason = reason;
+  }
+  socket.close();
 }
 
 async function hydrateLocalState(): Promise<boolean> {
@@ -158,6 +191,7 @@ function handleTextEvent(text: string) {
       if (payload.init) {
         term.reset();
         term.write(payload.init);
+        closedNoticeSent = false;
       }
       break;
     case "output":
@@ -183,7 +217,7 @@ function handleTextEvent(text: string) {
       }
       break;
     case "closed":
-      setMeta("Stream closed.");
+      showTerminationNotice();
       break;
     default:
       break;
@@ -202,15 +236,6 @@ function handleBinaryEvent(buffer: ArrayBuffer) {
   term.write(decoder.decode(chunk, { stream: true }));
 }
 
-function disconnect() {
-  if (socket) {
-    socket.close();
-    socket = null;
-  }
-  connectBtn.textContent = "Connect";
-  setStatus("Disconnected", false);
-}
-
 async function connect() {
   const hydrated = await hydrateLocalState();
   if (hydrated) {
@@ -223,7 +248,8 @@ async function connect() {
     return;
   }
   const tokenMissing = !tokenInput.value.trim();
-  disconnect();
+  disconnect("reconnect");
+  closedNoticeSent = false;
   setStatus("Connecting...", false);
   if (tokenMissing) {
     setMeta(`Token missing (ok if auth is disabled): ${wsUrl}`);
@@ -231,10 +257,16 @@ async function connect() {
     setMeta(wsUrl);
   }
 
-  socket = new WebSocket(wsUrl);
-  socket.binaryType = "arraybuffer";
+  const ws = new WebSocket(wsUrl);
+  const state = { reason: null as DisconnectReason | null };
+  socket = ws;
+  socketState = state;
+  ws.binaryType = "arraybuffer";
 
-  socket.addEventListener("open", () => {
+  ws.addEventListener("open", () => {
+    if (socket !== ws) {
+      return;
+    }
     setStatus("Connected", true);
     connectBtn.textContent = "Disconnect";
     if (settingsDialog?.open) {
@@ -242,7 +274,10 @@ async function connect() {
     }
   });
 
-  socket.addEventListener("message", (event) => {
+  ws.addEventListener("message", (event) => {
+    if (socket !== ws) {
+      return;
+    }
     if (typeof event.data === "string") {
       handleTextEvent(event.data);
       return;
@@ -252,19 +287,27 @@ async function connect() {
     }
   });
 
-  socket.addEventListener("close", () => {
-    disconnect();
+  ws.addEventListener("close", () => {
+    if (socket !== ws) {
+      return;
+    }
+    const reason = state.reason ?? "server";
+    socket = null;
+    socketState = null;
+    finalizeDisconnect(reason);
   });
 
-  socket.addEventListener("error", () => {
-    setMeta("Socket error.");
-    disconnect();
+  ws.addEventListener("error", () => {
+    if (socket !== ws) {
+      return;
+    }
+    disconnect("error");
   });
 }
 
 connectBtn.addEventListener("click", () => {
   if (socket) {
-    disconnect();
+    disconnect("manual");
   } else {
     void connect();
   }

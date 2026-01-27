@@ -1,0 +1,34 @@
+id: clean-arch-domain-no-framework-traits
+snapshots:
+  ? |
+    struct Foo;
+    impl Serialize for Foo {}
+  : labels:
+    - source: impl Serialize for Foo {}
+      style: primary
+      start: 12
+      end: 37
+  ? |
+    struct Foo;
+    impl axum::response::IntoResponse for Foo {}
+  : labels:
+    - source: impl axum::response::IntoResponse for Foo {}
+      style: primary
+      start: 12
+      end: 56
+  ? |
+    struct Foo;
+    impl serde::Serialize for Foo {}
+  : labels:
+    - source: impl serde::Serialize for Foo {}
+      style: primary
+      start: 12
+      end: 44
+  ? |
+    struct Foo;
+    impl sqlx::FromRow for Foo {}
+  : labels:
+    - source: impl sqlx::FromRow for Foo {}
+      style: primary
+      start: 12
+      end: 41

@@ -20,10 +20,10 @@ use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
 use serde_json::json;
 
+use crate::adapters::ipc::ClientError;
+use crate::adapters::ipc::DaemonClient;
+use crate::adapters::ipc::client::StreamResponse;
 use crate::common::Colors;
-use crate::infra::ipc::ClientError;
-use crate::infra::ipc::DaemonClient;
-use crate::infra::ipc::client::StreamResponse;
 use crate::infra::terminal::key_to_escape_sequence;
 use crossbeam_channel as channel;
 
@@ -889,7 +889,7 @@ fn display_char(ch: char) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::ipc::MockClient;
+    use crate::adapters::ipc::MockClient;
     use serde_json::json;
 
     #[test]

@@ -1,0 +1,14 @@
+id: clean-arch-no-process-exit-outside-main
+snapshots:
+  ::std::process::exit(2);:
+    labels:
+    - source: ::std::process::exit(2)
+      style: primary
+      start: 0
+      end: 23
+  std::process::exit(1);:
+    labels:
+    - source: std::process::exit(1)
+      style: primary
+      start: 0
+      end: 21

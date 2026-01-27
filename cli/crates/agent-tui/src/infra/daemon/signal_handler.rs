@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use tracing::info;
 
-use crate::infra::daemon::DaemonError;
+use crate::common::DaemonError;
 use crate::usecases::ports::ShutdownNotifierHandle;
 
 pub struct SignalHandler {

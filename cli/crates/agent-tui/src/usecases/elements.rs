@@ -4,7 +4,6 @@ use std::time::Duration;
 use crate::common::ansi_keys;
 use crate::domain::core::Element;
 
-use crate::adapters::{core_element_to_domain, core_elements_to_domain};
 use crate::domain::{
     ClearInput, ClearOutput, ClickInput, ClickOutput, CountInput, CountOutput, DoubleClickInput,
     DoubleClickOutput, ElementStateInput, FillInput, FillOutput, FindInput, FindOutput,
@@ -14,6 +13,7 @@ use crate::domain::{
     SelectAllOutput, SelectInput, SelectOutput, SessionInput, ToggleInput, ToggleOutput,
     VisibilityOutput,
 };
+use crate::domain::{core_element_to_domain, core_elements_to_domain};
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionRepository;
 use crate::usecases::select_helpers::navigate_to_option;

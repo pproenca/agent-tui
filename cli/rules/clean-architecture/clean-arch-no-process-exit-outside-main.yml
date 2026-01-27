@@ -1,0 +1,18 @@
+id: clean-arch-no-process-exit-outside-main
+language: rust
+severity: error
+message: "std::process::exit should only be called in main.rs."
+note: |
+  Composition root owns exit codes. Other layers should return Result and let main decide.
+files:
+  - "crates/agent-tui/src/lib.rs"
+  - "crates/agent-tui/src/domain/**/*.rs"
+  - "crates/agent-tui/src/usecases/**/*.rs"
+  - "crates/agent-tui/src/adapters/**/*.rs"
+  - "crates/agent-tui/src/infra/**/*.rs"
+  - "crates/agent-tui/src/app/**/*.rs"
+  - "crates/agent-tui/src/common/**/*.rs"
+rule:
+  any:
+    - pattern: std::process::exit($$$)
+    - pattern: ::std::process::exit($$$)

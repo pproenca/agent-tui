@@ -1,8 +1,8 @@
 use serde_json::Value;
 
+use crate::adapters::ValueExt;
+use crate::adapters::ipc::ClientError;
 use crate::common::Colors;
-use crate::common::ValueExt;
-use crate::infra::ipc::ClientError;
 
 pub trait Presenter {
     fn present_success(&self, message: &str, warning: Option<&str>);
@@ -72,7 +72,7 @@ pub struct HealthResult {
 
 impl HealthResult {
     pub fn from_json(value: &Value, verbose: bool) -> Self {
-        use crate::infra::ipc::socket_path;
+        use crate::adapters::ipc::socket_path;
 
         let (socket, pid_file) = if verbose {
             let socket = socket_path();

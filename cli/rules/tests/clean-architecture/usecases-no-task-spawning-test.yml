@@ -1,0 +1,19 @@
+id: clean-arch-usecases-no-task-spawning
+valid:
+  - |
+    fn run() {
+        do_work();
+    }
+invalid:
+  - |
+    fn run() {
+        tokio::spawn(async move {});
+    }
+  - |
+    fn run() {
+        tokio::task::spawn_blocking(|| {});
+    }
+  - |
+    fn run() {
+        std::thread::spawn(|| {});
+    }

@@ -1,11 +1,23 @@
 id: clean-arch-usecases-no-infrastructure
 snapshots:
+  use crate::adapters::rpc::Response;:
+    labels:
+    - source: use crate::adapters::rpc::Response;
+      style: primary
+      start: 0
+      end: 35
   use crate::adapters::rpc::RpcRequest;:
     labels:
     - source: use crate::adapters::rpc::RpcRequest;
       style: primary
       start: 0
       end: 37
+  use crate::app::handlers::HandlerResult;:
+    labels:
+    - source: use crate::app::handlers::HandlerResult;
+      style: primary
+      start: 0
+      end: 40
   use crate::app::handlers::handle_spawn;:
     labels:
     - source: use crate::app::handlers::handle_spawn;

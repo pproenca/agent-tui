@@ -1,14 +1,16 @@
 use serde_json::Value;
 
-use crate::infra::daemon::DaemonMetrics;
+use crate::domain::MetricsOutput;
 
-pub fn metrics_to_json(metrics: &DaemonMetrics) -> Value {
+pub fn metrics_to_json(metrics: &MetricsOutput) -> Value {
     serde_json::json!({
-        "requests_total": metrics.requests(),
-        "errors_total": metrics.errors(),
-        "lock_timeouts": metrics.lock_timeouts(),
-        "poison_recoveries": metrics.poison_recoveries(),
-        "uptime_ms": metrics.uptime_ms()
+        "requests_total": metrics.requests_total,
+        "errors_total": metrics.errors_total,
+        "lock_timeouts": metrics.lock_timeouts,
+        "poison_recoveries": metrics.poison_recoveries,
+        "uptime_ms": metrics.uptime_ms,
+        "active_connections": metrics.active_connections,
+        "session_count": metrics.session_count
     })
 }
 
@@ -18,11 +20,18 @@ mod tests {
 
     #[test]
     fn test_metrics_to_json() {
-        let metrics = DaemonMetrics::new();
-        metrics.record_request();
-        metrics.record_lock_timeout();
+        let metrics = MetricsOutput {
+            requests_total: 1,
+            errors_total: 0,
+            lock_timeouts: 1,
+            poison_recoveries: 0,
+            uptime_ms: 123,
+            active_connections: 2,
+            session_count: 3,
+        };
         let json = metrics_to_json(&metrics);
         assert_eq!(json["requests_total"], 1);
         assert_eq!(json["lock_timeouts"], 1);
+        assert_eq!(json["session_count"], 3);
     }
 }

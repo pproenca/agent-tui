@@ -1,0 +1,34 @@
+id: clean-arch-usecases-no-io-operations
+language: rust
+severity: error
+message: "Use cases must not perform I/O, process control, or blocking sleeps. Use ports."
+note: |
+  Use cases should request I/O through ports implemented in infra.
+  Sleeping, file/network access, and process control belong in infra.
+files:
+  - "crates/agent-tui/src/usecases/**/*.rs"
+rule:
+  any:
+    - kind: use_declaration
+      any:
+        - pattern: use std::fs::$$$ITEMS
+        - pattern: use std::fs
+        - pattern: use std::net::$$$ITEMS
+        - pattern: use std::net
+        - pattern: use std::process::$$$ITEMS
+        - pattern: use std::process
+        - pattern: use std::thread::$$$ITEMS
+        - pattern: use std::thread
+        - pattern: use tokio::fs::$$$ITEMS
+        - pattern: use tokio::net::$$$ITEMS
+        - pattern: use tokio::process::$$$ITEMS
+        - pattern: use tokio::time::$$$ITEMS
+    - pattern: std::fs::$FUNC($$$)
+    - pattern: std::net::$TYPE::$$$($$$)
+    - pattern: std::process::Command::new($$$)
+    - pattern: std::process::Command::$FUNC($$$)
+    - pattern: std::thread::sleep($$$)
+    - pattern: tokio::fs::$FUNC($$$)
+    - pattern: tokio::net::$TYPE::$$$($$$)
+    - pattern: tokio::process::Command::new($$$)
+    - pattern: tokio::time::sleep($$$)

@@ -1,0 +1,10 @@
+id: clean-arch-no-serde-json-outside-adapters
+valid:
+  - "use serde::Serialize;"
+  - "serde::Serialize"
+  - "serde_json::to_string(&value);"
+invalid:
+  - "use serde_json::Value;"
+  - "serde_json::json!({\"ok\": true});"
+  - "serde_json::to_value(&value);"
+  - "serde_json::from_value(value);"

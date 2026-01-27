@@ -3,7 +3,7 @@ use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
-use crate::infra::daemon::DaemonError;
+use crate::common::DaemonError;
 
 pub struct LockFile {
     #[allow(dead_code)]

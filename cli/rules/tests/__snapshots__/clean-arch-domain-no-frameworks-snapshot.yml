@@ -1,5 +1,11 @@
 id: clean-arch-domain-no-frameworks
 snapshots:
+  use axum::extract::Path;:
+    labels:
+    - source: use axum::extract::Path;
+      style: primary
+      start: 0
+      end: 24
   use chrono::DateTime;:
     labels:
     - source: use chrono::DateTime;
@@ -12,6 +18,36 @@ snapshots:
       style: primary
       start: 0
       end: 11
+  use clap::Parser;:
+    labels:
+    - source: use clap::Parser;
+      style: primary
+      start: 0
+      end: 17
+  use crossterm::style::Print;:
+    labels:
+    - source: use crossterm::style::Print;
+      style: primary
+      start: 0
+      end: 28
+  use hyper::Body;:
+    labels:
+    - source: use hyper::Body;
+      style: primary
+      start: 0
+      end: 16
+  use log::debug;:
+    labels:
+    - source: use log::debug;
+      style: primary
+      start: 0
+      end: 15
+  use reqwest::Client;:
+    labels:
+    - source: use reqwest::Client;
+      style: primary
+      start: 0
+      end: 20
   use serde::Serialize;:
     labels:
     - source: use serde::Serialize;
@@ -24,18 +60,48 @@ snapshots:
       style: primary
       start: 0
       end: 10
+  use serde_json::Value;:
+    labels:
+    - source: use serde_json::Value;
+      style: primary
+      start: 0
+      end: 22
+  use sqlx::FromRow;:
+    labels:
+    - source: use sqlx::FromRow;
+      style: primary
+      start: 0
+      end: 18
   use tokio::sync::Mutex;:
     labels:
     - source: use tokio::sync::Mutex;
       style: primary
       start: 0
       end: 23
+  use tokio::time;:
+    labels:
+    - source: use tokio::time;
+      style: primary
+      start: 0
+      end: 16
   use tokio;:
     labels:
     - source: use tokio;
       style: primary
       start: 0
       end: 10
+  use tonic::Request;:
+    labels:
+    - source: use tonic::Request;
+      style: primary
+      start: 0
+      end: 19
+  use tower::Service;:
+    labels:
+    - source: use tower::Service;
+      style: primary
+      start: 0
+      end: 19
   use tracing::info;:
     labels:
     - source: use tracing::info;

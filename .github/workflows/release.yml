@@ -326,7 +326,27 @@ jobs:
 
       - name: Publish to npm with provenance
         working-directory: cli
-        run: npm publish --access public --provenance
+        run: |
+          set -euo pipefail
+          MISSING="${{ needs.publish-validate.outputs.npm_missing }}"
+          if [ -z "$MISSING" ]; then
+            echo "No npm packages to publish."
+            exit 0
+          fi
+          for name in $MISSING; do
+            if [ "$name" = "agent-tui" ]; then
+              echo "Publishing $name"
+              npm publish --access public --provenance
+              continue
+            fi
+            dir="npm/$name"
+            if [ ! -d "$dir" ]; then
+              echo "::error::Missing workspace directory $dir"
+              exit 1
+            fi
+            echo "Publishing $name"
+            (cd "$dir" && npm publish --access public --provenance)
+          done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -341,6 +361,7 @@ jobs:
       id-token: write
     outputs:
       npm_skip: ${{ steps.npm-check.outputs.skip }}
+      npm_missing: ${{ steps.npm-check.outputs.missing }}
 
     steps:
       - uses: actions/checkout@v4
@@ -375,16 +396,29 @@ jobs:
         working-directory: cli
         run: bun scripts/xtask.ts dist npm --input artifacts --output npm
 
-      - name: Check if version already published (npm)
+      - name: Check if packages already published (npm)
         id: npm-check
         working-directory: cli
         run: |
+          set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
-          if npm view agent-tui@$VERSION version 2>/dev/null; then
-            echo "Version $VERSION already published to npm"
-            echo "skip=true" >> $GITHUB_OUTPUT
+          PACKAGES=$(node -p "const pkg=require('./package.json'); const deps=Object.keys(pkg.optionalDependencies||{}).filter((name)=>name.startsWith('agent-tui-')); console.log([...deps, pkg.name].join(' '));")
+          missing=()
+          for name in $PACKAGES; do
+            if npm view "${name}@${VERSION}" version >/dev/null 2>&1; then
+              echo "Found ${name}@${VERSION}"
+            else
+              missing+=("$name")
+            fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "All npm packages already published for $VERSION"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "missing=" >> "$GITHUB_OUTPUT"
           else
-            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Missing packages: ${missing[*]}"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "missing=${missing[*]}" >> "$GITHUB_OUTPUT"
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -392,6 +426,22 @@ jobs:
       - name: Verify npm package (dry-run)
         if: steps.npm-check.outputs.skip != 'true'
         working-directory: cli
-        run: npm publish --access public --dry-run
+        run: |
+          set -euo pipefail
+          MISSING="${{ steps.npm-check.outputs.missing }}"
+          for name in $MISSING; do
+            if [ "$name" = "agent-tui" ]; then
+              echo "Dry-run publish $name"
+              npm publish --access public --dry-run
+              continue
+            fi
+            dir="npm/$name"
+            if [ ! -d "$dir" ]; then
+              echo "::error::Missing workspace directory $dir"
+              exit 1
+            fi
+            echo "Dry-run publish $name"
+            (cd "$dir" && npm publish --access public --dry-run)
+          done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

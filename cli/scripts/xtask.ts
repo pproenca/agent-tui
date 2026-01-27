@@ -52,7 +52,7 @@ function printUsage() {
     [
       "Usage:",
       "  xtask version <check|current|assert-tag|assert-input>",
-      "  xtask release <version|major|minor|patch>",
+      "  xtask release <version|major|minor|patch> [--yes]",
       "  xtask ci",
       "  xtask architecture check",
       "  xtask dist <release|verify|npm>",
@@ -95,11 +95,15 @@ function versionCommand(args: string[]) {
 }
 
 function releaseCommand(args: string[]) {
-  const versionOrBump = args[0];
-  if (!versionOrBump) {
+  const { flags, positionals } = parseFlags(args);
+  const confirm = resolveConfirm(flags);
+  if (flags.size > 0 && flags.get("yes") !== true) {
+    throw new Error("Only --yes is supported for release.");
+  }
+  if (positionals.length !== 1) {
     throw new Error("Missing release version or bump");
   }
-  return release(versionOrBump);
+  return release(positionals[0], { confirm });
 }
 
 function architectureCommand(args: string[]) {
@@ -444,7 +448,10 @@ function assertInput(version: string) {
   }
 }
 
-function release(versionOrBump: string) {
+function release(
+  versionOrBump: string,
+  options: { confirm: boolean },
+) {
   const cargoPath = cargoTomlPath(ROOT);
   const packagePath = packageJsonPath(ROOT);
   const npmPaths = npmPlatformPackagePaths(ROOT);
@@ -470,8 +477,18 @@ function release(versionOrBump: string) {
   console.log("Updating Cargo.toml...");
   writeCargoVersion(cargoPath, targetVersion);
 
+  const status = gitStatusShort(ROOT);
+  if (options.confirm) {
+    console.log("Changes to be released:");
+    console.log(status ? status : "(no changes detected)");
+    if (!confirmProceed("Stage, commit, and tag these changes?")) {
+      console.log("Release aborted before staging.");
+      return;
+    }
+  }
+
   console.log("Staging changes...");
-  runCommand("git", ["add", packagePath, cargoPath, ...npmPaths], { cwd: ROOT });
+  runCommand("git", ["add", "-A"], { cwd: ROOT });
 
   console.log("Committing...");
   runCommand(
@@ -486,7 +503,7 @@ function release(versionOrBump: string) {
   });
 
   console.log(`Done! Release ${targetVersion} prepared.`);
-  console.log("To publish, run:");
+  console.log("Nothing has been pushed yet. To publish when ready, run:");
   console.log("  git push && git push --tags");
 }
 
@@ -526,21 +543,68 @@ function bumpVersion(current: string, bump: string) {
 }
 
 function ensureGitClean(root: string) {
-  const diffStatus = spawnSync("git", ["diff", "--quiet"], { cwd: root });
-  if (diffStatus.status !== 0) {
-    throw new Error(
-      "You have uncommitted changes. Please commit or stash them first.",
-    );
-  }
-
-  const diffCachedStatus = spawnSync("git", ["diff", "--cached", "--quiet"], {
+  const status = spawnSync("git", ["status", "--porcelain"], {
     cwd: root,
+    encoding: "utf8",
   });
-  if (diffCachedStatus.status !== 0) {
+  if (status.status !== 0) {
+    throw new Error("Command failed: git status --porcelain");
+  }
+  if (status.stdout.trim().length > 0) {
     throw new Error(
-      "You have staged changes. Please commit or stash them first.",
+      "You have uncommitted or untracked changes. Please commit or stash them first.",
     );
   }
+}
+
+function resolveConfirm(flags: Map<string, FlagValue>) {
+  const value = flags.get("yes");
+  if (value === undefined) {
+    return true;
+  }
+  if (value === true) {
+    return false;
+  }
+  throw new Error("Invalid value for --yes");
+}
+
+function gitStatusShort(root: string) {
+  const status = spawnSync("git", ["status", "--short"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (status.status !== 0) {
+    throw new Error("Command failed: git status --short");
+  }
+  return status.stdout.trimEnd();
+}
+
+function confirmProceed(message: string) {
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      "Confirmation required but stdin is not a TTY. Re-run with --yes to skip confirmation.",
+    );
+  }
+  process.stdout.write(`${message} [y/N] `);
+  const input = readStdinLine();
+  const answer = input.trim().toLowerCase();
+  return answer === "y" || answer === "yes";
+}
+
+function readStdinLine() {
+  const buffer = Buffer.alloc(1024);
+  let input = "";
+  while (true) {
+    const bytes = fs.readSync(0, buffer, 0, buffer.length, null);
+    if (bytes === 0) {
+      break;
+    }
+    input += buffer.toString("utf8", 0, bytes);
+    if (input.includes("\n")) {
+      break;
+    }
+  }
+  return input;
 }
 
 function ensureTagAbsent(root: string, tag: string) {

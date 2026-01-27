@@ -3,6 +3,7 @@ use clap::Parser;
 use clap_complete::generate;
 use regex::Regex;
 use std::sync::LazyLock;
+use serde::Serialize;
 
 pub mod attach;
 pub mod commands;
@@ -10,6 +11,7 @@ pub mod daemon;
 pub mod error;
 pub mod handlers;
 
+use crate::adapters::{RpcValue, call_no_params, call_with_params};
 use crate::adapters::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
 use crate::app::commands::OutputFormat;
 use crate::app::daemon::start_daemon;
@@ -95,7 +97,7 @@ fn extract_text_selector(selector: &str) -> Result<Option<&str>, Box<dyn std::er
 }
 
 /// Extracts element ref from find RPC result.
-fn extract_element_ref_from_result(result: &serde_json::Value) -> Option<String> {
+fn extract_element_ref_from_result(result: &RpcValue) -> Option<String> {
     result
         .get("elements")
         .and_then(|v| v.as_array())
@@ -199,7 +201,7 @@ impl Application {
         match UnixSocketClient::connect() {
             Ok(mut client) => {
                 // Verify daemon is actually responding before showing status
-                match client.call("health", None) {
+                match call_no_params(&mut client, "health") {
                     Ok(result) => {
                         let format = cli.effective_format();
                         handlers::print_daemon_status_from_result(&result, format);
@@ -225,14 +227,18 @@ impl Application {
         let cli_commit = env!("AGENT_TUI_GIT_SHA");
         match cli.effective_format() {
             OutputFormat::Json => {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "running": false,
-                        "cli_version": cli_version,
-                        "cli_commit": cli_commit
-                    })
-                );
+                #[derive(Serialize)]
+                struct DaemonNotRunningOutput {
+                    running: bool,
+                    cli_version: &'static str,
+                    cli_commit: &'static str,
+                }
+                let output = DaemonNotRunningOutput {
+                    running: false,
+                    cli_version,
+                    cli_commit,
+                };
+                println!("{}", serde_json::to_string_pretty(&output).unwrap_or_default());
             }
             _ => {
                 println!("Daemon is not running");
@@ -551,8 +557,7 @@ impl Application {
             nth: Some(0),
             ..Default::default()
         };
-        let params_json = serde_json::to_value(find_params)?;
-        let result = ctx.client.call("find", Some(params_json))?;
+        let result = call_with_params(ctx.client, "find", find_params)?;
 
         if let Some(ref_str) = extract_element_ref_from_result(&result) {
             return Ok(ref_str);
@@ -659,7 +664,7 @@ impl Application {
             return Box::new(crate::app::error::CliError::new(
                 format,
                 client_error.to_string(),
-                Some(client_error.to_json()),
+                Some(client_error.to_json_string()),
                 exit_code_for_client_error(client_error),
             ));
         }
@@ -667,7 +672,7 @@ impl Application {
             return Box::new(crate::app::error::CliError::new(
                 format,
                 attach_error.to_string(),
-                Some(attach_error.to_json()),
+                Some(serde_json::to_string_pretty(&attach_error.to_payload()).unwrap_or_default()),
                 attach_error.exit_code(),
             ));
         }
@@ -693,15 +698,18 @@ fn print_cli_error(error: &crate::app::error::CliError) {
     match error.format {
         OutputFormat::Json => {
             if let Some(json) = &error.json {
-                eprintln!("{}", serde_json::to_string_pretty(json).unwrap_or_default());
+                eprintln!("{}", json);
             } else {
-                eprintln!(
-                    "{}",
-                    serde_json::json!({
-                        "success": false,
-                        "error": error.message
-                    })
-                );
+                #[derive(Serialize)]
+                struct ErrorOutput<'a> {
+                    success: bool,
+                    error: &'a str,
+                }
+                let output = ErrorOutput {
+                    success: false,
+                    error: &error.message,
+                };
+                eprintln!("{}", serde_json::to_string_pretty(&output).unwrap_or_default());
             }
         }
         OutputFormat::Text => {
@@ -870,13 +878,14 @@ mod tests {
 
     mod extract_element_ref_from_result_tests {
         use super::*;
-        use serde_json::json;
+
+        fn parse_result(input: &str) -> RpcValue {
+            RpcValue::new(serde_json::from_str(input).expect("valid json"))
+        }
 
         #[test]
         fn extracts_ref_from_valid_result() {
-            let result = json!({
-                "elements": [{"ref": "@e1", "text": "Submit"}]
-            });
+            let result = parse_result(r#"{"elements":[{"ref":"@e1","text":"Submit"}]}"#);
             assert_eq!(
                 extract_element_ref_from_result(&result),
                 Some("@e1".to_string())
@@ -885,29 +894,25 @@ mod tests {
 
         #[test]
         fn returns_none_for_empty_elements() {
-            let result = json!({"elements": []});
+            let result = parse_result(r#"{"elements":[]}"#);
             assert_eq!(extract_element_ref_from_result(&result), None);
         }
 
         #[test]
         fn returns_none_for_missing_ref() {
-            let result = json!({
-                "elements": [{"text": "Submit"}]
-            });
+            let result = parse_result(r#"{"elements":[{"text":"Submit"}]}"#);
             assert_eq!(extract_element_ref_from_result(&result), None);
         }
 
         #[test]
         fn returns_none_for_null_ref() {
-            let result = json!({
-                "elements": [{"ref": null}]
-            });
+            let result = parse_result(r#"{"elements":[{"ref":null}]}"#);
             assert_eq!(extract_element_ref_from_result(&result), None);
         }
 
         #[test]
         fn returns_none_for_missing_elements() {
-            let result = json!({"success": true});
+            let result = parse_result(r#"{"success":true}"#);
             assert_eq!(extract_element_ref_from_result(&result), None);
         }
     }

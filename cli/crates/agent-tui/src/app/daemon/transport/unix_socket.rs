@@ -239,7 +239,8 @@ mod tests {
             let request = conn.read_request().unwrap();
             assert_eq!(request.method, "test_method");
 
-            let response = RpcResponse::success(request.id, serde_json::json!({"ok": true}));
+            let payload = serde_json::from_str(r#"{"ok":true}"#).unwrap();
+            let response = RpcResponse::success(request.id, payload);
             conn.write_response(&response).unwrap();
         });
 

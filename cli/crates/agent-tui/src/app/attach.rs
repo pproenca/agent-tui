@@ -18,11 +18,10 @@ use crossterm::style;
 use crossterm::terminal;
 use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
-use serde_json::json;
-
 use crate::adapters::ipc::ClientError;
 use crate::adapters::ipc::DaemonClient;
-use crate::adapters::ipc::client::StreamResponse;
+use crate::adapters::ipc::params;
+use crate::adapters::{RpcStream, RpcValue, call_stream_with_params, call_with_params};
 use crate::common::Colors;
 use crate::infra::terminal::key_to_escape_sequence;
 use crossbeam_channel as channel;
@@ -161,12 +160,12 @@ pub fn attach_ipc<C: DaemonClient>(
             let term_guard = TerminalGuard::new()?;
 
             let (cols, rows) = terminal::size().map_err(AttachError::Terminal)?;
-            let resize_params = json!({
-                "cols": cols,
-                "rows": rows,
-                "session": session_id
-            });
-            let _ = client.call("resize", Some(resize_params));
+            let resize_params = params::ResizeParams {
+                cols,
+                rows,
+                session: Some(session_id.to_string()),
+            };
+            let _ = call_with_params(client, "resize", resize_params);
 
             let stdout = Arc::new(Mutex::new(io::stdout()));
             if let Ok(mut guard) = stdout.lock() {
@@ -200,21 +199,22 @@ fn render_initial_screen<C: DaemonClient>(
     session_id: &str,
     stdout: &mut impl Write,
 ) {
-    let params = json!({
-        "session": session_id,
-        "include_cursor": true,
-        "include_render": true
-    });
+    let params = params::SnapshotParams {
+        session: Some(session_id.to_string()),
+        include_cursor: true,
+        include_render: true,
+        ..Default::default()
+    };
 
-    let snapshot = match client.call("snapshot", Some(params)) {
+    let snapshot = match call_with_params(client, "snapshot", params) {
         Ok(snapshot) => snapshot,
         Err(_) => return,
     };
 
-    let rendered = snapshot.get("rendered").and_then(serde_json::Value::as_str);
+    let rendered = snapshot.get("rendered").and_then(|v| v.as_str());
     let screenshot = snapshot
         .get("screenshot")
-        .and_then(serde_json::Value::as_str);
+        .and_then(|v| v.as_str());
 
     let screen = match rendered.or(screenshot) {
         Some(screen) => screen,
@@ -237,17 +237,17 @@ fn render_initial_screen<C: DaemonClient>(
     if let Some(cursor) = snapshot.get("cursor") {
         let row = cursor
             .get("row")
-            .and_then(serde_json::Value::as_u64)
+            .and_then(|v| v.as_u64())
             .unwrap_or(0)
             .min(u16::MAX as u64) as u16;
         let col = cursor
             .get("col")
-            .and_then(serde_json::Value::as_u64)
+            .and_then(|v| v.as_u64())
             .unwrap_or(0)
             .min(u16::MAX as u64) as u16;
         let visible = cursor
             .get("visible")
-            .and_then(serde_json::Value::as_bool)
+            .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
         let _ = queue!(stdout, cursor::MoveTo(col, row));
@@ -270,9 +270,14 @@ fn attach_ipc_loop<C: DaemonClient>(
     let mut detach_detector = DetachDetector::new(detach_keys);
     let mut hint_active = false;
 
-    let stream = client
-        .call_stream("attach_stream", Some(json!({ "session": session_id })))
-        .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
+    let stream = call_stream_with_params(
+        client,
+        "attach_stream",
+        params::SessionParams {
+            session: Some(session_id.to_string()),
+        },
+    )
+    .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
     let abort_handle = stream.abort_handle();
     let output_done_rx = start_attach_stream_output(stream, Arc::clone(&stdout), false)?;
     let event_rx = spawn_event_reader();
@@ -324,11 +329,11 @@ fn attach_ipc_loop<C: DaemonClient>(
 
                             if !to_send.is_empty() {
                                 let data_b64 = STANDARD.encode(&to_send);
-                                let params = json!({
-                                    "session": session_id,
-                                    "data": data_b64
-                                });
-                                if let Err(e) = client.call("pty_write", Some(params)) {
+                                let params = params::PtyWriteParams {
+                                    session: Some(session_id.to_string()),
+                                    data: data_b64,
+                                };
+                                if let Err(e) = call_with_params(client, "pty_write", params) {
                                     return Err(AttachError::PtyWrite(format_client_error(&e)));
                                 }
                             }
@@ -337,22 +342,22 @@ fn attach_ipc_loop<C: DaemonClient>(
                     Ok(EventMessage::Event(Event::Paste(data))) => {
                         if !data.is_empty() {
                             let data_b64 = STANDARD.encode(data.as_bytes());
-                            let params = json!({
-                                "session": session_id,
-                                "data": data_b64
-                            });
-                            if let Err(e) = client.call("pty_write", Some(params)) {
+                            let params = params::PtyWriteParams {
+                                session: Some(session_id.to_string()),
+                                data: data_b64,
+                            };
+                            if let Err(e) = call_with_params(client, "pty_write", params) {
                                 return Err(AttachError::PtyWrite(format_client_error(&e)));
                             }
                         }
                     }
                     Ok(EventMessage::Event(Event::Resize(cols, rows))) => {
-                        let params = json!({
-                            "cols": cols,
-                            "rows": rows,
-                            "session": session_id
-                        });
-                        let _ = client.call("resize", Some(params));
+                        let params = params::ResizeParams {
+                            cols,
+                            rows,
+                            session: Some(session_id.to_string()),
+                        };
+                        let _ = call_with_params(client, "resize", params);
                     }
                     Ok(EventMessage::Event(_)) => {}
                     Ok(EventMessage::Error) => return Err(AttachError::EventRead),
@@ -370,9 +375,14 @@ fn attach_stream_loop<C: DaemonClient>(
     session_id: &str,
     stdout: Arc<Mutex<io::Stdout>>,
 ) -> Result<(), AttachError> {
-    let stream = client
-        .call_stream("attach_stream", Some(json!({ "session": session_id })))
-        .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
+    let stream = call_stream_with_params(
+        client,
+        "attach_stream",
+        params::SessionParams {
+            session: Some(session_id.to_string()),
+        },
+    )
+    .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
     let output_done_rx = start_attach_stream_output(stream, Arc::clone(&stdout), true)?;
     let stdin_rx = spawn_stdin_reader();
     let mut stdin_active = true;
@@ -392,11 +402,11 @@ fn attach_stream_loop<C: DaemonClient>(
                         Ok(StdinMessage::Data(data)) => {
                             if !data.is_empty() {
                                 let data_b64 = STANDARD.encode(&data);
-                                let params = json!({
-                                    "session": session_id,
-                                    "data": data_b64
-                                });
-                                if let Err(e) = client.call("pty_write", Some(params)) {
+                                let params = params::PtyWriteParams {
+                                    session: Some(session_id.to_string()),
+                                    data: data_b64,
+                                };
+                                if let Err(e) = call_with_params(client, "pty_write", params) {
                                     return Err(AttachError::PtyWrite(format_client_error(&e)));
                                 }
                             }
@@ -623,8 +633,8 @@ enum AttachStreamEvent {
     Closed,
 }
 
-fn parse_stream_event(value: serde_json::Value) -> Result<Option<AttachStreamEvent>, AttachError> {
-    let event = value.get("event").and_then(serde_json::Value::as_str);
+fn parse_stream_event(value: RpcValue) -> Result<Option<AttachStreamEvent>, AttachError> {
+    let event = value.get("event").and_then(|v| v.as_str());
     let Some(event) = event else {
         return Ok(None);
     };
@@ -633,7 +643,7 @@ fn parse_stream_event(value: serde_json::Value) -> Result<Option<AttachStreamEve
         "output" => {
             let data_b64 = value
                 .get("data")
-                .and_then(serde_json::Value::as_str)
+                .and_then(|v| v.as_str())
                 .unwrap_or("");
             if data_b64.is_empty() {
                 return Ok(None);
@@ -643,7 +653,7 @@ fn parse_stream_event(value: serde_json::Value) -> Result<Option<AttachStreamEve
                 .map_err(|e| AttachError::PtyRead(e.to_string()))?;
             let dropped_bytes = value
                 .get("dropped_bytes")
-                .and_then(serde_json::Value::as_u64)
+                .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             Ok(Some(AttachStreamEvent::Output {
                 data,
@@ -653,7 +663,7 @@ fn parse_stream_event(value: serde_json::Value) -> Result<Option<AttachStreamEve
         "dropped" => {
             let dropped_bytes = value
                 .get("dropped_bytes")
-                .and_then(serde_json::Value::as_u64)
+                .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             Ok(Some(AttachStreamEvent::Dropped(dropped_bytes)))
         }
@@ -664,7 +674,7 @@ fn parse_stream_event(value: serde_json::Value) -> Result<Option<AttachStreamEve
 }
 
 fn start_attach_stream_output(
-    stream: StreamResponse,
+    stream: RpcStream,
     stdout: Arc<Mutex<io::Stdout>>,
     report_drops: bool,
 ) -> Result<channel::Receiver<Result<(), AttachError>>, AttachError> {
@@ -682,7 +692,7 @@ fn start_attach_stream_output(
 }
 
 fn stream_output_loop(
-    mut stream: StreamResponse,
+    mut stream: RpcStream,
     stdout: Arc<Mutex<io::Stdout>>,
     report_drops: bool,
 ) -> Result<(), AttachError> {
@@ -890,7 +900,6 @@ fn display_char(ch: char) -> String {
 mod tests {
     use super::*;
     use crate::adapters::ipc::MockClient;
-    use serde_json::json;
 
     #[test]
     fn test_key_event_to_bytes_char() {
@@ -930,10 +939,10 @@ mod tests {
         let mut client = MockClient::new_strict();
         client.set_response(
             "snapshot",
-            json!({
-                "screenshot": "hello\nworld",
-                "cursor": { "row": 1, "col": 2, "visible": true }
-            }),
+            serde_json::from_str(
+                r#"{"screenshot":"hello\nworld","cursor":{"row":1,"col":2,"visible":true}}"#,
+            )
+            .unwrap(),
         );
 
         let mut buffer = Vec::new();
@@ -1028,11 +1037,15 @@ mod tests {
     #[test]
     fn test_parse_stream_event_output() {
         let payload = STANDARD.encode(b"hello");
-        let value = serde_json::json!({
-            "event": "output",
-            "data": payload,
-            "dropped_bytes": 2
-        });
+        let value = RpcValue::new(
+            serde_json::from_str(
+                &format!(
+                    r#"{{"event":"output","data":"{}","dropped_bytes":2}}"#,
+                    payload
+                ),
+            )
+            .unwrap(),
+        );
         let event = parse_stream_event(value).unwrap().unwrap();
         match event {
             AttachStreamEvent::Output {
@@ -1048,10 +1061,9 @@ mod tests {
 
     #[test]
     fn test_parse_stream_event_dropped() {
-        let value = serde_json::json!({
-            "event": "dropped",
-            "dropped_bytes": 128
-        });
+        let value = RpcValue::new(
+            serde_json::from_str(r#"{"event":"dropped","dropped_bytes":128}"#).unwrap(),
+        );
         let event = parse_stream_event(value).unwrap().unwrap();
         match event {
             AttachStreamEvent::Dropped(bytes) => assert_eq!(bytes, 128),
@@ -1061,9 +1073,7 @@ mod tests {
 
     #[test]
     fn test_parse_stream_event_closed() {
-        let value = serde_json::json!({
-            "event": "closed"
-        });
+        let value = RpcValue::new(serde_json::from_str(r#"{"event":"closed"}"#).unwrap());
         let event = parse_stream_event(value).unwrap().unwrap();
         match event {
             AttachStreamEvent::Closed => {}

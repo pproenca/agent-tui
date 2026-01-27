@@ -119,6 +119,11 @@ impl RpcResponse {
         }
     }
 
+    pub fn success_json<T: Serialize>(id: u64, result: &T) -> Self {
+        let value = serde_json::to_value(result).unwrap_or_else(|_| json!({}));
+        Self::success(id, value)
+    }
+
     pub fn error(id: u64, code: i32, message: &str) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),

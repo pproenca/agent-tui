@@ -130,4 +130,8 @@ impl ClientError {
             }),
         }
     }
+
+    pub fn to_json_string(&self) -> String {
+        serde_json::to_string_pretty(&self.to_json()).unwrap_or_default()
+    }
 }

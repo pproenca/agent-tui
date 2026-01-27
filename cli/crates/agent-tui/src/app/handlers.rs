@@ -6,10 +6,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
 
-use serde_json::Value;
-use serde_json::json;
+use serde::{Deserialize, Serialize};
 
-use crate::adapters::ValueExt;
+use crate::adapters::{RpcValue, RpcValueRef, call_no_params, call_with_params};
 use crate::adapters::ipc::ClientError;
 use crate::adapters::ipc::DaemonClient;
 use crate::adapters::ipc::ProcessController;
@@ -46,9 +45,13 @@ fn format_uptime_ms(uptime_ms: u64) -> String {
 macro_rules! key_handler {
     ($name:ident, $method:literal, $success:expr) => {
         pub fn $name<C: DaemonClient>(ctx: &mut HandlerContext<C>, key: String) -> HandlerResult {
-            let params = ctx.params_with(json!({ "key": key }));
-            let result = ctx.client.call($method, Some(params))?;
-            ctx.output_success_and_ok(&result, &$success(&key), concat!($method, " failed"))
+            let success_message = $success(&key);
+            let params = params::KeyParams {
+                key,
+                session: ctx.session.clone(),
+            };
+            let result = call_with_params(ctx.client, $method, params)?;
+            ctx.output_success_and_ok(&result, &success_message, concat!($method, " failed"))
         }
     };
 }
@@ -119,7 +122,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
 
     pub fn output_success_result(
         &self,
-        result: &Value,
+        result: &RpcValue,
         success_msg: &str,
         failure_prefix: &str,
     ) -> Result<bool, Box<dyn std::error::Error>> {
@@ -135,7 +138,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
                     return Err(CliError::new(
                         self.format,
                         message,
-                        Some(result.clone()),
+                        Some(result.to_pretty_json()),
                         super::exit_codes::GENERAL_ERROR,
                     )
                     .into());
@@ -151,7 +154,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
                     return Err(CliError::new(
                         self.format,
                         message,
-                        Some(result.clone()),
+                        Some(result.to_pretty_json()),
                         super::exit_codes::GENERAL_ERROR,
                     )
                     .into());
@@ -161,16 +164,6 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         Ok(true)
     }
 
-    fn ref_params(&self, element_ref: &str) -> Value {
-        json!({ "ref": element_ref, "session": self.session })
-    }
-
-    fn params_with(&self, extra: Value) -> Value {
-        let mut p = extra;
-        p["session"] = json!(self.session);
-        p
-    }
-
     fn call_ref_action(
         &mut self,
         method: &str,
@@ -178,17 +171,16 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         success_msg: &str,
         failure_prefix: &str,
     ) -> HandlerResult {
-        let params = self.ref_params(element_ref);
-        let result = self.client.call(method, Some(params))?;
+        let params = params::ElementRefParams {
+            element_ref: element_ref.to_string(),
+            session: self.session.clone(),
+        };
+        let result = call_with_params(self.client, method, params)?;
         self.output_success_result(&result, success_msg, failure_prefix)?;
         Ok(())
     }
 
-    fn session_params(&self) -> Value {
-        json!({ "session": self.session })
-    }
-
-    fn output_json_or<F>(&self, result: &Value, text_fn: F) -> HandlerResult
+    fn output_json_or<F>(&self, result: &RpcValue, text_fn: F) -> HandlerResult
     where
         F: FnOnce(),
     {
@@ -205,7 +197,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
 
     pub fn output_success_and_ok(
         &self,
-        result: &Value,
+        result: &RpcValue,
         success_msg: &str,
         failure_prefix: &str,
     ) -> HandlerResult {
@@ -235,9 +227,7 @@ pub fn handle_spawn<C: DaemonClient>(
         cols,
         rows,
     };
-    let params = serde_json::to_value(rpc_params)?;
-
-    let result = ctx.client.call("spawn", Some(params))?;
+    let result = call_with_params(ctx.client, "spawn", rpc_params)?;
 
     ctx.output_json_or(&result, || {
         let session_id = result.str_or("session_id", "unknown");
@@ -266,19 +256,17 @@ pub fn handle_snapshot<C: DaemonClient>(
         include_cursor,
         include_render: false,
     };
-    let params = serde_json::to_value(rpc_params)?;
-
-    let result = ctx.client.call("snapshot", Some(params))?;
+    let result = call_with_params(ctx.client, "snapshot", rpc_params)?;
 
     match ctx.format {
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            println!("{}", result.to_pretty_json());
         }
         OutputFormat::Text => {
             if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
                 if !elements.is_empty() {
                     println!("{}", Colors::bold("Elements:"));
-                    for el in elements {
+                    for el in elements.iter() {
                         let ev = ElementView(el);
                         let (row, col) = ev.position();
                         let value = ev
@@ -328,13 +316,11 @@ pub fn handle_accessibility_snapshot<C: DaemonClient>(
         session: ctx.session.clone(),
         interactive: interactive_only,
     };
-    let params = serde_json::to_value(rpc_params)?;
-
-    let result = ctx.client.call("accessibility_snapshot", Some(params))?;
+    let result = call_with_params(ctx.client, "accessibility_snapshot", rpc_params)?;
 
     match ctx.format {
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            println!("{}", result.to_pretty_json());
         }
         OutputFormat::Text => {
             if let Some(tree) = result.get("tree").and_then(|v| v.as_str()) {
@@ -363,8 +349,12 @@ pub fn handle_fill<C: DaemonClient>(
     element_ref: String,
     value: String,
 ) -> HandlerResult {
-    let params = ctx.params_with(json!({ "ref": element_ref, "value": value }));
-    let result = ctx.client.call("fill", Some(params))?;
+    let params = params::FillParams {
+        element_ref,
+        value,
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "fill", params)?;
     ctx.output_success_and_ok(&result, "Filled successfully", "Fill failed")
 }
 
@@ -380,8 +370,11 @@ key_handler!(handle_keyup, "keyup", |k: &String| format!(
 ));
 
 pub fn handle_type<C: DaemonClient>(ctx: &mut HandlerContext<C>, text: String) -> HandlerResult {
-    let params = ctx.params_with(json!({ "text": text }));
-    let result = ctx.client.call("type", Some(params))?;
+    let params = params::TypeParams {
+        text,
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "type", params)?;
     ctx.output_success_and_ok(&result, "Text typed", "Type failed")
 }
 
@@ -399,8 +392,7 @@ pub fn handle_wait<C: DaemonClient>(
         condition: cond,
         target: tgt,
     };
-    let params_json = serde_json::to_value(rpc_params)?;
-    let result = ctx.client.call("wait", Some(params_json))?;
+    let result = call_with_params(ctx.client, "wait", rpc_params)?;
 
     let wait_result = WaitResult::from_json(&result);
 
@@ -408,7 +400,7 @@ pub fn handle_wait<C: DaemonClient>(
         return Err(CliError::new(
             ctx.format,
             "Wait condition not met within timeout",
-            Some(result.clone()),
+            Some(result.to_pretty_json()),
             super::exit_codes::GENERAL_ERROR,
         )
         .into());
@@ -422,7 +414,10 @@ pub fn handle_wait<C: DaemonClient>(
 }
 
 pub fn handle_kill<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let result = ctx.client.call("kill", Some(ctx.session_params()))?;
+    let params = params::SessionParams {
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "kill", params)?;
 
     ctx.output_json_or(&result, || {
         println!("Session {} killed", result.str_or("session_id", "unknown"));
@@ -430,7 +425,10 @@ pub fn handle_kill<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResul
 }
 
 pub fn handle_restart<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let result = ctx.client.call("restart", Some(ctx.session_params()))?;
+    let params = params::SessionParams {
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "restart", params)?;
 
     ctx.output_json_or(&result, || {
         println!(
@@ -443,7 +441,7 @@ pub fn handle_restart<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerRe
 }
 
 pub fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let result = ctx.client.call("sessions", None)?;
+    let result = call_no_params(ctx.client, "sessions")?;
 
     ctx.output_json_or(&result, || {
         let active_id = result.get("active_session").and_then(|v| v.as_str());
@@ -451,7 +449,7 @@ pub fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerR
         match result.get("sessions").and_then(|v| v.as_array()) {
             Some(sessions) if !sessions.is_empty() => {
                 println!("{}", Colors::bold("Active sessions:"));
-                for session in sessions {
+                for session in sessions.iter() {
                     let id = session.str_or("id", "?");
                     let command = session.str_or("command", "?");
                     let pid = session.u64_or("pid", 0);
@@ -502,7 +500,7 @@ pub fn handle_session_show<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     session_id: String,
 ) -> HandlerResult {
-    let result = ctx.client.call("sessions", None)?;
+    let result = call_no_params(ctx.client, "sessions")?;
     let active_id = result.get("active_session").and_then(|v| v.as_str());
     let sessions = result
         .get("sessions")
@@ -516,11 +514,16 @@ pub fn handle_session_show<C: DaemonClient>(
 
     match ctx.format {
         OutputFormat::Json => {
-            let payload = json!({
-                "session": session,
-                "active_session": active_id
-            });
-            ctx.presenter().present_value(&payload);
+            #[derive(serde::Serialize)]
+            struct SessionShow<'a> {
+                session: RpcValueRef<'a>,
+                active_session: Option<&'a str>,
+            }
+            let payload = SessionShow {
+                session,
+                active_session: active_id,
+            };
+            println!("{}", serde_json::to_string_pretty(&payload)?);
         }
         OutputFormat::Text => {
             let id = session.str_or("id", "?");
@@ -582,7 +585,7 @@ pub fn resolve_attach_session_id<C: DaemonClient>(
         return Ok(id);
     }
 
-    let result = ctx.client.call("sessions", None)?;
+    let result = call_no_params(ctx.client, "sessions")?;
     if let Some(active) = result.get("active_session").and_then(|v| v.as_str()) {
         return Ok(active.to_string());
     }
@@ -593,7 +596,7 @@ pub fn resolve_attach_session_id<C: DaemonClient>(
 pub fn handle_health<C: DaemonClient>(ctx: &mut HandlerContext<C>, verbose: bool) -> HandlerResult {
     use crate::adapters::presenter::HealthResult;
 
-    let result = ctx.client.call("health", None)?;
+    let result = call_no_params(ctx.client, "health")?;
 
     match ctx.format {
         OutputFormat::Json => ctx.presenter().present_value(&result),
@@ -629,34 +632,59 @@ pub fn handle_live_start<C: DaemonClient>(
         )
     })?;
 
+    #[derive(Serialize, Clone)]
+    struct UiPayload {
+        url: String,
+        managed: bool,
+        source: &'static str,
+    }
+
     let (ui_base_url, ui_payload) = match std::env::var("AGENT_TUI_UI_URL") {
         Ok(url) if !url.trim().is_empty() => (
             Some(url.clone()),
-            Some(json!({ "url": url, "managed": false, "source": "external" })),
+            Some(UiPayload {
+                url,
+                managed: false,
+                source: "external",
+            }),
         ),
         _ => {
             let url = format!("{}ui", state.http_url);
             (
                 Some(url.clone()),
-                Some(json!({ "url": url, "managed": true, "source": "daemon" })),
+                Some(UiPayload {
+                    url,
+                    managed: true,
+                    source: "daemon",
+                }),
             )
         }
     };
 
     match ctx.format {
         OutputFormat::Json => {
-            let mut output = json!({
-                "running": true,
-                "pid": state.pid,
-                "listen": state.listen,
-                "http_url": state.http_url,
-                "ws_url": state.ws_url,
-                "token": state.token,
-                "api_version": state.api_version,
-            });
-            if let Some(payload) = ui_payload {
-                output["ui"] = payload;
+            #[derive(Serialize)]
+            struct LiveStartOutput {
+                running: bool,
+                pid: u32,
+                listen: String,
+                http_url: String,
+                ws_url: String,
+                token: Option<String>,
+                api_version: Option<String>,
+                ui: Option<UiPayload>,
             }
+
+            let output = LiveStartOutput {
+                running: true,
+                pid: state.pid,
+                listen: state.listen.clone(),
+                http_url: state.http_url.clone(),
+                ws_url: state.ws_url.clone(),
+                token: state.token.clone(),
+                api_version: state.api_version.clone(),
+                ui: ui_payload.clone(),
+            };
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
@@ -696,26 +724,55 @@ pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handler
     let ui_error = ui_result.as_ref().err().cloned();
     match ctx.format {
         OutputFormat::Json => {
-            let mut output = json!({
-                "stopped": false,
-                "reason": "live preview is served by the daemon; stop the daemon to stop"
-            });
+            #[derive(Serialize)]
+            struct UiStopPayload {
+                stopped: bool,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                reason: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                error: Option<String>,
+            }
+
+            #[derive(Serialize)]
+            struct LiveStopOutput {
+                stopped: bool,
+                reason: String,
+                ui: UiStopPayload,
+            }
+
             let ui_payload = match ui_result {
-                Ok(StopUiResult::Stopped) => json!({ "stopped": true }),
-                Ok(StopUiResult::AlreadyStopped) => {
-                    json!({ "stopped": false, "reason": "ui not running" })
-                }
-                Ok(StopUiResult::External) => {
-                    json!({ "stopped": false, "reason": "ui managed externally" })
-                }
-                Err(err) => json!({ "stopped": false, "error": err }),
+                Ok(StopUiResult::Stopped) => UiStopPayload {
+                    stopped: true,
+                    reason: None,
+                    error: None,
+                },
+                Ok(StopUiResult::AlreadyStopped) => UiStopPayload {
+                    stopped: false,
+                    reason: Some("ui not running".to_string()),
+                    error: None,
+                },
+                Ok(StopUiResult::External) => UiStopPayload {
+                    stopped: false,
+                    reason: Some("ui managed externally".to_string()),
+                    error: None,
+                },
+                Err(err) => UiStopPayload {
+                    stopped: false,
+                    reason: None,
+                    error: Some(err),
+                },
             };
-            output["ui"] = ui_payload;
+
+            let output = LiveStopOutput {
+                stopped: false,
+                reason: "live preview is served by the daemon; stop the daemon to stop".to_string(),
+                ui: ui_payload,
+            };
             if let Some(err) = ui_error {
                 return Err(CliError::new(
                     ctx.format,
                     format!("Failed to stop UI server: {}", err),
-                    Some(output),
+                    Some(serde_json::to_string_pretty(&output)?),
                     super::exit_codes::GENERAL_ERROR,
                 )
                 .into());
@@ -762,29 +819,105 @@ pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handl
 
     match ctx.format {
         OutputFormat::Json => {
-            let mut output = match status {
-                Some(state) => json!({
-                    "running": true,
-                    "pid": state.pid,
-                    "listen": state.listen,
-                    "http_url": state.http_url,
-                    "ws_url": state.ws_url,
-                    "token": state.token,
-                    "api_version": state.api_version
-                }),
-                None => json!({ "running": false }),
+            #[derive(Serialize)]
+            struct UiStatusPayload {
+                #[serde(skip_serializing_if = "Option::is_none")]
+                running: Option<bool>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                url: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                managed: Option<bool>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                pid: Option<u32>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                port: Option<u16>,
+            }
+
+            #[derive(Serialize)]
+            struct LiveStatusOutput {
+                running: bool,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                pid: Option<u32>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                listen: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                http_url: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                ws_url: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                token: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                api_version: Option<String>,
+                ui: UiStatusPayload,
+            }
+
+            let output = match status {
+                Some(state) => LiveStatusOutput {
+                    running: true,
+                    pid: Some(state.pid),
+                    listen: Some(state.listen),
+                    http_url: Some(state.http_url),
+                    ws_url: Some(state.ws_url),
+                    token: state.token,
+                    api_version: state.api_version,
+                    ui: match ui_status {
+                        UiStatus::External(url) => UiStatusPayload {
+                            running: None,
+                            url: Some(url),
+                            managed: Some(false),
+                            pid: None,
+                            port: None,
+                        },
+                        UiStatus::Running(state) => UiStatusPayload {
+                            running: None,
+                            url: Some(state.url),
+                            managed: Some(true),
+                            pid: Some(state.pid),
+                            port: Some(state.port),
+                        },
+                        UiStatus::NotRunning => UiStatusPayload {
+                            running: Some(false),
+                            url: None,
+                            managed: None,
+                            pid: None,
+                            port: None,
+                        },
+                    },
+                },
+                None => LiveStatusOutput {
+                    running: false,
+                    pid: None,
+                    listen: None,
+                    http_url: None,
+                    ws_url: None,
+                    token: None,
+                    api_version: None,
+                    ui: match ui_status {
+                        UiStatus::External(url) => UiStatusPayload {
+                            running: None,
+                            url: Some(url),
+                            managed: Some(false),
+                            pid: None,
+                            port: None,
+                        },
+                        UiStatus::Running(state) => UiStatusPayload {
+                            running: None,
+                            url: Some(state.url),
+                            managed: Some(true),
+                            pid: Some(state.pid),
+                            port: Some(state.port),
+                        },
+                        UiStatus::NotRunning => UiStatusPayload {
+                            running: Some(false),
+                            url: None,
+                            managed: None,
+                            pid: None,
+                            port: None,
+                        },
+                    },
+                },
             };
-            let ui_payload = match ui_status {
-                UiStatus::External(url) => json!({ "url": url, "managed": false }),
-                UiStatus::Running(state) => json!({
-                    "url": state.url,
-                    "managed": true,
-                    "pid": state.pid,
-                    "port": state.port
-                }),
-                UiStatus::NotRunning => json!({ "running": false }),
-            };
-            output["ui"] = ui_payload;
+
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
@@ -820,9 +953,7 @@ pub fn handle_resize<C: DaemonClient>(
         rows,
         session: ctx.session.clone(),
     };
-    let params = serde_json::to_value(rpc_params)?;
-
-    let result = ctx.client.call("resize", Some(params))?;
+    let result = call_with_params(ctx.client, "resize", rpc_params)?;
 
     ctx.output_json_or(&result, || {
         println!(
@@ -838,7 +969,7 @@ pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerRe
     let cli_version = env!("AGENT_TUI_VERSION");
     let cli_commit = env!("AGENT_TUI_GIT_SHA");
 
-    let (daemon_version, daemon_commit, daemon_error) = match ctx.client.call("health", None) {
+    let (daemon_version, daemon_commit, daemon_error) = match call_no_params(ctx.client, "health") {
         Ok(result) => (
             result
                 .get("version")
@@ -861,17 +992,26 @@ pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerRe
 
     match ctx.format {
         OutputFormat::Json => {
-            let mut output = json!({
-                "cli_version": cli_version,
-                "cli_commit": cli_commit,
-                "daemon_version": daemon_version,
-                "daemon_commit": daemon_commit,
-                "mode": "daemon"
-            });
-            if let Some(err) = &daemon_error {
-                output["daemon_error"] = json!(err);
+            #[derive(Serialize)]
+            struct VersionOutput {
+                cli_version: &'static str,
+                cli_commit: &'static str,
+                daemon_version: String,
+                daemon_commit: String,
+                mode: &'static str,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                daemon_error: Option<String>,
             }
-            println!("{}", output);
+
+            let output = VersionOutput {
+                cli_version,
+                cli_commit,
+                daemon_version: daemon_version.clone(),
+                daemon_commit: daemon_commit.clone(),
+                mode: "daemon",
+                daemon_error: daemon_error.clone(),
+            };
+            println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
             println!("{}", Colors::bold("agent-tui"));
@@ -892,7 +1032,7 @@ pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerRe
     Ok(())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 struct ApiState {
     pid: u32,
     http_url: String,
@@ -907,6 +1047,14 @@ struct UiState {
     pid: u32,
     url: String,
     port: u16,
+}
+
+#[derive(Debug, Deserialize)]
+struct UiStateFile {
+    pid: u32,
+    url: String,
+    #[serde(default)]
+    port: Option<u16>,
 }
 
 #[derive(Debug, Clone)]
@@ -935,21 +1083,7 @@ fn api_state_path() -> PathBuf {
 
 fn read_api_state(path: &PathBuf) -> Option<ApiState> {
     let contents = std::fs::read_to_string(path).ok()?;
-    let value: Value = serde_json::from_str(&contents).ok()?;
-    Some(ApiState {
-        pid: value.get("pid")?.as_u64()? as u32,
-        http_url: value.get("http_url")?.as_str()?.to_string(),
-        ws_url: value.get("ws_url")?.as_str()?.to_string(),
-        listen: value.get("listen")?.as_str()?.to_string(),
-        token: value
-            .get("token")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        api_version: value
-            .get("api_version")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-    })
+    serde_json::from_str(&contents).ok()
 }
 
 fn is_process_running(pid: u32) -> bool {
@@ -996,16 +1130,11 @@ fn ui_state_path() -> PathBuf {
 
 fn read_ui_state(path: &PathBuf) -> Option<UiState> {
     let contents = std::fs::read_to_string(path).ok()?;
-    let value: Value = serde_json::from_str(&contents).ok()?;
-    let url = value.get("url")?.as_str()?.to_string();
-    let port = value
-        .get("port")
-        .and_then(|v| v.as_u64())
-        .and_then(|v| u16::try_from(v).ok())
-        .or_else(|| parse_port_from_url(&url))?;
+    let file: UiStateFile = serde_json::from_str(&contents).ok()?;
+    let port = file.port.or_else(|| parse_port_from_url(&file.url))?;
     Some(UiState {
-        pid: value.get("pid")?.as_u64()? as u32,
-        url,
+        pid: file.pid,
+        url: file.url,
         port,
     })
 }
@@ -1143,20 +1272,22 @@ fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<(), Stri
 pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -> HandlerResult {
     use crate::adapters::presenter::{CleanupFailure, CleanupResult};
 
-    let sessions_result = ctx.client.call("sessions", None)?;
+    let sessions_result = call_no_params(ctx.client, "sessions")?;
     let sessions = sessions_result.get("sessions").and_then(|v| v.as_array());
 
     let mut cleaned = 0;
     let mut failures: Vec<CleanupFailure> = Vec::new();
 
     if let Some(sessions) = sessions {
-        for session in sessions {
+        for session in sessions.iter() {
             let id = session.get("id").and_then(|v| v.as_str());
             let should_cleanup = all || !session.bool_or("running", false);
             if should_cleanup {
                 if let Some(id) = id {
-                    let params = json!({ "session": id });
-                    match ctx.client.call("kill", Some(params)) {
+                    let params = params::SessionParams {
+                        session: Some(id.to_string()),
+                    };
+                    match call_with_params(ctx.client, "kill", params) {
                         Ok(_) => cleaned += 1,
                         Err(e) => failures.push(CleanupFailure {
                             session_id: id.to_string(),
@@ -1170,20 +1301,37 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
 
     let result = CleanupResult { cleaned, failures };
 
-    let failures_json: Vec<_> = result
-        .failures
-        .iter()
-        .map(|f| json!({"session": f.session_id, "error": f.error}))
-        .collect();
-    let output = json!({
-        "sessions_cleaned": result.cleaned,
-        "sessions_failed": result.failures.len(),
-        "failures": failures_json
-    });
+    #[derive(Serialize)]
+    struct CleanupFailureJson {
+        session: String,
+        error: String,
+    }
+
+    #[derive(Serialize)]
+    struct CleanupOutputJson {
+        sessions_cleaned: usize,
+        sessions_failed: usize,
+        failures: Vec<CleanupFailureJson>,
+    }
+
+    let output = CleanupOutputJson {
+        sessions_cleaned: result.cleaned,
+        sessions_failed: result.failures.len(),
+        failures: result
+            .failures
+            .iter()
+            .map(|f| CleanupFailureJson {
+                session: f.session_id.clone(),
+                error: f.error.clone(),
+            })
+            .collect(),
+    };
 
     if result.failures.is_empty() {
         match ctx.format {
-            OutputFormat::Json => ctx.presenter().present_value(&output),
+            OutputFormat::Json => {
+                println!("{}", serde_json::to_string_pretty(&output)?);
+            }
             OutputFormat::Text => ctx.presenter().present_cleanup(&result),
         }
     } else {
@@ -1194,7 +1342,7 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
         return Err(CliError::new(
             ctx.format,
             message,
-            Some(output),
+            Some(serde_json::to_string_pretty(&output)?),
             super::exit_codes::GENERAL_ERROR,
         )
         .into());
@@ -1222,9 +1370,7 @@ pub fn handle_find<C: DaemonClient>(
         nth: find_params.nth,
         exact: find_params.exact,
     };
-    let params_json = serde_json::to_value(rpc_params)?;
-
-    let result = ctx.client.call("find", Some(params_json))?;
+    let result = call_with_params(ctx.client, "find", rpc_params)?;
 
     match ctx.format {
         OutputFormat::Json => ctx.presenter().present_value(&result),
@@ -1253,8 +1399,12 @@ fn handle_select_single<C: DaemonClient>(
     element_ref: String,
     option: String,
 ) -> HandlerResult {
-    let params = ctx.params_with(json!({ "ref": element_ref, "option": option }));
-    let result = ctx.client.call("select", Some(params))?;
+    let params = params::SelectParams {
+        element_ref,
+        option: option.clone(),
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "select", params)?;
     ctx.output_success_and_ok(&result, &format!("Selected: {}", option), "Select failed")
 }
 
@@ -1263,21 +1413,24 @@ fn handle_select_multiple<C: DaemonClient>(
     element_ref: String,
     options: Vec<String>,
 ) -> HandlerResult {
-    let params = ctx.params_with(json!({ "ref": element_ref, "options": options }));
-
-    let result = ctx.client.call("multiselect", Some(params))?;
+    let params = params::MultiselectParams {
+        element_ref,
+        options,
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "multiselect", params)?;
 
     match ctx.format {
         OutputFormat::Json => {
             if result.bool_or("success", false) {
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", result.to_pretty_json());
             } else {
                 let msg = result.str_or("message", "Unknown error");
                 let message = format!("Multiselect failed: {}", msg);
                 return Err(CliError::new(
                     ctx.format,
                     message,
-                    Some(result.clone()),
+                    Some(result.to_pretty_json()),
                     super::exit_codes::GENERAL_ERROR,
                 )
                 .into());
@@ -1295,7 +1448,7 @@ fn handle_select_multiple<C: DaemonClient>(
                 return Err(CliError::new(
                     ctx.format,
                     message,
-                    Some(result.clone()),
+                    Some(result.to_pretty_json()),
                     super::exit_codes::GENERAL_ERROR,
                 )
                 .into());
@@ -1311,8 +1464,12 @@ pub fn handle_scroll<C: DaemonClient>(
     amount: u16,
 ) -> HandlerResult {
     let dir_str = direction.as_str();
-    let params = ctx.params_with(json!({ "direction": dir_str, "amount": amount }));
-    let result = ctx.client.call("scroll", Some(params))?;
+    let params = params::ScrollParams {
+        direction: dir_str.to_string(),
+        amount,
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "scroll", params)?;
     ctx.output_success_and_ok(
         &result,
         &format!("Scrolled {} {} times", dir_str, amount),
@@ -1324,20 +1481,24 @@ pub fn handle_scroll_into_view<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     element_ref: String,
 ) -> HandlerResult {
-    let params = ctx.params_with(json!({ "ref": element_ref }));
-    let result = ctx.client.call("scroll_into_view", Some(params))?;
+    let element_ref_display = element_ref.clone();
+    let params = params::ElementRefParams {
+        element_ref,
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "scroll_into_view", params)?;
 
     match ctx.format {
         OutputFormat::Json => {
             if result.bool_or("success", false) {
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", result.to_pretty_json());
             } else {
                 let msg = result.str_or("message", "Element not found");
                 let message = format!("Scroll into view failed: {}", msg);
                 return Err(CliError::new(
                     ctx.format,
                     message,
-                    Some(result.clone()),
+                    Some(result.to_pretty_json()),
                     super::exit_codes::GENERAL_ERROR,
                 )
                 .into());
@@ -1347,7 +1508,7 @@ pub fn handle_scroll_into_view<C: DaemonClient>(
             if result.bool_or("success", false) {
                 println!(
                     "Scrolled to {} ({} scrolls)",
-                    element_ref,
+                    element_ref_display,
                     result.u64_or("scrolls_needed", 0)
                 );
             } else {
@@ -1356,7 +1517,7 @@ pub fn handle_scroll_into_view<C: DaemonClient>(
                 return Err(CliError::new(
                     ctx.format,
                     message,
-                    Some(result.clone()),
+                    Some(result.to_pretty_json()),
                     super::exit_codes::GENERAL_ERROR,
                 )
                 .into());
@@ -1397,9 +1558,7 @@ pub fn handle_count<C: DaemonClient>(
         name,
         text,
     };
-    let params = serde_json::to_value(rpc_params)?;
-
-    let result = ctx.client.call("count", Some(params))?;
+    let result = call_with_params(ctx.client, "count", rpc_params)?;
 
     ctx.output_json_or(&result, || {
         println!("{}", result.u64_or("count", 0));
@@ -1411,20 +1570,25 @@ pub fn handle_toggle<C: DaemonClient>(
     element_ref: String,
     state: Option<bool>,
 ) -> HandlerResult {
-    let params = ctx.params_with(json!({ "ref": element_ref, "state": state }));
-    let result = ctx.client.call("toggle", Some(params))?;
+    let element_ref_display = element_ref.clone();
+    let params = params::ToggleParams {
+        element_ref,
+        state,
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "toggle", params)?;
 
     match ctx.format {
         OutputFormat::Json => {
             if result.bool_or("success", false) {
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", result.to_pretty_json());
             } else {
                 let msg = result.str_or("message", "Unknown error");
                 let message = format!("Toggle failed: {}", msg);
                 return Err(CliError::new(
                     ctx.format,
                     message,
-                    Some(result.clone()),
+                    Some(result.to_pretty_json()),
                     super::exit_codes::GENERAL_ERROR,
                 )
                 .into());
@@ -1437,14 +1601,14 @@ pub fn handle_toggle<C: DaemonClient>(
                 } else {
                     "unchecked"
                 };
-                println!("{} is now {}", element_ref, state);
+                println!("{} is now {}", element_ref_display, state);
             } else {
                 let msg = result.str_or("message", "Unknown error");
                 let message = format!("Toggle failed: {}", msg);
                 return Err(CliError::new(
                     ctx.format,
                     message,
-                    Some(result.clone()),
+                    Some(result.to_pretty_json()),
                     super::exit_codes::GENERAL_ERROR,
                 )
                 .into());
@@ -1473,15 +1637,17 @@ pub fn handle_attach<C: DaemonClient>(
         }
     }
 
-    let params = json!({ "session": session_id });
-    let result = ctx.client.call("attach", Some(params))?;
+    let params = params::SessionParams {
+        session: Some(session_id.clone()),
+    };
+    let result = call_with_params(ctx.client, "attach", params)?;
 
     if interactive {
         if !result.bool_or("success", false) {
             return Err(CliError::new(
                 ctx.format,
                 format!("Failed to attach to session: {}", session_id),
-                Some(result.clone()),
+                Some(result.to_pretty_json()),
                 super::exit_codes::GENERAL_ERROR,
             )
             .into());
@@ -1498,12 +1664,12 @@ pub fn handle_attach<C: DaemonClient>(
         match ctx.format {
             OutputFormat::Json => {
                 if result.bool_or("success", false) {
-                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    println!("{}", result.to_pretty_json());
                 } else {
                     return Err(CliError::new(
                         ctx.format,
                         format!("Failed to attach to session: {}", session_id),
-                        Some(result.clone()),
+                        Some(result.to_pretty_json()),
                         super::exit_codes::GENERAL_ERROR,
                     )
                     .into());
@@ -1516,7 +1682,7 @@ pub fn handle_attach<C: DaemonClient>(
                     return Err(CliError::new(
                         ctx.format,
                         format!("Failed to attach to session: {}", session_id),
-                        Some(result.clone()),
+                        Some(result.to_pretty_json()),
                         super::exit_codes::GENERAL_ERROR,
                     )
                     .into());
@@ -1583,14 +1749,18 @@ pub fn handle_env(format: OutputFormat) -> HandlerResult {
 
     match format {
         OutputFormat::Json => {
-            let env_map: HashMap<&str, Option<String>> = vars.iter().cloned().collect();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&json!({
-                    "environment": env_map,
-                    "socket_path": socket_path().display().to_string()
-                }))?
-            );
+            #[derive(Serialize)]
+            struct EnvOutput {
+                environment: HashMap<&'static str, Option<String>>,
+                socket_path: String,
+            }
+
+            let env_map: HashMap<&'static str, Option<String>> = vars.iter().cloned().collect();
+            let output = EnvOutput {
+                environment: env_map,
+                socket_path: socket_path().display().to_string(),
+            };
+            println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
             println!("{}", Colors::bold("Environment Configuration:"));
@@ -1641,20 +1811,27 @@ pub fn handle_assert<C: DaemonClient>(
 
     let passed = match cond_type {
         "text" => {
-            let params = json!({
-                "session": ctx.session,
-                "strip_ansi": true
-            });
-            let result = ctx.client.call("snapshot", Some(params))?;
+            let params = params::SnapshotParams {
+                session: ctx.session.clone(),
+                include_elements: false,
+                region: None,
+                strip_ansi: true,
+                include_cursor: false,
+                include_render: false,
+            };
+            let result = call_with_params(ctx.client, "snapshot", params)?;
             result.str_or("screenshot", "").contains(cond_value)
         }
         "element" => {
-            let params = json!({ "ref": cond_value, "session": ctx.session });
-            let result = ctx.client.call("is_visible", Some(params))?;
+            let params = params::ElementRefParams {
+                element_ref: cond_value.to_string(),
+                session: ctx.session.clone(),
+            };
+            let result = call_with_params(ctx.client, "is_visible", params)?;
             result.bool_or("visible", false)
         }
         "session" => {
-            let result = ctx.client.call("sessions", None)?;
+            let result = call_no_params(ctx.client, "sessions")?;
             if let Some(sessions) = result.get("sessions").and_then(|v| v.as_array()) {
                 sessions
                     .iter()
@@ -1685,25 +1862,35 @@ pub fn handle_assert<C: DaemonClient>(
     if assert_result.passed {
         match ctx.format {
             OutputFormat::Json => {
-                let output = json!({
-                    "condition": condition,
-                    "passed": passed
-                });
-                ctx.presenter().present_value(&output);
+                #[derive(Serialize)]
+                struct AssertOutput<'a> {
+                    condition: &'a str,
+                    passed: bool,
+                }
+                let output = AssertOutput {
+                    condition: &condition,
+                    passed,
+                };
+                println!("{}", serde_json::to_string_pretty(&output)?);
             }
             OutputFormat::Text => {
                 ctx.presenter().present_assert_result(&assert_result);
             }
         }
     } else {
-        let output = json!({
-            "condition": condition,
-            "passed": passed
-        });
+        #[derive(Serialize)]
+        struct AssertOutput<'a> {
+            condition: &'a str,
+            passed: bool,
+        }
+        let output = AssertOutput {
+            condition: &condition,
+            passed,
+        };
         return Err(CliError::new(
             ctx.format,
             format!("Assertion failed: {}", assert_result.condition),
-            Some(output),
+            Some(serde_json::to_string_pretty(&output)?),
             super::exit_codes::GENERAL_ERROR,
         )
         .into());
@@ -1809,7 +1996,7 @@ pub fn handle_daemon_stop<C: DaemonClient>(
     Ok(())
 }
 
-pub fn print_daemon_status_from_result(result: &serde_json::Value, format: OutputFormat) {
+pub fn print_daemon_status_from_result(result: &RpcValue, format: OutputFormat) {
     let cli_version = env!("AGENT_TUI_VERSION");
     let cli_commit = env!("AGENT_TUI_GIT_SHA");
     let daemon_version = result.str_or("version", "unknown");
@@ -1826,35 +2013,75 @@ pub fn print_daemon_status_from_result(result: &serde_json::Value, format: Outpu
 
     match format {
         OutputFormat::Json => {
+            #[derive(Serialize)]
+            struct ApiStatus {
+                running: bool,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                pid: Option<u32>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                listen: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                http_url: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                ws_url: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                token: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                api_version: Option<String>,
+            }
+
+            #[derive(Serialize)]
+            struct DaemonStatus {
+                running: bool,
+                status: String,
+                pid: u64,
+                uptime_ms: u64,
+                session_count: u64,
+                daemon_version: String,
+                daemon_commit: String,
+                cli_version: String,
+                cli_commit: String,
+                version_mismatch: bool,
+                commit_mismatch: bool,
+                api: ApiStatus,
+            }
+
             let api_json = match api_state {
-                Some(state) => json!({
-                    "running": true,
-                    "pid": state.pid,
-                    "listen": state.listen,
-                    "http_url": state.http_url,
-                    "ws_url": state.ws_url,
-                    "token": state.token,
-                    "api_version": state.api_version
-                }),
-                None => json!({ "running": false }),
+                Some(state) => ApiStatus {
+                    running: true,
+                    pid: Some(state.pid),
+                    listen: Some(state.listen),
+                    http_url: Some(state.http_url),
+                    ws_url: Some(state.ws_url),
+                    token: state.token,
+                    api_version: state.api_version,
+                },
+                None => ApiStatus {
+                    running: false,
+                    pid: None,
+                    listen: None,
+                    http_url: None,
+                    ws_url: None,
+                    token: None,
+                    api_version: None,
+                },
             };
-            println!(
-                "{}",
-                serde_json::json!({
-                    "running": true,
-                    "status": status,
-                    "pid": pid,
-                    "uptime_ms": uptime_ms,
-                    "session_count": session_count,
-                    "daemon_version": daemon_version,
-                    "daemon_commit": daemon_commit,
-                    "cli_version": cli_version,
-                    "cli_commit": cli_commit,
-                    "version_mismatch": version_mismatch,
-                    "commit_mismatch": commit_mismatch,
-                    "api": api_json
-                })
-            );
+
+            let output = DaemonStatus {
+                running: true,
+                status: status.to_string(),
+                pid,
+                uptime_ms,
+                session_count,
+                daemon_version: daemon_version.to_string(),
+                daemon_commit: daemon_commit.to_string(),
+                cli_version: cli_version.to_string(),
+                cli_commit: cli_commit.to_string(),
+                version_mismatch,
+                commit_mismatch,
+                api: api_json,
+            };
+            println!("{}", serde_json::to_string_pretty(&output).unwrap_or_default());
         }
         OutputFormat::Text => {
             println!(
@@ -1906,19 +2133,24 @@ pub fn print_daemon_status_from_result(result: &serde_json::Value, format: Outpu
 pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let cli_version = env!("AGENT_TUI_VERSION");
     let cli_commit = env!("AGENT_TUI_GIT_SHA");
-    match ctx.client.call("health", None) {
+    match call_no_params(ctx.client, "health") {
         Ok(result) => print_daemon_status_from_result(&result, ctx.format),
         Err(e) => match ctx.format {
             OutputFormat::Json => {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "running": false,
-                        "cli_version": cli_version,
-                        "cli_commit": cli_commit,
-                        "error": e.to_string()
-                    })
-                );
+                #[derive(Serialize)]
+                struct DaemonStatusError {
+                    running: bool,
+                    cli_version: &'static str,
+                    cli_commit: &'static str,
+                    error: String,
+                }
+                let output = DaemonStatusError {
+                    running: false,
+                    cli_version,
+                    cli_commit,
+                    error: e.to_string(),
+                };
+                println!("{}", serde_json::to_string_pretty(&output).unwrap_or_default());
             }
             OutputFormat::Text => {
                 println!(
@@ -1952,6 +2184,7 @@ pub fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> Handle
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::RpcValue;
     use crate::adapters::presenter::{Presenter, TextPresenter};
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -1986,8 +2219,10 @@ mod tests {
             self.output.borrow_mut().push(format!("error: {}", message));
         }
 
-        fn present_value(&self, value: &Value) {
-            self.output.borrow_mut().push(format!("value: {}", value));
+        fn present_value(&self, value: &RpcValue) {
+            self.output
+                .borrow_mut()
+                .push(format!("value: {}", value.to_pretty_json()));
         }
 
         fn present_client_error(&self, error: &crate::adapters::ipc::ClientError) {
@@ -2093,135 +2328,126 @@ mod tests {
         assert!(captured.iter().any(|s| s.contains("kv:")));
     }
 
-    fn make_element(json: Value) -> Value {
-        json
+    fn make_element(json_str: &str) -> RpcValue {
+        RpcValue::new(serde_json::from_str(json_str).expect("valid element json"))
     }
 
     #[test]
     fn test_element_view_ref_str() {
-        let el = make_element(json!({"ref": "@btn1"}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{"ref":"@btn1"}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.ref_str(), "@btn1");
     }
 
     #[test]
     fn test_element_view_ref_str_missing() {
-        let el = make_element(json!({}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.ref_str(), "");
     }
 
     #[test]
     fn test_element_view_el_type() {
-        let el = make_element(json!({"type": "button"}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{"type":"button"}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.el_type(), "button");
     }
 
     #[test]
     fn test_element_view_el_type_missing() {
-        let el = make_element(json!({}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.el_type(), "");
     }
 
     #[test]
     fn test_element_view_label() {
-        let el = make_element(json!({"label": "Submit"}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{"label":"Submit"}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.label(), "Submit");
     }
 
     #[test]
     fn test_element_view_label_missing() {
-        let el = make_element(json!({}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.label(), "");
     }
 
     #[test]
     fn test_element_view_focused_true() {
-        let el = make_element(json!({"focused": true}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{"focused":true}"#);
+        let view = ElementView(el.as_ref());
         assert!(view.focused());
     }
 
     #[test]
     fn test_element_view_focused_false() {
-        let el = make_element(json!({"focused": false}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{"focused":false}"#);
+        let view = ElementView(el.as_ref());
         assert!(!view.focused());
     }
 
     #[test]
     fn test_element_view_focused_missing() {
-        let el = make_element(json!({}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{}"#);
+        let view = ElementView(el.as_ref());
         assert!(!view.focused());
     }
 
     #[test]
     fn test_element_view_selected() {
-        let el = make_element(json!({"selected": true}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{"selected":true}"#);
+        let view = ElementView(el.as_ref());
         assert!(view.selected());
     }
 
     #[test]
     fn test_element_view_selected_missing() {
-        let el = make_element(json!({}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{}"#);
+        let view = ElementView(el.as_ref());
         assert!(!view.selected());
     }
 
     #[test]
     fn test_element_view_value_present() {
-        let el = make_element(json!({"value": "test input"}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{"value":"test input"}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.value(), Some("test input"));
     }
 
     #[test]
     fn test_element_view_value_missing() {
-        let el = make_element(json!({}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.value(), None);
     }
 
     #[test]
     fn test_element_view_position() {
-        let el = make_element(json!({"position": {"row": 5, "col": 10}}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{"position":{"row":5,"col":10}}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.position(), (5, 10));
     }
 
     #[test]
     fn test_element_view_position_partial() {
-        let el = make_element(json!({"position": {"row": 5}}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{"position":{"row":5}}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.position(), (5, 0));
     }
 
     #[test]
     fn test_element_view_position_missing() {
-        let el = make_element(json!({}));
-        let view = ElementView(&el);
+        let el = make_element(r#"{}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.position(), (0, 0));
     }
 
     #[test]
     fn test_element_view_full_element() {
-        let el = make_element(json!({
-            "ref": "@inp1",
-            "type": "input",
-            "label": "Email",
-            "value": "test@example.com",
-            "focused": true,
-            "selected": false,
-            "checked": null,
-            "position": {"row": 3, "col": 15}
-        }));
-        let view = ElementView(&el);
+        let el = make_element(r#"{"ref":"@inp1","type":"input","label":"Email","value":"test@example.com","focused":true,"selected":false,"checked":null,"position":{"row":3,"col":15}}"#);
+        let view = ElementView(el.as_ref());
         assert_eq!(view.ref_str(), "@inp1");
         assert_eq!(view.el_type(), "input");
         assert_eq!(view.label(), "Email");

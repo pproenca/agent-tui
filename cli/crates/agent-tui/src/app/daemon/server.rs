@@ -6,7 +6,7 @@ use crate::common::telemetry;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use libc::{POLLIN, poll, pollfd};
-use serde_json::json;
+use serde::Serialize;
 use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
@@ -276,12 +276,37 @@ impl DaemonServer {
             return Ok(());
         }
 
-        let ready = RpcResponse::success(
+        #[derive(Serialize)]
+        struct AttachReady<'a> {
+            event: &'static str,
+            session_id: &'a str,
+        }
+
+        #[derive(Serialize)]
+        struct AttachDropped {
+            event: &'static str,
+            dropped_bytes: u64,
+        }
+
+        #[derive(Serialize)]
+        struct AttachOutput<'a> {
+            event: &'static str,
+            data: &'a str,
+            bytes: usize,
+            dropped_bytes: u64,
+        }
+
+        #[derive(Serialize)]
+        struct AttachEvent {
+            event: &'static str,
+        }
+
+        let ready = RpcResponse::success_json(
             req_id,
-            json!({
-                "event": "ready",
-                "session_id": session_id
-            }),
+            &AttachReady {
+                event: "ready",
+                session_id: &session_id,
+            },
         );
         conn.write_response(&ready)?;
 
@@ -309,12 +334,12 @@ impl DaemonServer {
                 };
 
                 if read.dropped_bytes > 0 && read.data.is_empty() {
-                    let response = RpcResponse::success(
+                    let response = RpcResponse::success_json(
                         req_id,
-                        json!({
-                            "event": "dropped",
-                            "dropped_bytes": read.dropped_bytes
-                        }),
+                        &AttachDropped {
+                            event: "dropped",
+                            dropped_bytes: read.dropped_bytes,
+                        },
                     );
                     conn.write_response(&response)?;
                     sent_any = true;
@@ -322,20 +347,23 @@ impl DaemonServer {
 
                 if !read.data.is_empty() {
                     let data_b64 = STANDARD.encode(&read.data);
-                    let response = RpcResponse::success(
+                    let response = RpcResponse::success_json(
                         req_id,
-                        json!({
-                            "event": "output",
-                            "data": data_b64,
-                            "bytes": read.data.len(),
-                            "dropped_bytes": read.dropped_bytes
-                        }),
+                        &AttachOutput {
+                            event: "output",
+                            data: &data_b64,
+                            bytes: read.data.len(),
+                            dropped_bytes: read.dropped_bytes,
+                        },
                     );
                     conn.write_response(&response)?;
                     sent_any = true;
                     budget = budget.saturating_sub(read.data.len());
                     if read.closed {
-                        let response = RpcResponse::success(req_id, json!({ "event": "closed" }));
+                        let response = RpcResponse::success_json(
+                            req_id,
+                            &AttachEvent { event: "closed" },
+                        );
                         let _ = conn.write_response(&response);
                         return Ok(());
                     }
@@ -343,7 +371,10 @@ impl DaemonServer {
                 }
 
                 if read.closed {
-                    let response = RpcResponse::success(req_id, json!({ "event": "closed" }));
+                    let response = RpcResponse::success_json(
+                        req_id,
+                        &AttachEvent { event: "closed" },
+                    );
                     let _ = conn.write_response(&response);
                     return Ok(());
                 }
@@ -356,7 +387,8 @@ impl DaemonServer {
             }
 
             if !subscription.wait(Some(ATTACH_STREAM_HEARTBEAT)) {
-                let response = RpcResponse::success(req_id, json!({ "event": "heartbeat" }));
+                let response =
+                    RpcResponse::success_json(req_id, &AttachEvent { event: "heartbeat" });
                 conn.write_response(&response)?;
             }
         }
@@ -390,27 +422,78 @@ impl DaemonServer {
 
         let snapshot = session.live_preview_snapshot();
         let session_id = session.session_id().to_string();
-        let ready = RpcResponse::success(
+        #[derive(Serialize)]
+        struct LivePreviewReady<'a> {
+            event: &'static str,
+            session_id: &'a str,
+            cols: u16,
+            rows: u16,
+        }
+
+        #[derive(Serialize)]
+        struct LivePreviewInit<'a> {
+            event: &'static str,
+            time: f64,
+            cols: u16,
+            rows: u16,
+            init: &'a str,
+        }
+
+        #[derive(Serialize)]
+        struct LivePreviewDropped {
+            event: &'static str,
+            time: f64,
+            dropped_bytes: u64,
+        }
+
+        #[derive(Serialize)]
+        struct LivePreviewOutput<'a> {
+            event: &'static str,
+            time: f64,
+            data_b64: &'a str,
+        }
+
+        #[derive(Serialize)]
+        struct LivePreviewClosed {
+            event: &'static str,
+            time: f64,
+        }
+
+        #[derive(Serialize)]
+        struct LivePreviewResize {
+            event: &'static str,
+            time: f64,
+            cols: u16,
+            rows: u16,
+        }
+
+        #[derive(Serialize)]
+        struct LivePreviewHeartbeat {
+            event: &'static str,
+            time: f64,
+        }
+
+        let ready = RpcResponse::success_json(
             req_id,
-            json!({
-                "event": "ready",
-                "session_id": session_id,
-                "cols": snapshot.cols,
-                "rows": snapshot.rows
-            }),
+            &LivePreviewReady {
+                event: "ready",
+                session_id: &session_id,
+                cols: snapshot.cols,
+                rows: snapshot.rows,
+            },
         );
         conn.write_response(&ready)?;
 
         let start_time = Instant::now();
-        let init = RpcResponse::success(
+        let init = RpcResponse::success_json(
             req_id,
-            json!({
-                "event": "init",
-                "time": start_time.elapsed().as_secs_f64(),
-                "cols": snapshot.cols,
-                "rows": snapshot.rows,
-                "init": snapshot.seq
-            }),
+            &LivePreviewInit {
+                event: "init",
+                time: start_time.elapsed().as_secs_f64(),
+                cols: snapshot.cols,
+                rows: snapshot.rows,
+                init: &snapshot.seq,
+            },
         );
         conn.write_response(&init)?;
 
@@ -438,13 +521,13 @@ impl DaemonServer {
                 };
 
                 if read.dropped_bytes > 0 {
-                    let dropped = RpcResponse::success(
+                    let dropped = RpcResponse::success_json(
                         req_id,
-                        json!({
-                            "event": "dropped",
-                            "time": start_time.elapsed().as_secs_f64(),
-                            "dropped_bytes": read.dropped_bytes
-                        }),
+                        &LivePreviewDropped {
+                            event: "dropped",
+                            time: start_time.elapsed().as_secs_f64(),
+                            dropped_bytes: read.dropped_bytes,
+                        },
                     );
                     conn.write_response(&dropped)?;
                     if let Err(err) = session.update() {
@@ -453,15 +536,15 @@ impl DaemonServer {
                         return Ok(());
                     }
                     let snapshot = session.live_preview_snapshot();
-                    let init = RpcResponse::success(
+                    let init = RpcResponse::success_json(
                         req_id,
-                        json!({
-                            "event": "init",
-                            "time": start_time.elapsed().as_secs_f64(),
-                            "cols": snapshot.cols,
-                            "rows": snapshot.rows,
-                            "init": snapshot.seq
-                        }),
+                        &LivePreviewInit {
+                            event: "init",
+                            time: start_time.elapsed().as_secs_f64(),
+                            cols: snapshot.cols,
+                            rows: snapshot.rows,
+                            init: &snapshot.seq,
+                        },
                     );
                     conn.write_response(&init)?;
                     last_size = (snapshot.cols, snapshot.rows);
@@ -472,24 +555,24 @@ impl DaemonServer {
 
                 if !read.data.is_empty() {
                     let data_b64 = STANDARD.encode(&read.data);
-                    let response = RpcResponse::success(
+                    let response = RpcResponse::success_json(
                         req_id,
-                        json!({
-                            "event": "output",
-                            "time": start_time.elapsed().as_secs_f64(),
-                            "data_b64": data_b64
-                        }),
+                        &LivePreviewOutput {
+                            event: "output",
+                            time: start_time.elapsed().as_secs_f64(),
+                            data_b64: &data_b64,
+                        },
                     );
                     conn.write_response(&response)?;
                     sent_any = true;
                     budget = budget.saturating_sub(read.data.len());
                     if read.closed {
-                        let response = RpcResponse::success(
+                        let response = RpcResponse::success_json(
                             req_id,
-                            json!({
-                                "event": "closed",
-                                "time": start_time.elapsed().as_secs_f64()
-                            }),
+                            &LivePreviewClosed {
+                                event: "closed",
+                                time: start_time.elapsed().as_secs_f64(),
+                            },
                         );
                         let _ = conn.write_response(&response);
                         return Ok(());
@@ -498,12 +581,12 @@ impl DaemonServer {
                 }
 
                 if read.closed {
-                    let response = RpcResponse::success(
+                    let response = RpcResponse::success_json(
                         req_id,
-                        json!({
-                            "event": "closed",
-                            "time": start_time.elapsed().as_secs_f64()
-                        }),
+                        &LivePreviewClosed {
+                            event: "closed",
+                            time: start_time.elapsed().as_secs_f64(),
+                        },
                     );
                     let _ = conn.write_response(&response);
                     return Ok(());
@@ -514,14 +597,14 @@ impl DaemonServer {
 
             let size = session.size();
             if size != last_size {
-                let resize = RpcResponse::success(
+                let resize = RpcResponse::success_json(
                     req_id,
-                    json!({
-                        "event": "resize",
-                        "time": start_time.elapsed().as_secs_f64(),
-                        "cols": size.0,
-                        "rows": size.1
-                    }),
+                    &LivePreviewResize {
+                        event: "resize",
+                        time: start_time.elapsed().as_secs_f64(),
+                        cols: size.0,
+                        rows: size.1,
+                    },
                 );
                 conn.write_response(&resize)?;
                 last_size = size;
@@ -533,12 +616,12 @@ impl DaemonServer {
             }
 
             if !subscription.wait(Some(LIVE_PREVIEW_STREAM_HEARTBEAT)) {
-                let response = RpcResponse::success(
+                let response = RpcResponse::success_json(
                     req_id,
-                    json!({
-                        "event": "heartbeat",
-                        "time": start_time.elapsed().as_secs_f64()
-                    }),
+                    &LivePreviewHeartbeat {
+                        event: "heartbeat",
+                        time: start_time.elapsed().as_secs_f64(),
+                    },
                 );
                 conn.write_response(&response)?;
             }

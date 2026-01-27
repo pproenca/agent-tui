@@ -6,8 +6,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::get;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use serde::Deserialize;
-use serde_json::json;
+use serde::{Deserialize, Serialize};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path as StdPath, PathBuf};
 use std::sync::Arc;
@@ -168,6 +167,161 @@ enum WsPayload {
     Binary(Vec<u8>),
 }
 
+impl OutputEncoding {
+    fn as_str(self) -> &'static str {
+        match self {
+            OutputEncoding::Base64 => "base64",
+            OutputEncoding::Binary => "binary",
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct VersionResponse {
+    api_version: &'static str,
+    daemon_version: String,
+    daemon_commit: String,
+}
+
+#[derive(Serialize)]
+struct HealthResponse {
+    status: &'static str,
+    pid: u32,
+    uptime_ms: u64,
+    session_count: usize,
+    api_version: &'static str,
+    daemon_version: String,
+    daemon_commit: String,
+}
+
+#[derive(Serialize)]
+struct SessionsResponse {
+    active: Option<String>,
+    sessions: Vec<SessionInfoPayload>,
+}
+
+#[derive(Serialize)]
+struct SessionInfoPayload {
+    id: String,
+    command: String,
+    pid: u32,
+    running: bool,
+    created_at: String,
+    size: SizePayload,
+}
+
+#[derive(Serialize)]
+struct SizePayload {
+    cols: u16,
+    rows: u16,
+}
+
+#[derive(Serialize)]
+struct SnapshotResponse {
+    cols: u16,
+    rows: u16,
+    init: String,
+}
+
+#[derive(Serialize)]
+struct ErrorResponse<'a> {
+    error: &'a str,
+}
+
+#[derive(Serialize)]
+struct ApiStateFile<'a> {
+    pid: u32,
+    http_url: &'a str,
+    ws_url: &'a str,
+    listen: &'a str,
+    token: Option<&'a str>,
+    api_version: &'static str,
+    started_at: u64,
+}
+
+#[derive(Serialize)]
+struct HelloEvent<'a> {
+    event: &'static str,
+    api_version: &'static str,
+    daemon_version: &'a str,
+    daemon_commit: &'a str,
+    session_id: &'a str,
+    output_encoding: &'static str,
+}
+
+#[derive(Serialize)]
+struct ReadyEvent<'a> {
+    event: &'static str,
+    session_id: &'a str,
+    cols: u16,
+    rows: u16,
+}
+
+#[derive(Serialize)]
+struct InitEvent<'a> {
+    event: &'static str,
+    time: f64,
+    cols: u16,
+    rows: u16,
+    init: &'a str,
+}
+
+#[derive(Serialize)]
+struct DroppedEvent {
+    event: &'static str,
+    time: f64,
+    dropped_bytes: u64,
+}
+
+#[derive(Serialize)]
+struct OutputEvent {
+    event: &'static str,
+    time: f64,
+    data_b64: String,
+}
+
+#[derive(Serialize)]
+struct ClosedEvent {
+    event: &'static str,
+    time: f64,
+}
+
+#[derive(Serialize)]
+struct ResizeEvent {
+    event: &'static str,
+    time: f64,
+    cols: u16,
+    rows: u16,
+}
+
+#[derive(Serialize)]
+struct HeartbeatEvent {
+    event: &'static str,
+    time: f64,
+}
+
+#[derive(Serialize)]
+struct ErrorEvent<'a> {
+    event: &'static str,
+    message: &'a str,
+}
+
+impl From<SessionInfo> for SessionInfoPayload {
+    fn from(info: SessionInfo) -> Self {
+        Self {
+            id: info.id.to_string(),
+            command: info.command,
+            pid: info.pid,
+            running: info.running,
+            created_at: info.created_at,
+            size: SizePayload {
+                cols: info.size.0,
+                rows: info.size.1,
+            },
+        }
+    }
+}
+
 pub fn start_api_server(
     session_manager: Arc<SessionManager>,
     shutdown_flag: Arc<AtomicBool>,
@@ -290,11 +444,11 @@ async fn version_handler(
     if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
         return *resp;
     }
-    Json(json!({
-        "api_version": state.api_version,
-        "daemon_version": state.daemon_version,
-        "daemon_commit": state.daemon_commit
-    }))
+    Json(VersionResponse {
+        api_version: state.api_version,
+        daemon_version: state.daemon_version.clone(),
+        daemon_commit: state.daemon_commit.clone(),
+    })
     .into_response()
 }
 
@@ -348,15 +502,15 @@ async fn health_handler(
     }
     let session_count = state.session_manager.session_count();
     let uptime_ms = state.start_time.elapsed().as_millis() as u64;
-    Json(json!({
-        "status": "healthy",
-        "pid": std::process::id(),
-        "uptime_ms": uptime_ms,
-        "session_count": session_count,
-        "api_version": state.api_version,
-        "daemon_version": state.daemon_version,
-        "daemon_commit": state.daemon_commit
-    }))
+    Json(HealthResponse {
+        status: "healthy",
+        pid: std::process::id(),
+        uptime_ms,
+        session_count,
+        api_version: state.api_version,
+        daemon_version: state.daemon_version.clone(),
+        daemon_commit: state.daemon_commit.clone(),
+    })
     .into_response()
 }
 
@@ -370,10 +524,10 @@ async fn sessions_handler(
     }
     let sessions = state.session_manager.list();
     let active = state.session_manager.active_session_id();
-    let payload = json!({
-        "active": active.map(|id| id.as_str().to_string()),
-        "sessions": sessions.into_iter().map(|info| session_info_to_json(&info)).collect::<Vec<_>>()
-    });
+    let payload = SessionsResponse {
+        active: active.map(|id| id.to_string()),
+        sessions: sessions.into_iter().map(SessionInfoPayload::from).collect(),
+    };
     Json(payload).into_response()
 }
 
@@ -399,11 +553,11 @@ async fn snapshot_handler(
         return error_response(StatusCode::BAD_GATEWAY, &err.to_string());
     }
     let snapshot = session.live_preview_snapshot();
-    Json(json!({
-        "cols": snapshot.cols,
-        "rows": snapshot.rows,
-        "init": snapshot.seq
-    }))
+    Json(SnapshotResponse {
+        cols: snapshot.cols,
+        rows: snapshot.rows,
+        init: snapshot.seq,
+    })
     .into_response()
 }
 
@@ -458,18 +612,15 @@ async fn handle_ws(
     queue_capacity: usize,
     output_encoding: OutputEncoding,
 ) {
-    let hello = json!({
-        "event": "hello",
-        "api_version": state.api_version,
-        "daemon_version": state.daemon_version,
-        "daemon_commit": state.daemon_commit,
-        "session_id": session_id,
-        "output_encoding": match output_encoding {
-            OutputEncoding::Base64 => "base64",
-            OutputEncoding::Binary => "binary",
-        }
-    });
-    if socket.send(Message::Text(hello.to_string())).await.is_err() {
+    let hello = HelloEvent {
+        event: "hello",
+        api_version: state.api_version,
+        daemon_version: &state.daemon_version,
+        daemon_commit: &state.daemon_commit,
+        session_id: &session_id,
+        output_encoding: output_encoding.as_str(),
+    };
+    if socket.send(Message::Text(serialize_event(&hello))).await.is_err() {
         return;
     }
 
@@ -524,38 +675,35 @@ fn stream_live_preview(
     let start_time = Instant::now();
 
     if let Err(err) = session.update() {
-        let _ = sender.blocking_send(WsPayload::Text(error_event(&err.to_string()).to_string()));
+        let message = err.to_string();
+        let _ = sender.blocking_send(WsPayload::Text(error_event(&message)));
         return;
     }
 
     let snapshot = session.live_preview_snapshot();
     let session_id = session.session_id().to_string();
+    let ready_event = ReadyEvent {
+        event: "ready",
+        session_id: &session_id,
+        cols: snapshot.cols,
+        rows: snapshot.rows,
+    };
     if sender
-        .blocking_send(WsPayload::Text(
-            json!({
-                "event": "ready",
-                "session_id": session_id,
-                "cols": snapshot.cols,
-                "rows": snapshot.rows
-            })
-            .to_string(),
-        ))
+        .blocking_send(WsPayload::Text(serialize_event(&ready_event)))
         .is_err()
     {
         return;
     }
 
+    let init_event = InitEvent {
+        event: "init",
+        time: start_time.elapsed().as_secs_f64(),
+        cols: snapshot.cols,
+        rows: snapshot.rows,
+        init: snapshot.seq.as_str(),
+    };
     if sender
-        .blocking_send(WsPayload::Text(
-            json!({
-                "event": "init",
-                "time": start_time.elapsed().as_secs_f64(),
-                "cols": snapshot.cols,
-                "rows": snapshot.rows,
-                "init": snapshot.seq
-            })
-            .to_string(),
-        ))
+        .blocking_send(WsPayload::Text(serialize_event(&init_event)))
         .is_err()
     {
         return;
@@ -584,44 +732,40 @@ fn stream_live_preview(
             let read = match session.stream_read(&mut cursor, max_chunk, 0) {
                 Ok(read) => read,
                 Err(err) => {
-                    let _ = sender
-                        .blocking_send(WsPayload::Text(error_event(&err.to_string()).to_string()));
+                    let message = err.to_string();
+                    let _ = sender.blocking_send(WsPayload::Text(error_event(&message)));
                     return;
                 }
             };
 
             if read.dropped_bytes > 0 {
+                let dropped_event = DroppedEvent {
+                    event: "dropped",
+                    time: start_time.elapsed().as_secs_f64(),
+                    dropped_bytes: read.dropped_bytes,
+                };
                 if sender
-                    .blocking_send(WsPayload::Text(
-                        json!({
-                            "event": "dropped",
-                            "time": start_time.elapsed().as_secs_f64(),
-                            "dropped_bytes": read.dropped_bytes
-                        })
-                        .to_string(),
-                    ))
+                    .blocking_send(WsPayload::Text(serialize_event(&dropped_event)))
                     .is_err()
                 {
                     return;
                 }
 
                 if let Err(err) = session.update() {
-                    let _ = sender
-                        .blocking_send(WsPayload::Text(error_event(&err.to_string()).to_string()));
+                    let message = err.to_string();
+                    let _ = sender.blocking_send(WsPayload::Text(error_event(&message)));
                     return;
                 }
                 let snapshot = session.live_preview_snapshot();
+                let init_event = InitEvent {
+                    event: "init",
+                    time: start_time.elapsed().as_secs_f64(),
+                    cols: snapshot.cols,
+                    rows: snapshot.rows,
+                    init: snapshot.seq.as_str(),
+                };
                 if sender
-                    .blocking_send(WsPayload::Text(
-                        json!({
-                            "event": "init",
-                            "time": start_time.elapsed().as_secs_f64(),
-                            "cols": snapshot.cols,
-                            "rows": snapshot.rows,
-                            "init": snapshot.seq
-                        })
-                        .to_string(),
-                    ))
+                    .blocking_send(WsPayload::Text(serialize_event(&init_event)))
                     .is_err()
                 {
                     return;
@@ -636,15 +780,13 @@ fn stream_live_preview(
                 match output_encoding {
                     OutputEncoding::Base64 => {
                         let data_b64 = STANDARD.encode(&read.data);
+                        let output_event = OutputEvent {
+                            event: "output",
+                            time: start_time.elapsed().as_secs_f64(),
+                            data_b64,
+                        };
                         if sender
-                            .blocking_send(WsPayload::Text(
-                                json!({
-                                    "event": "output",
-                                    "time": start_time.elapsed().as_secs_f64(),
-                                    "data_b64": data_b64
-                                })
-                                .to_string(),
-                            ))
+                            .blocking_send(WsPayload::Text(serialize_event(&output_event)))
                             .is_err()
                         {
                             return;
@@ -662,26 +804,23 @@ fn stream_live_preview(
                 sent_any = true;
                 budget = budget.saturating_sub(read.data.len());
                 if read.closed {
-                    let _ = sender.blocking_send(WsPayload::Text(
-                        json!({
-                            "event": "closed",
-                            "time": start_time.elapsed().as_secs_f64()
-                        })
-                        .to_string(),
-                    ));
+                    let closed_event = ClosedEvent {
+                        event: "closed",
+                        time: start_time.elapsed().as_secs_f64(),
+                    };
+                    let _ = sender
+                        .blocking_send(WsPayload::Text(serialize_event(&closed_event)));
                     return;
                 }
                 continue;
             }
 
             if read.closed {
-                let _ = sender.blocking_send(WsPayload::Text(
-                    json!({
-                        "event": "closed",
-                        "time": start_time.elapsed().as_secs_f64()
-                    })
-                    .to_string(),
-                ));
+                let closed_event = ClosedEvent {
+                    event: "closed",
+                    time: start_time.elapsed().as_secs_f64(),
+                };
+                let _ = sender.blocking_send(WsPayload::Text(serialize_event(&closed_event)));
                 return;
             }
 
@@ -690,16 +829,14 @@ fn stream_live_preview(
 
         let size = session.size();
         if size != last_size {
+            let resize_event = ResizeEvent {
+                event: "resize",
+                time: start_time.elapsed().as_secs_f64(),
+                cols: size.0,
+                rows: size.1,
+            };
             if sender
-                .blocking_send(WsPayload::Text(
-                    json!({
-                        "event": "resize",
-                        "time": start_time.elapsed().as_secs_f64(),
-                        "cols": size.0,
-                        "rows": size.1
-                    })
-                    .to_string(),
-                ))
+                .blocking_send(WsPayload::Text(serialize_event(&resize_event)))
                 .is_err()
             {
                 return;
@@ -714,13 +851,10 @@ fn stream_live_preview(
 
         if !subscription.wait(Some(LIVE_PREVIEW_STREAM_HEARTBEAT))
             && sender
-                .blocking_send(WsPayload::Text(
-                    json!({
-                        "event": "heartbeat",
-                        "time": start_time.elapsed().as_secs_f64()
-                    })
-                    .to_string(),
-                ))
+                .blocking_send(WsPayload::Text(serialize_event(&HeartbeatEvent {
+                    event: "heartbeat",
+                    time: start_time.elapsed().as_secs_f64(),
+                })))
                 .is_err()
         {
             return;
@@ -762,12 +896,22 @@ fn require_auth(
     }
 }
 
-fn error_event(message: &str) -> serde_json::Value {
-    json!({ "event": "error", "message": message })
+fn error_event(message: &str) -> String {
+    serialize_event(&ErrorEvent {
+        event: "error",
+        message,
+    })
+}
+
+fn serialize_event<T: Serialize>(event: &T) -> String {
+    serde_json::to_string(event).unwrap_or_else(|err| {
+        error!(error = %err, "Failed to serialize API event");
+        "{\"event\":\"error\",\"message\":\"serialization failed\"}".to_string()
+    })
 }
 
 fn error_response(status: StatusCode, message: &str) -> Response {
-    (status, Json(json!({ "error": message }))).into_response()
+    (status, Json(ErrorResponse { error: message })).into_response()
 }
 
 fn parse_output_encoding(value: Option<&str>) -> Result<OutputEncoding, &'static str> {
@@ -837,15 +981,15 @@ fn write_state_file(
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let payload = json!({
-        "pid": std::process::id(),
-        "http_url": http_url,
-        "ws_url": ws_url,
-        "listen": listen,
-        "token": token,
-        "api_version": API_VERSION,
-        "started_at": started_at
-    });
+    let payload = ApiStateFile {
+        pid: std::process::id(),
+        http_url,
+        ws_url,
+        listen,
+        token,
+        api_version: API_VERSION,
+        started_at,
+    };
     let tmp_path = path.with_extension("tmp");
     std::fs::write(
         &tmp_path,
@@ -883,15 +1027,4 @@ fn env_bool(key: &str) -> Option<bool> {
 fn generate_token() -> String {
     let bytes: [u8; 16] = rand::random();
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
-}
-
-fn session_info_to_json(info: &SessionInfo) -> serde_json::Value {
-    json!({
-        "id": info.id.as_str(),
-        "command": info.command,
-        "pid": info.pid,
-        "running": info.running,
-        "created_at": info.created_at,
-        "size": { "cols": info.size.0, "rows": info.size.1 }
-    })
 }

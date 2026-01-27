@@ -2,7 +2,7 @@ use std::io;
 
 use crate::adapters::ipc::error_codes::{self, ErrorCategory};
 use crate::app::commands::OutputFormat;
-use serde_json::{Value, json};
+use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -25,14 +25,14 @@ pub struct CliError {
     pub exit_code: i32,
     pub format: OutputFormat,
     pub message: String,
-    pub json: Option<Value>,
+    pub json: Option<String>,
 }
 
 impl CliError {
     pub fn new(
         format: OutputFormat,
         message: impl Into<String>,
-        json: Option<Value>,
+        json: Option<String>,
         exit_code: i32,
     ) -> Self {
         Self {
@@ -66,24 +66,24 @@ impl AttachError {
         ErrorCategory::External
     }
 
-    pub fn context(&self) -> Value {
+    pub fn context(&self) -> AttachErrorContext {
         match self {
-            AttachError::Terminal(e) => json!({
-                "operation": "terminal",
-                "reason": e.to_string()
-            }),
-            AttachError::PtyWrite(reason) => json!({
-                "operation": "pty_write",
-                "reason": reason
-            }),
-            AttachError::PtyRead(reason) => json!({
-                "operation": "pty_read",
-                "reason": reason
-            }),
-            AttachError::EventRead => json!({
-                "operation": "event_read",
-                "reason": "Failed to read terminal events"
-            }),
+            AttachError::Terminal(e) => AttachErrorContext {
+                operation: "terminal",
+                reason: e.to_string(),
+            },
+            AttachError::PtyWrite(reason) => AttachErrorContext {
+                operation: "pty_write",
+                reason: reason.clone(),
+            },
+            AttachError::PtyRead(reason) => AttachErrorContext {
+                operation: "pty_read",
+                reason: reason.clone(),
+            },
+            AttachError::EventRead => AttachErrorContext {
+                operation: "event_read",
+                reason: "Failed to read terminal events".to_string(),
+            },
         }
     }
 
@@ -121,16 +121,32 @@ impl AttachError {
         }
     }
 
-    pub fn to_json(&self) -> Value {
-        json!({
-            "code": self.code(),
-            "message": self.to_string(),
-            "category": self.category().as_str(),
-            "retryable": self.is_retryable(),
-            "context": self.context(),
-            "suggestion": self.suggestion()
-        })
+    pub fn to_payload(&self) -> AttachErrorPayload {
+        AttachErrorPayload {
+            code: self.code(),
+            message: self.to_string(),
+            category: self.category().as_str().to_string(),
+            retryable: self.is_retryable(),
+            context: self.context(),
+            suggestion: self.suggestion(),
+        }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AttachErrorContext {
+    pub operation: &'static str,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AttachErrorPayload {
+    pub code: i32,
+    pub message: String,
+    pub category: String,
+    pub retryable: bool,
+    pub context: AttachErrorContext,
+    pub suggestion: String,
 }
 
 #[cfg(test)]
@@ -162,13 +178,13 @@ mod tests {
     fn test_attach_error_context() {
         let err = AttachError::PtyWrite("broken pipe".into());
         let ctx = err.context();
-        assert_eq!(ctx["operation"], "pty_write");
-        assert_eq!(ctx["reason"], "broken pipe");
+        assert_eq!(ctx.operation, "pty_write");
+        assert_eq!(ctx.reason, "broken pipe");
 
         let err = AttachError::PtyRead("timeout".into());
         let ctx = err.context();
-        assert_eq!(ctx["operation"], "pty_read");
-        assert_eq!(ctx["reason"], "timeout");
+        assert_eq!(ctx.operation, "pty_read");
+        assert_eq!(ctx.reason, "timeout");
     }
 
     #[test]
@@ -194,17 +210,12 @@ mod tests {
     }
 
     #[test]
-    fn test_attach_error_to_json() {
+    fn test_attach_error_to_payload() {
         let err = AttachError::PtyRead("connection reset".into());
-        let json = err.to_json();
-        assert_eq!(json["code"], error_codes::PTY_ERROR);
-        assert_eq!(json["category"], "external");
-        assert_eq!(json["retryable"], true);
-        assert!(
-            json["context"]["operation"]
-                .as_str()
-                .unwrap()
-                .contains("pty_read")
-        );
+        let payload = err.to_payload();
+        assert_eq!(payload.code, error_codes::PTY_ERROR);
+        assert_eq!(payload.category, "external");
+        assert!(payload.retryable);
+        assert_eq!(payload.context.operation, "pty_read");
     }
 }

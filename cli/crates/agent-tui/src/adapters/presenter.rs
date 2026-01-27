@@ -1,6 +1,4 @@
-use serde_json::Value;
-
-use crate::adapters::ValueExt;
+use crate::adapters::{RpcValue, RpcValueRef};
 use crate::adapters::ipc::ClientError;
 use crate::common::Colors;
 
@@ -9,7 +7,7 @@ pub trait Presenter {
 
     fn present_error(&self, message: &str);
 
-    fn present_value(&self, value: &Value);
+    fn present_value(&self, value: &RpcValue);
 
     fn present_client_error(&self, error: &ClientError);
 
@@ -46,7 +44,7 @@ pub struct WaitResult {
 }
 
 impl WaitResult {
-    pub fn from_json(value: &Value) -> Self {
+    pub fn from_json(value: &RpcValue) -> Self {
         Self {
             found: value.bool_or("found", false),
             elapsed_ms: value.u64_or("elapsed_ms", 0),
@@ -71,7 +69,7 @@ pub struct HealthResult {
 }
 
 impl HealthResult {
-    pub fn from_json(value: &Value, verbose: bool) -> Self {
+    pub fn from_json(value: &RpcValue, verbose: bool) -> Self {
         use crate::adapters::ipc::socket_path;
 
         let (socket, pid_file) = if verbose {
@@ -114,7 +112,7 @@ pub struct FindResult {
 }
 
 impl FindResult {
-    pub fn from_json(value: &Value) -> Self {
+    pub fn from_json(value: &RpcValue) -> Self {
         let count = value.u64_or("count", 0);
         let elements = value
             .get("elements")
@@ -157,18 +155,16 @@ impl Presenter for TextPresenter {
         eprintln!("{}: {} {}", PROGRAM_NAME, Colors::error("Error:"), message);
     }
 
-    fn present_value(&self, value: &Value) {
-        if let Some(s) = value.as_str() {
+    fn present_value(&self, value: &RpcValue) {
+        let value_ref = value.as_ref();
+        if let Some(s) = value_ref.as_str() {
             println!("{}", s);
-        } else if let Some(n) = value.as_u64() {
+        } else if let Some(n) = value_ref.as_u64() {
             println!("{}", n);
-        } else if let Some(b) = value.as_bool() {
+        } else if let Some(b) = value_ref.as_bool() {
             println!("{}", b);
         } else {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(value).unwrap_or_default()
-            );
+            println!("{}", value.to_pretty_json());
         }
     }
 
@@ -367,11 +363,8 @@ impl Presenter for JsonPresenter {
         );
     }
 
-    fn present_value(&self, value: &Value) {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(value).unwrap_or_default()
-        );
+    fn present_value(&self, value: &RpcValue) {
+        println!("{}", value.to_pretty_json());
     }
 
     fn present_client_error(&self, error: &ClientError) {
@@ -541,11 +534,11 @@ impl SpawnResult {
         presenter.present_kv("PID", &self.pid.to_string());
     }
 
-    pub fn to_json(&self) -> Value {
-        serde_json::json!({
+    pub fn to_json(&self) -> RpcValue {
+        RpcValue::new(serde_json::json!({
             "session_id": self.session_id,
             "pid": self.pid
-        })
+        }))
     }
 }
 
@@ -597,7 +590,7 @@ impl SessionListResult {
     }
 }
 
-pub struct ElementView<'a>(pub &'a Value);
+pub struct ElementView<'a>(pub RpcValueRef<'a>);
 
 impl ElementView<'_> {
     pub fn ref_str(&self) -> &str {
@@ -701,8 +694,8 @@ mod tests {
             pid: 1234,
         };
         let json = result.to_json();
-        assert_eq!(json["session_id"], "abc123");
-        assert_eq!(json["pid"], 1234);
+        assert_eq!(json.str_or("session_id", ""), "abc123");
+        assert_eq!(json.u64_or("pid", 0), 1234);
     }
 
     #[test]

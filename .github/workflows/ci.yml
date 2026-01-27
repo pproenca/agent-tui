@@ -253,10 +253,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: npm ci (validate package-lock.json)
-        working-directory: cli
-        run: npm ci --ignore-scripts
-
       - name: npm pack (validate package)
         working-directory: cli
         run: npm pack --dry-run

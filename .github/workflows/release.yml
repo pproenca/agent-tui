@@ -230,12 +230,23 @@ jobs:
       - name: Setup bun
         uses: oven-sh/setup-bun@v1
 
-      - name: Download all artifacts
+      - name: Download Linux release artifacts
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ needs.validate.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: cli/artifacts
+          pattern: agent-tui-linux-*
+          if-no-files-found: error
+
+      - name: Download macOS release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.validate.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: cli/artifacts
+          pattern: agent-tui-darwin-*
+          if-no-files-found: error
 
       - name: Verify release artifacts
         working-directory: cli

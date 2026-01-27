@@ -504,7 +504,8 @@ function release(
 
   console.log(`Done! Release ${targetVersion} prepared.`);
   console.log("Nothing has been pushed yet. To publish when ready, run:");
-  console.log("  git push && git push --tags");
+  console.log("  git push");
+  console.log(`  git push origin ${tag}`);
 }
 
 function isBump(value: string) {

@@ -477,25 +477,44 @@ EXAMPLES:
     #[command(external_subcommand)]
     External(Vec<String>),
 
-    /// Generate shell completions
+    /// Generate or install shell completions
     #[command(long_about = "\
-Generate shell completion scripts for bash, zsh, fish, powershell, or elvish.")]
+Generate or install shell completions for bash, zsh, fish, powershell, or elvish.
+
+Runs an interactive setup by default (auto-detects your shell) and checks
+whether your installed completions are up-to-date. Use --print to output the
+raw completion script for scripting or redirection.")]
     #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui completions
+    agent-tui completions zsh
+    agent-tui completions --print bash
+    agent-tui completions --install fish
+
 INSTALLATION:
     # Bash - add to ~/.bashrc
-    source <(agent-tui completions bash)
+    source <(agent-tui completions bash --print)
 
     # Zsh - add to ~/.zshrc
-    source <(agent-tui completions zsh)
+    source <(agent-tui completions zsh --print)
 
     # Fish - run once
-    agent-tui completions fish > ~/.config/fish/completions/agent-tui.fish
+    agent-tui completions fish --print > ~/.config/fish/completions/agent-tui.fish
 
     # PowerShell - add to $PROFILE
-    agent-tui completions powershell | Out-String | Invoke-Expression")]
+    agent-tui completions powershell --print | Out-String | Invoke-Expression")]
     Completions {
         #[arg(value_enum, value_name = "SHELL")]
-        shell: Shell,
+        shell: Option<Shell>,
+        /// Print the completion script to stdout
+        #[arg(long, conflicts_with = "install")]
+        print: bool,
+        /// Install completions to the default location for the shell
+        #[arg(long, conflicts_with = "print")]
+        install: bool,
+        /// Skip prompts and accept defaults
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
 }
 
@@ -1608,19 +1627,31 @@ mod tests {
     #[test]
     fn test_completions_command() {
         let cli = Cli::parse_from(["agent-tui", "completions", "bash"]);
-        let Commands::Completions { shell } = cli.command else {
+        let Commands::Completions { shell, .. } = cli.command else {
             panic!("Expected Completions command, got {:?}", cli.command);
         };
-        assert!(matches!(shell, Shell::Bash));
+        assert!(matches!(shell, Some(Shell::Bash)));
     }
 
     #[test]
     fn test_completions_fish() {
         let cli = Cli::parse_from(["agent-tui", "completions", "fish"]);
-        let Commands::Completions { shell } = cli.command else {
+        let Commands::Completions { shell, .. } = cli.command else {
             panic!("Expected Completions command, got {:?}", cli.command);
         };
-        assert!(matches!(shell, Shell::Fish));
+        assert!(matches!(shell, Some(Shell::Fish)));
+    }
+
+    #[test]
+    fn test_completions_default_guided() {
+        let cli = Cli::parse_from(["agent-tui", "completions"]);
+        let Commands::Completions { shell, print, install, yes } = cli.command else {
+            panic!("Expected Completions command, got {:?}", cli.command);
+        };
+        assert!(shell.is_none());
+        assert!(!print);
+        assert!(!install);
+        assert!(!yes);
     }
 
     #[test]

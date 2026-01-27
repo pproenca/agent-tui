@@ -3,6 +3,9 @@ use clap::Parser;
 use clap_complete::generate;
 use regex::Regex;
 use serde::Serialize;
+use std::fs;
+use std::io::{self, IsTerminal, Write};
+use std::path::PathBuf;
 use std::sync::LazyLock;
 
 pub mod attach;
@@ -23,7 +26,7 @@ use tracing::debug;
 
 use crate::adapters::presenter::create_presenter;
 use crate::app::attach::AttachError;
-use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs};
+use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs, Shell};
 use crate::app::handlers::HandlerContext;
 
 static ELEMENT_REF_REGEX: LazyLock<Regex> =
@@ -107,6 +110,390 @@ fn extract_element_ref_from_result(result: &RpcValue) -> Option<String> {
         .map(String::from)
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum CompletionStatus {
+    Missing,
+    UpToDate,
+    OutOfDate,
+}
+
+#[derive(Debug)]
+enum InstallOutcome {
+    Installed(PathBuf),
+    Updated(PathBuf),
+    AlreadyUpToDate(PathBuf),
+}
+
+fn handle_completions_command(
+    shell: Option<Shell>,
+    print: bool,
+    install: bool,
+    yes: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if install {
+        let shell = resolve_shell(shell).ok_or_else(|| {
+            format!(
+                "Shell not specified. Use one of: {}",
+                supported_shells()
+            )
+        })?;
+        run_completions_wizard(shell, true, yes)?;
+        return Ok(());
+    }
+
+    let stdout_tty = io::stdout().is_terminal();
+    if print || !stdout_tty {
+        let shell = resolve_shell(shell).ok_or_else(|| {
+            format!(
+                "Shell not specified. Use one of: {}",
+                supported_shells()
+            )
+        })?;
+        let mut cmd = Cli::command();
+        generate(shell, &mut cmd, PROGRAM_NAME, &mut io::stdout());
+        return Ok(());
+    }
+
+    let shell = match resolve_shell(shell) {
+        Some(shell) => shell,
+        None => {
+            print_shell_detection_help();
+            return Ok(());
+        }
+    };
+
+    run_completions_wizard(shell, install, yes)?;
+    Ok(())
+}
+
+fn run_completions_wizard(
+    shell: Shell,
+    install: bool,
+    yes: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("{}", Colors::bold("Shell completions"));
+    println!("Detected shell: {}", shell_label(shell));
+    println!();
+
+    print_install_guidance(shell);
+
+    let Some(install_path) = default_completion_path(shell) else {
+        println!(
+            "{} {}",
+            Colors::warning("Note:"),
+            "Automatic install isn't supported for this shell."
+        );
+        return Ok(());
+    };
+
+    if matches!(shell, Shell::Bash | Shell::Zsh) {
+        println!(
+            "{} {}",
+            Colors::dim("Optional:"),
+            "install a static completion file (not required if you use the line above)."
+        );
+    }
+
+    let script = generate_completions_bytes(shell)?;
+    let status = completion_status(&script, &install_path)?;
+    match status {
+        CompletionStatus::UpToDate => {
+            println!(
+                "{} {}",
+                Colors::success("✓"),
+                format!("Completions are up-to-date at {}", install_path.display())
+            );
+        }
+        CompletionStatus::OutOfDate => {
+            println!(
+                "{} {}",
+                Colors::warning("⚠"),
+                format!("Completions are out of date at {}", install_path.display())
+            );
+        }
+        CompletionStatus::Missing => {
+            println!(
+                "{} {}",
+                Colors::warning("⚠"),
+                format!("No completion file found at {}", install_path.display())
+            );
+        }
+    }
+
+    if install {
+        let outcome = install_completions(&script, &install_path)?;
+        print_install_outcome(outcome);
+        print_static_install_note(shell);
+        return Ok(());
+    }
+
+    if matches!(status, CompletionStatus::OutOfDate | CompletionStatus::Missing) {
+        let stdin_tty = io::stdin().is_terminal();
+        if yes || (stdin_tty && prompt_yes_no("Install/update completions now?", true)?) {
+            let outcome = install_completions(&script, &install_path)?;
+            print_install_outcome(outcome);
+            print_static_install_note(shell);
+        } else {
+            println!(
+                "Run: {} completions --install {}",
+                PROGRAM_NAME,
+                shell_label(shell)
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn supported_shells() -> &'static str {
+    "bash, zsh, fish, powershell, elvish"
+}
+
+fn print_shell_detection_help() {
+    println!("{}", Colors::warning("Shell not detected."));
+    println!(
+        "Run: {} completions <shell>",
+        PROGRAM_NAME
+    );
+    println!("Supported shells: {}", supported_shells());
+}
+
+fn print_install_guidance(shell: Shell) {
+    println!("{}", Colors::bold("Recommended setup:"));
+    match shell {
+        Shell::Bash => {
+            println!("Add this to ~/.bashrc:");
+            println!("  source <(agent-tui completions bash --print)");
+            println!(
+                "{}",
+                Colors::dim("This keeps completions in sync with your installed agent-tui.")
+            );
+        }
+        Shell::Zsh => {
+            println!("Add this to ~/.zshrc:");
+            println!("  source <(agent-tui completions zsh --print)");
+            println!(
+                "{}",
+                Colors::dim("This keeps completions in sync with your installed agent-tui.")
+            );
+        }
+        Shell::PowerShell => {
+            println!("Add this to $PROFILE:");
+            println!(
+                "  agent-tui completions powershell --print | Out-String | Invoke-Expression"
+            );
+            println!(
+                "{}",
+                Colors::dim("This keeps completions in sync with your installed agent-tui.")
+            );
+        }
+        Shell::Fish => {
+            println!("Install a completion file (fish loads it automatically):");
+            println!(
+                "  agent-tui completions fish --print > ~/.config/fish/completions/agent-tui.fish"
+            );
+            println!(
+                "{}",
+                Colors::dim("Re-run this after upgrading agent-tui to refresh the file.")
+            );
+        }
+        Shell::Elvish => {
+            println!("Install a completion file:");
+            println!(
+                "  agent-tui completions elvish --print > ~/.elvish/lib/agent-tui.elv"
+            );
+            println!(
+                "{}",
+                Colors::dim("Re-run this after upgrading agent-tui to refresh the file.")
+            );
+        }
+    }
+    println!();
+}
+
+fn resolve_shell(shell: Option<Shell>) -> Option<Shell> {
+    shell.or_else(detect_shell_from_env)
+}
+
+fn detect_shell_from_env() -> Option<Shell> {
+    let env_shell = std::env::var("SHELL")
+        .ok()
+        .or_else(|| std::env::var("COMSPEC").ok())?;
+    let name = std::path::Path::new(&env_shell)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&env_shell)
+        .to_ascii_lowercase();
+    shell_from_name(&name)
+}
+
+fn shell_from_name(name: &str) -> Option<Shell> {
+    if name.contains("bash") {
+        Some(Shell::Bash)
+    } else if name.contains("zsh") {
+        Some(Shell::Zsh)
+    } else if name.contains("fish") {
+        Some(Shell::Fish)
+    } else if name.contains("pwsh") || name.contains("powershell") {
+        Some(Shell::PowerShell)
+    } else if name.contains("elvish") {
+        Some(Shell::Elvish)
+    } else {
+        None
+    }
+}
+
+fn shell_label(shell: Shell) -> &'static str {
+    match shell {
+        Shell::Bash => "bash",
+        Shell::Zsh => "zsh",
+        Shell::Fish => "fish",
+        Shell::PowerShell => "powershell",
+        Shell::Elvish => "elvish",
+    }
+}
+
+fn default_completion_path(shell: Shell) -> Option<PathBuf> {
+    let home = home_dir()?;
+    match shell {
+        Shell::Bash => Some(home.join(".bash_completion.d").join("agent-tui")),
+        Shell::Zsh => Some(home.join(".zsh").join("completions").join("_agent-tui")),
+        Shell::Fish => Some(
+            home.join(".config")
+                .join("fish")
+                .join("completions")
+                .join("agent-tui.fish"),
+        ),
+        Shell::Elvish => Some(home.join(".elvish").join("lib").join("agent-tui.elv")),
+        Shell::PowerShell => None,
+    }
+}
+
+fn home_dir() -> Option<PathBuf> {
+    if let Ok(home) = std::env::var("HOME") {
+        return Some(PathBuf::from(home));
+    }
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        return Some(PathBuf::from(home));
+    }
+    match (std::env::var("HOMEDRIVE"), std::env::var("HOMEPATH")) {
+        (Ok(drive), Ok(path)) => Some(PathBuf::from(format!("{}{}", drive, path))),
+        _ => None,
+    }
+}
+
+fn generate_completions_bytes(shell: Shell) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut cmd = Cli::command();
+    let mut out = Vec::new();
+    generate(shell, &mut cmd, PROGRAM_NAME, &mut out);
+    Ok(out)
+}
+
+fn completion_status(
+    expected: &[u8],
+    path: &PathBuf,
+) -> Result<CompletionStatus, Box<dyn std::error::Error>> {
+    match fs::read(path) {
+        Ok(existing) => {
+            if existing == expected {
+                Ok(CompletionStatus::UpToDate)
+            } else {
+                Ok(CompletionStatus::OutOfDate)
+            }
+        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(CompletionStatus::Missing),
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn install_completions(
+    script: &[u8],
+    path: &PathBuf,
+) -> Result<InstallOutcome, Box<dyn std::error::Error>> {
+    let status = completion_status(script, path)?;
+    if matches!(status, CompletionStatus::UpToDate) {
+        return Ok(InstallOutcome::AlreadyUpToDate(path.clone()));
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, script)?;
+    Ok(match status {
+        CompletionStatus::Missing => InstallOutcome::Installed(path.clone()),
+        CompletionStatus::OutOfDate => InstallOutcome::Updated(path.clone()),
+        CompletionStatus::UpToDate => InstallOutcome::AlreadyUpToDate(path.clone()),
+    })
+}
+
+fn print_install_outcome(outcome: InstallOutcome) {
+    match outcome {
+        InstallOutcome::Installed(path) => {
+            println!(
+                "{} {}",
+                Colors::success("✓"),
+                format!("Installed completions to {}", path.display())
+            );
+        }
+        InstallOutcome::Updated(path) => {
+            println!(
+                "{} {}",
+                Colors::success("✓"),
+                format!("Updated completions at {}", path.display())
+            );
+        }
+        InstallOutcome::AlreadyUpToDate(path) => {
+            println!(
+                "{} {}",
+                Colors::success("✓"),
+                format!("Completions already up-to-date at {}", path.display())
+            );
+        }
+    }
+}
+
+fn print_static_install_note(shell: Shell) {
+    match shell {
+        Shell::Bash => println!(
+            "{}",
+            Colors::dim(
+                "Note: ensure your shell loads ~/.bash_completion.d (or source the file in ~/.bashrc)."
+            )
+        ),
+        Shell::Zsh => println!(
+            "{}",
+            Colors::dim(
+                "Note: ensure ~/.zsh/completions is in $fpath and compinit is enabled."
+            )
+        ),
+        _ => {}
+    }
+}
+
+fn prompt_yes_no(prompt: &str, default_yes: bool) -> io::Result<bool> {
+    let suffix = if default_yes { "[Y/n]" } else { "[y/N]" };
+    let mut input = String::new();
+    loop {
+        print!("{} {} ", prompt, suffix);
+        io::stdout().flush()?;
+        input.clear();
+        if io::stdin().read_line(&mut input)? == 0 {
+            return Ok(default_yes);
+        }
+        let answer = input.trim().to_ascii_lowercase();
+        if answer.is_empty() {
+            return Ok(default_yes);
+        }
+        if matches!(answer.as_str(), "y" | "yes") {
+            return Ok(true);
+        }
+        if matches!(answer.as_str(), "n" | "no") {
+            return Ok(false);
+        }
+        println!("Please answer y or n.");
+    }
+}
+
 pub struct Application;
 
 impl Application {
@@ -181,9 +568,13 @@ impl Application {
                 self.handle_daemon_restart_without_autostart(cli)?;
                 Ok(true)
             }
-            Commands::Completions { shell } => {
-                let mut cmd = Cli::command();
-                generate(*shell, &mut cmd, "agent-tui", &mut std::io::stdout());
+            Commands::Completions {
+                shell,
+                print,
+                install,
+                yes,
+            } => {
+                handle_completions_command(*shell, *print, *install, *yes)?;
                 Ok(true)
             }
             Commands::Env => {

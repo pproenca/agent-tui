@@ -1,255 +1,298 @@
 ---
 name: agent-tui
-description: Automate, test, and inspect terminal UI (TUI) apps using agent-tui (CLI/daemon). Use when an agent must drive a TUI program end-to-end, verify interactive behavior, or parse terminal UI state over time (screenshots, elements, waits, inputs, sessions, live preview, find/count, resize, restart).
+description: >
+  Drive terminal UI (TUI) applications programmatically for testing, automation, and inspection.
+  Use when: automating CLI/TUI interactions, regression testing terminal apps, verifying interactive behavior, or extracting structured data from terminal UIs.
+  Do NOT use for: web browsers, GUI apps, or non-terminal interfaces—those need different tools.
 ---
 
-# Agent TUI Skill
+# Terminal Automation Mastery
 
-## Goals
-- Launch a TUI app under agent control.
-- Capture snapshots and discover elements.
-- Decide actions based on on-screen state.
-- Send key presses or element actions.
-- Wait for specific conditions.
-- Exit cleanly and clean up sessions.
+## Philosophy: Why Terminal Automation Is Different
 
-## Quality-First Defaults
-- Prefer `--format json` (or `--json`) for deterministic parsing.
-- Treat every action as invalidating selectors; re-snapshot after each UI change.
-- Convert every requirement into an explicit wait/assertion.
-- Capture the `session_id` from `run` and use `--session <id>` when multiple sessions exist.
-- Ask whether the user wants live preview before starting a run.
+Terminal UIs are **stateless from the observer's perspective**. Unlike web browsers with a persistent DOM, terminal automation works with a constantly-refreshed character grid. This fundamental difference shapes everything:
 
-## Prereqs
-- Install globally: `npm i -g agent-tui` or `pnpm i -g agent-tui`.
-- Verify on PATH: `agent-tui --version`.
-- Ensure daemon running. If unsure, run `agent-tui daemon start` or use `agent-tui run ...` which auto-starts.
+| Web Automation | Terminal Automation |
+|----------------|---------------------|
+| DOM persists across interactions | Screen buffer is redrawn constantly |
+| Element references are stable | Element refs expire after ANY change |
+| Query once, act many times | Must re-query before EVERY action |
+| Network events signal completion | Must detect visual stability |
 
-## Mental Model (Work Backwards from the CLI)
-- `agent-tui run`: spawn and control a TUI process; creates a session.
-- `agent-tui screenshot`: observe UI state (text, elements, or accessibility tree).
-- `agent-tui action` / `agent-tui press` / `agent-tui input`: act like a human at the keyboard/mouse.
-- `agent-tui wait`: synchronize with UI changes and verify conditions.
-- `agent-tui find` / `agent-tui count`: query element sets by role/name/text.
-- `agent-tui sessions`: inspect/attach/clean up sessions for debugging.
-- `agent-tui live`: stream the UI for live preview during development.
-- `agent-tui kill`: end sessions and clean up.
-- `agent-tui daemon`: manage the background process if it is stuck or out of date.
+**The Core Insight**: agent-tui gives you vision without memory. Each screenshot is a fresh observation. Previous element refs mean nothing after the UI changes. This isn't a limitation—it's the nature of terminal interaction.
 
-## Command Atlas (Summary)
-- Spawn: `run <command> [-- args...]` (use `-d <dir>` and `--cols/--rows`).
-- Observe: `screenshot`, `screenshot -e --json`, `screenshot -a --interactive-only`.
-- Query: `find --role/--name/--text`, `count --role/--name/--text`.
-- Act: `action @ref click|dblclick|fill|select|toggle|focus|clear|selectall|scroll`.
-- Keys: `press <keys...>`, `type "text"`, `input <key|text> [--hold|--release]`.
-- Sync: `wait <text>` / `wait -e @ref` / `wait --stable` / `wait --assert`.
-- Viewport: `scroll-into-view @ref`, `resize --cols --rows`.
-- Sessions: `sessions`, `sessions show <id>`, `sessions attach [id]`, `sessions cleanup`.
-- Live preview: `live start --open`, `live status`, `live stop`.
-- Daemon: `daemon start|stop|status|restart`.
-- Debug: `env`, `version`.
-- Shorthand selectors: `agent-tui @e1`, `agent-tui :Submit`, `agent-tui '@"Exact Text"'`.
+## Mental Model: The Feedback Loop
 
-## Global Flags and Defaults
-- `--session <id>`: target a specific session (defaults to most recent session).
-- `--format <text|json>` / `--json`: output control for automation.
-- `--no-color`: disable colored output (also respects `NO_COLOR`).
-- `--verbose`: include request timing.
-- Defaults: terminal size 120x40; wait timeout 30000ms.
-- Limits: terminal size clamps to 10x5 min and 500x200 max.
+Think of terminal automation as a **closed-loop control system**:
 
-## Observe -> Decide -> Act (Decision Guide)
-- Use `screenshot` (text) when assertions are pure text checks.
-- Use `screenshot -e --json` when you need element refs for actions.
-- Use `screenshot -a --interactive-only` for focus and accessibility checks.
-- Use `find`/`count` when you need targeted lookup (role/name/text) without parsing full screenshots.
-- After any action, re-snapshot; do not reuse stale refs.
-- If the UI is moving, use `wait --stable` before acting.
-- If elements are off-screen, use `scroll-into-view @ref`.
+```
+    ┌──────────────────────────────────────────────┐
+    │                                              │
+    ▼                                              │
+OBSERVE ──► DECIDE ──► ACT ──► WAIT ──► VERIFY ───┘
+   │                                        │
+   │                                        │
+   └─────── NEVER skip ◄────────────────────┘
+```
 
-## Session Lifecycle and Hygiene
-- `run` returns a new session; capture `session_id` from JSON output.
-- Use `--session <id>` for every follow-up command when multiple sessions exist.
-- Use `sessions` to list active sessions and `sessions show` for details.
-- Use `sessions attach` for interactive debugging (detach with Ctrl-P Ctrl-Q).
-- Use `restart` to restart the current session command.
-- Use `kill` to terminate the current session; use `sessions cleanup` for orphans.
-- Use `daemon restart` only when necessary (terminates all sessions).
+**Each phase is mandatory.** Skipping verification is the #1 cause of flaky automation.
 
-## Clarify Before Running (ask if missing)
-- App under test: command, args, working dir, and required env vars.
-- Expected outcomes: text/element states to assert; success criteria.
-- Inputs: keystrokes/text, order, and timing constraints.
-- Data safety: confirm whether it is safe to submit, delete, or modify data.
-- Auth: request test credentials or fixtures if login is required.
-- Live view: ask if the user wants real-time preview (`agent-tui live start --open`).
-- Use the prompt templates in `references/prompt-templates.md` to ask concisely.
+### The "Fresh Eyes" Principle
 
-## Live Preview Policy
-- Ask: "Do you want a live preview while I run the test?"
-- If yes, start preview before the run: `agent-tui live start --open`.
-- Stop preview when done: `agent-tui live stop`.
+Every time you need to interact with the UI:
 
-## Core Workflow (Agent Loop)
-1) Start: `agent-tui run <command> [-- args...]`
-2) Snapshot: `agent-tui screenshot -e --format json`
-3) Plan: decide next action based on elements/text.
-4) Act: `agent-tui action @e1 click` / `agent-tui press Enter` / `agent-tui input "text"`
-5) Wait: `agent-tui wait "text"` or `agent-tui wait --stable` or `agent-tui wait -e @e2 --assert`
-6) Repeat steps 2-5 until done.
-7) Exit: quit the app (e.g., `agent-tui press F10`) then `agent-tui kill`.
+1. **Take a fresh screenshot** — your previous one is now stale
+2. **Find your target again** — element refs from before are invalid
+3. **Verify the state** — the UI may have changed unexpectedly
+4. **Act only when stable** — animations and loading states cause failures
 
-## Problem -> Command Mapping
-- "Start the app under test": `agent-tui run <command> [-- args...]`.
-- "See what's on screen": `agent-tui screenshot` (text) or `agent-tui screenshot -e --json` (elements).
-- "Find and click/fill something": `agent-tui action @e1 click` / `agent-tui action @e1 fill "value"`.
-- "Send keys like a human": `agent-tui press Enter` / `agent-tui press Ctrl+C` / `agent-tui input "text"`.
-- "Wait for a UI state": `agent-tui wait "Ready" --assert` / `agent-tui wait -e @e1 --gone` / `agent-tui wait --stable`.
-- "Count or locate elements": `agent-tui find --role button` / `agent-tui count --text "Error"`.
-- "Element is off-screen": `agent-tui scroll-into-view @e1`.
-- "Layout depends on size": `agent-tui resize --cols 120 --rows 40`.
-- "Inspect environment or version": `agent-tui env` / `agent-tui version`.
-- "Debug daemon": `agent-tui daemon status` / `agent-tui daemon restart`.
-- "Finish and clean up": `agent-tui kill` or `agent-tui sessions cleanup`.
+This feels slower, but it's the only reliable approach. Optimistic reuse of stale state causes intermittent failures that are painful to debug.
 
-## Command Cheat Sheet
-- Run app: `agent-tui run htop`
-- Screenshot: `agent-tui screenshot` (text) or `agent-tui screenshot -e --json` (elements)
-- Accessibility tree: `agent-tui screenshot -a --interactive-only`
-- Find elements: `agent-tui find --role button --name "OK"`
-- Count elements: `agent-tui count --text "Error"`
-- Click element: `agent-tui action @e1 click`
-- Fill input: `agent-tui action @e1 fill "value"`
-- Press keys: `agent-tui press Ctrl+C` or `agent-tui press ArrowDown ArrowDown Enter`
-- Unified input: `agent-tui input Enter` or `agent-tui input "hello"`
-- Wait: `agent-tui wait "Ready" --assert` or `agent-tui wait -e @e1 --gone`
-- Sessions: `agent-tui sessions`, `agent-tui sessions attach`, `agent-tui sessions cleanup`
-- Live preview: `agent-tui live start --open`
-- Kill session: `agent-tui kill`
+## Critical Rules (Non-Negotiable)
 
-## Output and Parsing Guidance
-- Use `--format json` for automation.
-- Re-snapshot after actions; element refs are not stable across UI changes.
-- Use `wait --assert` for pass/fail semantics; timeouts return exit code 1.
-- Use `wait --stable` before acting on dynamic UI.
+> **RULE 1: Re-snapshot after EVERY action**
+> Element refs (`@e1`, `@btn2`) are invalidated by any UI change. Always take a fresh screenshot before acting again.
 
-## Output Contract (JSON)
-- `run` returns: `{ "session_id": "...", "pid": 123 }`.
-- `screenshot` returns: `{ "session_id": "...", "screenshot": "...", "elements": [...], "cursor": {"row":0,"col":0,"visible":true} }` (elements/cursor optional).
-- `elements[]` items include: `ref`, `type`, `label`, `value`, `position {row,col,width,height}`, `focused`, `selected`, `checked`, `disabled`, `hint`.
-- `find` returns: `{ "elements": [...], "count": N }`.
-- `count` returns: `{ "count": N }`.
-- `wait` returns: `{ "found": true|false, "elapsed_ms": N }`.
-- `sessions` returns: `{ "sessions": [{"id":"...","command":"...","pid":123,"running":true,"created_at":"...","size":{"cols":120,"rows":40}}], "active_session":"..." }`.
+> **RULE 2: Never act on unstable UI**
+> If the UI is animating, loading, or transitioning, `wait --stable` first. Acting during transitions causes race conditions.
+
+> **RULE 3: Verify before claiming success**
+> Use `wait "expected text" --assert` to confirm outcomes. Don't assume an action worked—prove it.
+
+> **RULE 4: Clean up sessions**
+> Always end with `agent-tui kill`. Orphaned sessions consume resources and can interfere with future runs.
+
+## Decision Framework
+
+### Which Screenshot Mode?
+
+```
+Need to interact with specific UI elements?
+├─► YES: Use `screenshot -e --json` (get element refs)
+│
+└─► NO: Just checking text content?
+    ├─► YES: Use `screenshot` (plain text, faster)
+    │
+    └─► NO: Need accessibility/focus info?
+        └─► YES: Use `screenshot -a --interactive-only`
+```
+
+### How to Wait?
+
+```
+What are you waiting for?
+│
+├─► Specific text to appear
+│   └─► `wait "text" --assert` (fails if not found)
+│
+├─► Specific element to appear/disappear
+│   ├─► Appear: `wait -e @ref --assert`
+│   └─► Disappear: `wait -e @ref --gone`
+│
+├─► UI to stop changing (animations, loading)
+│   └─► `wait --stable`
+│
+└─► Multiple conditions
+    └─► Chain waits sequentially
+```
+
+### How to Act?
+
+```
+What do you need to do?
+│
+├─► Click/interact with a visible element
+│   └─► `action @ref click` (or fill, select, toggle)
+│
+├─► Type text into focused input
+│   └─► `input "text"` (or `action @ref fill "text"`)
+│
+├─► Send keyboard shortcuts/navigation
+│   └─► `press Ctrl+C` or `press ArrowDown Enter`
+│
+└─► Element is off-screen
+    └─► `scroll-into-view @ref` first, then re-snapshot
+```
+
+## Core Workflow
+
+The canonical automation loop:
+
+```bash
+# 1. START: Launch the TUI app
+agent-tui run <command> [-- args...]
+
+# 2. OBSERVE: Get current UI state with element refs
+agent-tui screenshot -e --format json
+
+# 3. DECIDE: Based on elements/text, determine next action
+# (This happens in your head/code)
+
+# 4. ACT: Execute the action
+agent-tui action @e1 click    # or press/input
+
+# 5. WAIT: Synchronize with UI changes
+agent-tui wait "Expected" --assert    # or wait --stable
+
+# 6. VERIFY: Confirm the outcome (often combined with step 5)
+# If verification fails, handle the error
+
+# 7. REPEAT: Go back to step 2 until done
+
+# 8. CLEANUP: Always clean up
+agent-tui kill
+```
+
+## Anti-Patterns (What NOT to Do)
+
+### ❌ Reusing Stale Element Refs
+
+```bash
+# WRONG: Reusing @e1 after the UI changed
+agent-tui screenshot -e --json        # @e1 is "Submit" button
+agent-tui action @e1 click            # Click submit
+agent-tui action @e1 click            # ❌ @e1 might not exist anymore!
+
+# RIGHT: Re-snapshot before acting again
+agent-tui screenshot -e --json        # @e1 is "Submit" button
+agent-tui action @e1 click            # Click submit
+agent-tui wait --stable               # Wait for UI to settle
+agent-tui screenshot -e --json        # Get fresh refs
+agent-tui action @e2 click            # Now act on new ref
+```
+
+### ❌ Acting During Animation/Loading
+
+```bash
+# WRONG: Acting immediately on dynamic UI
+agent-tui run my-app
+agent-tui screenshot -e --json        # UI might still be loading!
+agent-tui action @e1 click            # ❌ Might miss or hit wrong element
+
+# RIGHT: Wait for stability first
+agent-tui run my-app
+agent-tui wait --stable               # Let UI settle
+agent-tui screenshot -e --json        # Now it's reliable
+agent-tui action @e1 click
+```
+
+### ❌ Assuming Success Without Verification
+
+```bash
+# WRONG: Assuming the click worked
+agent-tui action @btn1 click
+# ...proceed as if success...       # ❌ What if it failed silently?
+
+# RIGHT: Verify the outcome
+agent-tui action @btn1 click
+agent-tui wait "Success" --assert    # ✓ Proves the action worked
+```
+
+### ❌ Skipping Cleanup
+
+```bash
+# WRONG: Forgetting to kill the session
+agent-tui run my-app
+# ...do stuff...
+# script ends                        # ❌ Session left running!
+
+# RIGHT: Always clean up
+agent-tui run my-app
+# ...do stuff...
+agent-tui kill                       # ✓ Clean exit
+```
+
+## Before You Start: Clarify Requirements
+
+Before automating any TUI, gather this information:
+
+1. **Command**: What exactly to run? (`my-app --flag` or `npm start`?)
+2. **Success criteria**: What text/state indicates success?
+3. **Input sequence**: What keystrokes/data to enter, in what order?
+4. **Safety**: Is it safe to submit forms, delete data, etc.?
+5. **Auth**: Does it need login? Test credentials?
+6. **Live preview**: Does the user want to watch? (`agent-tui live start --open`)
+
+If any of these are unclear, ask before running.
+
+## Failure Recovery
+
+| Symptom | Diagnosis | Solution |
+|---------|-----------|----------|
+| "Element not found" | Stale ref or element moved | Re-snapshot, find element again |
+| "Element exists but can't interact" | Element off-screen | `scroll-into-view @ref`, then re-snapshot |
+| Wait times out | UI didn't reach expected state | Check screenshot, verify expectations |
+| "Daemon not running" | Daemon crashed or not started | `agent-tui daemon start` |
+| Unexpected layout | Wrong terminal size | `agent-tui resize --cols 120 --rows 40` |
+| Session unresponsive | App crashed or hung | `agent-tui kill`, then re-run |
+| Repeated failures | Something fundamentally wrong | Stop after 3-5 attempts, ask user |
 
 ## Element Selectors
-- Element refs: `@e1`, `@btn2`, `@inp3` (from `screenshot -e`).
-- Exact text: `@Submit` or `@"Submit"` (quote to include spaces).
-- Partial text: `:Submit` (contains match).
-- Shorthand actions: `agent-tui @e1` (click), `agent-tui :Submit` (click), `agent-tui @e1 fill "value"`.
 
-## Full Flows (reference quality)
-### CLI Regression Test (human-like)
-Use this to validate your CLI's inputs, rendering, and flow end-to-end.
-1) Start the app: `agent-tui run <your-cli> -- <args>`
-2) Snapshot elements: `agent-tui screenshot -e --format json`
-3) Act: `agent-tui action @e1 click` / `agent-tui action @e2 fill "value"` / `agent-tui press Enter`
-4) Wait for expectations: `agent-tui wait "Expected text" --assert`
-5) Re-snapshot and continue until done.
-6) Cleanup: `agent-tui kill`
+Three ways to reference elements:
 
-### Form Interaction Flow
-1) `agent-tui run <app>`
-2) `agent-tui screenshot -e --format json`
-3) Fill: `agent-tui action @inp1 fill "my-value"`
-4) Submit: `agent-tui action @btn1 click`
-5) Wait: `agent-tui wait "Success" --assert`
-6) Cleanup: `agent-tui kill`
+| Syntax | Matches | Example |
+|--------|---------|---------|
+| `@e1`, `@btn2` | Element ref from screenshot | `action @e1 click` |
+| `@Submit`, `@"Submit Button"` | Exact text match | `action @Submit click` |
+| `:Submit` | Contains text | `action :Submit click` |
 
-### Dynamic/Flaky UI Flow
-1) `agent-tui run <app>`
-2) Stabilize: `agent-tui wait --stable`
-3) Snapshot: `agent-tui screenshot -e --format json`
-4) Act: `agent-tui action @e1 click` or `agent-tui press Enter`
-5) Re-stabilize: `agent-tui wait --stable`
-6) Re-snapshot and continue.
-7) Cleanup: `agent-tui kill`
+**Always prefer element refs** (`@e1`) from `screenshot -e`—they're unambiguous. Use text matching only when refs aren't available.
 
-### Live Preview Flow (optional)
-1) Ask whether live preview is desired.
-2) If yes: `agent-tui live start --open`
-3) Run: `agent-tui run <app>`
-4) Continue normal flow (snapshot/act/wait).
-5) Stop preview: `agent-tui live stop`
-6) Cleanup: `agent-tui kill`
+## Self-Discovery: Use --help
 
-## Use Cases (when to use what)
-1) Regression test a CLI/TUI you are building:
-   - `run` -> `screenshot -e --json` -> `action/press/input` -> `wait --assert` -> `kill`.
-2) Drive an interactive wizard or form:
-   - `run` -> `screenshot -e --json` -> `action @inp fill` -> `action @btn click` -> `wait`.
-3) Validate rendering/layout (snapshot audit):
-   - `run` -> `screenshot` (text) -> `wait "Expected" --assert`.
-4) Investigate flaky UI or race conditions:
-   - `wait --stable` -> `screenshot -e --json` -> `wait -e @spinner --gone`.
-5) Accessibility tree checks:
-   - `screenshot -a --interactive-only` to inspect focusable/interactive elements.
-6) Live observation/debugging:
-   - `live start --open` or `sessions attach` to watch a run in real time.
-7) TUI exploration / reverse engineering:
-   - `screenshot -e --json`, probe with `action/press/input`, re-snapshot each step.
+You don't need to memorize every flag. The CLI is self-documenting:
 
-## Failure Recovery Playbook
-- If an element is not found: take a new `screenshot -e`, then re-select.
-- If an element exists but is off-screen: `scroll-into-view @ref` and re-snapshot.
-- If waits time out: increase timeout, use `wait --stable`, then re-snapshot.
-- If the daemon is not running: `agent-tui daemon start`.
-- If CLI/daemon versions mismatch: `agent-tui daemon restart`.
-- If the session is stuck: `agent-tui kill`, then re-run.
-- If layout is wrong: `agent-tui resize --cols --rows` and re-snapshot.
-- After 3-5 failed loops, stop and ask the user for guidance.
+```bash
+agent-tui --help                     # List all commands
+agent-tui run --help                 # Options for 'run'
+agent-tui screenshot --help          # Options for 'screenshot'
+agent-tui wait --help                # Options for 'wait'
+agent-tui action --help              # Options for 'action'
+```
 
-## Agent Prompt Templates (ready to use)
-### Quick Clarify (first response)
-Please share: (1) command + args to run, (2) expected UI text/state to assert, (3) inputs/steps, (4) any env vars, and (5) whether you want live preview while I run it.
+**When in doubt, ask the CLI.** This skill teaches *when* and *why* to use commands. For exact flags and syntax, `--help` is authoritative.
 
-### Live Preview Check
-Do you want a live preview while I run the test? If yes, I'll start `agent-tui live start --open` before running the app.
+## Quick Reference
 
-### Safety Confirmation
-Is this a test environment, and is it safe to submit or modify data during this run?
+```bash
+# Start app
+agent-tui run <cmd> [-- args]        # Launch TUI under control
 
-### Auth Request
-Does the flow require login? If so, please provide test credentials or a fixture account.
+# Observe
+agent-tui screenshot                  # Plain text view
+agent-tui screenshot -e --json        # With element refs (for actions)
+agent-tui screenshot -a               # Accessibility tree
 
-### Results Summary (after run)
-I ran the flow, executed these actions: <actions>, and asserted: <assertions>. The last snapshot shows: <evidence>. Want me to extend coverage or add more assertions?
+# Act
+agent-tui action @e1 click            # Click element
+agent-tui action @e1 fill "value"     # Fill input
+agent-tui press Enter                 # Press key(s)
+agent-tui press Ctrl+C                # Keyboard shortcuts
+agent-tui input "text"                # Type text
 
-## Default Test Plan Generator (use when requirements are vague)
-1) Restate the goal in one sentence.
-2) Identify entry command and environment.
-3) Define assertions (text/element/value/focus).
-4) Define inputs and navigation steps.
-5) Choose observation mode (text vs elements vs accessibility).
-6) Define synchronization points (`wait --assert`, `wait --stable`).
-7) Set cleanup and stop conditions (`kill`, `sessions cleanup`).
-8) Ask for missing details, then produce an executable command plan.
+# Wait/Verify
+agent-tui wait "text" --assert        # Wait for text, fail if not found
+agent-tui wait -e @e1 --gone          # Wait for element to disappear
+agent-tui wait --stable               # Wait for UI to stop changing
 
-Use `references/test-plan.md` for a fill-in template.
-## Progressive Disclosure References
-- Full command atlas, options, and env vars: `references/command-atlas.md`.
-- Decision tree (observe vs act) and selector stability: `references/decision-tree.md`.
-- Session lifecycle and concurrency: `references/session-lifecycle.md`.
-- Assertions and test oracles: `references/assertions.md`.
-- Failure recovery and timeouts: `references/recovery.md`.
-- JSON output contract and parsing tips: `references/output-contract.md`.
-- Safety and confirmation prompts: `references/safety.md`.
-- Full flows and command sequences: `references/flows.md`.
-- Clarification prompts and checklists: `references/clarifications.md`.
-- Problem-driven use cases: `references/use-cases.md`.
-- Prompt templates for user communication: `references/prompt-templates.md`.
-- Test plan template: `references/test-plan.md`.
+# Manage
+agent-tui sessions                    # List active sessions
+agent-tui live start --open           # Start live preview
+agent-tui kill                        # End current session
+```
 
-## Cleanup
-- Always end with `agent-tui kill` or `agent-tui sessions cleanup`.
-- Use `agent-tui daemon stop --force` only as a last resort.
+## Progressive Disclosure
+
+For deeper reference material:
+
+| Topic | Reference | Load When |
+|-------|-----------|-----------|
+| Full command syntax | `references/command-atlas.md` | Need specific flags/options |
+| Decision flowcharts | `references/decision-tree.md` | Unsure which approach |
+| Session management | `references/session-lifecycle.md` | Multiple sessions, concurrency |
+| Assertion patterns | `references/assertions.md` | Complex verification needs |
+| Recovery strategies | `references/recovery.md` | Debugging failures |
+| JSON output schemas | `references/output-contract.md` | Parsing automation output |
+| Example flows | `references/flows.md` | Need full workflow examples |
+| Prompt templates | `references/prompt-templates.md` | User communication |

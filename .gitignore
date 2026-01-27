@@ -184,3 +184,8 @@ __pycache__/
 *.perf
 flamegraph.svg
 perf.data*
+
+.agents/skills/
+.claude/skills/
+.codex/skills/
+.opencode/skills/

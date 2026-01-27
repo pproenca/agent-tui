@@ -33,19 +33,19 @@ const LIVE_PREVIEW_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
 const OUTPUT_FRAME_DATA: u8 = 0x01;
 const UI_INDEX_HTML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../web/public/index.html"
+    "/assets/web/index.html"
 ));
 const UI_APP_JS: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../web/public/app.js"
+    "/assets/web/app.js"
 ));
 const UI_STYLES_CSS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../web/public/styles.css"
+    "/assets/web/styles.css"
 ));
 const UI_XTERM_CSS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../web/public/xterm.css"
+    "/assets/web/xterm.css"
 ));
 
 #[derive(Debug, Clone)]

@@ -5,3 +5,4 @@ valid:
 invalid:
   - "use crate::infra::daemon::Session;"
   - "use crate::infra::ipc::DaemonClient;"
+  - "use crate::app::handlers::ElementHandlers;"

@@ -1,5 +1,11 @@
 id: clean-arch-adapters-no-infra
 snapshots:
+  use crate::app::handlers::ElementHandlers;:
+    labels:
+    - source: use crate::app::handlers::ElementHandlers;
+      style: primary
+      start: 0
+      end: 42
   use crate::infra::daemon::Session;:
     labels:
     - source: use crate::infra::daemon::Session;

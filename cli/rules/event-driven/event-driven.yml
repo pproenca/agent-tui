@@ -7,20 +7,64 @@ note: |
   Use tokio::time::sleep for async delays, or spawn_blocking for blocking work.
 rule:
   any:
-    - pattern: std::thread::sleep($$$)
-    - pattern: thread::sleep($$$)
-  inside:
-    any:
-      - kind: function_item
-        has:
-          kind: function_modifiers
-          regex: "async"
-          stopBy: end
-        stopBy: end
-      - pattern: async { $$$ }
-      - pattern: async move { $$$ }
-      - pattern: async |$$$| { $$$ }
-      - pattern: async move |$$$| { $$$ }
+    - all:
+        - pattern: std::thread::sleep($$$)
+        - inside:
+            kind: function_item
+            has:
+              kind: function_modifiers
+              regex: "async"
+              stopBy: end
+            stopBy: end
+    - all:
+        - pattern: thread::sleep($$$)
+        - inside:
+            kind: function_item
+            has:
+              kind: function_modifiers
+              regex: "async"
+              stopBy: end
+            stopBy: end
+    - all:
+        - pattern: std::thread::sleep($$$)
+        - inside:
+            pattern: async { $$$ }
+            stopBy: end
+    - all:
+        - pattern: thread::sleep($$$)
+        - inside:
+            pattern: async { $$$ }
+            stopBy: end
+    - all:
+        - pattern: std::thread::sleep($$$)
+        - inside:
+            pattern: async move { $$$ }
+            stopBy: end
+    - all:
+        - pattern: thread::sleep($$$)
+        - inside:
+            pattern: async move { $$$ }
+            stopBy: end
+    - all:
+        - pattern: std::thread::sleep($$$)
+        - inside:
+            pattern: async |$$$| { $$$ }
+            stopBy: end
+    - all:
+        - pattern: thread::sleep($$$)
+        - inside:
+            pattern: async |$$$| { $$$ }
+            stopBy: end
+    - all:
+        - pattern: std::thread::sleep($$$)
+        - inside:
+            pattern: async move |$$$| { $$$ }
+            stopBy: end
+    - all:
+        - pattern: thread::sleep($$$)
+        - inside:
+            pattern: async move |$$$| { $$$ }
+            stopBy: end
   not:
     any:
       - inside:

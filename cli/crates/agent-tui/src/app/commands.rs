@@ -1645,7 +1645,13 @@ mod tests {
     #[test]
     fn test_completions_default_guided() {
         let cli = Cli::parse_from(["agent-tui", "completions"]);
-        let Commands::Completions { shell, print, install, yes } = cli.command else {
+        let Commands::Completions {
+            shell,
+            print,
+            install,
+            yes,
+        } = cli.command
+        else {
             panic!("Expected Completions command, got {:?}", cli.command);
         };
         assert!(shell.is_none());

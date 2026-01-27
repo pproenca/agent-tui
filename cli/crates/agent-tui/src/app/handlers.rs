@@ -8,7 +8,6 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use crate::adapters::{RpcValue, RpcValueRef, call_no_params, call_with_params};
 use crate::adapters::ipc::ClientError;
 use crate::adapters::ipc::DaemonClient;
 use crate::adapters::ipc::ProcessController;
@@ -16,6 +15,7 @@ use crate::adapters::ipc::Signal;
 use crate::adapters::ipc::UnixProcessController;
 use crate::adapters::ipc::params;
 use crate::adapters::ipc::socket_path;
+use crate::adapters::{RpcValue, RpcValueRef, call_no_params, call_with_params};
 use crate::common::Colors;
 
 use crate::adapters::presenter::{ElementView, Presenter, create_presenter};
@@ -2081,7 +2081,10 @@ pub fn print_daemon_status_from_result(result: &RpcValue, format: OutputFormat) 
                 commit_mismatch,
                 api: api_json,
             };
-            println!("{}", serde_json::to_string_pretty(&output).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&output).unwrap_or_default()
+            );
         }
         OutputFormat::Text => {
             println!(
@@ -2150,7 +2153,10 @@ pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Han
                     cli_commit,
                     error: e.to_string(),
                 };
-                println!("{}", serde_json::to_string_pretty(&output).unwrap_or_default());
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&output).unwrap_or_default()
+                );
             }
             OutputFormat::Text => {
                 println!(
@@ -2446,7 +2452,9 @@ mod tests {
 
     #[test]
     fn test_element_view_full_element() {
-        let el = make_element(r#"{"ref":"@inp1","type":"input","label":"Email","value":"test@example.com","focused":true,"selected":false,"checked":null,"position":{"row":3,"col":15}}"#);
+        let el = make_element(
+            r#"{"ref":"@inp1","type":"input","label":"Email","value":"test@example.com","focused":true,"selected":false,"checked":null,"position":{"row":3,"col":15}}"#,
+        );
         let view = ElementView(el.as_ref());
         assert_eq!(view.ref_str(), "@inp1");
         assert_eq!(view.el_type(), "input");

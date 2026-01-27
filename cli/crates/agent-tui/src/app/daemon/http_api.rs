@@ -620,7 +620,11 @@ async fn handle_ws(
         session_id: &session_id,
         output_encoding: output_encoding.as_str(),
     };
-    if socket.send(Message::Text(serialize_event(&hello))).await.is_err() {
+    if socket
+        .send(Message::Text(serialize_event(&hello)))
+        .await
+        .is_err()
+    {
         return;
     }
 
@@ -808,8 +812,7 @@ fn stream_live_preview(
                         event: "closed",
                         time: start_time.elapsed().as_secs_f64(),
                     };
-                    let _ = sender
-                        .blocking_send(WsPayload::Text(serialize_event(&closed_event)));
+                    let _ = sender.blocking_send(WsPayload::Text(serialize_event(&closed_event)));
                     return;
                 }
                 continue;

@@ -2,8 +2,8 @@ use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
 use regex::Regex;
-use std::sync::LazyLock;
 use serde::Serialize;
+use std::sync::LazyLock;
 
 pub mod attach;
 pub mod commands;
@@ -11,8 +11,8 @@ pub mod daemon;
 pub mod error;
 pub mod handlers;
 
-use crate::adapters::{RpcValue, call_no_params, call_with_params};
 use crate::adapters::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
+use crate::adapters::{RpcValue, call_no_params, call_with_params};
 use crate::app::commands::OutputFormat;
 use crate::app::daemon::start_daemon;
 use crate::common::DaemonError;
@@ -238,7 +238,10 @@ impl Application {
                     cli_version,
                     cli_commit,
                 };
-                println!("{}", serde_json::to_string_pretty(&output).unwrap_or_default());
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&output).unwrap_or_default()
+                );
             }
             _ => {
                 println!("Daemon is not running");
@@ -709,7 +712,10 @@ fn print_cli_error(error: &crate::app::error::CliError) {
                     success: false,
                     error: &error.message,
                 };
-                eprintln!("{}", serde_json::to_string_pretty(&output).unwrap_or_default());
+                eprintln!(
+                    "{}",
+                    serde_json::to_string_pretty(&output).unwrap_or_default()
+                );
             }
         }
         OutputFormat::Text => {

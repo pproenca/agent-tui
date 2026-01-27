@@ -360,10 +360,8 @@ impl DaemonServer {
                     sent_any = true;
                     budget = budget.saturating_sub(read.data.len());
                     if read.closed {
-                        let response = RpcResponse::success_json(
-                            req_id,
-                            &AttachEvent { event: "closed" },
-                        );
+                        let response =
+                            RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
                         let _ = conn.write_response(&response);
                         return Ok(());
                     }
@@ -371,10 +369,8 @@ impl DaemonServer {
                 }
 
                 if read.closed {
-                    let response = RpcResponse::success_json(
-                        req_id,
-                        &AttachEvent { event: "closed" },
-                    );
+                    let response =
+                        RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
                     let _ = conn.write_response(&response);
                     return Ok(());
                 }

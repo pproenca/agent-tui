@@ -19,7 +19,6 @@ path = "src/lib.rs"
 
 [features]
 slow-tests = []
-stress-tests = []
 
 [dependencies]
 # CLI

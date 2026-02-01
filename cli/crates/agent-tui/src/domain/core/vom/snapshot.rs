@@ -74,11 +74,8 @@ pub fn format_snapshot(
 mod tests {
     use super::*;
     use crate::domain::core::vom::{Rect, Role};
-    use uuid::Uuid;
-
     fn make_component(role: Role, text: &str, x: u16, y: u16, width: u16) -> Component {
         Component {
-            id: Uuid::new_v4(),
             role,
             bounds: Rect::new(x, y, width, 1),
             text_content: text.to_string(),
@@ -230,7 +227,6 @@ mod tests {
                 1u16..20,
             )
                 .prop_map(|(role, text, x, y, width)| Component {
-                    id: Uuid::new_v4(),
                     role,
                     bounds: Rect::new(x, y, width, 1),
                     text_content: text,

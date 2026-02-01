@@ -665,24 +665,6 @@ mod tests {
                 prop_assert_eq!(components.len(), count);
             }
 
-            #[test]
-            fn component_ids_unique(
-                clusters in prop::collection::vec(arb_cluster(), 2..10),
-                cursor_row in 0u16..50,
-                cursor_col in 0u16..100
-            ) {
-                let opts = ClassifyOptions::default();
-                let cur = cursor(cursor_row, cursor_col);
-                let components = classify(clusters, &cur, &opts);
-                let ids: Vec<_> = components.iter().map(|c| c.id).collect();
-
-                for (i, id) in ids.iter().enumerate() {
-                    prop_assert!(
-                        !ids[i + 1..].contains(id),
-                        "Duplicate component ID found"
-                    );
-                }
-            }
         }
     }
 }

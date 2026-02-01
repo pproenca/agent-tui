@@ -8,8 +8,6 @@ mod repository;
 mod session;
 mod signal_handler;
 mod terminal_state;
-#[cfg(test)]
-pub mod test_support;
 
 pub use crate::usecases::ports::SessionError;
 pub use config::DaemonConfig;

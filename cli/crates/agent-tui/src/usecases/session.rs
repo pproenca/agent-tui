@@ -333,7 +333,7 @@ mod tests {
     use super::*;
     use crate::domain::SessionId;
     use crate::domain::SessionInfo;
-    use crate::infra::daemon::test_support::{MockError, MockSessionRepository};
+    use crate::usecases::ports::test_support::{MockError, MockSessionRepository};
     use std::collections::HashMap;
 
     #[test]

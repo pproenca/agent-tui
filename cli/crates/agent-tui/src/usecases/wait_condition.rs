@@ -141,7 +141,7 @@ pub fn check_condition<S: SessionOps + ?Sized>(
 mod tests {
     use super::*;
     use crate::domain::core::{Element, ElementType, Position};
-    use crate::infra::daemon::test_support::MockSession;
+    use crate::usecases::ports::test_support::MockSession;
 
     fn make_element(ref_id: &str, focused: bool, value: Option<String>) -> Element {
         Element {

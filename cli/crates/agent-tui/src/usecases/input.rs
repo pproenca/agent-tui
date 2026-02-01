@@ -118,7 +118,7 @@ impl<R: SessionRepository> KeyupUseCase for KeyupUseCaseImpl<R> {
 mod tests {
     use super::*;
     use crate::domain::SessionId;
-    use crate::infra::daemon::test_support::{MockError, MockSessionRepository};
+    use crate::usecases::ports::test_support::{MockError, MockSessionRepository};
 
     #[test]
     fn test_keystroke_usecase_returns_error_when_no_active_session() {

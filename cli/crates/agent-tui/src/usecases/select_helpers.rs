@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::common::ansi_keys;
+use crate::usecases::ansi_keys;
 use crate::usecases::ports::{SessionError, SessionOps};
 
 pub fn navigate_to_option<Sess: SessionOps + ?Sized>(

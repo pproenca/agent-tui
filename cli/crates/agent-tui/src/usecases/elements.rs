@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::common::ansi_keys;
 use crate::domain::core::Element;
+use crate::usecases::ansi_keys;
 
 use crate::domain::{
     ClearInput, ClearOutput, ClickInput, ClickOutput, CountInput, CountOutput, DoubleClickInput,
@@ -962,7 +962,7 @@ impl<R: SessionRepository> ScrollIntoViewUseCase for ScrollIntoViewUseCaseImpl<R
 mod tests {
     use super::*;
     use crate::domain::SessionId;
-    use crate::infra::daemon::test_support::{MockError, MockSessionRepository};
+    use crate::usecases::ports::test_support::{MockError, MockSessionRepository};
 
     #[test]
     fn test_click_usecase_returns_error_when_no_active_session() {

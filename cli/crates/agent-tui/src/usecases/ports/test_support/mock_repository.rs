@@ -1,49 +1,11 @@
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 
+use super::mock_error::MockError;
 use crate::domain::SessionId;
 use crate::domain::SessionInfo;
-use crate::infra::daemon::test_support::MockSession;
-use crate::usecases::ports::{PtyError, SessionError, SessionHandle, SessionRepository};
-
-#[derive(Debug, Clone, Default)]
-pub enum MockError {
-    #[default]
-    NoActiveSession,
-    NotFound(String),
-    LimitReached(usize),
-    ElementNotFound(String),
-    WrongElementType {
-        element_ref: String,
-        expected: String,
-        actual: String,
-    },
-    InvalidKey(String),
-    Pty(String),
-}
-
-impl MockError {
-    fn to_session_error(&self) -> SessionError {
-        match self {
-            MockError::NoActiveSession => SessionError::NoActiveSession,
-            MockError::NotFound(id) => SessionError::NotFound(id.clone()),
-            MockError::LimitReached(max) => SessionError::LimitReached(*max),
-            MockError::ElementNotFound(el) => SessionError::ElementNotFound(el.clone()),
-            MockError::WrongElementType {
-                element_ref,
-                expected,
-                actual,
-            } => SessionError::WrongElementType {
-                element_ref: element_ref.clone(),
-                expected: expected.clone(),
-                actual: actual.clone(),
-            },
-            MockError::InvalidKey(key) => SessionError::InvalidKey(key.clone()),
-            MockError::Pty(message) => SessionError::Pty(PtyError::Spawn(message.clone())),
-        }
-    }
-}
+use crate::usecases::ports::{SessionError, SessionHandle, SessionRepository};
 
 #[derive(Default)]
 pub struct MockSessionRepository {
@@ -98,10 +60,6 @@ impl MockSessionRepository {
 
     pub fn kill_call_count(&self) -> usize {
         self.kill_calls.load(Ordering::SeqCst)
-    }
-
-    pub fn get_call_count(&self) -> usize {
-        self.get_calls.load(Ordering::SeqCst)
     }
 
     pub fn set_active_call_count(&self) -> usize {
@@ -253,21 +211,6 @@ impl MockSessionRepositoryBuilder {
         self
     }
 
-    pub fn with_kill_error(mut self, error: MockError) -> Self {
-        self.repo.kill_error = Some(error);
-        self
-    }
-
-    pub fn with_get_error(mut self, error: MockError) -> Self {
-        self.repo.get_error = Some(error);
-        self
-    }
-
-    pub fn with_set_active_error(mut self, error: MockError) -> Self {
-        self.repo.set_active_error = Some(error);
-        self
-    }
-
     pub fn with_spawn_result(mut self, session_id: impl Into<String>, pid: u32) -> Self {
         self.repo.spawn_result = Some((SessionId::new(session_id.into()), pid));
         self
@@ -285,11 +228,6 @@ impl MockSessionRepositoryBuilder {
 
     pub fn with_session_count(mut self, count: usize) -> Self {
         self.repo.session_count = count;
-        self
-    }
-
-    pub fn with_session(mut self, session: MockSession) -> Self {
-        self.repo.session_handle = Some(Arc::new(session));
         self
     }
 

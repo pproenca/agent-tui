@@ -122,7 +122,7 @@ impl<R: SessionRepository> AccessibilitySnapshotUseCase for AccessibilitySnapsho
 mod tests {
     use super::*;
     use crate::domain::SessionId;
-    use crate::infra::daemon::test_support::MockSessionRepository;
+    use crate::usecases::ports::test_support::MockSessionRepository;
 
     #[test]
     fn test_snapshot_usecase_returns_error_when_no_session() {

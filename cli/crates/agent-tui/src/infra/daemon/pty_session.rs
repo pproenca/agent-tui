@@ -23,19 +23,19 @@ impl PtySession {
     pub fn write(&self, data: &[u8]) -> Result<(), SessionError> {
         self.handle
             .write(data)
-            .map_err(|err| SessionError::Pty(err.into()))
+            .map_err(|err| SessionError::Pty(err.to_port_error()))
     }
 
     pub fn write_str(&self, s: &str) -> Result<(), SessionError> {
         self.handle
             .write_str(s)
-            .map_err(|err| SessionError::Pty(err.into()))
+            .map_err(|err| SessionError::Pty(err.to_port_error()))
     }
 
     pub fn try_read(&mut self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
         self.handle
             .try_read(buf, timeout_ms)
-            .map_err(|err| SessionError::Pty(err.into()))
+            .map_err(|err| SessionError::Pty(err.to_port_error()))
     }
 
     pub(crate) fn take_read_rx(&mut self) -> Option<Receiver<ReadEvent>> {
@@ -45,12 +45,12 @@ impl PtySession {
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), SessionError> {
         self.handle
             .resize(cols, rows)
-            .map_err(|err| SessionError::Pty(err.into()))
+            .map_err(|err| SessionError::Pty(err.to_port_error()))
     }
 
     pub fn kill(&mut self) -> Result<(), SessionError> {
         self.handle
             .kill()
-            .map_err(|err| SessionError::Pty(err.into()))
+            .map_err(|err| SessionError::Pty(err.to_port_error()))
     }
 }

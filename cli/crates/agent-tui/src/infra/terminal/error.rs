@@ -92,9 +92,11 @@ impl PtyError {
     }
 }
 
-impl From<PtyError> for PortPtyError {
-    fn from(err: PtyError) -> Self {
-        match err {
+impl PtyError {
+    /// Convert this infra error to the port error type.
+    /// This keeps the dependency direction correct (infra -> usecases).
+    pub fn to_port_error(self) -> PortPtyError {
+        match self {
             PtyError::Open(reason) => PortPtyError::Open(reason),
             PtyError::Spawn(reason) => PortPtyError::Spawn(reason),
             PtyError::Write(reason) => PortPtyError::Write(reason),

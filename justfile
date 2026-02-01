@@ -22,6 +22,12 @@ health:
 ready: _ensure-bun
     bun scripts/xtask.ts ci
 
+# Run Clean Architecture boundary checks and emit a dependency graph snapshot.
+boundaries: _ensure-bun
+    @mkdir -p docs/architecture
+    bun scripts/xtask.ts architecture graph --format json > docs/architecture/dependencies.json
+    bun scripts/xtask.ts architecture check --verbose
+
 # Format Rust code.
 format:
     cargo fmt --all

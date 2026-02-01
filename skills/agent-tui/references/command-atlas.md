@@ -21,8 +21,6 @@ Use this file when you need complete CLI coverage and exact options.
 ### Screenshot
 - `agent-tui screenshot`
 - Options:
-  - `-a, --accessibility`: output accessibility-tree format.
-  - `--interactive-only`: only interactive nodes (requires `-a`).
   - `--region <name>`: limit capture to region (if supported).
   - `--strip-ansi`: remove ANSI color codes.
   - `--include-cursor`: include cursor position.

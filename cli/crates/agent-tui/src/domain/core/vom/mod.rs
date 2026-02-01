@@ -1,7 +1,6 @@
 pub mod classifier;
 pub mod patterns;
 pub mod segmentation;
-pub mod snapshot;
 
 #[cfg(test)]
 mod pipeline_tests;

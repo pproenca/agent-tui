@@ -23,10 +23,7 @@ pub use session::{
     SpawnUseCaseImpl,
 };
 pub use shutdown::{ShutdownUseCase, ShutdownUseCaseImpl};
-pub use snapshot::{
-    AccessibilitySnapshotUseCase, AccessibilitySnapshotUseCaseImpl, SnapshotUseCase,
-    SnapshotUseCaseImpl,
-};
+pub use snapshot::{SnapshotUseCase, SnapshotUseCaseImpl};
 pub use spawn_error::SpawnError;
 pub use wait::{WaitUseCase, WaitUseCaseImpl};
 pub mod ports;

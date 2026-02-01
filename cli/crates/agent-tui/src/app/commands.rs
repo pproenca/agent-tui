@@ -21,7 +21,7 @@ Use --format json for automation-friendly output.";
 
 const AFTER_LONG_HELP: &str = r#"WORKFLOW:
     1. Run a TUI application
-    2. View the screenshot or accessibility tree
+    2. View the screenshot
     3. Interact with keys/text or scroll
     4. Wait for UI changes
     5. Kill the session when done
@@ -165,26 +165,12 @@ EXAMPLES:
     #[command(long_about = "\
 View the current screenshot state.
 
-Returns the current terminal screenshot content, or an accessibility-style tree.
-
-ACCESSIBILITY TREE FORMAT (-a):
-    - button \"Submit\"
-    - textbox \"Search\"")]
+Returns the current terminal screenshot content.")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui screenshot              # Just the screenshot
-    agent-tui screenshot -a           # Accessibility tree format
-    agent-tui screenshot -a --interactive-only  # Only interactive elements
     agent-tui screenshot --strip-ansi # Plain text without colors")]
     Screenshot {
-        /// Output in accessibility-tree format (agent-browser style)
-        #[arg(short = 'a', long, help_heading = "Snapshot Options")]
-        accessibility: bool,
-
-        /// Only include interactive elements (requires --accessibility)
-        #[arg(long, requires = "accessibility", help_heading = "Snapshot Options")]
-        interactive_only: bool,
-
         /// Limit capture to a named region (if supported)
         #[arg(long, value_name = "REGION", help_heading = "Filtering")]
         region: Option<String>,
@@ -733,8 +719,6 @@ mod tests {
             "--include-cursor",
         ]);
         let Commands::Screenshot {
-            accessibility,
-            interactive_only,
             region,
             strip_ansi,
             include_cursor,
@@ -742,47 +726,9 @@ mod tests {
         else {
             panic!("Expected Screenshot command, got {:?}", cli.command);
         };
-        assert!(!accessibility);
-        assert!(!interactive_only);
         assert_eq!(region, Some("modal".to_string()));
         assert!(strip_ansi);
         assert!(include_cursor);
-    }
-
-    #[test]
-    fn test_screenshot_accessibility_flag() {
-        let cli = Cli::parse_from(["agent-tui", "screenshot", "-a"]);
-        let Commands::Screenshot {
-            accessibility,
-            interactive_only,
-            ..
-        } = cli.command
-        else {
-            panic!("Expected Screenshot command, got {:?}", cli.command);
-        };
-        assert!(accessibility, "-a should enable accessibility tree format");
-        assert!(
-            !interactive_only,
-            "interactive_only should be false by default"
-        );
-    }
-
-    #[test]
-    fn test_screenshot_accessibility_interactive_only() {
-        let cli = Cli::parse_from(["agent-tui", "screenshot", "-a", "--interactive-only"]);
-        let Commands::Screenshot {
-            accessibility,
-            interactive_only,
-            ..
-        } = cli.command
-        else {
-            panic!("Expected Screenshot command, got {:?}", cli.command);
-        };
-        assert!(accessibility, "--accessibility should be set");
-        assert!(
-            interactive_only,
-            "--interactive-only should filter to interactive elements"
-        );
     }
 
     #[test]

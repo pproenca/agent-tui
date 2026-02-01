@@ -40,10 +40,6 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
             "snapshot" => {
                 handlers::snapshot::handle_snapshot_uc(&self.usecases.snapshot.snapshot, request)
             }
-            "accessibility_snapshot" => handlers::snapshot::handle_accessibility_snapshot_uc(
-                &self.usecases.snapshot.accessibility_snapshot,
-                request,
-            ),
             "keystroke" => {
                 handlers::input::handle_keystroke_uc(&self.usecases.input.keystroke, request)
             }

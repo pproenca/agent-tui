@@ -234,33 +234,6 @@ pub fn handle_snapshot<C: DaemonClient>(
     Ok(())
 }
 
-pub fn handle_accessibility_snapshot<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    interactive_only: bool,
-) -> HandlerResult {
-    let rpc_params = params::AccessibilitySnapshotParams {
-        session: ctx.session.clone(),
-        interactive: interactive_only,
-    };
-    let result = call_with_params(ctx.client, "accessibility_snapshot", rpc_params)?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            println!("{}", result.to_pretty_json());
-        }
-        OutputFormat::Text => {
-            if let Some(tree) = result
-                .get("snapshot")
-                .and_then(|v| v.get("tree"))
-                .and_then(|v| v.as_str())
-            {
-                println!("{}", tree);
-            }
-        }
-    }
-    Ok(())
-}
-
 key_handler!(handle_press, "keystroke", |_: &String| "Key pressed"
     .to_string());
 key_handler!(handle_keydown, "keydown", |k: &String| format!(

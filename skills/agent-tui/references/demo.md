@@ -15,25 +15,19 @@ agent-tui screenshot
 ```
 Say: "Here is the current terminal screen. I'll keep re-snapshotting after each action."
 
-### Step 3: Structure View (optional)
-```bash
-agent-tui screenshot -a
-```
-Say: "This is an accessibility-style tree that summarizes the screen structure."
-
-### Step 4: Interaction
+### Step 3: Interaction
 ```bash
 agent-tui press F10
 ```
 Say: "I'm sending a keypress to exit."
 
-### Step 5: Verify
+### Step 4: Verify
 ```bash
 agent-tui wait "Quit" --gone
 ```
 Say: "I wait for the expected text to disappear to confirm the app closed."
 
-### Step 6: Cleanup
+### Step 5: Cleanup
 ```bash
 agent-tui kill
 ```

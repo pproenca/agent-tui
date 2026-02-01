@@ -241,20 +241,6 @@ impl MockDaemon {
                 })),
             );
             h.insert(
-                "accessibility_snapshot".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "session_id": super::TEST_SESSION_ID,
-                    "snapshot": {
-                        "tree": "- button \"OK\"\n- textbox \"Input\"",
-                        "stats": {
-                            "total": 2,
-                            "interactive": 2,
-                            "lines": 2
-                        }
-                    }
-                })),
-            );
-            h.insert(
                 "keystroke".to_string(),
                 MockResponse::Success(serde_json::json!({
                     "success": true

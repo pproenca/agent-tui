@@ -3,15 +3,15 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde_json::json;
 
-use super::snapshot_adapters::{session_info_to_json, snapshot_to_dto};
+use super::snapshot_adapters::session_info_to_json;
 use crate::adapters::daemon::DomainError;
 use crate::domain::{
-    AccessibilitySnapshotInput, AccessibilitySnapshotOutput, AssertInput, AssertOutput,
-    AttachInput, AttachOutput, CleanupInput, CleanupOutput, HealthOutput, KeydownInput,
-    KeystrokeInput, KeyupInput, KillOutput, MetricsOutput, PtyReadInput, PtyReadOutput,
-    PtyWriteInput, PtyWriteOutput, ResizeInput, ResizeOutput, RestartOutput, ScrollInput,
-    ScrollOutput, SessionId, SessionInput, SessionsOutput, ShutdownOutput, SnapshotInput,
-    SnapshotOutput, SpawnInput, SpawnOutput, TypeInput, WaitInput, WaitOutput,
+    AssertInput, AssertOutput, AttachInput, AttachOutput, CleanupInput, CleanupOutput,
+    HealthOutput, KeydownInput, KeystrokeInput, KeyupInput, KillOutput, MetricsOutput,
+    PtyReadInput, PtyReadOutput, PtyWriteInput, PtyWriteOutput, ResizeInput, ResizeOutput,
+    RestartOutput, ScrollInput, ScrollOutput, SessionId, SessionInput, SessionsOutput,
+    ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, TypeInput,
+    WaitInput, WaitOutput,
 };
 use crate::usecases::ports::SessionError;
 
@@ -143,33 +143,6 @@ pub fn snapshot_output_to_response(
     }
 
     RpcResponse::success(id, result)
-}
-
-pub fn parse_accessibility_snapshot_input(request: &RpcRequest) -> AccessibilitySnapshotInput {
-    let rpc_params: params::AccessibilitySnapshotParams = request
-        .params
-        .as_ref()
-        .and_then(|p| serde_json::from_value(p.clone()).ok())
-        .unwrap_or_default();
-
-    AccessibilitySnapshotInput {
-        session_id: parse_session_id(rpc_params.session),
-        interactive_only: rpc_params.interactive,
-    }
-}
-
-pub fn accessibility_snapshot_output_to_response(
-    id: u64,
-    output: AccessibilitySnapshotOutput,
-) -> RpcResponse {
-    let snapshot = snapshot_to_dto(&output.snapshot);
-    RpcResponse::success(
-        id,
-        json!({
-            "session_id": output.session_id.as_str(),
-            "snapshot": snapshot
-        }),
-    )
 }
 
 #[allow(clippy::result_large_err)]
@@ -524,17 +497,6 @@ mod tests {
         let request = make_request(1, "keyup", Some(json!({"key": "Ctrl"})));
         let input = parse_keyup_input(&request).unwrap();
         assert_eq!(input.key, "Ctrl");
-    }
-
-    #[test]
-    fn test_parse_accessibility_snapshot_input() {
-        let request = make_request(
-            1,
-            "accessibility_snapshot",
-            Some(json!({"interactive": true})),
-        );
-        let input = parse_accessibility_snapshot_input(&request);
-        assert!(input.interactive_only);
     }
 
     #[test]

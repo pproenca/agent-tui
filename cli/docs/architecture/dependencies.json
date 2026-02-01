@@ -1442,26 +1442,6 @@
     },
     {
       "source": "adapters/snapshot_adapters.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/snapshot_adapters.rs",
-      "line": 1,
-      "snippet": "use crate::adapters::ipc::{AccessibilitySnapshotDto, SnapshotStatsDto};"
-    },
-    {
-      "source": "adapters/snapshot_adapters.rs",
-      "target": "crate::domain",
-      "sourceLayer": "adapters",
-      "targetLayer": "domain",
-      "origin": "source-scan",
-      "filePath": "adapters/snapshot_adapters.rs",
-      "line": 3,
-      "snippet": "use crate::domain::{DomainAccessibilitySnapshot, DomainSnapshotStats};"
-    },
-    {
-      "source": "adapters/snapshot_adapters.rs",
       "target": "crate::domain",
       "sourceLayer": "adapters",
       "targetLayer": "domain",
@@ -1777,28 +1757,8 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "adapters/daemon/handlers/snapshot.rs",
-      "line": 5,
-      "snippet": "use crate::adapters::accessibility_snapshot_output_to_response;"
-    },
-    {
-      "source": "adapters/daemon/handlers/snapshot.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/daemon/handlers/snapshot.rs",
       "line": 6,
       "snippet": "use crate::adapters::{"
-    },
-    {
-      "source": "adapters/daemon/handlers/snapshot.rs",
-      "target": "crate::usecases",
-      "sourceLayer": "adapters",
-      "targetLayer": "usecases",
-      "origin": "source-scan",
-      "filePath": "adapters/daemon/handlers/snapshot.rs",
-      "line": 9,
-      "snippet": "use crate::usecases::{AccessibilitySnapshotUseCase, SnapshotUseCase};"
     },
     {
       "source": "adapters/daemon/handlers/input.rs",
@@ -2241,26 +2201,6 @@
       "snippet": "use crate::domain::core::CursorPosition;"
     },
     {
-      "source": "domain/conversions.rs",
-      "target": "crate::domain",
-      "sourceLayer": "domain",
-      "targetLayer": "domain",
-      "origin": "source-scan",
-      "filePath": "domain/conversions.rs",
-      "line": 2,
-      "snippet": "use crate::domain::core::vom::snapshot::{AccessibilitySnapshot, SnapshotStats};"
-    },
-    {
-      "source": "domain/conversions.rs",
-      "target": "crate::domain",
-      "sourceLayer": "domain",
-      "targetLayer": "domain",
-      "origin": "source-scan",
-      "filePath": "domain/conversions.rs",
-      "line": 4,
-      "snippet": "use crate::domain::{DomainAccessibilitySnapshot, DomainCursorPosition, DomainSnapshotStats};"
-    },
-    {
       "source": "domain/core/vom/pipeline_tests/golden.rs",
       "target": "crate::domain",
       "sourceLayer": "domain",
@@ -2679,16 +2619,6 @@
       "filePath": "usecases/wait_condition.rs",
       "line": 89,
       "snippet": "use crate::usecases::ports::test_support::MockSession;"
-    },
-    {
-      "source": "usecases/snapshot.rs",
-      "target": "crate::domain",
-      "sourceLayer": "usecases",
-      "targetLayer": "domain",
-      "origin": "source-scan",
-      "filePath": "usecases/snapshot.rs",
-      "line": 3,
-      "snippet": "use crate::domain::core::vom::snapshot::{SnapshotOptions, format_snapshot};"
     },
     {
       "source": "usecases/snapshot.rs",

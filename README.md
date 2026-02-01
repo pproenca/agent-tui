@@ -2,12 +2,12 @@
 
 CLI tool for AI agents to interact with TUI (Terminal User Interface) applications.
 
-**agent-tui** enables AI agents to programmatically drive terminal applications by capturing screenshots, producing accessibility-style trees, and sending input—making TUI automation accessible to LLM-powered agents.
+**agent-tui** enables AI agents to programmatically drive terminal applications by capturing screenshots and sending input—making TUI automation accessible to LLM-powered agents.
 
 ## Features
 
 - **Virtual Terminal Emulation** - Run TUI apps in isolated PTY sessions with full terminal emulation
-- **Visual Object Model (VOM)** - Accessibility-style tree from visual structure, not text patterns
+- **Visual Object Model (VOM)** - Structured view of the screen derived from visual layout
 - **Keyboard & Text Input** - Press keys, type text, or send unified input
 - **Scrolling** - Scroll the viewport programmatically
 - **Wait Conditions** - Wait for text or screen stability
@@ -67,9 +67,6 @@ agent-tui run htop
 # Take a screenshot
 agent-tui screenshot
 
-# View accessibility tree (structure-only)
-agent-tui screenshot -a
-
 # Send keyboard input
 agent-tui press Enter
 agent-tui type "hello world"
@@ -98,8 +95,6 @@ agent-tui restart                  # Restart session
 
 ```bash
 agent-tui screenshot               # Capture screenshot
-agent-tui screenshot -a            # Accessibility tree format
-agent-tui screenshot -a --interactive-only  # Only interactive nodes
 ```
 
 ### Input

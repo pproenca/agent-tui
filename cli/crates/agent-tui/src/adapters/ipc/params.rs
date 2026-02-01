@@ -50,14 +50,6 @@ pub struct SnapshotParams {
     pub include_render: bool,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AccessibilitySnapshotParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-    #[serde(default)]
-    pub interactive: bool,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyParams {
     pub key: String,

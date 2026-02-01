@@ -1,3 +1,4 @@
+mod ansi_keys;
 mod diagnostics;
 mod elements;
 mod input;

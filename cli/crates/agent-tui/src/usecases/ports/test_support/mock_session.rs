@@ -189,17 +189,6 @@ impl MockSessionBuilder {
         self
     }
 
-    pub fn with_command(mut self, command: impl Into<String>) -> Self {
-        self.session.command = command.into();
-        self
-    }
-
-    pub fn with_size(mut self, cols: u16, rows: u16) -> Self {
-        self.session.cols = cols;
-        self.session.rows = rows;
-        self
-    }
-
     pub fn with_elements(mut self, elements: Vec<Element>) -> Self {
         self.session.elements = elements;
         self
@@ -212,11 +201,6 @@ impl MockSessionBuilder {
 
     pub fn with_update_error(mut self, error: SessionError) -> Self {
         self.session.update_error = Some(error);
-        self
-    }
-
-    pub fn with_pty_write_error(mut self, error: SessionError) -> Self {
-        self.session.pty_write_error = Some(error);
         self
     }
 

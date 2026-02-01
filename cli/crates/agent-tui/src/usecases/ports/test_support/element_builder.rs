@@ -48,20 +48,8 @@ impl ElementBuilder {
         Self::new(element_ref, ElementType::Checkbox).with_checked(false)
     }
 
-    pub fn radio(element_ref: impl Into<String>) -> Self {
-        Self::new(element_ref, ElementType::Radio).with_checked(false)
-    }
-
     pub fn select(element_ref: impl Into<String>) -> Self {
         Self::new(element_ref, ElementType::Select)
-    }
-
-    pub fn menu_item(element_ref: impl Into<String>) -> Self {
-        Self::new(element_ref, ElementType::MenuItem)
-    }
-
-    pub fn list_item(element_ref: impl Into<String>) -> Self {
-        Self::new(element_ref, ElementType::ListItem)
     }
 
     pub fn with_label(mut self, label: impl Into<String>) -> Self {
@@ -80,19 +68,8 @@ impl ElementBuilder {
         self
     }
 
-    pub fn with_size(mut self, width: u16, height: u16) -> Self {
-        self.width = width;
-        self.height = height;
-        self
-    }
-
     pub fn focused(mut self) -> Self {
         self.focused = true;
-        self
-    }
-
-    pub fn selected(mut self) -> Self {
-        self.selected = true;
         self
     }
 
@@ -105,22 +82,8 @@ impl ElementBuilder {
         self.with_checked(true)
     }
 
-    pub fn unchecked(self) -> Self {
-        self.with_checked(false)
-    }
-
     pub fn disabled(mut self) -> Self {
         self.disabled = Some(true);
-        self
-    }
-
-    pub fn enabled(mut self) -> Self {
-        self.disabled = Some(false);
-        self
-    }
-
-    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
-        self.hint = Some(hint.into());
         self
     }
 

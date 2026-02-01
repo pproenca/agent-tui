@@ -177,7 +177,7 @@ mod tests {
     use super::*;
 
     use crate::domain::SessionId;
-    use crate::infra::daemon::test_support::{MockError, MockSessionRepository};
+    use crate::usecases::ports::test_support::{MockError, MockSessionRepository};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     #[derive(Default)]

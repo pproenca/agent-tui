@@ -72,7 +72,7 @@ impl<R: SessionRepository> WaitUseCase for WaitUseCaseImpl<R> {
 mod tests {
     use super::*;
     use crate::domain::SessionId;
-    use crate::infra::daemon::test_support::{MockError, MockSessionRepository};
+    use crate::usecases::ports::test_support::{MockError, MockSessionRepository};
 
     #[test]
     fn test_wait_usecase_can_be_constructed_with_mock_sleeper() {

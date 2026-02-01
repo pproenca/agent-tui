@@ -1,5 +1,5 @@
-use crate::domain::core::CursorPosition;
 use crate::domain::DomainCursorPosition;
+use crate::domain::core::CursorPosition;
 
 pub fn core_cursor_to_domain(cursor: &CursorPosition) -> DomainCursorPosition {
     DomainCursorPosition {

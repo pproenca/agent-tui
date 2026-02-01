@@ -10,8 +10,8 @@ use crate::domain::{
     HealthOutput, KeydownInput, KeystrokeInput, KeyupInput, KillOutput, MetricsOutput,
     PtyReadInput, PtyReadOutput, PtyWriteInput, PtyWriteOutput, ResizeInput, ResizeOutput,
     RestartOutput, ScrollInput, ScrollOutput, SessionId, SessionInput, SessionsOutput,
-    ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, TypeInput,
-    WaitInput, WaitOutput,
+    ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, TypeInput, WaitInput,
+    WaitOutput,
 };
 use crate::usecases::ports::SessionError;
 

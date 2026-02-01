@@ -16,7 +16,7 @@ const AFTER_HELP: &str =
 const LONG_ABOUT: &str = "\
 Drive TUI (text UI) applications programmatically or interactively.\n\
 \n\
-Common flow: run -> screenshot -> press/type/input/scroll -> wait -> kill.\n\
+Common flow: run -> screenshot -> press/type/scroll -> wait -> kill.\n\
 Use --format json for automation-friendly output.";
 
 const AFTER_LONG_HELP: &str = r#"WORKFLOW:
@@ -34,7 +34,7 @@ EXAMPLES:
     # Start and interact with a TUI app
     agent-tui run "npx create-next-app"
     agent-tui screenshot
-    agent-tui input "my-project"         # Type text
+    agent-tui type "my-project"         # Type text
     agent-tui press Enter                 # Press Enter key
     agent-tui wait "success"
     agent-tui kill
@@ -203,16 +203,29 @@ EXAMPLES:
     #[command(long_about = "\
 Restart the current session command, creating a new session.")]
     Restart,
-    /// Send key press(es) to the terminal
+    /// Send key press(es) to the terminal (supports modifier hold/release)
     #[command(after_long_help = "\
+NOTES:
+    --hold/--release require a single modifier key (Ctrl, Alt, Shift, Meta)
+
 EXAMPLES:
     agent-tui press Enter
     agent-tui press Ctrl+C
-    agent-tui press ArrowDown ArrowDown Enter")]
+    agent-tui press ArrowDown ArrowDown Enter
+    agent-tui press Shift --hold
+    agent-tui press Shift --release")]
     Press {
         /// Keys to press (e.g., Enter, Ctrl+C, ArrowDown)
         #[arg(required = true, value_name = "KEY")]
         keys: Vec<String>,
+
+        /// Hold a modifier key down (Ctrl, Alt, Shift, Meta)
+        #[arg(long, conflicts_with = "release", help_heading = "Modifiers")]
+        hold: bool,
+
+        /// Release a held modifier key (Ctrl, Alt, Shift, Meta)
+        #[arg(long, conflicts_with = "hold", help_heading = "Modifiers")]
+        release: bool,
     },
 
     /// Type literal text character by character
@@ -224,39 +237,6 @@ EXAMPLES:
         /// Text to type
         #[arg(value_name = "TEXT")]
         text: String,
-    },
-
-    /// Send keyboard input (keys or text)
-    #[command(long_about = "\
-Send keyboard input - keys or text.
-
-Unified command for all keyboard input. Automatically detects whether
-the input is a key name or text to type.
-
-SUPPORTED KEYS: Enter, Tab, Escape, Backspace, Delete, Arrow keys, Home, End, PageUp, PageDown, F1-F12
-MODIFIERS: Ctrl+<key>, Alt+<key>, Shift+<key>
-
-If the input matches a known key name, it's sent as a key press.
-Otherwise, it's typed as text character by character.
-Use quotes for text that might be mistaken for a key name.")]
-    #[command(after_long_help = "\
-EXAMPLES:
-    agent-tui input Enter              # Press Enter
-    agent-tui input Ctrl+C             # Press Ctrl+C
-    agent-tui input \"hello\"            # Type text char-by-char
-    agent-tui input Shift --hold       # Hold Shift down")]
-    Input {
-        /// Key name or text to send
-        #[arg(value_name = "KEY|TEXT")]
-        value: String,
-
-        /// Hold the key down (for modifier sequences)
-        #[arg(long, conflicts_with = "release", help_heading = "Modifiers")]
-        hold: bool,
-
-        /// Release a held key (for modifier sequences)
-        #[arg(long, conflicts_with = "hold", help_heading = "Modifiers")]
-        release: bool,
     },
 
     /// Scroll the viewport
@@ -752,100 +732,6 @@ mod tests {
     }
 
     #[test]
-    fn test_input_command_keys() {
-        let test_cases = vec![
-            "Enter",
-            "Tab",
-            "Escape",
-            "Backspace",
-            "Delete",
-            "ArrowUp",
-            "ArrowDown",
-            "ArrowLeft",
-            "ArrowRight",
-            "Home",
-            "End",
-            "PageUp",
-            "PageDown",
-            "F1",
-            "F10",
-            "F12",
-            "Ctrl+C",
-            "Alt+F4",
-            "Shift+Tab",
-        ];
-
-        for k in test_cases {
-            let cli = Cli::parse_from(["agent-tui", "input", k]);
-            let Commands::Input {
-                value,
-                hold,
-                release,
-            } = cli.command
-            else {
-                panic!("Expected Input command for: {k}, got {:?}", cli.command);
-            };
-            assert_eq!(value, k.to_string());
-            assert!(!hold);
-            assert!(!release);
-        }
-    }
-
-    #[test]
-    fn test_input_command_text() {
-        let cli = Cli::parse_from(["agent-tui", "input", "Hello, World!"]);
-        let Commands::Input { value, .. } = cli.command else {
-            panic!("Expected Input command, got {:?}", cli.command);
-        };
-        assert_eq!(value, "Hello, World!".to_string());
-
-        let cli = Cli::parse_from(["agent-tui", "input", "hello"]);
-        let Commands::Input { value, .. } = cli.command else {
-            panic!("Expected Input command, got {:?}", cli.command);
-        };
-        assert_eq!(value, "hello".to_string());
-    }
-
-    #[test]
-    fn test_input_hold_command() {
-        let cli = Cli::parse_from(["agent-tui", "input", "Shift", "--hold"]);
-        let Commands::Input {
-            value,
-            hold,
-            release,
-        } = cli.command
-        else {
-            panic!("Expected Input command, got {:?}", cli.command);
-        };
-        assert_eq!(value, "Shift".to_string());
-        assert!(hold);
-        assert!(!release);
-    }
-
-    #[test]
-    fn test_input_release_command() {
-        let cli = Cli::parse_from(["agent-tui", "input", "Shift", "--release"]);
-        let Commands::Input {
-            value,
-            hold,
-            release,
-        } = cli.command
-        else {
-            panic!("Expected Input command, got {:?}", cli.command);
-        };
-        assert_eq!(value, "Shift".to_string());
-        assert!(!hold);
-        assert!(release);
-    }
-
-    #[test]
-    fn test_input_flag_conflicts() {
-        assert!(
-            Cli::try_parse_from(["agent-tui", "input", "Shift", "--hold", "--release"]).is_err()
-        );
-    }
-
-    #[test]
     fn test_wait_requires_condition() {
         let err = Cli::try_parse_from(["agent-tui", "wait"])
             .err()
@@ -1186,32 +1072,92 @@ mod tests {
     #[test]
     fn test_press_enter_command() {
         let cli = Cli::parse_from(["agent-tui", "press", "Enter"]);
-        let Commands::Press { keys } = cli.command else {
+        let Commands::Press {
+            keys,
+            hold,
+            release,
+        } = cli.command
+        else {
             panic!("Expected Press command, got {:?}", cli.command);
         };
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0], "Enter");
+        assert!(!hold);
+        assert!(!release);
     }
 
     #[test]
     fn test_press_key_sequence() {
         let cli = Cli::parse_from(["agent-tui", "press", "ArrowDown", "ArrowDown", "Enter"]);
-        let Commands::Press { keys } = cli.command else {
+        let Commands::Press {
+            keys,
+            hold,
+            release,
+        } = cli.command
+        else {
             panic!("Expected Press command, got {:?}", cli.command);
         };
         assert_eq!(keys.len(), 3);
         assert_eq!(keys[0], "ArrowDown");
         assert_eq!(keys[1], "ArrowDown");
         assert_eq!(keys[2], "Enter");
+        assert!(!hold);
+        assert!(!release);
     }
 
     #[test]
     fn test_press_with_modifier() {
         let cli = Cli::parse_from(["agent-tui", "press", "Ctrl+C"]);
-        let Commands::Press { keys } = cli.command else {
+        let Commands::Press {
+            keys,
+            hold,
+            release,
+        } = cli.command
+        else {
             panic!("Expected Press command, got {:?}", cli.command);
         };
         assert_eq!(keys[0], "Ctrl+C");
+        assert!(!hold);
+        assert!(!release);
+    }
+
+    #[test]
+    fn test_press_hold_command() {
+        let cli = Cli::parse_from(["agent-tui", "press", "Shift", "--hold"]);
+        let Commands::Press {
+            keys,
+            hold,
+            release,
+        } = cli.command
+        else {
+            panic!("Expected Press command, got {:?}", cli.command);
+        };
+        assert_eq!(keys[0], "Shift");
+        assert!(hold);
+        assert!(!release);
+    }
+
+    #[test]
+    fn test_press_release_command() {
+        let cli = Cli::parse_from(["agent-tui", "press", "Shift", "--release"]);
+        let Commands::Press {
+            keys,
+            hold,
+            release,
+        } = cli.command
+        else {
+            panic!("Expected Press command, got {:?}", cli.command);
+        };
+        assert_eq!(keys[0], "Shift");
+        assert!(!hold);
+        assert!(release);
+    }
+
+    #[test]
+    fn test_press_flag_conflicts() {
+        assert!(
+            Cli::try_parse_from(["agent-tui", "press", "Shift", "--hold", "--release"]).is_err()
+        );
     }
 
     #[test]

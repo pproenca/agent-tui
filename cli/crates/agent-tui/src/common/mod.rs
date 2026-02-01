@@ -3,7 +3,6 @@
 mod color;
 pub mod daemon_error;
 pub mod error_codes;
-pub mod key_names;
 mod string_utils;
 mod sync;
 pub mod telemetry;

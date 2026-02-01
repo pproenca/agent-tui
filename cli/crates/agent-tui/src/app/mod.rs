@@ -17,7 +17,6 @@ use crate::adapters::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_d
 use crate::app::commands::OutputFormat;
 use crate::app::daemon::start_daemon;
 use crate::common::DaemonError;
-use crate::common::key_names::is_key_name;
 use crate::common::telemetry;
 use crate::common::{Colors, color_init};
 use tracing::debug;
@@ -673,35 +672,45 @@ impl Application {
             Commands::Resize { cols, rows } => handlers::handle_resize(ctx, *cols, *rows)?,
             Commands::Restart => handlers::handle_restart(ctx)?,
 
-            Commands::Press { keys } => {
+            Commands::Press {
+                keys,
+                hold,
+                release,
+            } => {
                 const PRESS_INTER_KEY_DELAY_MS: u64 = 50;
-                for (idx, key) in keys.iter().enumerate() {
-                    handlers::handle_press(ctx, key.to_string())?;
-                    if idx + 1 < keys.len() {
-                        std::thread::sleep(std::time::Duration::from_millis(
-                            PRESS_INTER_KEY_DELAY_MS,
-                        ));
+                if *hold {
+                    if keys.len() != 1 {
+                        return Err(Box::new(crate::app::error::CliError::new(
+                            ctx.format,
+                            "Press --hold requires exactly one key (Ctrl, Alt, Shift, Meta)",
+                            None,
+                            exit_codes::USAGE,
+                        )));
+                    }
+                    handlers::handle_keydown(ctx, keys[0].clone())?
+                } else if *release {
+                    if keys.len() != 1 {
+                        return Err(Box::new(crate::app::error::CliError::new(
+                            ctx.format,
+                            "Press --release requires exactly one key (Ctrl, Alt, Shift, Meta)",
+                            None,
+                            exit_codes::USAGE,
+                        )));
+                    }
+                    handlers::handle_keyup(ctx, keys[0].clone())?
+                } else {
+                    for (idx, key) in keys.iter().enumerate() {
+                        handlers::handle_press(ctx, key.to_string())?;
+                        if idx + 1 < keys.len() {
+                            std::thread::sleep(std::time::Duration::from_millis(
+                                PRESS_INTER_KEY_DELAY_MS,
+                            ));
+                        }
                     }
                 }
             }
 
             Commands::Type { text } => handlers::handle_type(ctx, text.to_string())?,
-
-            Commands::Input {
-                value,
-                hold,
-                release,
-            } => {
-                if *hold {
-                    handlers::handle_keydown(ctx, value.clone())?
-                } else if *release {
-                    handlers::handle_keyup(ctx, value.clone())?
-                } else if is_key_name(value) {
-                    handlers::handle_press(ctx, value.clone())?
-                } else {
-                    handlers::handle_type(ctx, value.clone())?
-                }
-            }
 
             Commands::Scroll { direction, amount } => {
                 handlers::handle_scroll(ctx, *direction, *amount)?

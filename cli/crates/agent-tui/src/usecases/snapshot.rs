@@ -1,11 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::core::vom::snapshot::{SnapshotOptions, format_snapshot};
-
-use crate::domain::{
-    AccessibilitySnapshotInput, AccessibilitySnapshotOutput, SnapshotInput, SnapshotOutput,
-};
-use crate::domain::{core_cursor_to_domain, core_snapshot_to_domain};
+use crate::domain::{SnapshotInput, SnapshotOutput, core_cursor_to_domain};
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionRepository;
 
@@ -63,57 +58,9 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
     }
 }
 
-pub trait AccessibilitySnapshotUseCase: Send + Sync {
-    fn execute(
-        &self,
-        input: AccessibilitySnapshotInput,
-    ) -> Result<AccessibilitySnapshotOutput, SessionError>;
-}
-
-pub struct AccessibilitySnapshotUseCaseImpl<R: SessionRepository> {
-    repository: Arc<R>,
-}
-
-impl<R: SessionRepository> AccessibilitySnapshotUseCaseImpl<R> {
-    pub fn new(repository: Arc<R>) -> Self {
-        Self { repository }
-    }
-}
-
-impl<R: SessionRepository> AccessibilitySnapshotUseCase for AccessibilitySnapshotUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(session = ?input.session_id, interactive_only = input.interactive_only)
-    )]
-    fn execute(
-        &self,
-        input: AccessibilitySnapshotInput,
-    ) -> Result<AccessibilitySnapshotOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
-
-        session.update()?;
-
-        let session_id = session.session_id();
-        let components = session.analyze_screen();
-
-        let options = SnapshotOptions {
-            interactive_only: input.interactive_only,
-            ..Default::default()
-        };
-        let core_snapshot = format_snapshot(&components, &options);
-        let snapshot = core_snapshot_to_domain(&core_snapshot);
-
-        Ok(AccessibilitySnapshotOutput {
-            session_id,
-            snapshot,
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::SessionId;
     use crate::usecases::ports::test_support::MockSessionRepository;
 
     #[test]
@@ -125,35 +72,5 @@ mod tests {
         let result = usecase.execute(input);
 
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_enhanced_snapshot_usecase_returns_error_when_no_session() {
-        let repository = Arc::new(MockSessionRepository::new());
-        let usecase = AccessibilitySnapshotUseCaseImpl::new(repository);
-
-        let input = AccessibilitySnapshotInput::default();
-        let result = usecase.execute(input);
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_enhanced_snapshot_input_default() {
-        let input = AccessibilitySnapshotInput::default();
-
-        assert!(input.session_id.is_none());
-        assert!(!input.interactive_only);
-    }
-
-    #[test]
-    fn test_enhanced_snapshot_input_with_options() {
-        let input = AccessibilitySnapshotInput {
-            session_id: Some(SessionId::new("test-session")),
-            interactive_only: true,
-        };
-
-        assert_eq!(input.session_id, Some(SessionId::new("test-session")));
-        assert!(input.interactive_only);
     }
 }

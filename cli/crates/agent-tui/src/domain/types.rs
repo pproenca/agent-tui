@@ -183,31 +183,6 @@ pub struct SnapshotOutput {
     pub rendered: Option<String>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct AccessibilitySnapshotInput {
-    pub session_id: Option<SessionId>,
-    pub interactive_only: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct DomainSnapshotStats {
-    pub total: usize,
-    pub interactive: usize,
-    pub lines: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct DomainAccessibilitySnapshot {
-    pub tree: String,
-    pub stats: DomainSnapshotStats,
-}
-
-#[derive(Debug, Clone)]
-pub struct AccessibilitySnapshotOutput {
-    pub session_id: SessionId,
-    pub snapshot: DomainAccessibilitySnapshot,
-}
-
 #[derive(Debug, Clone)]
 pub struct KeystrokeInput {
     pub session_id: Option<SessionId>,

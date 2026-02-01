@@ -8,7 +8,6 @@ Use this file when you need a complete, end-to-end command sequence.
 2) Capture session id from JSON output (use `--session <id>` for the rest).
 3) First snapshot (text or structure):
    - `agent-tui --session <id> screenshot --format json`
-   - or `agent-tui --session <id> screenshot -a --format json`
 4) Act based on the latest screen:
    - `agent-tui --session <id> input "value"`
    - `agent-tui --session <id> press Enter`
@@ -21,7 +20,7 @@ Use this file when you need a complete, end-to-end command sequence.
 
 ## Form Interaction Flow
 1) `agent-tui run <app>`
-2) `agent-tui --session <id> screenshot -a --format json`
+2) `agent-tui --session <id> screenshot --format json`
 3) Focus the input (if needed): `agent-tui --session <id> press Tab`
 4) Type value: `agent-tui --session <id> input "my-value"`
 5) Submit: `agent-tui --session <id> press Enter`
@@ -31,7 +30,7 @@ Use this file when you need a complete, end-to-end command sequence.
 ## Dynamic UI / Flaky Rendering Flow
 1) Start: `agent-tui run <app>`
 2) Stabilize: `agent-tui --session <id> wait --stable`
-3) Snapshot: `agent-tui --session <id> screenshot -a --format json`
+3) Snapshot: `agent-tui --session <id> screenshot --format json`
 4) Act: `agent-tui --session <id> press Enter` or `agent-tui --session <id> input "text"`
 5) Re-stabilize: `agent-tui --session <id> wait --stable`
 6) Re-snapshot and continue.

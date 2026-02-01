@@ -19,18 +19,6 @@ Use this file when parsing `--format json` output.
   }
   ```
 
-## Screenshot (accessibility)
-- `agent-tui screenshot -a --json` returns:
-  ```json
-  {
-    "session_id": "<id>",
-    "snapshot": {
-      "tree": "<string>",
-      "stats": { "total": 2, "interactive": 2, "lines": 2 }
-    }
-  }
-  ```
-
 ## Wait
 - `agent-tui wait ...` returns:
   ```json

@@ -665,17 +665,11 @@ impl Application {
             )?,
 
             Commands::Screenshot {
-                accessibility,
-                interactive_only,
                 region,
                 strip_ansi,
                 include_cursor,
             } => {
-                if *accessibility {
-                    handlers::handle_accessibility_snapshot(ctx, *interactive_only)?
-                } else {
-                    handlers::handle_snapshot(ctx, region.clone(), *strip_ansi, *include_cursor)?
-                }
+                handlers::handle_snapshot(ctx, region.clone(), *strip_ansi, *include_cursor)?
             }
 
             Commands::Resize { cols, rows } => handlers::handle_resize(ctx, *cols, *rows)?,

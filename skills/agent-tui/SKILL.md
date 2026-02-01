@@ -101,8 +101,8 @@ This feels slower, but it's the only reliable approach. Optimistic reuse of stal
 Need only raw text?
 ├─► YES: Use `screenshot` (plain text, faster)
 │
-└─► NO: Need structure or roles?
-    └─► Use `screenshot -a --json` (accessibility tree + stats)
+└─► NO: Need machine-readable output?
+    └─► Use `screenshot --json`
 ```
 
 ### How to Wait?

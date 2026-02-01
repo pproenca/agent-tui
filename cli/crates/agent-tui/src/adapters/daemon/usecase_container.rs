@@ -4,8 +4,8 @@ use std::time::Instant;
 
 use crate::usecases::ports::{MetricsProvider, SessionRepository, ShutdownNotifierHandle};
 use crate::usecases::{
-    AccessibilitySnapshotUseCaseImpl, AssertUseCaseImpl, AttachUseCaseImpl, CleanupUseCaseImpl,
-    HealthUseCaseImpl, KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl, KillUseCaseImpl,
+    AssertUseCaseImpl, AttachUseCaseImpl, CleanupUseCaseImpl, HealthUseCaseImpl,
+    KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl, KillUseCaseImpl,
     MetricsUseCaseImpl, PtyReadUseCaseImpl, PtyWriteUseCaseImpl, ResizeUseCaseImpl,
     RestartUseCaseImpl, ScrollUseCaseImpl, SessionsUseCaseImpl, ShutdownUseCaseImpl,
     SnapshotUseCaseImpl, SpawnUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
@@ -32,7 +32,6 @@ pub struct SessionUseCases<R: SessionRepository + 'static> {
 
 pub struct SnapshotUseCases<R: SessionRepository + 'static> {
     pub snapshot: SnapshotUseCaseImpl<R>,
-    pub accessibility_snapshot: AccessibilitySnapshotUseCaseImpl<R>,
 }
 
 pub struct InputUseCases<R: SessionRepository + 'static> {
@@ -73,9 +72,6 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
             },
             snapshot: SnapshotUseCases {
                 snapshot: SnapshotUseCaseImpl::new(Arc::clone(&repository)),
-                accessibility_snapshot: AccessibilitySnapshotUseCaseImpl::new(Arc::clone(
-                    &repository,
-                )),
             },
             input: InputUseCases {
                 keystroke: KeystrokeUseCaseImpl::new(Arc::clone(&repository)),

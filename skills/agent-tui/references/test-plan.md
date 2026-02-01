@@ -9,7 +9,7 @@ Use this file when writing step-by-step tests.
 - Credentials or fixtures (if needed).
 
 ## Step Structure
-- Step 1: `screenshot` (or `screenshot -a --json`)
+- Step 1: `screenshot` (or `screenshot --json`)
 - Step 2: Action (`press`, `input`, `scroll`)
 - Step 3: `wait --assert` for expected text or `wait --stable`
 - Step 4: Repeat until done
@@ -17,7 +17,7 @@ Use this file when writing step-by-step tests.
 
 ## Example
 1) `agent-tui run <app>`
-2) `agent-tui --session <id> screenshot -a --format json`
+2) `agent-tui --session <id> screenshot --format json`
 3) `agent-tui --session <id> press Tab`
 4) `agent-tui --session <id> input "value"`
 5) `agent-tui --session <id> press Enter`

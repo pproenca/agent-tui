@@ -4,8 +4,7 @@ Use this file when you need a quick command choice based on intent.
 
 ## Snapshot Strategy
 - Need raw text? Use `screenshot`.
-- Need structure/roles? Use `screenshot -a --json`.
-- Need only interactive nodes? Use `screenshot -a --interactive-only`.
+- Need machine-readable output? Use `screenshot --json`.
 
 ## Waiting Strategy
 - Waiting for text to appear: `wait "text" --assert`.

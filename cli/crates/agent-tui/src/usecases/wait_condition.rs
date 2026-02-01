@@ -8,47 +8,20 @@ use crate::usecases::ports::SessionOps;
 #[derive(Debug, Clone)]
 pub enum WaitCondition {
     Text(String),
-    Element(String),
-    Focused(String),
-    NotVisible(String),
     Stable,
     TextGone(String),
-    Value { element: String, expected: String },
 }
 
 impl WaitCondition {
-    pub fn parse(
-        condition: Option<&str>,
-        target: Option<&str>,
-        text: Option<&str>,
-    ) -> Option<Self> {
+    pub fn parse(condition: Option<&str>, text: Option<&str>) -> Option<Self> {
         match condition {
             Some("text") => text.map(|t| WaitCondition::Text(t.to_string())),
-            Some("element") => target.map(|t| WaitCondition::Element(t.to_string())),
-            Some("focused") => target.map(|t| WaitCondition::Focused(t.to_string())),
-            Some("not_visible") => target.map(|t| WaitCondition::NotVisible(t.to_string())),
             Some("stable") => Some(WaitCondition::Stable),
-            Some("text_gone") => target.map(|t| WaitCondition::TextGone(t.to_string())),
-            Some("value") => target.and_then(|t| {
-                let parts: Vec<&str> = t.splitn(2, '=').collect();
-                if parts.len() == 2 {
-                    Some(WaitCondition::Value {
-                        element: parts[0].to_string(),
-                        expected: parts[1].to_string(),
-                    })
-                } else {
-                    text.map(|expected_value| WaitCondition::Value {
-                        element: t.to_string(),
-                        expected: expected_value.to_string(),
-                    })
-                }
-            }),
+            Some("text_gone") => text.map(|t| WaitCondition::TextGone(t.to_string())),
             None => text.map(|t| WaitCondition::Text(t.to_string())),
             _ => None,
         }
     }
-
-    // Additional helpers can be added here as usecases require them.
 }
 
 #[derive(Default)]
@@ -98,24 +71,6 @@ pub fn check_condition<S: SessionOps + ?Sized>(
             screen.contains(text)
         }
 
-        WaitCondition::Element(element_ref) => {
-            session.detect_elements();
-            session.find_element(element_ref).is_some()
-        }
-
-        WaitCondition::Focused(element_ref) => {
-            session.detect_elements();
-            session
-                .find_element(element_ref)
-                .map(|el| el.focused)
-                .unwrap_or(false)
-        }
-
-        WaitCondition::NotVisible(element_ref) => {
-            session.detect_elements();
-            session.find_element(element_ref).is_none()
-        }
-
         WaitCondition::Stable => {
             let screen = session.screen_text();
             stable_tracker.add_hash(&screen)
@@ -125,43 +80,13 @@ pub fn check_condition<S: SessionOps + ?Sized>(
             let screen = session.screen_text();
             !screen.contains(text)
         }
-
-        WaitCondition::Value { element, expected } => {
-            session.detect_elements();
-            session
-                .find_element(element)
-                .and_then(|el| el.value)
-                .map(|v| v == expected.as_str())
-                .unwrap_or(false)
-        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::core::{Element, ElementType, Position};
     use crate::usecases::ports::test_support::MockSession;
-
-    fn make_element(ref_id: &str, focused: bool, value: Option<String>) -> Element {
-        Element {
-            element_ref: ref_id.to_string(),
-            element_type: ElementType::Button,
-            label: Some("Test".to_string()),
-            value,
-            position: Position {
-                row: 0,
-                col: 0,
-                width: Some(10),
-                height: Some(1),
-            },
-            focused,
-            selected: false,
-            checked: None,
-            disabled: None,
-            hint: None,
-        }
-    }
 
     #[test]
     fn test_check_condition_text_found() {
@@ -193,114 +118,6 @@ mod tests {
         );
 
         assert!(!result);
-    }
-
-    #[test]
-    fn test_check_condition_element_exists() {
-        let session = MockSession::builder("test")
-            .with_elements(vec![make_element("@btn1", false, None)])
-            .build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::Element("@btn1".to_string()),
-            &mut tracker,
-        );
-
-        assert!(result);
-    }
-
-    #[test]
-    fn test_check_condition_element_not_exists() {
-        let session = MockSession::builder("test")
-            .with_elements(vec![make_element("@btn1", false, None)])
-            .build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::Element("@missing".to_string()),
-            &mut tracker,
-        );
-
-        assert!(!result);
-    }
-
-    #[test]
-    fn test_check_condition_focused_true() {
-        let session = MockSession::builder("test")
-            .with_elements(vec![make_element("@input1", true, None)])
-            .build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::Focused("@input1".to_string()),
-            &mut tracker,
-        );
-
-        assert!(result);
-    }
-
-    #[test]
-    fn test_check_condition_focused_false() {
-        let session = MockSession::builder("test")
-            .with_elements(vec![make_element("@input1", false, None)])
-            .build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::Focused("@input1".to_string()),
-            &mut tracker,
-        );
-
-        assert!(!result);
-    }
-
-    #[test]
-    fn test_check_condition_focused_element_missing() {
-        let session = MockSession::builder("test").with_elements(vec![]).build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::Focused("@missing".to_string()),
-            &mut tracker,
-        );
-
-        assert!(!result);
-    }
-
-    #[test]
-    fn test_check_condition_not_visible_when_missing() {
-        let session = MockSession::builder("test")
-            .with_elements(vec![make_element("@modal", true, None)])
-            .build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::NotVisible("@modal".to_string()),
-            &mut tracker,
-        );
-
-        assert!(!result);
-    }
-
-    #[test]
-    fn test_check_condition_not_visible_when_present() {
-        let session = MockSession::builder("test").with_elements(vec![]).build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::NotVisible("@modal".to_string()),
-            &mut tracker,
-        );
-
-        assert!(result);
     }
 
     #[test]
@@ -336,80 +153,6 @@ mod tests {
     }
 
     #[test]
-    fn test_check_condition_value_matches() {
-        let session = MockSession::builder("test")
-            .with_elements(vec![make_element("@inp1", false, Some("ok".to_string()))])
-            .build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::Value {
-                element: "@inp1".to_string(),
-                expected: "ok".to_string(),
-            },
-            &mut tracker,
-        );
-
-        assert!(result);
-    }
-
-    #[test]
-    fn test_check_condition_value_does_not_match() {
-        let session = MockSession::builder("test")
-            .with_elements(vec![make_element("@inp1", false, Some("no".to_string()))])
-            .build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::Value {
-                element: "@inp1".to_string(),
-                expected: "ok".to_string(),
-            },
-            &mut tracker,
-        );
-
-        assert!(!result);
-    }
-
-    #[test]
-    fn test_check_condition_value_element_missing() {
-        let session = MockSession::builder("test").with_elements(vec![]).build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::Value {
-                element: "@missing".to_string(),
-                expected: "ok".to_string(),
-            },
-            &mut tracker,
-        );
-
-        assert!(!result);
-    }
-
-    #[test]
-    fn test_check_condition_value_element_has_no_value() {
-        let session = MockSession::builder("test")
-            .with_elements(vec![make_element("@inp1", false, None)])
-            .build();
-        let mut tracker = StableTracker::new(3);
-
-        let result = check_condition(
-            &session,
-            &WaitCondition::Value {
-                element: "@inp1".to_string(),
-                expected: "ok".to_string(),
-            },
-            &mut tracker,
-        );
-
-        assert!(!result);
-    }
-
-    #[test]
     fn test_check_condition_stable_requires_multiple_same_hashes() {
         let session = MockSession::builder("test")
             .with_screen_text("first")
@@ -435,41 +178,31 @@ mod tests {
 
     #[test]
     fn test_wait_condition_parse_text() {
-        let cond = WaitCondition::parse(Some("text"), None, Some("hello"));
+        let cond = WaitCondition::parse(Some("text"), Some("hello"));
         assert!(matches!(cond, Some(WaitCondition::Text(t)) if t == "hello"));
     }
 
     #[test]
-    fn test_wait_condition_parse_element() {
-        let cond = WaitCondition::parse(Some("element"), Some("@btn1"), None);
-        assert!(matches!(cond, Some(WaitCondition::Element(e)) if e == "@btn1"));
+    fn test_wait_condition_parse_text_gone() {
+        let cond = WaitCondition::parse(Some("text_gone"), Some("loading"));
+        assert!(matches!(cond, Some(WaitCondition::TextGone(t)) if t == "loading"));
     }
 
     #[test]
     fn test_wait_condition_parse_stable() {
-        let cond = WaitCondition::parse(Some("stable"), None, None);
+        let cond = WaitCondition::parse(Some("stable"), None);
         assert!(matches!(cond, Some(WaitCondition::Stable)));
     }
 
     #[test]
-    fn test_wait_condition_parse_value_target() {
-        let cond = WaitCondition::parse(Some("value"), Some("@inp1=hello"), None);
-        assert!(
-            matches!(cond, Some(WaitCondition::Value { element, expected }) if element == "@inp1" && expected == "hello")
-        );
-    }
-
-    #[test]
-    fn test_wait_condition_parse_value_text() {
-        let cond = WaitCondition::parse(Some("value"), Some("@inp1"), Some("hello"));
-        assert!(
-            matches!(cond, Some(WaitCondition::Value { element, expected }) if element == "@inp1" && expected == "hello")
-        );
-    }
-
-    #[test]
     fn test_wait_condition_parse_none_defaults_to_text() {
-        let cond = WaitCondition::parse(None, None, Some("hello"));
+        let cond = WaitCondition::parse(None, Some("hello"));
         assert!(matches!(cond, Some(WaitCondition::Text(t)) if t == "hello"));
+    }
+
+    #[test]
+    fn test_wait_condition_parse_invalid() {
+        let cond = WaitCondition::parse(Some("unknown"), Some("hello"));
+        assert!(cond.is_none());
     }
 }

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crossbeam_channel as channel;
 
-use crate::domain::core::{Component, CursorPosition, Element};
+use crate::domain::core::{Component, CursorPosition};
 use crate::domain::session_types::{SessionId, SessionInfo};
 
 use super::SessionError;
@@ -53,8 +53,6 @@ pub trait SessionOps: Send + Sync {
     fn update(&self) -> Result<(), SessionError>;
     fn screen_text(&self) -> String;
     fn screen_render(&self) -> String;
-    fn detect_elements(&self) -> Vec<Element>;
-    fn find_element(&self, element_ref: &str) -> Option<Element>;
     fn pty_write(&self, data: &[u8]) -> Result<(), SessionError>;
     fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError>;
     fn stream_read(
@@ -65,7 +63,6 @@ pub trait SessionOps: Send + Sync {
     ) -> Result<StreamRead, SessionError>;
     fn stream_subscribe(&self) -> StreamSubscription;
     fn analyze_screen(&self) -> Vec<Component>;
-    fn click(&self, element_ref: &str) -> Result<(), SessionError>;
     fn keystroke(&self, key: &str) -> Result<(), SessionError>;
     fn type_text(&self, text: &str) -> Result<(), SessionError>;
     fn keydown(&self, key: &str) -> Result<(), SessionError>;

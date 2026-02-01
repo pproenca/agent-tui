@@ -1,16 +1,14 @@
-use crate::domain::core::{Component, Element, component_to_element, find_element_by_ref};
+use crate::domain::core::Component;
 use crate::infra::terminal::{CursorPosition, ScreenBuffer, VirtualTerminal};
 
 pub struct TerminalState {
     terminal: VirtualTerminal,
-    cached_elements: Vec<Element>,
 }
 
 impl TerminalState {
     pub fn new(cols: u16, rows: u16) -> Self {
         Self {
             terminal: VirtualTerminal::new(cols, rows),
-            cached_elements: Vec::new(),
         }
     }
 
@@ -40,28 +38,6 @@ impl TerminalState {
 
     pub fn clear(&mut self) {
         self.terminal.clear();
-    }
-
-    pub fn detect_elements(&mut self, cursor: &CursorPosition) -> &[Element] {
-        let buffer = self.terminal.screen_buffer();
-        let components = crate::domain::core::analyze(&buffer, cursor);
-
-        self.cached_elements = components
-            .iter()
-            .filter(|c| c.role.is_interactive())
-            .enumerate()
-            .map(|(i, c)| component_to_element(c, i, cursor.row, cursor.col))
-            .collect();
-
-        &self.cached_elements
-    }
-
-    pub fn cached_elements(&self) -> &[Element] {
-        &self.cached_elements
-    }
-
-    pub fn find_element(&self, element_ref: &str) -> Option<&Element> {
-        find_element_by_ref(&self.cached_elements, element_ref)
     }
 
     pub fn analyze_screen(&self, cursor: &CursorPosition) -> Vec<Component> {

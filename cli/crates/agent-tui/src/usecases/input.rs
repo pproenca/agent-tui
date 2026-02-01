@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use crate::domain::{
     KeydownInput, KeydownOutput, KeystrokeInput, KeystrokeOutput, KeyupInput, KeyupOutput,
-    TypeInput, TypeOutput,
+    ScrollInput, ScrollOutput, TypeInput, TypeOutput,
 };
+use crate::usecases::ansi_keys;
 use crate::usecases::ports::{SessionError, SessionRepository};
 
 pub trait KeystrokeUseCase: Send + Sync {
@@ -111,6 +112,53 @@ impl<R: SessionRepository> KeyupUseCase for KeyupUseCaseImpl<R> {
         session.keyup(&input.key)?;
 
         Ok(KeyupOutput { success: true })
+    }
+}
+
+pub trait ScrollUseCase: Send + Sync {
+    fn execute(&self, input: ScrollInput) -> Result<ScrollOutput, SessionError>;
+}
+
+pub struct ScrollUseCaseImpl<R: SessionRepository> {
+    repository: Arc<R>,
+}
+
+impl<R: SessionRepository> ScrollUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
+    }
+}
+
+impl<R: SessionRepository> ScrollUseCase for ScrollUseCaseImpl<R> {
+    #[tracing::instrument(
+        skip(self, input),
+        fields(
+            session = ?input.session_id,
+            direction = %input.direction,
+            amount = input.amount
+        )
+    )]
+    fn execute(&self, input: ScrollInput) -> Result<ScrollOutput, SessionError> {
+        let session = self.repository.resolve(input.session_id.as_deref())?;
+
+        let key_seq: &[u8] = match input.direction.as_str() {
+            "up" => ansi_keys::UP,
+            "down" => ansi_keys::DOWN,
+            "left" => ansi_keys::LEFT,
+            "right" => ansi_keys::RIGHT,
+            _ => {
+                return Err(SessionError::InvalidKey(format!(
+                    "Invalid direction: {}",
+                    input.direction
+                )));
+            }
+        };
+
+        for _ in 0..input.amount {
+            session.pty_write(key_seq)?;
+        }
+
+        Ok(ScrollOutput { success: true })
     }
 }
 

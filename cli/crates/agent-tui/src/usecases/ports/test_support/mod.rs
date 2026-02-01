@@ -1,4 +1,3 @@
-mod element_builder;
 mod mock_error;
 mod mock_repository;
 mod mock_session;

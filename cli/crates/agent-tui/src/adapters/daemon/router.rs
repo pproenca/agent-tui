@@ -38,78 +38,19 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
             "cleanup" => handlers::session::handle_cleanup(&self.usecases.session.cleanup, request),
             "assert" => handlers::session::handle_assert(&self.usecases.session.assert, request),
             "snapshot" => {
-                handlers::elements::handle_snapshot_uc(&self.usecases.elements.snapshot, request)
+                handlers::snapshot::handle_snapshot_uc(&self.usecases.snapshot.snapshot, request)
             }
-            "accessibility_snapshot" => handlers::elements::handle_accessibility_snapshot_uc(
-                &self.usecases.elements.accessibility_snapshot,
+            "accessibility_snapshot" => handlers::snapshot::handle_accessibility_snapshot_uc(
+                &self.usecases.snapshot.accessibility_snapshot,
                 request,
             ),
-            "click" => handlers::elements::handle_click_uc(&self.usecases.elements.click, request),
-            "dbl_click" => {
-                handlers::elements::handle_dbl_click_uc(&self.usecases.elements.dbl_click, request)
-            }
-            "fill" => handlers::elements::handle_fill_uc(&self.usecases.elements.fill, request),
-            "find" => handlers::elements::handle_find_uc(&self.usecases.elements.find, request),
-            "count" => handlers::elements::handle_count_uc(&self.usecases.elements.count, request),
-            "scroll" => {
-                handlers::elements::handle_scroll_uc(&self.usecases.elements.scroll, request)
-            }
-            "scroll_into_view" => handlers::elements::handle_scroll_into_view_uc(
-                &self.usecases.elements.scroll_into_view,
-                request,
-            ),
-            "get_text" => {
-                handlers::elements::handle_get_text_uc(&self.usecases.elements.get_text, request)
-            }
-            "get_value" => {
-                handlers::elements::handle_get_value_uc(&self.usecases.elements.get_value, request)
-            }
-            "is_visible" => handlers::elements::handle_is_visible_uc(
-                &self.usecases.elements.is_visible,
-                request,
-            ),
-            "is_focused" => handlers::elements::handle_is_focused_uc(
-                &self.usecases.elements.is_focused,
-                request,
-            ),
-            "is_enabled" => handlers::elements::handle_is_enabled_uc(
-                &self.usecases.elements.is_enabled,
-                request,
-            ),
-            "is_checked" => handlers::elements::handle_is_checked_uc(
-                &self.usecases.elements.is_checked,
-                request,
-            ),
-            "get_focused" => handlers::elements::handle_get_focused_uc(
-                &self.usecases.elements.get_focused,
-                request,
-            ),
-            "get_title" => {
-                handlers::elements::handle_get_title_uc(&self.usecases.elements.get_title, request)
-            }
-            "focus" => handlers::elements::handle_focus_uc(&self.usecases.elements.focus, request),
-            "clear" => handlers::elements::handle_clear_uc(&self.usecases.elements.clear, request),
-            "select_all" => handlers::elements::handle_select_all_uc(
-                &self.usecases.elements.select_all,
-                request,
-            ),
-            "toggle" => {
-                handlers::elements::handle_toggle_uc(&self.usecases.elements.toggle, request)
-            }
-            "select" => {
-                handlers::elements::handle_select_uc(&self.usecases.elements.select, request)
-            }
-            "multiselect" => handlers::elements::handle_multiselect_uc(
-                &self.usecases.elements.multiselect,
-                request,
-            ),
-
             "keystroke" => {
                 handlers::input::handle_keystroke_uc(&self.usecases.input.keystroke, request)
             }
             "keydown" => handlers::input::handle_keydown_uc(&self.usecases.input.keydown, request),
             "keyup" => handlers::input::handle_keyup_uc(&self.usecases.input.keyup, request),
             "type" => handlers::input::handle_type_uc(&self.usecases.input.type_text, request),
+            "scroll" => handlers::input::handle_scroll_uc(&self.usecases.input.scroll, request),
 
             "wait" => handlers::wait::handle_wait_uc(&self.usecases.wait, request),
 
@@ -138,7 +79,7 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::core::{Component, CursorPosition, Element};
+    use crate::domain::core::{Component, CursorPosition};
     use crate::domain::{SessionId, SessionInfo};
     use crate::usecases::ports::{
         LivePreviewSnapshot, MetricsProvider, NoopShutdownNotifier, SessionError, SessionHandle,
@@ -188,14 +129,6 @@ mod tests {
             String::new()
         }
 
-        fn detect_elements(&self) -> Vec<Element> {
-            Vec::new()
-        }
-
-        fn find_element(&self, _element_ref: &str) -> Option<Element> {
-            None
-        }
-
         fn pty_write(&self, _data: &[u8]) -> Result<(), SessionError> {
             Ok(())
         }
@@ -227,10 +160,6 @@ mod tests {
 
         fn analyze_screen(&self) -> Vec<Component> {
             Vec::new()
-        }
-
-        fn click(&self, _element_ref: &str) -> Result<(), SessionError> {
-            Ok(())
         }
 
         fn keystroke(&self, _key: &str) -> Result<(), SessionError> {
@@ -447,8 +376,7 @@ mod tests {
 
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert!(parsed.get("result").is_some());
-        assert_eq!(parsed["result"]["sessions_cleaned"], 0);
-        assert_eq!(parsed["result"]["sessions_failed"], 0);
+        assert_eq!(parsed["result"]["cleaned"], 0);
         assert!(parsed["result"]["failures"].is_array());
     }
 
@@ -460,7 +388,7 @@ mod tests {
         let request = RpcRequest::new(
             1,
             "assert".to_string(),
-            Some(json!({ "condition": "invalid" })),
+            Some(json!({ "type": "invalid", "value": "nope" })),
         );
         let response = router.route(request);
 
@@ -473,7 +401,7 @@ mod tests {
             parsed["error"]["message"]
                 .as_str()
                 .unwrap()
-                .contains("Invalid condition format")
+                .contains("Invalid type")
         );
     }
 
@@ -485,7 +413,7 @@ mod tests {
         let request = RpcRequest::new(
             1,
             "assert".to_string(),
-            Some(json!({ "condition": "session:nonexistent" })),
+            Some(json!({ "type": "session", "value": "nonexistent" })),
         );
         let response = router.route(request);
 

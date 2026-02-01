@@ -8,47 +8,55 @@ Use this file when parsing `--format json` output.
   { "session_id": "<id>", "pid": 123 }
   ```
 
-## Screenshot
+## Screenshot (text)
 - `agent-tui screenshot ...` returns:
   ```json
   {
     "session_id": "<id>",
     "screenshot": "<string>",
-    "elements": [ ... ],
     "cursor": { "row": 0, "col": 0, "visible": true },
     "rendered": "<optional>"
   }
   ```
-- `elements[]` item shape:
+
+## Screenshot (accessibility)
+- `agent-tui screenshot -a --json` returns:
   ```json
   {
-    "ref": "@e1",
-    "type": "button|input|checkbox|radio|select|menu_item|link|...",
-    "label": "Submit",
-    "value": "<value>",
-    "position": { "row": 10, "col": 5, "width": 12, "height": 1 },
-    "focused": false,
-    "selected": false,
-    "checked": true,
-    "disabled": false,
-    "hint": "<optional>"
+    "session_id": "<id>",
+    "snapshot": {
+      "tree": "<string>",
+      "stats": { "total": 2, "interactive": 2, "lines": 2 }
+    }
   }
-  ```
-
-## Find / Count
-- `agent-tui find ...` returns:
-  ```json
-  { "elements": [ ... ], "count": 2 }
-  ```
-- `agent-tui count ...` returns:
-  ```json
-  { "count": 2 }
   ```
 
 ## Wait
 - `agent-tui wait ...` returns:
   ```json
   { "found": true, "elapsed_ms": 1200 }
+  ```
+
+## Scroll
+- `agent-tui scroll ...` returns:
+  ```json
+  { "success": true }
+  ```
+
+## Resize
+- `agent-tui resize ...` returns:
+  ```json
+  { "success": true, "session_id": "<id>", "cols": 120, "rows": 40 }
+  ```
+
+## Restart / Kill
+- `restart` returns:
+  ```json
+  { "old_session_id": "<id>", "new_session_id": "<id>", "command": "<cmd>", "pid": 123 }
+  ```
+- `kill` returns:
+  ```json
+  { "success": true, "session_id": "<id>" }
   ```
 
 ## Sessions
@@ -67,14 +75,4 @@ Use this file when parsing `--format json` output.
     ],
     "active_session": "<id>"
   }
-  ```
-
-## Action/Mutation Responses
-- Most action commands return:
-  ```json
-  { "success": true, "message": "...", "warning": "<optional>" }
-  ```
-- `kill` returns:
-  ```json
-  { "success": true, "session_id": "<id>" }
   ```

@@ -124,6 +124,10 @@ impl RpcResponse {
         Self::success(id, value)
     }
 
+    pub fn is_success(&self) -> bool {
+        self.error.is_none()
+    }
+
     pub fn error(id: u64, code: i32, message: &str) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
@@ -279,17 +283,17 @@ mod tests {
         let error_data = ErrorData {
             category: "not_found".to_string(),
             retryable: false,
-            context: Some(json!({"element_ref": "@btn1"})),
-            suggestion: Some("Run 'screenshot -e' to see elements.".to_string()),
+            context: Some(json!({"session_id": "sess1"})),
+            suggestion: Some("Run 'sessions' to see active sessions.".to_string()),
         };
-        let resp = RpcResponse::error_with_data(42, -32003, "Element not found", error_data);
+        let resp = RpcResponse::error_with_data(42, -32003, "Resource not found", error_data);
         let json_str = serde_json::to_string(&resp).unwrap();
         let parsed: Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(parsed["error"]["code"], -32003);
         assert_eq!(parsed["error"]["data"]["category"], "not_found");
         assert_eq!(parsed["error"]["data"]["retryable"], false);
-        assert_eq!(parsed["error"]["data"]["context"]["element_ref"], "@btn1");
+        assert_eq!(parsed["error"]["data"]["context"]["session_id"], "sess1");
     }
 
     #[test]
@@ -309,13 +313,13 @@ mod tests {
     }
 
     #[test]
-    fn test_domain_error_not_retryable_for_element_not_found() {
+    fn test_domain_error_not_retryable_for_invalid_key() {
         let resp = RpcResponse::domain_error(
             1,
-            -32003,
-            "Element not found",
-            "not_found",
-            Some(json!({"element_ref": "@btn1"})),
+            -32004,
+            "Invalid key",
+            "invalid_input",
+            Some(json!({"key": "BadKey"})),
             None,
         );
         let json_str = serde_json::to_string(&resp).unwrap();

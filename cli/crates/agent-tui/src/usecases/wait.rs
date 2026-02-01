@@ -26,7 +26,6 @@ impl<R: SessionRepository> WaitUseCase for WaitUseCaseImpl<R> {
             session = ?input.session_id,
             timeout_ms = input.timeout_ms,
             condition = ?input.condition,
-            target_len = input.target.as_ref().map(|t| t.len()),
             text_len = input.text.as_ref().map(|t| t.len())
         )
     )]
@@ -35,12 +34,8 @@ impl<R: SessionRepository> WaitUseCase for WaitUseCaseImpl<R> {
         let timeout = Duration::from_millis(input.timeout_ms);
         let start = Instant::now();
 
-        let condition = WaitCondition::parse(
-            input.condition.as_deref(),
-            input.target.as_deref(),
-            input.text.as_deref(),
-        )
-        .unwrap_or(WaitCondition::Stable);
+        let condition = WaitCondition::parse(input.condition.as_deref(), input.text.as_deref())
+            .unwrap_or(WaitCondition::Stable);
 
         let mut stable_tracker = StableTracker::new(3);
         let poll_interval = Duration::from_millis(50);
@@ -90,7 +85,6 @@ mod tests {
             text: Some("loading".to_string()),
             timeout_ms: 5000,
             condition: None,
-            target: None,
         };
 
         let result = usecase.execute(input);
@@ -111,7 +105,6 @@ mod tests {
             text: Some("ready".to_string()),
             timeout_ms: 1000,
             condition: None,
-            target: None,
         };
 
         let result = usecase.execute(input);
@@ -128,24 +121,6 @@ mod tests {
             text: None,
             timeout_ms: 5000,
             condition: Some("stable".to_string()),
-            target: None,
-        };
-
-        let result = usecase.execute(input);
-        assert!(matches!(result, Err(SessionError::NoActiveSession)));
-    }
-
-    #[test]
-    fn test_wait_usecase_returns_error_with_element_condition() {
-        let repo = Arc::new(MockSessionRepository::new());
-        let usecase = WaitUseCaseImpl::new(repo);
-
-        let input = WaitInput {
-            session_id: None,
-            text: Some("@btn1".to_string()),
-            timeout_ms: 5000,
-            condition: Some("element".to_string()),
-            target: None,
         };
 
         let result = usecase.execute(input);

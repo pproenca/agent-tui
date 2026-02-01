@@ -21,44 +21,18 @@ Use this file when you need complete CLI coverage and exact options.
 ### Screenshot
 - `agent-tui screenshot`
 - Options:
-  - `-e, --elements`: include detected elements and refs.
   - `-a, --accessibility`: output accessibility-tree format.
-  - `--interactive-only`: only interactive elements (requires `-a`).
+  - `--interactive-only`: only interactive nodes (requires `-a`).
   - `--region <name>`: limit capture to region (if supported).
   - `--strip-ansi`: remove ANSI color codes.
   - `--include-cursor`: include cursor position.
 
-### Find / Count
-- `agent-tui find [filters]`
-- `agent-tui count [filters]`
-- Filters:
-  - `--role <ROLE>`
-  - `--name <NAME>`
-  - `--text <TEXT>`
-  - `--placeholder <TEXT>` (find only)
-  - `--focused` (find only)
-  - `--nth <N>` (find only)
-  - `--exact` (find only; exact text match)
+### Scroll
+- `agent-tui scroll <up|down|left|right> [amount]`
 
 ### Resize / Restart
 - `agent-tui resize --cols <n> --rows <n>`
 - `agent-tui restart`
-
-### Scroll Into View
-- `agent-tui scroll-into-view @ref`
-
-### Action (element operations)
-- `agent-tui action @ref [operation]`
-- Operations:
-  - `click`
-  - `dblclick`
-  - `fill "value"`
-  - `select "Option" ["Option2" ...]`
-  - `toggle [on|off]`
-  - `focus`
-  - `clear`
-  - `selectall`
-  - `scroll <up|down|left|right> [amount]`
 
 ### Press / Type / Input
 - `agent-tui press <key...>`
@@ -69,12 +43,9 @@ Use this file when you need complete CLI coverage and exact options.
 
 ### Wait
 - `agent-tui wait <text>`
-- `agent-tui wait -e @ref`
-- `agent-tui wait --focused @ref`
 - `agent-tui wait --stable`
-- `agent-tui wait --value @ref=VALUE`
 - Modifiers:
-  - `-g, --gone`: wait for text/element to disappear.
+  - `-g, --gone`: wait for text to disappear.
   - `-t, --timeout <ms>`: timeout in milliseconds (default 30000).
   - `--assert`: exit code 1 on timeout (0 on success).
 
@@ -110,16 +81,6 @@ Use this file when you need complete CLI coverage and exact options.
 
 ### Shell Completions
 - `agent-tui completions <bash|zsh|fish|powershell|elvish>`
-
-## Selector Shortcuts (external subcommand)
-- `agent-tui @e1` (click)
-- `agent-tui :Submit` (click by partial text)
-- `agent-tui '@"Exact Text"'` (click by exact text)
-- `agent-tui @e1 fill "value"`
-- `agent-tui @e1 toggle on`
-- `agent-tui @e1 choose "Option"` (maps to select)
-- `agent-tui @e1 clear`
-- `agent-tui @e1 focus`
 
 ## Environment Variables
 - `NO_COLOR`: disable colored output.

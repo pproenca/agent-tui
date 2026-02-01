@@ -1,6 +1,6 @@
 mod common;
 
-use common::{MockResponse, TEST_COLS, TEST_ROWS, TEST_SESSION_ID, TestHarness};
+use common::{MockResponse, TEST_SESSION_ID, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
 
@@ -97,62 +97,43 @@ fn smoke_sessions_empty() {
 }
 
 #[test]
-fn smoke_screenshot_with_elements() {
+fn smoke_screenshot_text() {
     let harness = TestHarness::new();
 
     harness.set_success_response(
         "snapshot",
         json!({
             "session_id": TEST_SESSION_ID,
-            "screenshot": "Test screen\n",
-            "elements": [
-                {
-                    "ref": "@btn1",
-                    "type": "button",
-                    "label": "Submit",
-                    "position": { "row": 5, "col": 10 },
-                    "focused": true,
-                    "selected": false
-                }
-            ],
-            "cursor": { "row": 0, "col": 0, "visible": true },
-            "size": { "cols": TEST_COLS, "rows": TEST_ROWS }
+            "screenshot": "Test screen\n"
         }),
     );
 
     harness
-        .run(&["screenshot", "-e"])
+        .run(&["screenshot"])
         .success()
-        .stdout(predicate::str::contains("@btn1"));
+        .stdout(predicate::str::contains("Test screen"));
 }
 
 #[test]
-fn smoke_action_click_success_and_error() {
+fn smoke_scroll_success_and_error() {
     let harness = TestHarness::new();
 
-    harness.set_success_response("click", json!({"success": true, "message": null}));
+    harness.set_success_response("scroll", json!({"success": true}));
 
     harness
-        .run(&["action", "@btn1", "click"])
+        .run(&["scroll", "down", "2"])
         .success()
-        .stdout(predicate::str::contains("Clicked"));
+        .stdout(predicate::str::contains("Scrolled down 2 times"));
 
     harness.set_response(
-        "click",
-        MockResponse::StructuredError {
-            code: -32003,
-            message: "Element not found: @missing".to_string(),
-            category: Some("not_found".to_string()),
-            retryable: Some(false),
-            context: Some(json!({"element_ref": "@missing"})),
-            suggestion: Some("Use 'screenshot -e' to see available elements".to_string()),
-        },
+        "scroll",
+        MockResponse::Success(json!({"success": false, "message": "Scroll blocked"})),
     );
 
     harness
-        .run(&["action", "@missing", "click"])
+        .run(&["scroll", "down"])
         .failure()
-        .stderr(predicate::str::contains("Element not found"));
+        .stderr(predicate::str::contains("Scroll failed"));
 }
 
 #[test]

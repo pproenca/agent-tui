@@ -1,6 +1,5 @@
 #![deny(clippy::all)]
 
-mod element;
 pub mod screen;
 pub mod style;
 pub mod vom;
@@ -8,12 +7,6 @@ pub mod vom;
 #[cfg(test)]
 pub mod test_fixtures;
 
-pub use element::Element;
-pub use element::ElementType;
-pub use element::Position;
-pub use element::component_to_element;
-pub use element::detect_checkbox_state;
-pub use element::find_element_by_ref;
 pub use screen::ScreenCell;
 pub use screen::ScreenGrid;
 pub use screen::ScreenSnapshot;

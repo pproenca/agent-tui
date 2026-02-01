@@ -71,8 +71,6 @@ pub mod presenter;   // re-exports adapters::presenter
 // Re-exports:
 pub use app::Application;
 pub use common::Colors;
-pub use core::Element;           // broken path
-pub use core::ElementType;       // broken path
 pub use daemon::Session;
 pub use daemon::SessionError;
 pub use daemon::SessionId;
@@ -150,8 +148,6 @@ pub use app::Application;
 pub use common::Colors;
 
 // Domain types (via domain::core)
-pub use domain::core::Element;
-pub use domain::core::ElementType;
 
 // Daemon types
 pub use daemon::Session;
@@ -272,7 +268,6 @@ pub use sleeper::MockSleeper;
 pub use sleeper::RealSleeper;
 pub use sleeper::Sleeper;
 pub use terminal_state::TerminalState;
-pub use usecase_container::ElementUseCases;
 pub use usecase_container::InputUseCases;
 pub use usecase_container::SessionUseCases;
 pub use usecase_container::UseCaseContainer;

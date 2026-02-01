@@ -1,5 +1,5 @@
+use crate::adapters::RpcValue;
 use crate::adapters::ipc::ClientError;
-use crate::adapters::{RpcValue, RpcValueRef};
 use crate::common::Colors;
 use clap::ValueEnum;
 
@@ -24,8 +24,6 @@ pub trait Presenter {
 
     fn present_session_id(&self, session_id: &str, label: Option<&str>);
 
-    fn present_element_ref(&self, element_ref: &str, info: Option<&str>);
-
     fn present_list_header(&self, title: &str);
 
     fn present_list_item(&self, item: &str);
@@ -43,8 +41,6 @@ pub trait Presenter {
     fn present_health(&self, health: &HealthResult);
 
     fn present_cleanup(&self, result: &CleanupResult);
-
-    fn present_find(&self, result: &FindResult);
 }
 
 pub struct WaitResult {
@@ -115,40 +111,6 @@ pub struct CleanupFailure {
     pub error: String,
 }
 
-pub struct FindResult {
-    pub count: u64,
-    pub elements: Vec<ElementInfo>,
-}
-
-impl FindResult {
-    pub fn from_json(value: &RpcValue) -> Self {
-        let count = value.u64_or("count", 0);
-        let elements = value
-            .get("elements")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .map(|el| ElementInfo {
-                        element_ref: el.str_or("ref", "").to_string(),
-                        element_type: el.str_or("type", "").to_string(),
-                        label: el.str_or("label", "").to_string(),
-                        focused: el.bool_or("focused", false),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        Self { count, elements }
-    }
-}
-
-pub struct ElementInfo {
-    pub element_ref: String,
-    pub element_type: String,
-    pub label: String,
-    pub focused: bool,
-}
-
 pub struct TextPresenter;
 const PROGRAM_NAME: &str = "agent-tui";
 
@@ -199,14 +161,6 @@ impl Presenter for TextPresenter {
             println!("{} {}", l, Colors::session_id(session_id));
         } else {
             println!("{}", Colors::session_id(session_id));
-        }
-    }
-
-    fn present_element_ref(&self, element_ref: &str, info: Option<&str>) {
-        if let Some(i) = info {
-            println!("{} {}", Colors::element_ref(element_ref), i);
-        } else {
-            println!("{}", Colors::element_ref(element_ref));
         }
     }
 
@@ -303,32 +257,6 @@ impl Presenter for TextPresenter {
             }
         }
     }
-
-    fn present_find(&self, result: &FindResult) {
-        if result.count == 0 {
-            println!("{}", Colors::dim("No elements found"));
-        } else {
-            println!(
-                "{} Found {} element(s):",
-                Colors::success("✓"),
-                result.count
-            );
-            for el in &result.elements {
-                let focused = if el.focused {
-                    Colors::success(" *focused*")
-                } else {
-                    String::new()
-                };
-                println!(
-                    "  {} [{}:{}]{}",
-                    Colors::element_ref(&el.element_ref),
-                    el.element_type,
-                    el.label,
-                    focused
-                );
-            }
-        }
-    }
 }
 
 fn format_uptime_ms(uptime_ms: u64) -> String {
@@ -393,18 +321,6 @@ impl Presenter for JsonPresenter {
             serde_json::json!({ "label": l, "session_id": session_id })
         } else {
             serde_json::json!({ "session_id": session_id })
-        };
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
-    }
-
-    fn present_element_ref(&self, element_ref: &str, info: Option<&str>) {
-        let output = if let Some(i) = info {
-            serde_json::json!({ "ref": element_ref, "info": i })
-        } else {
-            serde_json::json!({ "ref": element_ref })
         };
         println!(
             "{}",
@@ -500,29 +416,6 @@ impl Presenter for JsonPresenter {
             serde_json::to_string_pretty(&output).unwrap_or_default()
         );
     }
-
-    fn present_find(&self, result: &FindResult) {
-        let elements: Vec<_> = result
-            .elements
-            .iter()
-            .map(|el| {
-                serde_json::json!({
-                    "ref": el.element_ref,
-                    "type": el.element_type,
-                    "label": el.label,
-                    "focused": el.focused
-                })
-            })
-            .collect();
-        let output = serde_json::json!({
-            "count": result.count,
-            "elements": elements
-        });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
-    }
 }
 
 pub fn create_presenter(format: &OutputFormat) -> Box<dyn Presenter> {
@@ -595,71 +488,6 @@ impl SessionListResult {
                 );
                 presenter.present_list_item(&item);
             }
-        }
-    }
-}
-
-pub struct ElementView<'a>(pub RpcValueRef<'a>);
-
-impl ElementView<'_> {
-    pub fn ref_str(&self) -> &str {
-        self.0.str_or("ref", "")
-    }
-
-    pub fn el_type(&self) -> &str {
-        self.0.str_or("type", "")
-    }
-
-    pub fn label(&self) -> &str {
-        self.0.str_or("label", "")
-    }
-
-    pub fn focused(&self) -> bool {
-        self.0.bool_or("focused", false)
-    }
-
-    pub fn selected(&self) -> bool {
-        self.0.bool_or("selected", false)
-    }
-
-    pub fn value(&self) -> Option<&str> {
-        self.0.get("value").and_then(|v| v.as_str())
-    }
-
-    pub fn position(&self) -> (u64, u64) {
-        let pos = self.0.get("position");
-        let row = pos
-            .and_then(|p| p.get("row"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let col = pos
-            .and_then(|p| p.get("col"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        (row, col)
-    }
-
-    pub fn focused_indicator(&self) -> String {
-        if self.focused() {
-            Colors::success(" *focused*")
-        } else {
-            String::new()
-        }
-    }
-
-    pub fn selected_indicator(&self) -> String {
-        if self.selected() {
-            Colors::info(" *selected*")
-        } else {
-            String::new()
-        }
-    }
-
-    pub fn label_suffix(&self) -> String {
-        if self.label().is_empty() {
-            String::new()
-        } else {
-            format!(":{}", self.label())
         }
     }
 }
@@ -757,30 +585,6 @@ mod tests {
     }
 
     #[test]
-    fn test_find_result_struct() {
-        let result = FindResult {
-            count: 2,
-            elements: vec![
-                ElementInfo {
-                    element_ref: "@btn1".to_string(),
-                    element_type: "button".to_string(),
-                    label: "Submit".to_string(),
-                    focused: true,
-                },
-                ElementInfo {
-                    element_ref: "@btn2".to_string(),
-                    element_type: "button".to_string(),
-                    label: "Cancel".to_string(),
-                    focused: false,
-                },
-            ],
-        };
-        assert_eq!(result.count, 2);
-        assert_eq!(result.elements.len(), 2);
-        assert!(result.elements[0].focused);
-    }
-
-    #[test]
     fn test_json_presenter_wait_result() {
         let presenter = JsonPresenter;
         let result = WaitResult {
@@ -796,7 +600,7 @@ mod tests {
         let presenter = JsonPresenter;
         let result = AssertResult {
             passed: true,
-            condition: "element:@btn1".to_string(),
+            condition: "text:hello".to_string(),
         };
 
         presenter.present_assert_result(&result);
@@ -828,22 +632,6 @@ mod tests {
         };
 
         presenter.present_cleanup(&result);
-    }
-
-    #[test]
-    fn test_json_presenter_find() {
-        let presenter = JsonPresenter;
-        let result = FindResult {
-            count: 1,
-            elements: vec![ElementInfo {
-                element_ref: "@inp1".to_string(),
-                element_type: "input".to_string(),
-                label: "Email".to_string(),
-                focused: false,
-            }],
-        };
-
-        presenter.present_find(&result);
     }
 
     #[test]

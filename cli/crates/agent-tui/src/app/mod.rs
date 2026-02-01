@@ -1,12 +1,10 @@
 use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
-use regex::Regex;
 use serde::Serialize;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
-use std::sync::LazyLock;
 
 pub mod attach;
 pub mod commands;
@@ -14,8 +12,8 @@ pub mod daemon;
 pub mod error;
 pub mod handlers;
 
+use crate::adapters::call_no_params;
 use crate::adapters::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
-use crate::adapters::{RpcValue, call_no_params, call_with_params};
 use crate::app::commands::OutputFormat;
 use crate::app::daemon::start_daemon;
 use crate::common::DaemonError;
@@ -29,8 +27,6 @@ use crate::app::attach::AttachError;
 use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs, Shell};
 use crate::app::handlers::HandlerContext;
 
-static ELEMENT_REF_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^@(e|btn|inp)\d+$").expect("Invalid element ref regex"));
 const PROGRAM_NAME: &str = "agent-tui";
 
 /// Exit codes following sysexits.h and LSB init script conventions.
@@ -64,51 +60,6 @@ impl std::fmt::Display for DaemonNotRunningError {
 }
 
 impl std::error::Error for DaemonNotRunningError {}
-
-/// Validates element ref format: @e1, @btn2, @inp3, etc.
-fn is_element_ref(selector: &str) -> bool {
-    ELEMENT_REF_REGEX.is_match(selector)
-}
-
-/// Extracts text from a text selector like @"Yes, proceed" or @Submit.
-/// Returns an error for malformed quoted selectors.
-fn extract_text_selector(selector: &str) -> Result<Option<&str>, Box<dyn std::error::Error>> {
-    let Some(after_at) = selector.strip_prefix('@') else {
-        return Ok(None);
-    };
-
-    if after_at.starts_with('"') {
-        if !after_at.ends_with('"') || after_at.len() < 2 {
-            return Err(format!(
-                "Malformed quoted selector: {}. Missing closing quote.",
-                selector
-            )
-            .into());
-        }
-        let text = &after_at[1..after_at.len() - 1];
-        if text.is_empty() {
-            return Err("Text selector cannot be empty".into());
-        }
-        return Ok(Some(text));
-    }
-
-    if after_at.is_empty() {
-        return Err("Text selector cannot be empty".into());
-    }
-
-    Ok(Some(after_at))
-}
-
-/// Extracts element ref from find RPC result.
-fn extract_element_ref_from_result(result: &RpcValue) -> Option<String> {
-    result
-        .get("elements")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|el| el.get("ref"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-}
 
 #[derive(Debug, PartialEq, Eq)]
 enum CompletionStatus {
@@ -714,7 +665,6 @@ impl Application {
             )?,
 
             Commands::Screenshot {
-                elements,
                 accessibility,
                 interactive_only,
                 region,
@@ -724,69 +674,12 @@ impl Application {
                 if *accessibility {
                     handlers::handle_accessibility_snapshot(ctx, *interactive_only)?
                 } else {
-                    handlers::handle_snapshot(
-                        ctx,
-                        *elements,
-                        region.clone(),
-                        *strip_ansi,
-                        *include_cursor,
-                    )?
+                    handlers::handle_snapshot(ctx, region.clone(), *strip_ansi, *include_cursor)?
                 }
             }
 
-            Commands::Find { params } => handlers::handle_find(ctx, params.clone())?,
-            Commands::Count { params } => handlers::handle_count(
-                ctx,
-                params.role.clone(),
-                params.name.clone(),
-                params.text.clone(),
-            )?,
             Commands::Resize { cols, rows } => handlers::handle_resize(ctx, *cols, *rows)?,
             Commands::Restart => handlers::handle_restart(ctx)?,
-            Commands::ScrollIntoView { element_ref } => {
-                handlers::handle_scroll_into_view(ctx, element_ref.clone())?
-            }
-
-            Commands::Action {
-                element_ref,
-                operation,
-            } => {
-                use crate::app::commands::{ActionOperation, ToggleState};
-                match operation.as_ref() {
-                    None | Some(ActionOperation::Click) => {
-                        handlers::handle_click(ctx, element_ref.clone())?
-                    }
-                    Some(ActionOperation::DblClick) => {
-                        handlers::handle_dbl_click(ctx, element_ref.clone())?
-                    }
-                    Some(ActionOperation::Fill { value }) => {
-                        handlers::handle_fill(ctx, element_ref.clone(), value.clone())?
-                    }
-                    Some(ActionOperation::Select { options }) => {
-                        handlers::handle_select(ctx, element_ref.clone(), options.clone())?
-                    }
-                    Some(ActionOperation::Toggle { state }) => {
-                        let state_bool = match state {
-                            Some(ToggleState::On) => Some(true),
-                            Some(ToggleState::Off) => Some(false),
-                            None => None,
-                        };
-                        handlers::handle_toggle(ctx, element_ref.clone(), state_bool)?
-                    }
-                    Some(ActionOperation::Focus) => {
-                        handlers::handle_focus(ctx, element_ref.clone())?
-                    }
-                    Some(ActionOperation::Clear) => {
-                        handlers::handle_clear(ctx, element_ref.clone())?
-                    }
-                    Some(ActionOperation::SelectAll) => {
-                        handlers::handle_select_all(ctx, element_ref.clone())?
-                    }
-                    Some(ActionOperation::Scroll { direction, amount }) => {
-                        handlers::handle_scroll(ctx, *direction, *amount)?
-                    }
-                }
-            }
 
             Commands::Press { keys } => {
                 const PRESS_INTER_KEY_DELAY_MS: u64 = 50;
@@ -816,6 +709,10 @@ impl Application {
                 } else {
                     handlers::handle_type(ctx, value.clone())?
                 }
+            }
+
+            Commands::Scroll { direction, amount } => {
+                handlers::handle_scroll(ctx, *direction, *amount)?
             }
 
             Commands::Wait { params } => handlers::handle_wait(ctx, params.clone())?,
@@ -852,109 +749,8 @@ impl Application {
 
             Commands::Version => handlers::handle_version(ctx)?,
             Commands::Env => handlers::handle_env(ctx.format)?,
-
-            Commands::External(args) => self.dispatch_selector_action(ctx, args)?,
         }
         Ok(())
-    }
-
-    fn dispatch_selector_action<C: DaemonClient>(
-        &self,
-        ctx: &mut HandlerContext<C>,
-        args: &[String],
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if args.is_empty() {
-            return Err("No element selector provided".into());
-        }
-
-        if !args[0].starts_with('@') && !args[0].starts_with(':') {
-            return Err(format!(
-                "Unknown command: {}. Run 'agent-tui --help' to see available commands.",
-                args[0]
-            )
-            .into());
-        }
-
-        let element_ref = self.resolve_selector(ctx, &args[0])?;
-
-        match args.get(1).map(|s| s.as_str()) {
-            None => handlers::handle_click(ctx, element_ref)?,
-            Some("toggle") => {
-                let state = match args.get(2).map(|s| s.as_str()) {
-                    Some("on") => Some(true),
-                    Some("off") => Some(false),
-                    _ => None,
-                };
-                handlers::handle_toggle(ctx, element_ref, state)?
-            }
-            Some("choose") => {
-                let options: Vec<String> = args[2..].to_vec();
-                if options.is_empty() {
-                    return Err("choose requires at least one option".into());
-                }
-                handlers::handle_select(ctx, element_ref, options)?
-            }
-            Some("clear") => handlers::handle_clear(ctx, element_ref)?,
-            Some("focus") => handlers::handle_focus(ctx, element_ref)?,
-            Some("fill") => {
-                let value = args.get(2).ok_or("fill requires a value")?;
-                handlers::handle_fill(ctx, element_ref, value.to_string())?
-            }
-            Some(value) => handlers::handle_fill(ctx, element_ref, value.to_string())?,
-        }
-        Ok(())
-    }
-
-    fn resolve_selector<C: DaemonClient>(
-        &self,
-        ctx: &mut HandlerContext<C>,
-        selector: &str,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        if is_element_ref(selector) {
-            return Ok(selector.to_string());
-        }
-
-        if let Some(text) = selector.strip_prefix(':') {
-            if text.is_empty() {
-                return Err("Partial text selector cannot be empty".into());
-            }
-            return self.find_element_by_text(ctx, text, false);
-        }
-
-        if let Some(text) = extract_text_selector(selector)? {
-            return self.find_element_by_text(ctx, text, true);
-        }
-
-        Err(format!(
-            "Invalid selector: {}. Use @e1, @\"text\", or :partial",
-            selector
-        )
-        .into())
-    }
-
-    fn find_element_by_text<C: DaemonClient>(
-        &self,
-        ctx: &mut HandlerContext<C>,
-        text: &str,
-        exact: bool,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        use crate::adapters::ipc::params;
-
-        let find_params = params::FindParams {
-            session: ctx.session.clone(),
-            text: Some(text.to_string()),
-            exact,
-            nth: Some(0),
-            ..Default::default()
-        };
-        let result = call_with_params(ctx.client, "find", find_params)?;
-
-        if let Some(ref_str) = extract_element_ref_from_result(&result) {
-            return Ok(ref_str);
-        }
-
-        let match_type = if exact { "exact" } else { "partial" };
-        Err(format!("No element found with {} text: {}", match_type, text).into())
     }
 
     fn handle_error(&self, e: Box<dyn std::error::Error>) -> i32 {
@@ -1183,132 +979,6 @@ fn exit_code_for_client_error(error: &ClientError) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    mod is_element_ref_tests {
-        use super::*;
-
-        #[test]
-        fn valid_element_refs() {
-            assert!(is_element_ref("@e1"));
-            assert!(is_element_ref("@e42"));
-            assert!(is_element_ref("@btn1"));
-            assert!(is_element_ref("@btn999"));
-            assert!(is_element_ref("@inp1"));
-            assert!(is_element_ref("@inp123"));
-        }
-
-        #[test]
-        fn invalid_element_refs() {
-            assert!(!is_element_ref("@e"));
-            assert!(!is_element_ref("@btn"));
-            assert!(!is_element_ref("@inp"));
-            assert!(!is_element_ref("@elephant"));
-            assert!(!is_element_ref("@button"));
-            assert!(!is_element_ref("@e1a"));
-            assert!(!is_element_ref("e1"));
-            assert!(!is_element_ref("@E1"));
-            assert!(!is_element_ref("@Submit"));
-            assert!(!is_element_ref(":Submit"));
-        }
-    }
-
-    mod extract_text_selector_tests {
-        use super::*;
-
-        #[test]
-        fn quoted_text_selector() {
-            assert_eq!(
-                extract_text_selector("@\"Yes, proceed\"").unwrap(),
-                Some("Yes, proceed")
-            );
-            assert_eq!(
-                extract_text_selector("@\"Submit\"").unwrap(),
-                Some("Submit")
-            );
-        }
-
-        #[test]
-        fn unquoted_text_selector() {
-            assert_eq!(extract_text_selector("@Submit").unwrap(), Some("Submit"));
-            assert_eq!(
-                extract_text_selector("@Yes, proceed").unwrap(),
-                Some("Yes, proceed")
-            );
-        }
-
-        #[test]
-        fn malformed_quoted_selector_missing_end_quote() {
-            let result = extract_text_selector("@\"Missing end");
-            assert!(result.is_err());
-            assert!(
-                result
-                    .unwrap_err()
-                    .to_string()
-                    .contains("Missing closing quote")
-            );
-        }
-
-        #[test]
-        fn empty_quoted_selector() {
-            let result = extract_text_selector("@\"\"");
-            assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("cannot be empty"));
-        }
-
-        #[test]
-        fn empty_unquoted_selector() {
-            let result = extract_text_selector("@");
-            assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("cannot be empty"));
-        }
-
-        #[test]
-        fn non_at_prefix_returns_none() {
-            assert_eq!(extract_text_selector(":Submit").unwrap(), None);
-            assert_eq!(extract_text_selector("Submit").unwrap(), None);
-        }
-    }
-
-    mod extract_element_ref_from_result_tests {
-        use super::*;
-
-        fn parse_result(input: &str) -> RpcValue {
-            RpcValue::new(serde_json::from_str(input).expect("valid json"))
-        }
-
-        #[test]
-        fn extracts_ref_from_valid_result() {
-            let result = parse_result(r#"{"elements":[{"ref":"@e1","text":"Submit"}]}"#);
-            assert_eq!(
-                extract_element_ref_from_result(&result),
-                Some("@e1".to_string())
-            );
-        }
-
-        #[test]
-        fn returns_none_for_empty_elements() {
-            let result = parse_result(r#"{"elements":[]}"#);
-            assert_eq!(extract_element_ref_from_result(&result), None);
-        }
-
-        #[test]
-        fn returns_none_for_missing_ref() {
-            let result = parse_result(r#"{"elements":[{"text":"Submit"}]}"#);
-            assert_eq!(extract_element_ref_from_result(&result), None);
-        }
-
-        #[test]
-        fn returns_none_for_null_ref() {
-            let result = parse_result(r#"{"elements":[{"ref":null}]}"#);
-            assert_eq!(extract_element_ref_from_result(&result), None);
-        }
-
-        #[test]
-        fn returns_none_for_missing_elements() {
-            let result = parse_result(r#"{"success":true}"#);
-            assert_eq!(extract_element_ref_from_result(&result), None);
-        }
-    }
 
     mod daemon_standalone_tests {
         use super::*;

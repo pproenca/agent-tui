@@ -27,7 +27,6 @@ use uuid::Uuid;
 use crate::common::mutex_lock_or_recover;
 use crate::common::rwlock_read_or_recover;
 use crate::common::rwlock_write_or_recover;
-use crate::domain::core::Element;
 use crate::infra::terminal::CursorPosition;
 use crate::infra::terminal::key_to_escape_sequence;
 use crate::infra::terminal::render_screen;
@@ -481,19 +480,6 @@ impl Session {
         self.terminal.cursor()
     }
 
-    pub fn detect_elements(&mut self) -> &[Element] {
-        let cursor = self.terminal.cursor();
-        self.terminal.detect_elements(&cursor)
-    }
-
-    pub fn cached_elements(&self) -> &[Element] {
-        self.terminal.cached_elements()
-    }
-
-    pub fn find_element(&self, element_ref: &str) -> Option<&Element> {
-        self.terminal.find_element(element_ref)
-    }
-
     pub fn keystroke(&self, key: &str) -> Result<(), SessionError> {
         let seq =
             key_to_escape_sequence(key).ok_or_else(|| SessionError::InvalidKey(key.to_string()))?;
@@ -525,24 +511,6 @@ impl Session {
 
     pub fn type_text(&self, text: &str) -> Result<(), SessionError> {
         self.pty.write_str(text)?;
-        Ok(())
-    }
-
-    pub fn click(&mut self, element_ref: &str) -> Result<(), SessionError> {
-        self.detect_elements();
-        let element = self
-            .find_element(element_ref)
-            .ok_or_else(|| SessionError::ElementNotFound(element_ref.to_string()))?;
-
-        match element.element_type.as_str() {
-            "checkbox" | "radio" => {
-                self.pty.write(b" ")?;
-            }
-            _ => {
-                self.pty.write(b"\r")?;
-            }
-        }
-
         Ok(())
     }
 

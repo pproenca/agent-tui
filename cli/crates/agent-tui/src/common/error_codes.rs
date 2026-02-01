@@ -4,9 +4,6 @@ pub const SESSION_LIMIT: i32 = -32006;
 pub const LOCK_TIMEOUT: i32 = -32007;
 pub const SESSION_ALREADY_EXISTS: i32 = -32018;
 
-pub const ELEMENT_NOT_FOUND: i32 = -32003;
-pub const WRONG_ELEMENT_TYPE: i32 = -32004;
-
 pub const INVALID_KEY: i32 = -32005;
 pub const PTY_ERROR: i32 = -32008;
 
@@ -76,10 +73,8 @@ pub fn is_retryable(code: i32) -> bool {
 
 pub fn category_for_code(code: i32) -> ErrorCategory {
     match code {
-        SESSION_NOT_FOUND | NO_ACTIVE_SESSION | ELEMENT_NOT_FOUND | LIVE_PREVIEW_NOT_RUNNING => {
-            ErrorCategory::NotFound
-        }
-        WRONG_ELEMENT_TYPE | INVALID_KEY | SESSION_ALREADY_EXISTS | LIVE_PREVIEW_INVALID_LISTEN => {
+        SESSION_NOT_FOUND | NO_ACTIVE_SESSION | LIVE_PREVIEW_NOT_RUNNING => ErrorCategory::NotFound,
+        INVALID_KEY | SESSION_ALREADY_EXISTS | LIVE_PREVIEW_INVALID_LISTEN => {
             ErrorCategory::InvalidInput
         }
         SESSION_LIMIT | LOCK_TIMEOUT | LIVE_PREVIEW_ALREADY_RUNNING => ErrorCategory::Busy,
@@ -112,11 +107,6 @@ mod tests {
     }
 
     #[test]
-    fn test_not_retryable_element_not_found() {
-        assert!(!is_retryable(ELEMENT_NOT_FOUND));
-    }
-
-    #[test]
     fn test_category_for_code_not_found() {
         assert_eq!(
             category_for_code(SESSION_NOT_FOUND),
@@ -126,18 +116,10 @@ mod tests {
             category_for_code(NO_ACTIVE_SESSION),
             ErrorCategory::NotFound
         );
-        assert_eq!(
-            category_for_code(ELEMENT_NOT_FOUND),
-            ErrorCategory::NotFound
-        );
     }
 
     #[test]
     fn test_category_for_code_invalid_input() {
-        assert_eq!(
-            category_for_code(WRONG_ELEMENT_TYPE),
-            ErrorCategory::InvalidInput
-        );
         assert_eq!(category_for_code(INVALID_KEY), ErrorCategory::InvalidInput);
     }
 

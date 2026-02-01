@@ -12,8 +12,6 @@ pub use app::Application;
 pub use adapters::ipc::ClientError;
 pub use adapters::ipc::DaemonClient;
 pub use common::Colors;
-pub use domain::core::Element;
-pub use domain::core::ElementType;
 pub use infra::daemon::Session;
 pub use infra::daemon::SessionError;
 pub use infra::daemon::SessionId;

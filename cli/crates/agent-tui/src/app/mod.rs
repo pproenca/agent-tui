@@ -668,9 +668,7 @@ impl Application {
                 region,
                 strip_ansi,
                 include_cursor,
-            } => {
-                handlers::handle_snapshot(ctx, region.clone(), *strip_ansi, *include_cursor)?
-            }
+            } => handlers::handle_snapshot(ctx, region.clone(), *strip_ansi, *include_cursor)?,
 
             Commands::Resize { cols, rows } => handlers::handle_resize(ctx, *cols, *rows)?,
             Commands::Restart => handlers::handle_restart(ctx)?,

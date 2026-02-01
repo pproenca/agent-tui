@@ -50,14 +50,6 @@ pub enum SessionError {
     NoActiveSession,
     #[error("PTY error: {0}")]
     Pty(#[from] PtyError),
-    #[error("Element not found: {0}")]
-    ElementNotFound(String),
-    #[error("Element {element_ref} is a {actual} not a {expected}")]
-    WrongElementType {
-        element_ref: String,
-        actual: String,
-        expected: String,
-    },
     #[error("Invalid key: {0}")]
     InvalidKey(String),
     #[error("Session limit reached: maximum {0} sessions allowed")]

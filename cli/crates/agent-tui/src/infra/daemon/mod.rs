@@ -18,7 +18,6 @@ pub use lock_helpers::MAX_BACKOFF;
 pub use lock_helpers::acquire_session_lock;
 pub use metrics::DaemonMetrics;
 pub use pty_session::PtySession;
-pub use repository::SessionSnapshot;
 pub use session::DEFAULT_MAX_SESSIONS;
 pub use session::PersistedSession;
 pub use session::Session;

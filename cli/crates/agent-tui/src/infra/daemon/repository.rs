@@ -5,7 +5,6 @@ use std::sync::Mutex;
 use crate::common::mutex_lock_or_recover;
 use crate::domain::core::Component;
 use crate::domain::core::CursorPosition;
-use crate::domain::core::Element;
 use crate::usecases::ports::{
     LivePreviewSnapshot, SessionError, SessionHandle, SessionOps, SessionRepository, StreamCursor,
     StreamRead,
@@ -60,16 +59,6 @@ impl SessionOps for SessionHandleImpl {
         session_guard.screen_render()
     }
 
-    fn detect_elements(&self) -> Vec<Element> {
-        let mut session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.detect_elements().to_vec()
-    }
-
-    fn find_element(&self, element_ref: &str) -> Option<Element> {
-        let session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.find_element(element_ref).cloned()
-    }
-
     fn pty_write(&self, data: &[u8]) -> Result<(), SessionError> {
         let session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.pty_write(data)
@@ -99,12 +88,6 @@ impl SessionOps for SessionHandleImpl {
     fn analyze_screen(&self) -> Vec<Component> {
         let session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.analyze_screen()
-    }
-
-    fn click(&self, element_ref: &str) -> Result<(), SessionError> {
-        self.update()?;
-        let mut session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.click(element_ref)
     }
 
     fn keystroke(&self, key: &str) -> Result<(), SessionError> {
@@ -212,14 +195,6 @@ impl SessionRepository for SessionManager {
     fn active_session_id(&self) -> Option<SessionId> {
         SessionManager::active_session_id(self)
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct SessionSnapshot {
-    pub session_id: SessionId,
-    pub screen: String,
-    pub elements: Vec<Element>,
-    pub cursor: CursorPosition,
 }
 
 #[cfg(test)]

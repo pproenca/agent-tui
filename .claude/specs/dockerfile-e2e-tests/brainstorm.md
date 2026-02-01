@@ -40,17 +40,17 @@
 - Description: Interactive process viewer, widely available
 - Pros:
   - Available in every Linux distro
-  - Has recognizable UI elements (meters, process list, F-key buttons)
+  - Has recognizable UI components (meters, process list, F-key buttons)
   - Simple to install (`apt install htop`)
   - No configuration needed
 - Cons:
   - Static output - limited interaction possibilities
-  - Elements may vary by version/distro
+  - Components may vary by version/distro
 
 #### Approach B: vim/neovim
 - Description: Classic text editor with rich TUI
 - Pros:
-  - Complex TUI with many element types
+  - Complex TUI with many component types
   - Highly interactive (modes, buffers, splits)
   - Tests real-world editing workflows
   - Neovim has better defaults
@@ -62,7 +62,7 @@
 #### Approach C: lazygit
 - Description: Terminal UI for git commands
 - Pros:
-  - Modern, attractive TUI with clear elements
+  - Modern, attractive TUI with clear components
   - Rich interaction (panels, popups, confirmations)
   - Relevant to developer workflows
   - Good VOM test coverage (buttons, tabs, panels)
@@ -78,7 +78,7 @@
   - Standard in many distros
 - Cons:
   - Less visually interesting
-  - Fewer element types to test
+  - Fewer component types to test
 
 #### Approach E: midnight commander (mc)
 - Description: File manager with two-panel interface
@@ -94,7 +94,7 @@
 #### Approach F: Multiple TUIs (comprehensive suite)
 - Description: Test against several TUIs for broader coverage
 - Pros:
-  - Better VOM coverage across element types
+  - Better VOM coverage across component types
   - More realistic test scenarios
   - Find edge cases across different rendering approaches
 - Cons:
@@ -129,18 +129,18 @@
 
 ### Known risks
 - Docker + PTY interaction can be tricky
-- VOM element detection may differ in container
+- VOM component classification may differ in container
 - Test timing/stability with real TUI startup
 
 ### Open questions
-- [ ] Which TUI provides best element variety for VOM testing?
+- [ ] Which TUI provides best component variety for VOM testing?
 - [ ] Should we pre-compile the binary or compile in container?
 - [ ] How to handle TUI startup delays/readiness detection?
 - [ ] Should we use alpine or debian base image?
 - [ ] How to structure test scripts for different TUIs?
 
 ### Needs research/prototyping
-- htop/lazygit/vim element detection with current VOM
+- htop/lazygit/vim component classification with current VOM
 - PTY behavior in Docker containers
 - Test isolation within container
 
@@ -149,7 +149,7 @@
 ### Must-haves
 - [ ] Dockerfile builds successfully
 - [ ] Container runs agent-tui daemon
-- [ ] At least one TUI test passes (spawn, snapshot, element detection)
+- [ ] At least one TUI test passes (spawn, snapshot, component classification)
 - [ ] Works on developer machines and CI
 
 ### Nice-to-haves
@@ -160,7 +160,7 @@
 
 ### Metrics
 - Test execution time in container
-- Element detection accuracy vs native
+- Component classification accuracy vs native
 - Image size (smaller = better)
 
 ## Raw Ideas
@@ -181,7 +181,7 @@
 - `RealTestHarness` in `common/real_test_harness.rs` - spawns isolated daemon
 - Tests use unique sockets: `/tmp/agent-tui-test-{UUID}.sock`
 - Bash is primary test TUI currently
-- VOM detects: Button, Tab, Input, StaticText, Panel, Checkbox, MenuItem
+- VOM classifies components: Button, Tab, Input, StaticText, Panel, Checkbox, MenuItem
 
 ### Build System
 - Workspace with multiple crates

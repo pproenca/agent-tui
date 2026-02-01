@@ -237,40 +237,21 @@ impl MockDaemon {
                 MockResponse::Success(serde_json::json!({
                     "session_id": super::TEST_SESSION_ID,
                     "screenshot": "Test screen content\n",
-                    "elements": [],
-                    "cursor": { "row": 0, "col": 0, "visible": true },
-                    "size": { "cols": super::TEST_COLS, "rows": super::TEST_ROWS }
+                    "cursor": { "row": 0, "col": 0, "visible": true }
                 })),
             );
             h.insert(
                 "accessibility_snapshot".to_string(),
                 MockResponse::Success(serde_json::json!({
                     "session_id": super::TEST_SESSION_ID,
-                    "tree": "- button \"OK\" [ref=e1]\n- textbox \"Input\" [ref=e2]",
-                    "refs": {
-                        "e1": { "row": 5, "col": 10, "width": 4, "height": 1 },
-                        "e2": { "row": 7, "col": 10, "width": 20, "height": 1 }
-                    },
-                    "stats": {
-                        "total_elements": 2,
-                        "interactive_elements": 2,
-                        "filtered_elements": 0
+                    "snapshot": {
+                        "tree": "- button \"OK\"\n- textbox \"Input\"",
+                        "stats": {
+                            "total": 2,
+                            "interactive": 2,
+                            "lines": 2
+                        }
                     }
-                })),
-            );
-
-            h.insert(
-                "click".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "message": null
-                })),
-            );
-            h.insert(
-                "fill".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "message": null
                 })),
             );
             h.insert(
@@ -300,94 +281,9 @@ impl MockDaemon {
                 })),
             );
             h.insert(
-                "get_value".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "ref": "@inp1",
-                    "value": "test-value",
-                    "found": true
-                })),
-            );
-            h.insert(
-                "get_text".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "ref": "@btn1",
-                    "text": "Test Text",
-                    "found": true
-                })),
-            );
-            h.insert(
-                "is_visible".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "visible": true,
-                    "ref": "@btn1"
-                })),
-            );
-            h.insert(
-                "is_focused".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "ref": "@inp1",
-                    "focused": true,
-                    "found": true
-                })),
-            );
-            h.insert(
-                "is_enabled".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "ref": "@btn1",
-                    "enabled": true,
-                    "found": true
-                })),
-            );
-            h.insert(
-                "is_checked".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "ref": "@cb1",
-                    "checked": true,
-                    "found": true
-                })),
-            );
-            h.insert(
-                "count".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "count": 5
-                })),
-            );
-            h.insert(
-                "focus".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "ref": "@inp1"
-                })),
-            );
-            h.insert(
-                "clear".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "ref": "@inp1"
-                })),
-            );
-            h.insert(
-                "select".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "ref": "@sel1",
-                    "option": "option1"
-                })),
-            );
-            h.insert(
                 "scroll".to_string(),
                 MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "direction": "down",
-                    "amount": 5
-                })),
-            );
-            h.insert(
-                "toggle".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "message": null,
-                    "checked": true
+                    "success": true
                 })),
             );
             h.insert(
@@ -395,21 +291,16 @@ impl MockDaemon {
                 MockResponse::Success(serde_json::json!({
                     "success": true,
                     "session_id": super::TEST_SESSION_ID,
-                    "size": { "cols": super::TEST_COLS, "rows": super::TEST_ROWS }
+                    "cols": super::TEST_COLS,
+                    "rows": super::TEST_ROWS
                 })),
             );
             h.insert(
                 "attach".to_string(),
                 MockResponse::Success(serde_json::json!({
+                    "session_id": super::TEST_SESSION_ID,
                     "success": true,
-                    "session": super::TEST_SESSION_ID
-                })),
-            );
-            h.insert(
-                "find".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "elements": [],
-                    "count": 0
+                    "message": null
                 })),
             );
             h.insert(
@@ -425,51 +316,12 @@ impl MockDaemon {
                 })),
             );
             h.insert(
-                "scroll_into_view".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "message": null
-                })),
-            );
-            h.insert(
-                "multiselect".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "message": null,
-                    "selected_options": ["option1", "option2"]
-                })),
-            );
-            h.insert(
-                "dbl_click".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "message": null
-                })),
-            );
-            h.insert(
                 "restart".to_string(),
                 MockResponse::Success(serde_json::json!({
-                    "success": true,
                     "old_session_id": super::TEST_SESSION_ID,
                     "new_session_id": "new-session-xyz789",
                     "command": "bash",
                     "pid": super::TEST_PID
-                })),
-            );
-            h.insert(
-                "select_all".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true,
-                    "ref": "@inp1"
-                })),
-            );
-            h.insert(
-                "get_focused".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "ref": "@inp1",
-                    "type": "input",
-                    "label": "Name",
-                    "found": true
                 })),
             );
             h.insert(

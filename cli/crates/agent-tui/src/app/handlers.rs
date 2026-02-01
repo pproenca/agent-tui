@@ -18,9 +18,8 @@ use crate::adapters::ipc::socket_path;
 use crate::adapters::{RpcValue, RpcValueRef, call_no_params, call_with_params};
 use crate::common::Colors;
 
-use crate::adapters::presenter::{ElementView, Presenter, create_presenter};
+use crate::adapters::presenter::{Presenter, create_presenter};
 use crate::app::attach::DetachKeys;
-use crate::app::commands::FindParams;
 use crate::app::commands::LiveStartArgs;
 use crate::app::commands::OutputFormat;
 use crate::app::commands::ScrollDirection;
@@ -56,46 +55,16 @@ macro_rules! key_handler {
     };
 }
 
-macro_rules! ref_action_handler {
-    ($name:ident, $method:literal, $success:expr, $failure:literal) => {
-        pub fn $name<C: DaemonClient>(
-            ctx: &mut HandlerContext<C>,
-            element_ref: String,
-        ) -> HandlerResult {
-            ctx.call_ref_action($method, &element_ref, &$success(&element_ref), $failure)
-        }
-    };
-}
-
-pub fn resolve_wait_condition(params: &WaitParams) -> (Option<String>, Option<String>) {
+pub fn resolve_wait_condition(params: &WaitParams) -> Option<String> {
     if params.stable {
-        return (Some("stable".to_string()), None);
+        return Some("stable".to_string());
     }
 
-    if let Some(ref elem) = params.element {
-        let condition = if params.gone {
-            "not_visible"
-        } else {
-            "element"
-        };
-        return (Some(condition.to_string()), Some(elem.clone()));
+    if params.text.is_some() && params.gone {
+        return Some("text_gone".to_string());
     }
 
-    if let Some(ref elem) = params.focused {
-        return (Some("focused".to_string()), Some(elem.clone()));
-    }
-
-    if let Some(ref val) = params.value {
-        return (Some("value".to_string()), Some(val.clone()));
-    }
-
-    if let Some(ref txt) = params.text {
-        if params.gone {
-            return (Some("text_gone".to_string()), Some(txt.clone()));
-        }
-    }
-
-    (None, None)
+    None
 }
 
 pub struct HandlerContext<'a, C: DaemonClient> {
@@ -164,22 +133,6 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         Ok(true)
     }
 
-    fn call_ref_action(
-        &mut self,
-        method: &str,
-        element_ref: &str,
-        success_msg: &str,
-        failure_prefix: &str,
-    ) -> HandlerResult {
-        let params = params::ElementRefParams {
-            element_ref: element_ref.to_string(),
-            session: self.session.clone(),
-        };
-        let result = call_with_params(self.client, method, params)?;
-        self.output_success_result(&result, success_msg, failure_prefix)?;
-        Ok(())
-    }
-
     fn output_json_or<F>(&self, result: &RpcValue, text_fn: F) -> HandlerResult
     where
         F: FnOnce(),
@@ -243,14 +196,12 @@ pub fn handle_spawn<C: DaemonClient>(
 
 pub fn handle_snapshot<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
-    elements: bool,
     region: Option<String>,
     strip_ansi: bool,
     include_cursor: bool,
 ) -> HandlerResult {
     let rpc_params = params::SnapshotParams {
         session: ctx.session.clone(),
-        include_elements: elements,
         region,
         strip_ansi,
         include_cursor,
@@ -263,31 +214,6 @@ pub fn handle_snapshot<C: DaemonClient>(
             println!("{}", result.to_pretty_json());
         }
         OutputFormat::Text => {
-            if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
-                if !elements.is_empty() {
-                    println!("{}", Colors::bold("Elements:"));
-                    for el in elements.iter() {
-                        let ev = ElementView(el);
-                        let (row, col) = ev.position();
-                        let value = ev
-                            .value()
-                            .map(|v| format!(" \"{}\"", v))
-                            .unwrap_or_default();
-
-                        println!(
-                            "{} [{}{}]{} {}{}{}",
-                            Colors::element_ref(ev.ref_str()),
-                            ev.el_type(),
-                            ev.label_suffix(),
-                            value,
-                            Colors::dim(&format!("({},{})", row, col)),
-                            ev.focused_indicator(),
-                            ev.selected_indicator()
-                        );
-                    }
-                    println!();
-                }
-            }
             println!("{}", Colors::bold("Screenshot:"));
             if let Some(screenshot) = result.get("screenshot").and_then(|v| v.as_str()) {
                 println!("{}", screenshot);
@@ -323,39 +249,16 @@ pub fn handle_accessibility_snapshot<C: DaemonClient>(
             println!("{}", result.to_pretty_json());
         }
         OutputFormat::Text => {
-            if let Some(tree) = result.get("tree").and_then(|v| v.as_str()) {
+            if let Some(tree) = result
+                .get("snapshot")
+                .and_then(|v| v.get("tree"))
+                .and_then(|v| v.as_str())
+            {
                 println!("{}", tree);
             }
         }
     }
     Ok(())
-}
-
-ref_action_handler!(
-    handle_click,
-    "click",
-    |_: &String| "Clicked successfully".to_string(),
-    "Click failed"
-);
-ref_action_handler!(
-    handle_dbl_click,
-    "dbl_click",
-    |_: &String| "Double-clicked successfully".to_string(),
-    "Double-click failed"
-);
-
-pub fn handle_fill<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-    value: String,
-) -> HandlerResult {
-    let params = params::FillParams {
-        element_ref,
-        value,
-        session: ctx.session.clone(),
-    };
-    let result = call_with_params(ctx.client, "fill", params)?;
-    ctx.output_success_and_ok(&result, "Filled successfully", "Fill failed")
 }
 
 key_handler!(handle_press, "keystroke", |_: &String| "Key pressed"
@@ -384,13 +287,12 @@ pub fn handle_wait<C: DaemonClient>(
 ) -> HandlerResult {
     use crate::adapters::presenter::WaitResult;
 
-    let (cond, tgt) = resolve_wait_condition(&wait_params);
+    let cond = resolve_wait_condition(&wait_params);
     let rpc_params = params::WaitParams {
         session: ctx.session.clone(),
         text: wait_params.text.clone(),
         timeout_ms: wait_params.timeout,
         condition: cond,
-        target: tgt,
     };
     let result = call_with_params(ctx.client, "wait", rpc_params)?;
 
@@ -1350,114 +1252,6 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
     Ok(())
 }
 
-pub fn handle_find<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    find_params: FindParams,
-) -> HandlerResult {
-    let focused_opt = if find_params.focused {
-        Some(true)
-    } else {
-        None
-    };
-
-    let rpc_params = params::FindParams {
-        session: ctx.session.clone(),
-        role: find_params.role,
-        name: find_params.name,
-        text: find_params.text,
-        placeholder: find_params.placeholder,
-        focused: focused_opt,
-        nth: find_params.nth,
-        exact: find_params.exact,
-    };
-    let result = call_with_params(ctx.client, "find", rpc_params)?;
-
-    match ctx.format {
-        OutputFormat::Json => ctx.presenter().present_value(&result),
-        OutputFormat::Text => {
-            let find_result = crate::adapters::presenter::FindResult::from_json(&result);
-            ctx.presenter().present_find(&find_result);
-        }
-    }
-    Ok(())
-}
-
-pub fn handle_select<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-    options: Vec<String>,
-) -> HandlerResult {
-    if options.len() == 1 {
-        handle_select_single(ctx, element_ref, options.into_iter().next().unwrap())
-    } else {
-        handle_select_multiple(ctx, element_ref, options)
-    }
-}
-
-fn handle_select_single<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-    option: String,
-) -> HandlerResult {
-    let params = params::SelectParams {
-        element_ref,
-        option: option.clone(),
-        session: ctx.session.clone(),
-    };
-    let result = call_with_params(ctx.client, "select", params)?;
-    ctx.output_success_and_ok(&result, &format!("Selected: {}", option), "Select failed")
-}
-
-fn handle_select_multiple<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-    options: Vec<String>,
-) -> HandlerResult {
-    let params = params::MultiselectParams {
-        element_ref,
-        options,
-        session: ctx.session.clone(),
-    };
-    let result = call_with_params(ctx.client, "multiselect", params)?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            if result.bool_or("success", false) {
-                println!("{}", result.to_pretty_json());
-            } else {
-                let msg = result.str_or("message", "Unknown error");
-                let message = format!("Multiselect failed: {}", msg);
-                return Err(CliError::new(
-                    ctx.format,
-                    message,
-                    Some(result.to_pretty_json()),
-                    super::exit_codes::GENERAL_ERROR,
-                )
-                .into());
-            }
-        }
-        OutputFormat::Text => {
-            if result.bool_or("success", false) {
-                println!(
-                    "Selected: {}",
-                    result.str_array_join("selected_options", ", ")
-                );
-            } else {
-                let msg = result.str_or("message", "Unknown error");
-                let message = format!("Multiselect failed: {}", msg);
-                return Err(CliError::new(
-                    ctx.format,
-                    message,
-                    Some(result.to_pretty_json()),
-                    super::exit_codes::GENERAL_ERROR,
-                )
-                .into());
-            }
-        }
-    }
-    Ok(())
-}
-
 pub fn handle_scroll<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     direction: ScrollDirection,
@@ -1475,147 +1269,6 @@ pub fn handle_scroll<C: DaemonClient>(
         &format!("Scrolled {} {} times", dir_str, amount),
         "Scroll failed",
     )
-}
-
-pub fn handle_scroll_into_view<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-) -> HandlerResult {
-    let element_ref_display = element_ref.clone();
-    let params = params::ElementRefParams {
-        element_ref,
-        session: ctx.session.clone(),
-    };
-    let result = call_with_params(ctx.client, "scroll_into_view", params)?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            if result.bool_or("success", false) {
-                println!("{}", result.to_pretty_json());
-            } else {
-                let msg = result.str_or("message", "Element not found");
-                let message = format!("Scroll into view failed: {}", msg);
-                return Err(CliError::new(
-                    ctx.format,
-                    message,
-                    Some(result.to_pretty_json()),
-                    super::exit_codes::GENERAL_ERROR,
-                )
-                .into());
-            }
-        }
-        OutputFormat::Text => {
-            if result.bool_or("success", false) {
-                println!(
-                    "Scrolled to {} ({} scrolls)",
-                    element_ref_display,
-                    result.u64_or("scrolls_needed", 0)
-                );
-            } else {
-                let msg = result.str_or("message", "Element not found");
-                let message = format!("Scroll into view failed: {}", msg);
-                return Err(CliError::new(
-                    ctx.format,
-                    message,
-                    Some(result.to_pretty_json()),
-                    super::exit_codes::GENERAL_ERROR,
-                )
-                .into());
-            }
-        }
-    }
-    Ok(())
-}
-
-ref_action_handler!(
-    handle_focus,
-    "focus",
-    |r: &String| format!("Focused: {}", r),
-    "Focus failed"
-);
-ref_action_handler!(
-    handle_clear,
-    "clear",
-    |r: &String| format!("Cleared: {}", r),
-    "Clear failed"
-);
-ref_action_handler!(
-    handle_select_all,
-    "select_all",
-    |r: &String| format!("Selected all in: {}", r),
-    "Select all failed"
-);
-
-pub fn handle_count<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    role: Option<String>,
-    name: Option<String>,
-    text: Option<String>,
-) -> HandlerResult {
-    let rpc_params = params::CountParams {
-        session: ctx.session.clone(),
-        role,
-        name,
-        text,
-    };
-    let result = call_with_params(ctx.client, "count", rpc_params)?;
-
-    ctx.output_json_or(&result, || {
-        println!("{}", result.u64_or("count", 0));
-    })
-}
-
-pub fn handle_toggle<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    element_ref: String,
-    state: Option<bool>,
-) -> HandlerResult {
-    let element_ref_display = element_ref.clone();
-    let params = params::ToggleParams {
-        element_ref,
-        state,
-        session: ctx.session.clone(),
-    };
-    let result = call_with_params(ctx.client, "toggle", params)?;
-
-    match ctx.format {
-        OutputFormat::Json => {
-            if result.bool_or("success", false) {
-                println!("{}", result.to_pretty_json());
-            } else {
-                let msg = result.str_or("message", "Unknown error");
-                let message = format!("Toggle failed: {}", msg);
-                return Err(CliError::new(
-                    ctx.format,
-                    message,
-                    Some(result.to_pretty_json()),
-                    super::exit_codes::GENERAL_ERROR,
-                )
-                .into());
-            }
-        }
-        OutputFormat::Text => {
-            if result.bool_or("success", false) {
-                let state = if result.bool_or("checked", true) {
-                    "checked"
-                } else {
-                    "unchecked"
-                };
-                println!("{} is now {}", element_ref_display, state);
-            } else {
-                let msg = result.str_or("message", "Unknown error");
-                let message = format!("Toggle failed: {}", msg);
-                return Err(CliError::new(
-                    ctx.format,
-                    message,
-                    Some(result.to_pretty_json()),
-                    super::exit_codes::GENERAL_ERROR,
-                )
-                .into());
-            }
-        }
-    }
-    Ok(())
 }
 
 pub fn handle_attach<C: DaemonClient>(
@@ -1800,7 +1453,7 @@ pub fn handle_assert<C: DaemonClient>(
     if parts.len() != 2 {
         return Err(CliError::new(
             ctx.format,
-            "Invalid condition format. Use: text:pattern, element:ref, or session:id",
+            "Invalid condition format. Use: text:pattern or session:id",
             None,
             super::exit_codes::USAGE,
         )
@@ -1813,7 +1466,6 @@ pub fn handle_assert<C: DaemonClient>(
         "text" => {
             let params = params::SnapshotParams {
                 session: ctx.session.clone(),
-                include_elements: false,
                 region: None,
                 strip_ansi: true,
                 include_cursor: false,
@@ -1821,14 +1473,6 @@ pub fn handle_assert<C: DaemonClient>(
             };
             let result = call_with_params(ctx.client, "snapshot", params)?;
             result.str_or("screenshot", "").contains(cond_value)
-        }
-        "element" => {
-            let params = params::ElementRefParams {
-                element_ref: cond_value.to_string(),
-                session: ctx.session.clone(),
-            };
-            let result = call_with_params(ctx.client, "is_visible", params)?;
-            result.bool_or("visible", false)
         }
         "session" => {
             let result = call_no_params(ctx.client, "sessions")?;
@@ -1844,7 +1488,7 @@ pub fn handle_assert<C: DaemonClient>(
             return Err(CliError::new(
                 ctx.format,
                 format!(
-                    "Unknown condition type: {}. Use: text, element, or session",
+                    "Unknown condition type: {}. Use: text or session",
                     cond_type
                 ),
                 None,
@@ -2249,12 +1893,6 @@ mod tests {
                 .push(format!("session: {} {:?}", session_id, label));
         }
 
-        fn present_element_ref(&self, element_ref: &str, info: Option<&str>) {
-            self.output
-                .borrow_mut()
-                .push(format!("ref: {} {:?}", element_ref, info));
-        }
-
         fn present_list_header(&self, title: &str) {
             self.output.borrow_mut().push(format!("header: {}", title));
         }
@@ -2303,14 +1941,6 @@ mod tests {
                 result.failures.len()
             ));
         }
-
-        fn present_find(&self, result: &crate::adapters::presenter::FindResult) {
-            self.output.borrow_mut().push(format!(
-                "find: count={}, elements={}",
-                result.count,
-                result.elements.len()
-            ));
-        }
     }
 
     #[test]
@@ -2334,137 +1964,6 @@ mod tests {
         assert!(captured.iter().any(|s| s.contains("kv:")));
     }
 
-    fn make_element(json_str: &str) -> RpcValue {
-        RpcValue::new(serde_json::from_str(json_str).expect("valid element json"))
-    }
-
-    #[test]
-    fn test_element_view_ref_str() {
-        let el = make_element(r#"{"ref":"@btn1"}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.ref_str(), "@btn1");
-    }
-
-    #[test]
-    fn test_element_view_ref_str_missing() {
-        let el = make_element(r#"{}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.ref_str(), "");
-    }
-
-    #[test]
-    fn test_element_view_el_type() {
-        let el = make_element(r#"{"type":"button"}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.el_type(), "button");
-    }
-
-    #[test]
-    fn test_element_view_el_type_missing() {
-        let el = make_element(r#"{}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.el_type(), "");
-    }
-
-    #[test]
-    fn test_element_view_label() {
-        let el = make_element(r#"{"label":"Submit"}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.label(), "Submit");
-    }
-
-    #[test]
-    fn test_element_view_label_missing() {
-        let el = make_element(r#"{}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.label(), "");
-    }
-
-    #[test]
-    fn test_element_view_focused_true() {
-        let el = make_element(r#"{"focused":true}"#);
-        let view = ElementView(el.as_ref());
-        assert!(view.focused());
-    }
-
-    #[test]
-    fn test_element_view_focused_false() {
-        let el = make_element(r#"{"focused":false}"#);
-        let view = ElementView(el.as_ref());
-        assert!(!view.focused());
-    }
-
-    #[test]
-    fn test_element_view_focused_missing() {
-        let el = make_element(r#"{}"#);
-        let view = ElementView(el.as_ref());
-        assert!(!view.focused());
-    }
-
-    #[test]
-    fn test_element_view_selected() {
-        let el = make_element(r#"{"selected":true}"#);
-        let view = ElementView(el.as_ref());
-        assert!(view.selected());
-    }
-
-    #[test]
-    fn test_element_view_selected_missing() {
-        let el = make_element(r#"{}"#);
-        let view = ElementView(el.as_ref());
-        assert!(!view.selected());
-    }
-
-    #[test]
-    fn test_element_view_value_present() {
-        let el = make_element(r#"{"value":"test input"}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.value(), Some("test input"));
-    }
-
-    #[test]
-    fn test_element_view_value_missing() {
-        let el = make_element(r#"{}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.value(), None);
-    }
-
-    #[test]
-    fn test_element_view_position() {
-        let el = make_element(r#"{"position":{"row":5,"col":10}}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.position(), (5, 10));
-    }
-
-    #[test]
-    fn test_element_view_position_partial() {
-        let el = make_element(r#"{"position":{"row":5}}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.position(), (5, 0));
-    }
-
-    #[test]
-    fn test_element_view_position_missing() {
-        let el = make_element(r#"{}"#);
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.position(), (0, 0));
-    }
-
-    #[test]
-    fn test_element_view_full_element() {
-        let el = make_element(
-            r#"{"ref":"@inp1","type":"input","label":"Email","value":"test@example.com","focused":true,"selected":false,"checked":null,"position":{"row":3,"col":15}}"#,
-        );
-        let view = ElementView(el.as_ref());
-        assert_eq!(view.ref_str(), "@inp1");
-        assert_eq!(view.el_type(), "input");
-        assert_eq!(view.label(), "Email");
-        assert_eq!(view.value(), Some("test@example.com"));
-        assert!(view.focused());
-        assert!(!view.selected());
-        assert_eq!(view.position(), (3, 15));
-    }
-
     #[test]
     fn test_assert_condition_parsing_text() {
         let condition = "text:Submit";
@@ -2472,15 +1971,6 @@ mod tests {
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[0], "text");
         assert_eq!(parts[1], "Submit");
-    }
-
-    #[test]
-    fn test_assert_condition_parsing_element() {
-        let condition = "element:@btn1";
-        let parts: Vec<&str> = condition.splitn(2, ':').collect();
-        assert_eq!(parts.len(), 2);
-        assert_eq!(parts[0], "element");
-        assert_eq!(parts[1], "@btn1");
     }
 
     #[test]
@@ -2514,43 +2004,8 @@ mod tests {
             stable: true,
             ..Default::default()
         };
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let cond = resolve_wait_condition(&params);
         assert_eq!(cond, Some("stable".to_string()));
-        assert_eq!(tgt, None);
-    }
-
-    #[test]
-    fn test_wait_condition_element() {
-        let params = WaitParams {
-            element: Some("@btn1".to_string()),
-            ..Default::default()
-        };
-        let (cond, tgt) = resolve_wait_condition(&params);
-        assert_eq!(cond, Some("element".to_string()));
-        assert_eq!(tgt, Some("@btn1".to_string()));
-    }
-
-    #[test]
-    fn test_wait_condition_focused() {
-        let params = WaitParams {
-            focused: Some("@inp1".to_string()),
-            ..Default::default()
-        };
-        let (cond, tgt) = resolve_wait_condition(&params);
-        assert_eq!(cond, Some("focused".to_string()));
-        assert_eq!(tgt, Some("@inp1".to_string()));
-    }
-
-    #[test]
-    fn test_wait_condition_element_gone() {
-        let params = WaitParams {
-            element: Some("@spinner".to_string()),
-            gone: true,
-            ..Default::default()
-        };
-        let (cond, tgt) = resolve_wait_condition(&params);
-        assert_eq!(cond, Some("not_visible".to_string()));
-        assert_eq!(tgt, Some("@spinner".to_string()));
     }
 
     #[test]
@@ -2560,27 +2015,14 @@ mod tests {
             gone: true,
             ..Default::default()
         };
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let cond = resolve_wait_condition(&params);
         assert_eq!(cond, Some("text_gone".to_string()));
-        assert_eq!(tgt, Some("Loading...".to_string()));
-    }
-
-    #[test]
-    fn test_wait_condition_value() {
-        let params = WaitParams {
-            value: Some("@inp1=hello".to_string()),
-            ..Default::default()
-        };
-        let (cond, tgt) = resolve_wait_condition(&params);
-        assert_eq!(cond, Some("value".to_string()));
-        assert_eq!(tgt, Some("@inp1=hello".to_string()));
     }
 
     #[test]
     fn test_wait_condition_none() {
         let params = WaitParams::default();
-        let (cond, tgt) = resolve_wait_condition(&params);
+        let cond = resolve_wait_condition(&params);
         assert_eq!(cond, None);
-        assert_eq!(tgt, None);
     }
 }

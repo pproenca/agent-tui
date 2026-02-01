@@ -3,8 +3,8 @@
 Use this file when runs are flaky, stalled, or inconsistent.
 
 ## Common Failures and Fixes
-- Element not found: re-run `screenshot -e --json`, then re-select ref.
-- Element off-screen: `scroll-into-view @ref`, then re-snapshot.
+- Text not found: re-run `screenshot`, wait for stability, then re-check expected text.
+- Target off-screen: `scroll` in small increments, then re-snapshot.
 - Wait timeout: increase `--timeout`, use `wait --stable`, then re-snapshot.
 - No active session: `sessions` to list; re-run `run` if needed.
 - Daemon not running: `daemon start`.

@@ -5,7 +5,7 @@ Use this file when requirements are incomplete or ambiguous.
 ## Ask Before Running
 - App command, args, and working directory (what to run, where).
 - Required environment variables or config files.
-- Expected UI outcomes (texts, states, or elements to assert).
+- Expected UI outcomes (texts, states, or tree hints to assert).
 - Inputs and sequencing (keys, text, timing constraints).
 - Stop condition (what indicates the test is done).
 - Terminal size requirements (cols/rows) if layout-sensitive.

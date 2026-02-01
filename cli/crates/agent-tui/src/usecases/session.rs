@@ -310,12 +310,6 @@ impl<R: SessionRepository> AssertUseCase for AssertUseCaseImpl<R> {
                 let screen = session.screen_text();
                 screen.contains(&input.value)
             }
-            AssertConditionType::Element => {
-                let session = self.repository.resolve(input.session_id.as_deref())?;
-                session.update()?;
-                session.detect_elements();
-                session.find_element(&input.value).is_some()
-            }
             AssertConditionType::Session => {
                 let sessions = self.repository.list();
                 sessions

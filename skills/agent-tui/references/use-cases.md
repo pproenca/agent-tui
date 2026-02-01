@@ -1,42 +1,16 @@
-# Use Cases -> Command Strategy
+# Use Cases
 
-Use this file when deciding which commands solve the user's problem.
+Use this file when selecting a minimal command set for a task.
 
-## 1) Regression test a CLI/TUI you are building
-- Goal: verify inputs, rendering, and flow end-to-end.
-- Commands: `run` -> `screenshot -e --json` -> `action/press/input` -> `wait --assert` -> `kill`.
-- Use `--format json` and explicit waits for deterministic tests.
+## Basic Automation Loop
+- Commands: `run` -> `screenshot` -> `press/input/scroll` -> `wait --assert` -> `kill`.
+- Re-snapshot after each action.
 
-## 2) Drive an interactive wizard or form
-- Goal: fill fields and submit like a user.
-- Commands: `run`, `screenshot -e --json`, `action @inp fill`, `action @btn click`, `wait`.
-- Re-snapshot after each step to re-map selectors.
+## Form Entry
+- Commands: `run`, `screenshot -a --json`, `press Tab`, `input "value"`, `press Enter`, `wait "Success" --assert`.
 
-## 3) Validate rendering/layout (snapshot auditing)
-- Goal: ensure specific strings, labels, or sections are present.
-- Commands: `run`, `screenshot` (text), `wait "Expected" --assert`.
-- Prefer text snapshots if element selectors are unnecessary.
+## Stabilization Before Acting
+- Commands: `wait --stable`, `screenshot`, then `press/input`.
 
-## 4) Investigate flaky UI or race conditions
-- Goal: synchronize with dynamic screens.
-- Commands: `wait --stable`, `screenshot -e --json`, `wait -e @spinner --gone`.
-- Repeat snapshots after any action.
-
-## 5) Accessibility tree checks
-- Goal: inspect focusable/interactive elements.
-- Commands: `screenshot -a --interactive-only`.
-- Use for verifying focus order and interactive roles.
-
-## 6) Live observation/debugging
-- Goal: watch the run in real time or attach to an existing session.
-- Commands: `live start --open`, `sessions attach`, `sessions`.
-- Always ask the user whether they want live preview.
-
-## 7) TUI exploration / reverse engineering
-- Goal: discover controls and available actions.
-- Commands: `screenshot -e --json`, then probe with `action`, `press`, `input`.
-- Capture another snapshot after each change.
-
-## 8) Element presence/absence checks
-- Goal: quickly confirm presence or count without full parsing.
-- Commands: `find --role/--name/--text`, `count --text`.
+## Live Preview Support
+- Commands: `live start --open` -> `run` -> normal flow -> `live stop`.

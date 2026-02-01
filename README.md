@@ -2,16 +2,15 @@
 
 CLI tool for AI agents to interact with TUI (Terminal User Interface) applications.
 
-**agent-tui** enables AI agents to programmatically drive terminal applications by capturing screenshots, detecting UI elements, and sending input—making TUI automation accessible to LLM-powered agents.
+**agent-tui** enables AI agents to programmatically drive terminal applications by capturing screenshots, producing accessibility-style trees, and sending input—making TUI automation accessible to LLM-powered agents.
 
 ## Features
 
 - **Virtual Terminal Emulation** - Run TUI apps in isolated PTY sessions with full terminal emulation
-- **Visual Object Model (VOM)** - AI-native UI element detection based on visual styling, not text patterns
-- **Element References** - Interact with elements via refs (`@e1`, `@btn1`, `@inp1`) with role-based classification
-- **Text Selectors** - Find elements by exact (`@"Submit"`) or partial (`:Submit`) text matching
-- **Interactive Actions** - Fill inputs, toggle checkboxes, select options, click buttons, scroll
-- **Wait Conditions** - Wait for text, element states, focus changes, or stability
+- **Visual Object Model (VOM)** - Accessibility-style tree from visual structure, not text patterns
+- **Keyboard & Text Input** - Press keys, type text, or send unified input
+- **Scrolling** - Scroll the viewport programmatically
+- **Wait Conditions** - Wait for text or screen stability
 - **Output Formats** - Human-readable text or JSON for automation pipelines
 - **Live Preview API** - HTTP + WebSocket endpoints for real-time UI monitoring
 - **Session Management** - Background daemon manages multiple concurrent TUI sessions
@@ -65,16 +64,16 @@ agent-tui daemon start
 # Run a TUI application
 agent-tui run htop
 
-# Take a screenshot with element detection
-agent-tui screenshot -e
+# Take a screenshot
+agent-tui screenshot
 
-# Find and interact with elements
-agent-tui find --role button
-agent-tui action @btn1 click
+# View accessibility tree (structure-only)
+agent-tui screenshot -a
 
 # Send keyboard input
 agent-tui press Enter
 agent-tui type "hello world"
+agent-tui scroll down 5
 
 # Wait for conditions
 agent-tui wait "Loading complete"
@@ -95,27 +94,12 @@ agent-tui kill                     # Kill current session
 agent-tui restart                  # Restart session
 ```
 
-### Screenshots & Elements
+### Screenshots
 
 ```bash
 agent-tui screenshot               # Capture screenshot
-agent-tui screenshot -e            # Include detected elements
 agent-tui screenshot -a            # Accessibility tree format
-agent-tui find --role button       # Find elements by role
-agent-tui find --text "Submit"     # Find by text content
-agent-tui count --role input       # Count matching elements
-```
-
-### Actions
-
-```bash
-agent-tui action @e1 click         # Click element
-agent-tui action @inp1 fill "text" # Fill input field
-agent-tui action @chk1 toggle      # Toggle checkbox
-agent-tui action @sel1 select "A"  # Select option
-agent-tui action @e1 focus         # Focus element
-agent-tui action @e1 scroll up     # Scroll element
-agent-tui scroll-into-view @e5     # Scroll element into view
+agent-tui screenshot -a --interactive-only  # Only interactive nodes
 ```
 
 ### Input
@@ -126,14 +110,13 @@ agent-tui press Ctrl+C             # Key combination
 agent-tui press ArrowDown ArrowDown Enter  # Multiple keys
 agent-tui type "hello"             # Type text character by character
 agent-tui input Tab                # Unified input (keys or text)
+agent-tui scroll down 5            # Scroll viewport
 ```
 
 ### Wait Conditions
 
 ```bash
 agent-tui wait "Ready"             # Wait for text
-agent-tui wait -e @btn1            # Wait for element
-agent-tui wait --focused @inp1     # Wait for focus
 agent-tui wait --stable            # Wait for screen stability
 agent-tui wait "Loading" -g        # Wait for text to disappear (gone)
 agent-tui wait "Done" -t 5000      # Custom timeout (ms)
@@ -173,24 +156,6 @@ agent-tui completions bash         # Generate shell completions
 | `--no-color` | Disable colored output |
 | `-v, --verbose` | Verbose output |
 
-## Element Selectors
-
-agent-tui supports multiple ways to reference UI elements:
-
-```bash
-# By element ref (from screenshot -e output)
-@e1, @btn1, @inp1
-
-# By exact text match
-@"Yes, proceed"
-
-# By partial text match (prefix with colon)
-:Submit
-
-# Combined with role filtering
-agent-tui find --role button --text "OK"
-```
-
 ## Output Formats
 
 ### Text (default)
@@ -198,12 +163,8 @@ agent-tui find --role button --text "OK"
 Human-readable output for interactive use:
 
 ```
-Screenshot captured (80x24)
-
-Detected Elements:
-  @btn1  button   "Submit"     row=10 col=5
-  @inp1  input    ""           row=8  col=5  focused
-  @chk1  checkbox "Remember"   row=12 col=5  checked
+Screenshot:
+<screen contents here>
 ```
 
 ### JSON
@@ -211,16 +172,13 @@ Detected Elements:
 Machine-readable output for automation:
 
 ```bash
-agent-tui screenshot -e --json
+agent-tui screenshot --json
 ```
 
 ```json
 {
-  "screen": { "rows": 24, "cols": 80 },
-  "elements": [
-    { "ref": "@btn1", "role": "button", "text": "Submit", "row": 10, "col": 5 },
-    { "ref": "@inp1", "role": "input", "text": "", "row": 8, "col": 5, "focused": true }
-  ]
+  "session_id": "abc123",
+  "screenshot": "..."
 }
 ```
 
@@ -247,7 +205,7 @@ agent-tui/
 │   └── crates/agent-tui/   # Main binary
 │       ├── app/            # Application layer (CLI, handlers)
 │       ├── adapters/       # Infrastructure adapters (IPC, RPC)
-│       ├── domain/         # Domain models (elements, screen, VOM)
+│       ├── domain/         # Domain models (screen, snapshot, VOM)
 │       ├── usecases/       # Business logic (snapshot, input, wait)
 │       └── infra/          # Infrastructure (daemon, terminal)
 ├── web/                    # Bun-based web UI
@@ -256,7 +214,7 @@ agent-tui/
 ```
 
 The tool follows Clean Architecture principles:
-- **Domain** - Core models (Element, Screen, Style) and VOM detection
+- **Domain** - Core models (Screen, Snapshot, Style) and VOM detection
 - **Use Cases** - Business logic (screenshot, input, wait conditions)
 - **Adapters** - External interfaces (CLI, RPC, HTTP API)
 - **Infrastructure** - Terminal emulation, daemon runtime

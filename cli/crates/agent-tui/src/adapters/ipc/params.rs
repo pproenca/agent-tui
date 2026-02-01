@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpawnParams {
     #[serde(default)]
     pub command: String,
@@ -23,12 +23,23 @@ fn default_rows() -> u16 {
     24
 }
 
+impl Default for SpawnParams {
+    fn default() -> Self {
+        Self {
+            command: String::new(),
+            args: Vec::new(),
+            cwd: None,
+            session: None,
+            cols: default_cols(),
+            rows: default_rows(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SnapshotParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
-    #[serde(default)]
-    pub include_elements: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<String>,
     #[serde(default)]
@@ -48,23 +59,6 @@ pub struct AccessibilitySnapshotParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ElementRefParams {
-    #[serde(rename = "ref")]
-    pub element_ref: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FillParams {
-    #[serde(rename = "ref")]
-    pub element_ref: String,
-    pub value: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyParams {
     pub key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -78,7 +72,7 @@ pub struct TypeParams {
     pub session: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WaitParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
@@ -88,32 +82,21 @@ pub struct WaitParams {
     pub timeout_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub condition: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
 }
 
 fn default_timeout_ms() -> u64 {
     30000
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct FindParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub placeholder: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub focused: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nth: Option<usize>,
-    #[serde(default)]
-    pub exact: bool,
+impl Default for WaitParams {
+    fn default() -> Self {
+        Self {
+            session: None,
+            text: None,
+            timeout_ms: default_timeout_ms(),
+            condition: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,24 +124,6 @@ pub struct LivePreviewStartParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SelectParams {
-    #[serde(rename = "ref")]
-    pub element_ref: String,
-    pub option: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MultiselectParams {
-    #[serde(rename = "ref")]
-    pub element_ref: String,
-    pub options: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScrollParams {
     pub direction: String,
     #[serde(default = "default_scroll_amount")]
@@ -169,28 +134,6 @@ pub struct ScrollParams {
 
 fn default_scroll_amount() -> u16 {
     1
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct CountParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToggleParams {
-    #[serde(rename = "ref")]
-    pub element_ref: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub state: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -219,92 +162,25 @@ mod tests {
     #[test]
     fn test_snapshot_params_serialization() {
         let params = SnapshotParams {
-            session: Some("test-session".to_string()),
-            include_elements: true,
-            include_cursor: true,
+            session: Some("abc".to_string()),
+            region: None,
+            strip_ansi: true,
+            include_cursor: false,
             include_render: true,
-            ..Default::default()
         };
 
         let json = serde_json::to_value(&params).unwrap();
-        assert_eq!(json["session"], "test-session");
-        assert_eq!(json["include_elements"], true);
-        assert_eq!(json["include_cursor"], true);
-        assert_eq!(json["include_render"], true);
-    }
-
-    #[test]
-    fn test_snapshot_params_deserialization() {
-        let json = serde_json::json!({
-            "session": "abc123",
-            "include_elements": true,
-            "include_cursor": true,
-            "include_render": true
-        });
-
-        let params: SnapshotParams = serde_json::from_value(json).unwrap();
-        assert_eq!(params.session, Some("abc123".to_string()));
-        assert!(params.include_elements);
-        assert!(params.include_cursor);
-        assert!(params.include_render);
-    }
-
-    #[test]
-    fn test_snapshot_params_defaults() {
-        let json = serde_json::json!({});
-        let params: SnapshotParams = serde_json::from_value(json).unwrap();
-
-        assert_eq!(params.session, None);
-        assert!(!params.include_elements);
-        assert!(!params.include_cursor);
-        assert!(!params.include_render);
-        assert!(!params.strip_ansi);
-        assert_eq!(params.region, None);
-    }
-
-    #[test]
-    fn test_element_ref_params_rename() {
-        let params = ElementRefParams {
-            element_ref: "@btn1".to_string(),
-            session: None,
-        };
-
-        let json = serde_json::to_value(&params).unwrap();
-
-        assert_eq!(json["ref"], "@btn1");
-        assert!(json.get("element_ref").is_none());
-    }
-
-    #[test]
-    fn test_element_ref_params_deserialization() {
-        let json = serde_json::json!({
-            "ref": "@inp1",
-            "session": "sess-1"
-        });
-
-        let params: ElementRefParams = serde_json::from_value(json).unwrap();
-        assert_eq!(params.element_ref, "@inp1");
-        assert_eq!(params.session, Some("sess-1".to_string()));
-    }
-
-    #[test]
-    fn test_spawn_params_defaults() {
-        let json = serde_json::json!({});
-        let params: SpawnParams = serde_json::from_value(json).unwrap();
-
-        assert_eq!(params.command, "");
-        assert!(params.args.is_empty());
-        assert_eq!(params.cols, 80);
-        assert_eq!(params.rows, 24);
+        assert!(json.get("session").is_some());
+        assert_eq!(json.get("strip_ansi").unwrap(), true);
+        assert_eq!(json.get("include_cursor").unwrap(), false);
+        assert_eq!(json.get("include_render").unwrap(), true);
     }
 
     #[test]
     fn test_wait_params_defaults() {
-        let json = serde_json::json!({});
-        let params: WaitParams = serde_json::from_value(json).unwrap();
-
+        let params = WaitParams::default();
         assert_eq!(params.timeout_ms, 30000);
-        assert_eq!(params.text, None);
-        assert_eq!(params.condition, None);
+        assert!(params.text.is_none());
+        assert!(params.condition.is_none());
     }
 }

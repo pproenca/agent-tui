@@ -74,14 +74,6 @@ impl Colors {
         }
     }
 
-    pub fn element_ref(text: &str) -> String {
-        if is_disabled() {
-            text.to_string()
-        } else {
-            format!("{}{}{}", codes::CYAN, text, codes::RESET)
-        }
-    }
-
     pub fn session_id(text: &str) -> String {
         if is_disabled() {
             text.to_string()
@@ -100,6 +92,5 @@ mod tests {
         let _ = NO_COLOR.set(true);
         assert_eq!(Colors::success("test"), "test");
         assert_eq!(Colors::error("test"), "test");
-        assert_eq!(Colors::element_ref("@inp1"), "@inp1");
     }
 }

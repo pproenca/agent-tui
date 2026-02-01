@@ -5,7 +5,7 @@ use crate::domain::core::vom::snapshot::{SnapshotOptions, format_snapshot};
 use crate::domain::{
     AccessibilitySnapshotInput, AccessibilitySnapshotOutput, SnapshotInput, SnapshotOutput,
 };
-use crate::domain::{core_cursor_to_domain, core_elements_to_domain, core_snapshot_to_domain};
+use crate::domain::{core_cursor_to_domain, core_snapshot_to_domain};
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionRepository;
 
@@ -28,7 +28,6 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
         skip(self, input),
         fields(
             session = ?input.session_id,
-            include_elements = input.include_elements,
             include_cursor = input.include_cursor,
             include_render = input.include_render,
             strip_ansi = input.strip_ansi,
@@ -42,12 +41,6 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
 
         let screenshot = session.screen_text();
         let session_id = session.session_id();
-
-        let elements = if input.include_elements {
-            Some(core_elements_to_domain(&session.detect_elements()))
-        } else {
-            None
-        };
 
         let cursor = if input.include_cursor {
             Some(core_cursor_to_domain(&session.cursor()))
@@ -64,7 +57,6 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
         Ok(SnapshotOutput {
             session_id,
             screenshot,
-            elements,
             cursor,
             rendered,
         })

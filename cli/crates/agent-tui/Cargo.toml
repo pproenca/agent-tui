@@ -51,7 +51,6 @@ tattoy-wezterm-term.workspace = true
 tattoy-wezterm-surface.workspace = true
 
 # VOM analysis
-regex.workspace = true
 
 # Logging
 tracing.workspace = true

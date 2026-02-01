@@ -22,7 +22,6 @@ src/
     mod.rs
     errors.rs
     session.rs
-    element.rs
     types.rs
 
   usecases/             // application logic + ports
@@ -38,12 +37,6 @@ src/
       stop.rs
       list.rs
       cleanup.rs
-    elements/
-      mod.rs
-      click.rs
-      select.rs
-      fill.rs
-      wait.rs
 
   adapters/             // interface adapters (RPC/CLI presenters)
     mod.rs
@@ -74,7 +67,6 @@ src/
     handlers/
       mod.rs
       sessions.rs
-      elements.rs
       recording.rs
       diagnostics.rs
 

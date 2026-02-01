@@ -10,8 +10,6 @@ impl SessionError {
             SessionError::NotFound(_) => error_codes::SESSION_NOT_FOUND,
             SessionError::AlreadyExists(_) => error_codes::SESSION_ALREADY_EXISTS,
             SessionError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
-            SessionError::ElementNotFound(_) => error_codes::ELEMENT_NOT_FOUND,
-            SessionError::WrongElementType { .. } => error_codes::WRONG_ELEMENT_TYPE,
             SessionError::InvalidKey(_) => error_codes::INVALID_KEY,
             SessionError::LimitReached(_) => error_codes::SESSION_LIMIT,
             SessionError::Pty(_) => error_codes::PTY_ERROR,
@@ -28,18 +26,6 @@ impl SessionError {
             SessionError::NotFound(id) => json!({ "session_id": id }),
             SessionError::AlreadyExists(id) => json!({ "session_id": id }),
             SessionError::NoActiveSession => json!({}),
-            SessionError::ElementNotFound(element_ref) => json!({ "element_ref": element_ref }),
-            SessionError::WrongElementType {
-                element_ref,
-                actual,
-                expected,
-            } => {
-                json!({
-                    "element_ref": element_ref,
-                    "actual_type": actual,
-                    "expected_type": expected
-                })
-            }
             SessionError::InvalidKey(key) => json!({ "key": key }),
             SessionError::LimitReached(max) => json!({ "max_sessions": max }),
             SessionError::Pty(pty_err) => json!({
@@ -60,17 +46,6 @@ impl SessionError {
                 "Run 'sessions' to list active sessions or 'spawn <cmd>' to start a new one."
                     .to_string()
             }
-            SessionError::ElementNotFound(element_ref) => {
-                format!(
-                    "Element '{}' not found. Run 'screenshot -e' to see current elements and their refs.",
-                    element_ref
-                )
-            }
-            SessionError::WrongElementType {
-                element_ref,
-                actual,
-                ..
-            } => suggest_command_for_type(actual, element_ref),
             SessionError::InvalidKey(_) => {
                 "Supported keys: Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp/Down, F1-F12. Modifiers: Ctrl+, Alt+, Shift+".to_string()
             }
@@ -181,19 +156,6 @@ pub enum DomainError {
     #[error("No active session")]
     NoActiveSession,
 
-    #[error("Element not found: {element_ref}")]
-    ElementNotFound {
-        element_ref: String,
-        session_id: Option<String>,
-    },
-
-    #[error("Element {element_ref} is a {actual} not a {expected}")]
-    WrongElementType {
-        element_ref: String,
-        actual: String,
-        expected: String,
-    },
-
     #[error("Invalid key: {key}")]
     InvalidKey { key: String },
 
@@ -229,8 +191,6 @@ impl DomainError {
             DomainError::SessionNotFound { .. } => error_codes::SESSION_NOT_FOUND,
             DomainError::SessionAlreadyExists { .. } => error_codes::SESSION_ALREADY_EXISTS,
             DomainError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
-            DomainError::ElementNotFound { .. } => error_codes::ELEMENT_NOT_FOUND,
-            DomainError::WrongElementType { .. } => error_codes::WRONG_ELEMENT_TYPE,
             DomainError::InvalidKey { .. } => error_codes::INVALID_KEY,
             DomainError::SessionLimitReached { .. } => error_codes::SESSION_LIMIT,
             DomainError::LockTimeout { .. } => error_codes::LOCK_TIMEOUT,
@@ -255,27 +215,6 @@ impl DomainError {
                 json!({ "session_id": session_id })
             }
             DomainError::NoActiveSession => json!({}),
-            DomainError::ElementNotFound {
-                element_ref,
-                session_id,
-            } => {
-                let mut ctx = json!({ "element_ref": element_ref });
-                if let Some(sid) = session_id {
-                    ctx["session_id"] = json!(sid);
-                }
-                ctx
-            }
-            DomainError::WrongElementType {
-                element_ref,
-                actual,
-                expected,
-            } => {
-                json!({
-                    "element_ref": element_ref,
-                    "actual_type": actual,
-                    "expected_type": expected
-                })
-            }
             DomainError::InvalidKey { key } => {
                 json!({ "key": key })
             }
@@ -323,17 +262,6 @@ impl DomainError {
                 "Run 'sessions' to list active sessions or 'spawn <cmd>' to start a new one."
                     .to_string()
             }
-            DomainError::ElementNotFound { element_ref, .. } => {
-                format!(
-                    "Element '{}' not found. Run 'screenshot -e' to see current elements and their refs.",
-                    element_ref
-                )
-            }
-            DomainError::WrongElementType {
-                element_ref,
-                actual,
-                ..
-            } => suggest_command_for_type(actual, element_ref),
             DomainError::InvalidKey { .. } => {
                 "Supported keys: Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp/Down, F1-F12. Modifiers: Ctrl+, Alt+, Shift+".to_string()
             }
@@ -372,36 +300,12 @@ impl DomainError {
     }
 }
 
-fn suggest_command_for_type(element_type: &str, element_ref: &str) -> String {
-    let hint = match element_type {
-        "button" | "menuitem" | "listitem" => format!("Try: click {}", element_ref),
-        "checkbox" | "radio" => format!("Try: toggle {} or click {}", element_ref, element_ref),
-        "input" => format!("Try: fill {} <value>", element_ref),
-        "select" => format!("Try: select {} <option>", element_ref),
-        _ => "Run 'screenshot -a' to see element types.".to_string(),
-    };
-    hint
-}
-
 impl From<SessionError> for DomainError {
     fn from(err: SessionError) -> Self {
         match err {
             SessionError::NotFound(id) => DomainError::SessionNotFound { session_id: id },
             SessionError::AlreadyExists(id) => DomainError::SessionAlreadyExists { session_id: id },
             SessionError::NoActiveSession => DomainError::NoActiveSession,
-            SessionError::ElementNotFound(element_ref) => DomainError::ElementNotFound {
-                element_ref,
-                session_id: None,
-            },
-            SessionError::WrongElementType {
-                element_ref,
-                actual,
-                expected,
-            } => DomainError::WrongElementType {
-                element_ref,
-                actual,
-                expected,
-            },
             SessionError::InvalidKey(key) => DomainError::InvalidKey { key },
             SessionError::LimitReached(max) => DomainError::SessionLimitReached { max },
             SessionError::Pty(pty_err) => DomainError::PtyError {
@@ -444,63 +348,11 @@ mod tests {
     }
 
     #[test]
-    fn test_element_not_found_category() {
-        let err = DomainError::ElementNotFound {
-            element_ref: "@btn1".into(),
-            session_id: None,
-        };
-        assert_eq!(err.category(), ErrorCategory::NotFound);
-    }
-
-    #[test]
     fn test_lock_timeout_is_retryable() {
         let err = DomainError::LockTimeout {
             session_id: Some("abc".into()),
         };
         assert!(error_codes::is_retryable(err.code()));
-    }
-
-    #[test]
-    fn test_element_not_found_not_retryable() {
-        let err = DomainError::ElementNotFound {
-            element_ref: "@btn1".into(),
-            session_id: None,
-        };
-        assert!(!error_codes::is_retryable(err.code()));
-    }
-
-    #[test]
-    fn test_context_includes_element_ref() {
-        let err = DomainError::ElementNotFound {
-            element_ref: "@btn5".into(),
-            session_id: Some("sess1".into()),
-        };
-        let ctx = err.context();
-        assert_eq!(ctx["element_ref"], "@btn5");
-        assert_eq!(ctx["session_id"], "sess1");
-    }
-
-    #[test]
-    fn test_wrong_element_type_context() {
-        let err = DomainError::WrongElementType {
-            element_ref: "@el1".into(),
-            actual: "button".into(),
-            expected: "input".into(),
-        };
-        let ctx = err.context();
-        assert_eq!(ctx["element_ref"], "@el1");
-        assert_eq!(ctx["actual_type"], "button");
-        assert_eq!(ctx["expected_type"], "input");
-    }
-
-    #[test]
-    fn test_suggestion_for_button() {
-        let err = DomainError::WrongElementType {
-            element_ref: "@btn1".into(),
-            actual: "button".into(),
-            expected: "input".into(),
-        };
-        assert!(err.suggestion().contains("click @btn1"));
     }
 
     #[test]
@@ -519,16 +371,6 @@ mod tests {
     }
 
     #[test]
-    fn test_display_wrong_element_type() {
-        let err = DomainError::WrongElementType {
-            element_ref: "@el1".into(),
-            actual: "button".into(),
-            expected: "input".into(),
-        };
-        assert_eq!(err.to_string(), "Element @el1 is a button not a input");
-    }
-
-    #[test]
     fn test_session_error_not_found_code() {
         let err = SessionError::NotFound("abc123".into());
         assert_eq!(err.code(), error_codes::SESSION_NOT_FOUND);
@@ -538,12 +380,6 @@ mod tests {
     fn test_session_error_no_active_session_code() {
         let err = SessionError::NoActiveSession;
         assert_eq!(err.code(), error_codes::NO_ACTIVE_SESSION);
-    }
-
-    #[test]
-    fn test_session_error_element_not_found_code() {
-        let err = SessionError::ElementNotFound("@btn1".into());
-        assert_eq!(err.code(), error_codes::ELEMENT_NOT_FOUND);
     }
 
     #[test]
@@ -576,10 +412,6 @@ mod tests {
         let ctx = err.context();
         assert_eq!(ctx["session_id"], "sess123");
 
-        let err = SessionError::ElementNotFound("@btn5".into());
-        let ctx = err.context();
-        assert_eq!(ctx["element_ref"], "@btn5");
-
         let err = SessionError::LimitReached(16);
         let ctx = err.context();
         assert_eq!(ctx["max_sessions"], 16);
@@ -590,9 +422,6 @@ mod tests {
         let err = SessionError::NotFound("x".into());
         assert!(err.suggestion().contains("sessions"));
 
-        let err = SessionError::ElementNotFound("@btn1".into());
-        assert!(err.suggestion().contains("screenshot"));
-
         let err = SessionError::InvalidKey("x".into());
         assert!(err.suggestion().contains("Enter"));
     }
@@ -601,7 +430,6 @@ mod tests {
     fn test_session_error_is_retryable() {
         assert!(!SessionError::NotFound("x".into()).is_retryable());
         assert!(!SessionError::NoActiveSession.is_retryable());
-        assert!(!SessionError::ElementNotFound("x".into()).is_retryable());
         assert!(!SessionError::InvalidKey("x".into()).is_retryable());
     }
 

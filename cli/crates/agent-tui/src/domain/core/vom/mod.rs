@@ -9,8 +9,6 @@ mod pipeline_tests;
 use std::hash::Hash;
 use std::hash::Hasher;
 
-use uuid::Uuid;
-
 use crate::domain::core::screen::ScreenGrid;
 use crate::domain::core::style::CellStyle;
 
@@ -70,7 +68,6 @@ impl Cluster {
 
 #[derive(Debug, Clone)]
 pub struct Component {
-    pub id: Uuid,
     pub role: Role,
     pub bounds: Rect,
     pub text_content: String,
@@ -81,7 +78,6 @@ pub struct Component {
 impl Component {
     pub fn new(role: Role, bounds: Rect, text_content: String, visual_hash: u64) -> Self {
         Self {
-            id: Uuid::new_v4(),
             role,
             bounds,
             text_content,
@@ -98,7 +94,6 @@ impl Component {
         selected: bool,
     ) -> Self {
         Self {
-            id: Uuid::new_v4(),
             role,
             bounds,
             text_content,

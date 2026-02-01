@@ -1,5 +1,3 @@
-use uuid::Uuid;
-
 use super::screen::ScreenGrid;
 use super::style::{CellStyle, Color};
 use super::vom::{Cluster, Component, Rect, Role};
@@ -90,7 +88,6 @@ pub fn make_cluster(text: &str, style: CellStyle, x: u16, y: u16) -> Cluster {
 
 pub fn make_component(role: Role, text: &str, x: u16, y: u16, width: u16) -> Component {
     Component {
-        id: Uuid::new_v4(),
         role,
         bounds: Rect::new(x, y, width, 1),
         text_content: text.to_string(),

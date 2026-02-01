@@ -7,6 +7,7 @@ use clap::ValueHint;
 pub use clap_complete::Shell;
 use std::path::PathBuf;
 
+pub use crate::adapters::presenter::OutputFormat;
 use crate::app::attach::DetachKeys;
 
 const AFTER_HELP: &str =
@@ -836,13 +837,6 @@ pub struct CountParams {
 
     #[arg(long, value_name = "TEXT")]
     pub text: Option<String>,
-}
-
-#[derive(Clone, Copy, Debug, ValueEnum, Default, PartialEq)]
-pub enum OutputFormat {
-    #[default]
-    Text,
-    Json,
 }
 
 #[cfg(test)]

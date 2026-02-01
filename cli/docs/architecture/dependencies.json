@@ -1,0 +1,3255 @@
+{
+  "edges": [
+    {
+      "source": "infra/terminal/vterm.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/vterm.rs",
+      "line": 8,
+      "snippet": "use crate::domain::core::{CellStyle, Color, ScreenGrid, ScreenSnapshot};"
+    },
+    {
+      "source": "infra/terminal/vterm.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/vterm.rs",
+      "line": 9,
+      "snippet": "use crate::usecases::ports::TerminalEngine;"
+    },
+    {
+      "source": "infra/terminal/vterm.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/vterm.rs",
+      "line": 39,
+      "snippet": "pub use crate::domain::core::CursorPosition;"
+    },
+    {
+      "source": "infra/terminal/vterm.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/vterm.rs",
+      "line": 197,
+      "snippet": ".map(|cell| crate::domain::core::ScreenCell {"
+    },
+    {
+      "source": "infra/terminal/error.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/error.rs",
+      "line": 1,
+      "snippet": "use crate::common::error_codes::{self, ErrorCategory};"
+    },
+    {
+      "source": "infra/terminal/error.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/error.rs",
+      "line": 2,
+      "snippet": "use crate::usecases::ports::PtyError as PortPtyError;"
+    },
+    {
+      "source": "infra/terminal/mod.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/mod.rs",
+      "line": 18,
+      "snippet": "pub use crate::domain::core::CellStyle;"
+    },
+    {
+      "source": "infra/terminal/mod.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/mod.rs",
+      "line": 19,
+      "snippet": "pub use crate::domain::core::Color;"
+    },
+    {
+      "source": "infra/terminal/mod.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/mod.rs",
+      "line": 20,
+      "snippet": "pub use crate::domain::core::ScreenGrid;"
+    },
+    {
+      "source": "infra/terminal/pty.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/pty.rs",
+      "line": 19,
+      "snippet": "use crate::common::mutex_lock_or_recover;"
+    },
+    {
+      "source": "infra/terminal/pty.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/terminal/pty.rs",
+      "line": 21,
+      "snippet": "pub use crate::infra::terminal::error::PtyError;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 27,
+      "snippet": "use crate::common::mutex_lock_or_recover;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 28,
+      "snippet": "use crate::common::rwlock_read_or_recover;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 29,
+      "snippet": "use crate::common::rwlock_write_or_recover;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 30,
+      "snippet": "use crate::domain::core::Element;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 31,
+      "snippet": "use crate::infra::terminal::CursorPosition;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 32,
+      "snippet": "use crate::infra::terminal::key_to_escape_sequence;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 33,
+      "snippet": "use crate::infra::terminal::render_screen;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 34,
+      "snippet": "use crate::infra::terminal::{PtyHandle, ReadEvent};"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 35,
+      "snippet": "use crate::usecases::ports::{LivePreviewSnapshot, StreamCursor, StreamRead};"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 38,
+      "snippet": "use crate::infra::daemon::TerminalState;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 40,
+      "snippet": "pub use crate::domain::session_types::SessionId;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 41,
+      "snippet": "pub use crate::domain::session_types::SessionInfo;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 42,
+      "snippet": "pub use crate::infra::daemon::SessionError;"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 88,
+      "snippet": "pub fn subscribe(&self) -> crate::usecases::ports::StreamSubscription {"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 176,
+      "snippet": "fn subscribe(&self) -> crate::usecases::ports::StreamSubscription {"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 183,
+      "snippet": "crate::usecases::ports::StreamSubscription::new(rx)"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 235,
+      "snippet": "return Err(SessionError::Pty(crate::usecases::ports::PtyError::Read("
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 287,
+      "snippet": "buffer: &crate::infra::terminal::ScreenBuffer,"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 587,
+      "snippet": "pub fn stream_subscribe(&self) -> crate::usecases::ports::StreamSubscription {"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 652,
+      "snippet": "pub fn analyze_screen(&self) -> Vec<crate::domain::core::Component> {"
+    },
+    {
+      "source": "infra/daemon/session.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/session.rs",
+      "line": 1189,
+      "snippet": "use crate::infra::terminal::PtyHandle;"
+    },
+    {
+      "source": "infra/daemon/terminal_state.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/terminal_state.rs",
+      "line": 1,
+      "snippet": "use crate::domain::core::{Component, Element, component_to_element, find_element_by_ref};"
+    },
+    {
+      "source": "infra/daemon/terminal_state.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/terminal_state.rs",
+      "line": 2,
+      "snippet": "use crate::infra::terminal::{CursorPosition, ScreenBuffer, VirtualTerminal};"
+    },
+    {
+      "source": "infra/daemon/terminal_state.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/terminal_state.rs",
+      "line": 47,
+      "snippet": "let components = crate::domain::core::analyze(&buffer, cursor);"
+    },
+    {
+      "source": "infra/daemon/terminal_state.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/terminal_state.rs",
+      "line": 69,
+      "snippet": "crate::domain::core::analyze(&buffer, cursor)"
+    },
+    {
+      "source": "infra/daemon/config.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/config.rs",
+      "line": 4,
+      "snippet": "use crate::infra::daemon::session::DEFAULT_MAX_SESSIONS;"
+    },
+    {
+      "source": "infra/daemon/lock_helpers.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/lock_helpers.rs",
+      "line": 8,
+      "snippet": "use crate::infra::daemon::session::Session;"
+    },
+    {
+      "source": "infra/daemon/metrics.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/metrics.rs",
+      "line": 4,
+      "snippet": "use crate::usecases::ports::MetricsProvider;"
+    },
+    {
+      "source": "infra/daemon/mod.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/mod.rs",
+      "line": 12,
+      "snippet": "pub use crate::usecases::ports::SessionError;"
+    },
+    {
+      "source": "infra/daemon/repository.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/repository.rs",
+      "line": 5,
+      "snippet": "use crate::common::mutex_lock_or_recover;"
+    },
+    {
+      "source": "infra/daemon/repository.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/repository.rs",
+      "line": 6,
+      "snippet": "use crate::domain::core::Component;"
+    },
+    {
+      "source": "infra/daemon/repository.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/repository.rs",
+      "line": 7,
+      "snippet": "use crate::domain::core::CursorPosition;"
+    },
+    {
+      "source": "infra/daemon/repository.rs",
+      "target": "crate::domain",
+      "sourceLayer": "infra",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/repository.rs",
+      "line": 8,
+      "snippet": "use crate::domain::core::Element;"
+    },
+    {
+      "source": "infra/daemon/repository.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/repository.rs",
+      "line": 9,
+      "snippet": "use crate::usecases::ports::{"
+    },
+    {
+      "source": "infra/daemon/repository.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/repository.rs",
+      "line": 14,
+      "snippet": "use crate::infra::daemon::session::{"
+    },
+    {
+      "source": "infra/daemon/repository.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/repository.rs",
+      "line": 95,
+      "snippet": "fn stream_subscribe(&self) -> crate::usecases::ports::StreamSubscription {"
+    },
+    {
+      "source": "infra/daemon/pty_session.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/pty_session.rs",
+      "line": 1,
+      "snippet": "use crate::infra::terminal::{PtyHandle, ReadEvent};"
+    },
+    {
+      "source": "infra/daemon/pty_session.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/pty_session.rs",
+      "line": 4,
+      "snippet": "use crate::infra::daemon::SessionError;"
+    },
+    {
+      "source": "infra/daemon/signal_handler.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/signal_handler.rs",
+      "line": 8,
+      "snippet": "use crate::common::DaemonError;"
+    },
+    {
+      "source": "infra/daemon/signal_handler.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "infra",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/signal_handler.rs",
+      "line": 9,
+      "snippet": "use crate::usecases::ports::ShutdownNotifierHandle;"
+    },
+    {
+      "source": "infra/daemon/file_lock.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/daemon/file_lock.rs",
+      "line": 6,
+      "snippet": "use crate::common::DaemonError;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 11,
+      "snippet": "use crate::adapters::ipc::ClientError;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 12,
+      "snippet": "use crate::adapters::ipc::DaemonClient;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 13,
+      "snippet": "use crate::adapters::ipc::ProcessController;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 14,
+      "snippet": "use crate::adapters::ipc::Signal;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 15,
+      "snippet": "use crate::adapters::ipc::UnixProcessController;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 16,
+      "snippet": "use crate::adapters::ipc::params;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 17,
+      "snippet": "use crate::adapters::ipc::socket_path;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 18,
+      "snippet": "use crate::adapters::{RpcValue, RpcValueRef, call_no_params, call_with_params};"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::common",
+      "sourceLayer": "app",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 19,
+      "snippet": "use crate::common::Colors;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 21,
+      "snippet": "use crate::adapters::presenter::{ElementView, Presenter, create_presenter};"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 22,
+      "snippet": "use crate::app::attach::DetachKeys;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 23,
+      "snippet": "use crate::app::commands::FindParams;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 24,
+      "snippet": "use crate::app::commands::LiveStartArgs;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 25,
+      "snippet": "use crate::app::commands::OutputFormat;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 26,
+      "snippet": "use crate::app::commands::ScrollDirection;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 27,
+      "snippet": "use crate::app::commands::WaitParams;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 28,
+      "snippet": "use crate::app::error::{AttachError, CliError};"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 385,
+      "snippet": "use crate::adapters::presenter::WaitResult;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 597,
+      "snippet": "use crate::adapters::presenter::HealthResult;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1093,
+      "snippet": "Ok(crate::adapters::ipc::ProcessStatus::Running)"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1094,
+      "snippet": "| Ok(crate::adapters::ipc::ProcessStatus::NoPermission)"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1176,
+      "snippet": "Ok(crate::adapters::ipc::ProcessStatus::NotFound) => return true,"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1273,
+      "snippet": "use crate::adapters::presenter::{CleanupFailure, CleanupResult};"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1378,
+      "snippet": "let find_result = crate::adapters::presenter::FindResult::from_json(&result);"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1627,
+      "snippet": "use crate::app::attach;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1857,
+      "snippet": "let assert_result = crate::adapters::presenter::AssertResult {"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1911,
+      "snippet": "use crate::adapters::ipc::{"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1940,
+      "snippet": "use crate::adapters::ipc::{"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 2193,
+      "snippet": "use crate::adapters::RpcValue;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 2194,
+      "snippet": "use crate::adapters::presenter::{Presenter, TextPresenter};"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 2234,
+      "snippet": "fn present_client_error(&self, error: &crate::adapters::ipc::ClientError) {"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 2278,
+      "snippet": "fn present_wait_result(&self, result: &crate::adapters::presenter::WaitResult) {"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 2285,
+      "snippet": "fn present_assert_result(&self, result: &crate::adapters::presenter::AssertResult) {"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 2292,
+      "snippet": "fn present_health(&self, health: &crate::adapters::presenter::HealthResult) {"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 2299,
+      "snippet": "fn present_cleanup(&self, result: &crate::adapters::presenter::CleanupResult) {"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 2307,
+      "snippet": "fn present_find(&self, result: &crate::adapters::presenter::FindResult) {"
+    },
+    {
+      "source": "app/attach.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/attach.rs",
+      "line": 8,
+      "snippet": "use crate::adapters::ipc::ClientError;"
+    },
+    {
+      "source": "app/attach.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/attach.rs",
+      "line": 9,
+      "snippet": "use crate::adapters::ipc::DaemonClient;"
+    },
+    {
+      "source": "app/attach.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/attach.rs",
+      "line": 10,
+      "snippet": "use crate::adapters::ipc::params;"
+    },
+    {
+      "source": "app/attach.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/attach.rs",
+      "line": 11,
+      "snippet": "use crate::adapters::{RpcStream, RpcValue, call_stream_with_params, call_with_params};"
+    },
+    {
+      "source": "app/attach.rs",
+      "target": "crate::common",
+      "sourceLayer": "app",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "app/attach.rs",
+      "line": 12,
+      "snippet": "use crate::common::Colors;"
+    },
+    {
+      "source": "app/attach.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/attach.rs",
+      "line": 13,
+      "snippet": "use crate::infra::terminal::key_to_escape_sequence;"
+    },
+    {
+      "source": "app/attach.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/attach.rs",
+      "line": 29,
+      "snippet": "pub use crate::app::error::AttachError;"
+    },
+    {
+      "source": "app/attach.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/attach.rs",
+      "line": 901,
+      "snippet": "use crate::adapters::ipc::MockClient;"
+    },
+    {
+      "source": "app/error.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/error.rs",
+      "line": 3,
+      "snippet": "use crate::adapters::ipc::error_codes::{self, ErrorCategory};"
+    },
+    {
+      "source": "app/error.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/error.rs",
+      "line": 4,
+      "snippet": "use crate::app::commands::OutputFormat;"
+    },
+    {
+      "source": "app/commands.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/commands.rs",
+      "line": 10,
+      "snippet": "use crate::app::attach::DetachKeys;"
+    },
+    {
+      "source": "app/commands.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/commands.rs",
+      "line": 11,
+      "snippet": "pub use crate::adapters::presenter::OutputFormat;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 17,
+      "snippet": "use crate::adapters::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 18,
+      "snippet": "use crate::adapters::{RpcValue, call_no_params, call_with_params};"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 19,
+      "snippet": "use crate::app::commands::OutputFormat;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 20,
+      "snippet": "use crate::app::daemon::start_daemon;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::common",
+      "sourceLayer": "app",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 21,
+      "snippet": "use crate::common::DaemonError;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::common",
+      "sourceLayer": "app",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 22,
+      "snippet": "use crate::common::key_names::is_key_name;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::common",
+      "sourceLayer": "app",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 23,
+      "snippet": "use crate::common::telemetry;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::common",
+      "sourceLayer": "app",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 24,
+      "snippet": "use crate::common::{Colors, color_init};"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 27,
+      "snippet": "use crate::adapters::presenter::create_presenter;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 28,
+      "snippet": "use crate::app::attach::AttachError;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 29,
+      "snippet": "use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs, Shell};"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 30,
+      "snippet": "use crate::app::handlers::HandlerContext;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 545,
+      "snippet": "crate::adapters::ipc::start_daemon_background()?;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 754,
+      "snippet": "use crate::app::commands::{ActionOperation, ToggleState};"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 825,
+      "snippet": "use crate::app::commands::SessionsCommand;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 941,
+      "snippet": "use crate::adapters::ipc::params;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 967,
+      "snippet": "if let Some(cli_error) = e.downcast_ref::<crate::app::error::CliError>() {"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 1044,
+      "snippet": ".downcast_ref::<crate::app::error::CliError>()"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 1054,
+      "snippet": "return Box::new(crate::app::error::CliError::new("
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 1062,
+      "snippet": "return Box::new(crate::app::error::CliError::new("
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 1070,
+      "snippet": "return Box::new(crate::app::error::CliError::new("
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 1078,
+      "snippet": "Box::new(crate::app::error::CliError::new("
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 1087,
+      "snippet": "fn print_cli_error(error: &crate::app::error::CliError) {"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 1126,
+      "snippet": "use crate::adapters::ipc::version::{VersionCheckResult, check_version};"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 1166,
+      "snippet": "use crate::adapters::ipc::error_codes::ErrorCategory;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 1315,
+      "snippet": "use crate::app::commands::{Cli, Commands, DaemonCommand, OutputFormat};"
+    },
+    {
+      "source": "app/daemon/http_api.rs",
+      "target": "crate::domain",
+      "sourceLayer": "app",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "app/daemon/http_api.rs",
+      "line": 21,
+      "snippet": "use crate::domain::session_types::SessionInfo;"
+    },
+    {
+      "source": "app/daemon/http_api.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/daemon/http_api.rs",
+      "line": 22,
+      "snippet": "use crate::infra::daemon::SessionManager;"
+    },
+    {
+      "source": "app/daemon/http_api.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "app",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "app/daemon/http_api.rs",
+      "line": 23,
+      "snippet": "use crate::usecases::ports::{SessionHandle, SessionRepository, StreamCursor};"
+    },
+    {
+      "source": "app/daemon/transport/unix_socket.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/daemon/transport/unix_socket.rs",
+      "line": 7,
+      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+    },
+    {
+      "source": "app/daemon/transport/mod.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/daemon/transport/mod.rs",
+      "line": 6,
+      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::daemon::{Router, UseCaseContainer};"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 2,
+      "snippet": "use crate::adapters::ipc::{RpcResponse, socket_path};"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 3,
+      "snippet": "use crate::adapters::{attach_output_to_response, parse_attach_input, session_error_response};"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::common",
+      "sourceLayer": "app",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 4,
+      "snippet": "use crate::common::DaemonError;"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::common",
+      "sourceLayer": "app",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 5,
+      "snippet": "use crate::common::telemetry;"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 15,
+      "snippet": "use crate::app::daemon::http_api::{ApiConfig, ApiServerError, ApiServerHandle, start_api_server};"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 16,
+      "snippet": "use crate::app::daemon::transport::{"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 20,
+      "snippet": "use crate::infra::daemon::DaemonConfig;"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 21,
+      "snippet": "use crate::infra::daemon::DaemonMetrics;"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 22,
+      "snippet": "use crate::infra::daemon::SessionManager;"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 23,
+      "snippet": "use crate::infra::daemon::SignalHandler;"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 24,
+      "snippet": "use crate::infra::daemon::{LockFile, remove_lock_file};"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "app",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 25,
+      "snippet": "use crate::usecases::AttachUseCase;"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "app",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 26,
+      "snippet": "use crate::usecases::ports::{MetricsProvider, SessionRepository, StreamCursor};"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "app",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 58,
+      "snippet": "fn notifier(&self) -> crate::usecases::ports::ShutdownNotifierHandle {"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "app",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 85,
+      "snippet": "impl crate::usecases::ports::ShutdownNotifier for ShutdownNotify {"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "app",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 193,
+      "snippet": "shutdown_notifier: crate::usecases::ports::ShutdownNotifierHandle,"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 231,
+      "snippet": "fn handle_request(&self, request: crate::adapters::ipc::RpcRequest) -> RpcResponse {"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 239,
+      "snippet": "request: crate::adapters::ipc::RpcRequest,"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 396,
+      "snippet": "request: crate::adapters::ipc::RpcRequest,"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 723,
+      "snippet": "request: crate::adapters::ipc::RpcRequest,"
+    },
+    {
+      "source": "adapters/snapshot_adapters.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/snapshot_adapters.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ipc::{"
+    },
+    {
+      "source": "adapters/snapshot_adapters.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/snapshot_adapters.rs",
+      "line": 5,
+      "snippet": "use crate::domain::{"
+    },
+    {
+      "source": "adapters/snapshot_adapters.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/snapshot_adapters.rs",
+      "line": 84,
+      "snippet": "use crate::domain::session_types::SessionInfo;"
+    },
+    {
+      "source": "adapters/snapshot_adapters.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/snapshot_adapters.rs",
+      "line": 100,
+      "snippet": "use crate::domain::DomainRole;"
+    },
+    {
+      "source": "adapters/snapshot_adapters.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/snapshot_adapters.rs",
+      "line": 282,
+      "snippet": "use crate::domain::session_types::{SessionId, SessionInfo};"
+    },
+    {
+      "source": "adapters/presenter.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/presenter.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ipc::ClientError;"
+    },
+    {
+      "source": "adapters/presenter.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/presenter.rs",
+      "line": 2,
+      "snippet": "use crate::adapters::{RpcValue, RpcValueRef};"
+    },
+    {
+      "source": "adapters/presenter.rs",
+      "target": "crate::common",
+      "sourceLayer": "adapters",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "adapters/presenter.rs",
+      "line": 3,
+      "snippet": "use crate::common::Colors;"
+    },
+    {
+      "source": "adapters/presenter.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/presenter.rs",
+      "line": 82,
+      "snippet": "use crate::adapters::ipc::socket_path;"
+    },
+    {
+      "source": "adapters/daemon/error.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/error.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ipc::error_codes::{self, ErrorCategory};"
+    },
+    {
+      "source": "adapters/daemon/error.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/error.rs",
+      "line": 2,
+      "snippet": "use crate::usecases::SpawnError;"
+    },
+    {
+      "source": "adapters/daemon/error.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/error.rs",
+      "line": 3,
+      "snippet": "use crate::usecases::ports::{LivePreviewError, PtyError, SessionError};"
+    },
+    {
+      "source": "adapters/daemon/router.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/router.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+    },
+    {
+      "source": "adapters/daemon/router.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/router.rs",
+      "line": 5,
+      "snippet": "use crate::adapters::daemon::handlers;"
+    },
+    {
+      "source": "adapters/daemon/router.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/router.rs",
+      "line": 6,
+      "snippet": "use crate::usecases::ports::SessionRepository;"
+    },
+    {
+      "source": "adapters/daemon/router.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/router.rs",
+      "line": 141,
+      "snippet": "use crate::domain::core::{Component, CursorPosition, Element};"
+    },
+    {
+      "source": "adapters/daemon/router.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/router.rs",
+      "line": 142,
+      "snippet": "use crate::domain::{SessionId, SessionInfo};"
+    },
+    {
+      "source": "adapters/daemon/router.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/router.rs",
+      "line": 143,
+      "snippet": "use crate::usecases::ports::{"
+    },
+    {
+      "source": "adapters/daemon/usecase_container.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/usecase_container.rs",
+      "line": 5,
+      "snippet": "use crate::usecases::ports::{MetricsProvider, SessionRepository, ShutdownNotifierHandle};"
+    },
+    {
+      "source": "adapters/daemon/usecase_container.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/usecase_container.rs",
+      "line": 6,
+      "snippet": "use crate::usecases::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/session.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/session.rs",
+      "line": 2,
+      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+    },
+    {
+      "source": "adapters/daemon/handlers/session.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/session.rs",
+      "line": 4,
+      "snippet": "use crate::adapters::daemon::DomainError;"
+    },
+    {
+      "source": "adapters/daemon/handlers/session.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/session.rs",
+      "line": 5,
+      "snippet": "use crate::adapters::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/session.rs",
+      "line": 12,
+      "snippet": "use crate::usecases::ports::SessionError;"
+    },
+    {
+      "source": "adapters/daemon/handlers/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/session.rs",
+      "line": 13,
+      "snippet": "use crate::usecases::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/elements.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/elements.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+    },
+    {
+      "source": "adapters/daemon/handlers/elements.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/elements.rs",
+      "line": 6,
+      "snippet": "use crate::adapters::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/elements.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/elements.rs",
+      "line": 12,
+      "snippet": "use crate::domain::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/elements.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/elements.rs",
+      "line": 16,
+      "snippet": "use crate::usecases::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/elements.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/elements.rs",
+      "line": 567,
+      "snippet": "use crate::domain::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/elements.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/elements.rs",
+      "line": 572,
+      "snippet": "use crate::usecases::ports::SessionError;"
+    },
+    {
+      "source": "adapters/daemon/handlers/elements.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/elements.rs",
+      "line": 573,
+      "snippet": "use crate::usecases::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/diagnostics.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/diagnostics.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+    },
+    {
+      "source": "adapters/daemon/handlers/diagnostics.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/diagnostics.rs",
+      "line": 5,
+      "snippet": "use crate::adapters::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/diagnostics.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/diagnostics.rs",
+      "line": 10,
+      "snippet": "use crate::domain::{HealthInput, MetricsInput, ShutdownInput};"
+    },
+    {
+      "source": "adapters/daemon/handlers/diagnostics.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/diagnostics.rs",
+      "line": 11,
+      "snippet": "use crate::usecases::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/diagnostics.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/diagnostics.rs",
+      "line": 72,
+      "snippet": "use crate::adapters::ipc::RpcRequest;"
+    },
+    {
+      "source": "adapters/daemon/handlers/diagnostics.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/diagnostics.rs",
+      "line": 73,
+      "snippet": "use crate::domain::ShutdownOutput;"
+    },
+    {
+      "source": "adapters/daemon/handlers/wait.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/wait.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+    },
+    {
+      "source": "adapters/daemon/handlers/wait.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/wait.rs",
+      "line": 5,
+      "snippet": "use crate::adapters::{parse_wait_input, wait_output_to_response};"
+    },
+    {
+      "source": "adapters/daemon/handlers/wait.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/wait.rs",
+      "line": 6,
+      "snippet": "use crate::usecases::WaitUseCase;"
+    },
+    {
+      "source": "adapters/daemon/handlers/input.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/input.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+    },
+    {
+      "source": "adapters/daemon/handlers/input.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/input.rs",
+      "line": 5,
+      "snippet": "use crate::adapters::{"
+    },
+    {
+      "source": "adapters/daemon/handlers/input.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/input.rs",
+      "line": 8,
+      "snippet": "use crate::usecases::{KeydownUseCase, KeystrokeUseCase, KeyupUseCase, TypeUseCase};"
+    },
+    {
+      "source": "adapters/daemon/handlers/common.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/common.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ipc::RpcRequest;"
+    },
+    {
+      "source": "adapters/daemon/handlers/common.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/daemon/handlers/common.rs",
+      "line": 4,
+      "snippet": "pub use crate::adapters::session_error_response;"
+    },
+    {
+      "source": "adapters/metrics_adapters.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/metrics_adapters.rs",
+      "line": 3,
+      "snippet": "use crate::domain::MetricsOutput;"
+    },
+    {
+      "source": "adapters/ipc/daemon_lifecycle.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/daemon_lifecycle.rs",
+      "line": 4,
+      "snippet": "use crate::adapters::ipc::error::ClientError;"
+    },
+    {
+      "source": "adapters/ipc/daemon_lifecycle.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/daemon_lifecycle.rs",
+      "line": 5,
+      "snippet": "use crate::adapters::ipc::process::{ProcessController, ProcessStatus, Signal};"
+    },
+    {
+      "source": "adapters/ipc/daemon_lifecycle.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/daemon_lifecycle.rs",
+      "line": 6,
+      "snippet": "use crate::adapters::ipc::{DaemonClient, DaemonClientConfig, polling};"
+    },
+    {
+      "source": "adapters/ipc/daemon_lifecycle.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/daemon_lifecycle.rs",
+      "line": 192,
+      "snippet": "use crate::adapters::ipc::process::mock::MockProcessController;"
+    },
+    {
+      "source": "adapters/ipc/types.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/types.rs",
+      "line": 6,
+      "snippet": "use crate::adapters::ipc::error_codes;"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 14,
+      "snippet": "use crate::adapters::ipc::error::ClientError;"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 15,
+      "snippet": "use crate::adapters::ipc::error_codes;"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 16,
+      "snippet": "use crate::adapters::ipc::socket::socket_path;"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 17,
+      "snippet": "use crate::adapters::ipc::transport::ClientStream;"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 18,
+      "snippet": "use crate::adapters::ipc::transport::IpcTransport;"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 19,
+      "snippet": "use crate::adapters::ipc::transport::default_transport;"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::common",
+      "sourceLayer": "adapters",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 20,
+      "snippet": "use crate::common::Colors;"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 578,
+      "snippet": "crate::adapters::ipc::transport::USE_DAEMON_START_STUB"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 602,
+      "snippet": "crate::adapters::ipc::transport::clear_test_listener();"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 604,
+      "snippet": "crate::adapters::ipc::transport::USE_DAEMON_START_STUB"
+    },
+    {
+      "source": "adapters/ipc/client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/client.rs",
+      "line": 612,
+      "snippet": "crate::adapters::ipc::transport::InMemoryTransport::new(|request| {"
+    },
+    {
+      "source": "adapters/ipc/error.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/error.rs",
+      "line": 4,
+      "snippet": "use crate::adapters::ipc::error_codes::ErrorCategory;"
+    },
+    {
+      "source": "adapters/ipc/version.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/version.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ValueExt;"
+    },
+    {
+      "source": "adapters/ipc/version.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/version.rs",
+      "line": 3,
+      "snippet": "use crate::adapters::ipc::client::DaemonClient;"
+    },
+    {
+      "source": "adapters/ipc/version.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/version.rs",
+      "line": 50,
+      "snippet": "use crate::adapters::ipc::mock_client::MockClient;"
+    },
+    {
+      "source": "adapters/ipc/transport.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/transport.rs",
+      "line": 11,
+      "snippet": "use crate::adapters::ipc::error::ClientError;"
+    },
+    {
+      "source": "adapters/ipc/transport.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/transport.rs",
+      "line": 12,
+      "snippet": "use crate::adapters::ipc::polling;"
+    },
+    {
+      "source": "adapters/ipc/transport.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/transport.rs",
+      "line": 13,
+      "snippet": "use crate::adapters::ipc::socket::socket_path;"
+    },
+    {
+      "source": "adapters/ipc/mock_client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/mock_client.rs",
+      "line": 7,
+      "snippet": "use crate::adapters::ipc::client::{DaemonClient, DaemonClientConfig};"
+    },
+    {
+      "source": "adapters/ipc/mock_client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/mock_client.rs",
+      "line": 8,
+      "snippet": "use crate::adapters::ipc::error::ClientError;"
+    },
+    {
+      "source": "adapters/ipc/mod.rs",
+      "target": "crate::common",
+      "sourceLayer": "adapters",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "adapters/ipc/mod.rs",
+      "line": 16,
+      "snippet": "pub use crate::common::error_codes;"
+    },
+    {
+      "source": "adapters/rpc_value.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc_value.rs",
+      "line": 4,
+      "snippet": "use crate::adapters::ValueExt;"
+    },
+    {
+      "source": "adapters/rpc_value.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc_value.rs",
+      "line": 5,
+      "snippet": "use crate::adapters::ipc::client::{DaemonClient, StreamResponse};"
+    },
+    {
+      "source": "adapters/rpc_value.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc_value.rs",
+      "line": 6,
+      "snippet": "use crate::adapters::ipc::error::ClientError;"
+    },
+    {
+      "source": "adapters/rpc_value.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc_value.rs",
+      "line": 162,
+      "snippet": "pub fn abort_handle(&self) -> Option<crate::adapters::ipc::client::StreamAbortHandle> {"
+    },
+    {
+      "source": "adapters/rpc.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc.rs",
+      "line": 1,
+      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse, params};"
+    },
+    {
+      "source": "adapters/rpc.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc.rs",
+      "line": 7,
+      "snippet": "use crate::adapters::daemon::DomainError;"
+    },
+    {
+      "source": "adapters/rpc.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc.rs",
+      "line": 8,
+      "snippet": "use crate::domain::{"
+    },
+    {
+      "source": "adapters/rpc.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "adapters",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc.rs",
+      "line": 20,
+      "snippet": "use crate::usecases::ports::SessionError;"
+    },
+    {
+      "source": "adapters/rpc.rs",
+      "target": "crate::common",
+      "sourceLayer": "adapters",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc.rs",
+      "line": 145,
+      "snippet": "use crate::common::strip_ansi_codes;"
+    },
+    {
+      "source": "adapters/rpc.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc.rs",
+      "line": 414,
+      "snippet": "use crate::domain::{AssertConditionType, AssertInput, AssertOutput};"
+    },
+    {
+      "source": "adapters/rpc.rs",
+      "target": "crate::domain",
+      "sourceLayer": "adapters",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc.rs",
+      "line": 878,
+      "snippet": "use crate::domain::SessionId;"
+    },
+    {
+      "source": "common/daemon_error.rs",
+      "target": "crate::common",
+      "sourceLayer": "common",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "common/daemon_error.rs",
+      "line": 1,
+      "snippet": "use crate::common::error_codes::{self, ErrorCategory};"
+    },
+    {
+      "source": "domain/conversions.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/conversions.rs",
+      "line": 1,
+      "snippet": "use crate::domain::core::vom::snapshot::{"
+    },
+    {
+      "source": "domain/conversions.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/conversions.rs",
+      "line": 4,
+      "snippet": "use crate::domain::core::{CursorPosition, Element, ElementType, Position};"
+    },
+    {
+      "source": "domain/conversions.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/conversions.rs",
+      "line": 6,
+      "snippet": "use crate::domain::{"
+    },
+    {
+      "source": "domain/core/element.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/element.rs",
+      "line": 182,
+      "snippet": "use crate::domain::core::vom::Rect;"
+    },
+    {
+      "source": "domain/core/vom/pipeline_tests/golden.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/pipeline_tests/golden.rs",
+      "line": 1,
+      "snippet": "use crate::domain::core::CursorPosition;"
+    },
+    {
+      "source": "domain/core/vom/pipeline_tests/golden.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/pipeline_tests/golden.rs",
+      "line": 2,
+      "snippet": "use crate::domain::core::style::CellStyle;"
+    },
+    {
+      "source": "domain/core/vom/pipeline_tests/golden.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/pipeline_tests/golden.rs",
+      "line": 3,
+      "snippet": "use crate::domain::core::test_fixtures::MockScreenBuffer;"
+    },
+    {
+      "source": "domain/core/vom/pipeline_tests/golden.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/pipeline_tests/golden.rs",
+      "line": 4,
+      "snippet": "use crate::domain::core::vom::{self as vom, Role};"
+    },
+    {
+      "source": "domain/core/vom/pipeline_tests/pipeline.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/pipeline_tests/pipeline.rs",
+      "line": 1,
+      "snippet": "use crate::domain::core::CursorPosition;"
+    },
+    {
+      "source": "domain/core/vom/pipeline_tests/pipeline.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/pipeline_tests/pipeline.rs",
+      "line": 2,
+      "snippet": "use crate::domain::core::style::CellStyle;"
+    },
+    {
+      "source": "domain/core/vom/pipeline_tests/pipeline.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/pipeline_tests/pipeline.rs",
+      "line": 3,
+      "snippet": "use crate::domain::core::test_fixtures::MockScreenBuffer;"
+    },
+    {
+      "source": "domain/core/vom/pipeline_tests/pipeline.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/pipeline_tests/pipeline.rs",
+      "line": 4,
+      "snippet": "use crate::domain::core::vom::{self as vom, Role};"
+    },
+    {
+      "source": "domain/core/vom/classifier.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/classifier.rs",
+      "line": 10,
+      "snippet": "use crate::domain::core::CursorPosition;"
+    },
+    {
+      "source": "domain/core/vom/classifier.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/classifier.rs",
+      "line": 11,
+      "snippet": "use crate::domain::core::style::Color;"
+    },
+    {
+      "source": "domain/core/vom/classifier.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/classifier.rs",
+      "line": 131,
+      "snippet": "use crate::domain::core::style::CellStyle;"
+    },
+    {
+      "source": "domain/core/vom/classifier.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/classifier.rs",
+      "line": 132,
+      "snippet": "use crate::domain::core::vom::Rect;"
+    },
+    {
+      "source": "domain/core/vom/mod.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/mod.rs",
+      "line": 14,
+      "snippet": "use crate::domain::core::screen::ScreenGrid;"
+    },
+    {
+      "source": "domain/core/vom/mod.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/mod.rs",
+      "line": 15,
+      "snippet": "use crate::domain::core::style::CellStyle;"
+    },
+    {
+      "source": "domain/core/vom/segmentation.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/segmentation.rs",
+      "line": 2,
+      "snippet": "use crate::domain::core::screen::ScreenGrid;"
+    },
+    {
+      "source": "domain/core/vom/segmentation.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/segmentation.rs",
+      "line": 41,
+      "snippet": "use crate::domain::core::style::CellStyle;"
+    },
+    {
+      "source": "domain/core/vom/segmentation.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/segmentation.rs",
+      "line": 42,
+      "snippet": "use crate::domain::core::style::Color;"
+    },
+    {
+      "source": "domain/core/vom/snapshot.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/vom/snapshot.rs",
+      "line": 158,
+      "snippet": "use crate::domain::core::vom::Role;"
+    },
+    {
+      "source": "domain/core/test_fixtures.rs",
+      "target": "crate::domain",
+      "sourceLayer": "domain",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "domain/core/test_fixtures.rs",
+      "line": 6,
+      "snippet": "use crate::domain::core::{Element, ElementType, Position};"
+    },
+    {
+      "source": "usecases/shutdown.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/shutdown.rs",
+      "line": 4,
+      "snippet": "use crate::domain::{ShutdownInput, ShutdownOutput};"
+    },
+    {
+      "source": "usecases/shutdown.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/shutdown.rs",
+      "line": 5,
+      "snippet": "use crate::usecases::ports::ShutdownNotifier;"
+    },
+    {
+      "source": "usecases/shutdown.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/shutdown.rs",
+      "line": 43,
+      "snippet": "Arc::new(crate::usecases::ports::NoopShutdownNotifier),"
+    },
+    {
+      "source": "usecases/shutdown.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/shutdown.rs",
+      "line": 59,
+      "snippet": "Arc::new(crate::usecases::ports::NoopShutdownNotifier),"
+    },
+    {
+      "source": "usecases/shutdown.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/shutdown.rs",
+      "line": 72,
+      "snippet": "Arc::new(crate::usecases::ports::NoopShutdownNotifier),"
+    },
+    {
+      "source": "usecases/session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/session.rs",
+      "line": 3,
+      "snippet": "use crate::domain::{"
+    },
+    {
+      "source": "usecases/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/session.rs",
+      "line": 8,
+      "snippet": "use crate::usecases::SpawnError;"
+    },
+    {
+      "source": "usecases/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/session.rs",
+      "line": 9,
+      "snippet": "use crate::usecases::ports::SessionError;"
+    },
+    {
+      "source": "usecases/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/session.rs",
+      "line": 10,
+      "snippet": "use crate::usecases::ports::SessionRepository;"
+    },
+    {
+      "source": "usecases/session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/session.rs",
+      "line": 278,
+      "snippet": "use crate::domain::{AssertConditionType, AssertInput, AssertOutput};"
+    },
+    {
+      "source": "usecases/session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/session.rs",
+      "line": 334,
+      "snippet": "use crate::domain::SessionId;"
+    },
+    {
+      "source": "usecases/session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/session.rs",
+      "line": 335,
+      "snippet": "use crate::domain::SessionInfo;"
+    },
+    {
+      "source": "usecases/session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/session.rs",
+      "line": 336,
+      "snippet": "use crate::usecases::ports::test_support::{MockError, MockSessionRepository};"
+    },
+    {
+      "source": "usecases/elements.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/elements.rs",
+      "line": 4,
+      "snippet": "use crate::usecases::ansi_keys;"
+    },
+    {
+      "source": "usecases/elements.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/elements.rs",
+      "line": 5,
+      "snippet": "use crate::domain::core::Element;"
+    },
+    {
+      "source": "usecases/elements.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/elements.rs",
+      "line": 7,
+      "snippet": "use crate::domain::{"
+    },
+    {
+      "source": "usecases/elements.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/elements.rs",
+      "line": 16,
+      "snippet": "use crate::domain::{core_element_to_domain, core_elements_to_domain};"
+    },
+    {
+      "source": "usecases/elements.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/elements.rs",
+      "line": 17,
+      "snippet": "use crate::usecases::ports::SessionError;"
+    },
+    {
+      "source": "usecases/elements.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/elements.rs",
+      "line": 18,
+      "snippet": "use crate::usecases::ports::SessionRepository;"
+    },
+    {
+      "source": "usecases/elements.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/elements.rs",
+      "line": 19,
+      "snippet": "use crate::usecases::select_helpers::navigate_to_option;"
+    },
+    {
+      "source": "usecases/elements.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/elements.rs",
+      "line": 964,
+      "snippet": "use crate::domain::SessionId;"
+    },
+    {
+      "source": "usecases/elements.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/elements.rs",
+      "line": 965,
+      "snippet": "use crate::usecases::ports::test_support::{MockError, MockSessionRepository};"
+    },
+    {
+      "source": "usecases/diagnostics.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/diagnostics.rs",
+      "line": 5,
+      "snippet": "use crate::domain::{"
+    },
+    {
+      "source": "usecases/diagnostics.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/diagnostics.rs",
+      "line": 9,
+      "snippet": "use crate::usecases::ports::{MetricsProvider, SessionError, SessionRepository};"
+    },
+    {
+      "source": "usecases/diagnostics.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/diagnostics.rs",
+      "line": 179,
+      "snippet": "use crate::domain::SessionId;"
+    },
+    {
+      "source": "usecases/diagnostics.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/diagnostics.rs",
+      "line": 180,
+      "snippet": "use crate::usecases::ports::test_support::{MockError, MockSessionRepository};"
+    },
+    {
+      "source": "usecases/wait.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/wait.rs",
+      "line": 4,
+      "snippet": "use crate::domain::{WaitInput, WaitOutput};"
+    },
+    {
+      "source": "usecases/wait.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/wait.rs",
+      "line": 5,
+      "snippet": "use crate::usecases::ports::{SessionError, SessionRepository};"
+    },
+    {
+      "source": "usecases/wait.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/wait.rs",
+      "line": 6,
+      "snippet": "use crate::usecases::wait_condition::{StableTracker, WaitCondition, check_condition};"
+    },
+    {
+      "source": "usecases/wait.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/wait.rs",
+      "line": 74,
+      "snippet": "use crate::domain::SessionId;"
+    },
+    {
+      "source": "usecases/wait.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/wait.rs",
+      "line": 75,
+      "snippet": "use crate::usecases::ports::test_support::{MockError, MockSessionRepository};"
+    },
+    {
+      "source": "usecases/wait_condition.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/wait_condition.rs",
+      "line": 6,
+      "snippet": "use crate::usecases::ports::SessionOps;"
+    },
+    {
+      "source": "usecases/wait_condition.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/wait_condition.rs",
+      "line": 143,
+      "snippet": "use crate::domain::core::{Element, ElementType, Position};"
+    },
+    {
+      "source": "usecases/wait_condition.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/wait_condition.rs",
+      "line": 144,
+      "snippet": "use crate::usecases::ports::test_support::MockSession;"
+    },
+    {
+      "source": "usecases/snapshot.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/snapshot.rs",
+      "line": 3,
+      "snippet": "use crate::domain::core::vom::snapshot::{SnapshotOptions, format_snapshot};"
+    },
+    {
+      "source": "usecases/snapshot.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/snapshot.rs",
+      "line": 5,
+      "snippet": "use crate::domain::{"
+    },
+    {
+      "source": "usecases/snapshot.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/snapshot.rs",
+      "line": 8,
+      "snippet": "use crate::domain::{core_cursor_to_domain, core_elements_to_domain, core_snapshot_to_domain};"
+    },
+    {
+      "source": "usecases/snapshot.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/snapshot.rs",
+      "line": 9,
+      "snippet": "use crate::usecases::ports::SessionError;"
+    },
+    {
+      "source": "usecases/snapshot.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/snapshot.rs",
+      "line": 10,
+      "snippet": "use crate::usecases::ports::SessionRepository;"
+    },
+    {
+      "source": "usecases/snapshot.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/snapshot.rs",
+      "line": 124,
+      "snippet": "use crate::domain::SessionId;"
+    },
+    {
+      "source": "usecases/snapshot.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/snapshot.rs",
+      "line": 125,
+      "snippet": "use crate::usecases::ports::test_support::MockSessionRepository;"
+    },
+    {
+      "source": "usecases/select_helpers.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/select_helpers.rs",
+      "line": 3,
+      "snippet": "use crate::usecases::ansi_keys;"
+    },
+    {
+      "source": "usecases/select_helpers.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/select_helpers.rs",
+      "line": 4,
+      "snippet": "use crate::usecases::ports::{SessionError, SessionOps};"
+    },
+    {
+      "source": "usecases/input.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/input.rs",
+      "line": 3,
+      "snippet": "use crate::domain::{"
+    },
+    {
+      "source": "usecases/input.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/input.rs",
+      "line": 7,
+      "snippet": "use crate::usecases::ports::{SessionError, SessionRepository};"
+    },
+    {
+      "source": "usecases/input.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/input.rs",
+      "line": 120,
+      "snippet": "use crate::domain::SessionId;"
+    },
+    {
+      "source": "usecases/input.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/input.rs",
+      "line": 121,
+      "snippet": "use crate::usecases::ports::test_support::{MockError, MockSessionRepository};"
+    },
+    {
+      "source": "usecases/ports/session_repository.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/session_repository.rs",
+      "line": 7,
+      "snippet": "use crate::domain::core::{Component, CursorPosition, Element};"
+    },
+    {
+      "source": "usecases/ports/session_repository.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/session_repository.rs",
+      "line": 8,
+      "snippet": "use crate::domain::session_types::{SessionId, SessionInfo};"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_session.rs",
+      "line": 1,
+      "snippet": "use crate::domain::core::CursorPosition;"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_session.rs",
+      "line": 2,
+      "snippet": "use crate::domain::core::Element;"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_session.rs",
+      "line": 3,
+      "snippet": "use crate::domain::core::vom::Component;"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_session.rs",
+      "line": 6,
+      "snippet": "use crate::domain::session_types::SessionId;"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_session.rs",
+      "line": 7,
+      "snippet": "use crate::usecases::ports::{"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_session.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_session.rs",
+      "line": 10,
+      "snippet": "use crate::usecases::ports::{PtyError, SessionError};"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_session.rs",
+      "line": 231,
+      "snippet": "use crate::domain::core::{ElementType, Position};"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_session.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_session.rs",
+      "line": 327,
+      "snippet": "use crate::domain::core::vom::{Rect, Role};"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_error.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_error.rs",
+      "line": 1,
+      "snippet": "use crate::usecases::ports::{PtyError, SessionError};"
+    },
+    {
+      "source": "usecases/ports/test_support/element_builder.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/element_builder.rs",
+      "line": 1,
+      "snippet": "use crate::domain::core::{Element, ElementType, Position};"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_repository.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_repository.rs",
+      "line": 5,
+      "snippet": "use crate::domain::SessionId;"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_repository.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_repository.rs",
+      "line": 6,
+      "snippet": "use crate::domain::SessionInfo;"
+    },
+    {
+      "source": "usecases/ports/test_support/mock_repository.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "usecases",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/test_support/mock_repository.rs",
+      "line": 9,
+      "snippet": "use crate::usecases::ports::{SessionError, SessionHandle, SessionRepository};"
+    },
+    {
+      "source": "usecases/ports/terminal_engine.rs",
+      "target": "crate::domain",
+      "sourceLayer": "usecases",
+      "targetLayer": "domain",
+      "origin": "source-scan",
+      "filePath": "usecases/ports/terminal_engine.rs",
+      "line": 1,
+      "snippet": "use crate::domain::core::ScreenSnapshot;"
+    }
+  ],
+  "summary": [
+    "adapters -> adapters (51)",
+    "adapters -> common (4)",
+    "adapters -> domain (14)",
+    "adapters -> usecases (15)",
+    "app -> adapters (50)",
+    "app -> app (28)",
+    "app -> common (8)",
+    "app -> domain (1)",
+    "app -> infra (7)",
+    "app -> usecases (6)",
+    "common -> common (1)",
+    "domain -> domain (23)",
+    "infra -> common (8)",
+    "infra -> domain (16)",
+    "infra -> infra (15)",
+    "infra -> usecases (13)",
+    "usecases -> domain (32)",
+    "usecases -> usecases (31)"
+  ],
+  "violations": []
+}

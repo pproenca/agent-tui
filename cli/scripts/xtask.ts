@@ -54,7 +54,8 @@ function printUsage() {
       "  xtask version <check|current|assert-tag|assert-input|set>",
       "  xtask release <version|major|minor|patch> [--yes]",
       "  xtask ci",
-      "  xtask architecture check",
+      "  xtask architecture check [--verbose]",
+      "  xtask architecture graph [--format json]",
       "  xtask dist <release|verify|npm>",
     ].join("\n"),
   );
@@ -118,10 +119,19 @@ function architectureCommand(args: string[]) {
   if (!subcommand) {
     throw new Error("Missing architecture subcommand");
   }
-  if (subcommand !== "check") {
-    throw new Error(`Unknown architecture subcommand: ${subcommand}`);
+  const { flags } = parseFlags(args.slice(1));
+  switch (subcommand) {
+    case "check": {
+      const verbose = Boolean(flags.get("verbose"));
+      return architectureCheck({ verbose });
+    }
+    case "graph": {
+      const format = flagString(flags, "format", "json");
+      return architectureGraph({ format });
+    }
+    default:
+      throw new Error(`Unknown architecture subcommand: ${subcommand}`);
   }
-  return architectureCheck();
 }
 
 function distCommand(args: string[]) {
@@ -734,7 +744,47 @@ function hasCommand(name: string) {
 const LEGACY_SHIM_REGEX =
   /crate::daemon::|crate::ipc::|crate::terminal::|crate::core::|crate::commands::|crate::handlers::|crate::presenter::|crate::error::|crate::attach::/;
 
-function architectureCheck() {
+type Layer = "domain" | "usecases" | "adapters" | "infra" | "app" | "common" | "root";
+const LAYERS = ["domain", "usecases", "adapters", "infra", "app", "common"] as const;
+const LAYER_SET = new Set<string>(LAYERS);
+
+const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, Set<Layer>> = {
+  domain: new Set<Layer>(["domain"]),
+  usecases: new Set<Layer>(["domain", "usecases"]),
+  adapters: new Set<Layer>(["domain", "usecases", "adapters", "common"]),
+  infra: new Set<Layer>(["domain", "usecases", "infra", "common"]),
+  app: new Set<Layer>([
+    "domain",
+    "usecases",
+    "adapters",
+    "infra",
+    "app",
+    "common",
+  ]),
+  common: new Set<Layer>(["common"]),
+  root: new Set<Layer>([
+    "domain",
+    "usecases",
+    "adapters",
+    "infra",
+    "app",
+    "common",
+    "root",
+  ]),
+};
+
+type GraphEdge = {
+  source: string;
+  target: string;
+  sourceLayer: Layer;
+  targetLayer: Layer;
+  origin: "cargo-modules" | "source-scan";
+  filePath?: string;
+  line?: number;
+  snippet?: string;
+};
+
+function architectureCheck(options: { verbose?: boolean } = {}) {
   const srcRoot = path.join(ROOT, "crates", "agent-tui", "src");
 
   const legacyShim = findFirstMatch(srcRoot, (_path, line) =>
@@ -790,7 +840,38 @@ function architectureCheck() {
     );
   }
 
+  const { edges, summary } = collectLayerDependencies(srcRoot);
+  const violations = findLayerViolations(edges);
+  if (violations.length > 0) {
+    const report = violations.map(formatViolation).join("\n");
+    throw new Error(
+      `Architecture check failed: layer dependency violations detected\n${report}`,
+    );
+  }
+
+  if (options.verbose) {
+    console.log("Layer dependency summary:");
+    for (const line of summary) {
+      console.log(`  ${line}`);
+    }
+  }
+
   console.log("Architecture checks passed.");
+}
+
+function architectureGraph(options: { format: string }) {
+  if (options.format !== "json") {
+    throw new Error(`Unsupported format: ${options.format}`);
+  }
+  const srcRoot = path.join(ROOT, "crates", "agent-tui", "src");
+  const { edges, summary } = collectLayerDependencies(srcRoot);
+  const violations = findLayerViolations(edges);
+  const payload = {
+    edges,
+    summary,
+    violations,
+  };
+  console.log(JSON.stringify(payload, null, 2));
 }
 
 function findFirstMatch(
@@ -838,6 +919,147 @@ function walkDir(dir: string) {
     }
   }
   return files;
+}
+
+function collectLayerDependencies(srcRoot: string) {
+  const sourceEdges = collectEdgesFromSource(srcRoot);
+  const moduleEdges = collectEdgesFromCargoModules();
+  const edges =
+    moduleEdges.length > 0 ? [...moduleEdges, ...sourceEdges] : sourceEdges;
+
+  const summaryCounts = new Map<string, number>();
+  for (const edge of edges) {
+    const summaryKey = `${edge.sourceLayer} -> ${edge.targetLayer}`;
+    summaryCounts.set(summaryKey, (summaryCounts.get(summaryKey) ?? 0) + 1);
+  }
+  const summary = Array.from(summaryCounts.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, count]) => `${key} (${count})`);
+
+  return { edges, summary };
+}
+
+function collectEdgesFromSource(srcRoot: string): GraphEdge[] {
+  const edges: GraphEdge[] = [];
+  const dependencyRegex = /crate::([a-zA-Z_][a-zA-Z0-9_]*)/g;
+
+  for (const filePath of walkDir(srcRoot)) {
+    if (path.extname(filePath) !== ".rs") {
+      continue;
+    }
+    const sourceLayer = layerFromPath(srcRoot, filePath);
+    const contents = fs.readFileSync(filePath, "utf8");
+    const lines = contents.split(/\r?\n/);
+    for (let index = 0; index < lines.length; index += 1) {
+      const rawLine = lines[index];
+      const line = rawLine.replace(/\/\/.*$/, "");
+      if (!line.includes("crate::")) {
+        continue;
+      }
+      dependencyRegex.lastIndex = 0;
+      let match: RegExpExecArray | null = null;
+      while ((match = dependencyRegex.exec(line)) !== null) {
+        const targetLayer = match[1];
+        if (!LAYER_SET.has(targetLayer)) {
+          continue;
+        }
+        const targetLayerTyped = targetLayer as Layer;
+        edges.push({
+          source: path.relative(srcRoot, filePath),
+          target: `crate::${targetLayerTyped}`,
+          sourceLayer,
+          targetLayer: targetLayerTyped,
+          origin: "source-scan",
+          filePath: path.relative(srcRoot, filePath),
+          line: index + 1,
+          snippet: rawLine.trim(),
+        });
+      }
+    }
+  }
+
+  return edges;
+}
+
+function collectEdgesFromCargoModules(): GraphEdge[] {
+  if (!hasCommand("cargo-modules")) {
+    return [];
+  }
+  const result = spawnSync(
+    "cargo",
+    ["modules", "dependencies", "--lib", "-p", "agent-tui", "--layout", "dot"],
+    { cwd: ROOT, encoding: "utf8" },
+  );
+  if (result.status !== 0 || !result.stdout) {
+    return [];
+  }
+  const edges: GraphEdge[] = [];
+  const lines = result.stdout.split(/\r?\n/);
+  const edgeRegex = /"([^"]+)"\\s*->\\s*"([^"]+)"/;
+  for (const line of lines) {
+    if (!line.includes('label="uses"')) {
+      continue;
+    }
+    const match = edgeRegex.exec(line);
+    if (!match) {
+      continue;
+    }
+    const source = match[1];
+    const target = match[2];
+    if (!source.startsWith("agent_tui::") || !target.startsWith("agent_tui::")) {
+      continue;
+    }
+    const sourceLayer = layerFromModulePath(source);
+    const targetLayer = layerFromModulePath(target);
+    if (!sourceLayer || !targetLayer) {
+      continue;
+    }
+    edges.push({
+      source,
+      target,
+      sourceLayer,
+      targetLayer,
+      origin: "cargo-modules",
+    });
+  }
+  return edges;
+}
+
+function findLayerViolations(edges: GraphEdge[]): GraphEdge[] {
+  return edges.filter(
+    (edge) =>
+      !ALLOWED_LAYER_DEPENDENCIES[edge.sourceLayer].has(edge.targetLayer),
+  );
+}
+
+function formatViolation(edge: GraphEdge): string {
+  if (edge.filePath && edge.line && edge.snippet) {
+    return `- ${edge.sourceLayer} -> ${edge.targetLayer} at ${edge.filePath}:${edge.line}\n  ${edge.snippet}`;
+  }
+  return `- ${edge.sourceLayer} -> ${edge.targetLayer} (${edge.source} -> ${edge.target})`;
+}
+
+function layerFromPath(srcRoot: string, filePath: string): Layer {
+  const relative = path.relative(srcRoot, filePath);
+  const parts = relative.split(path.sep);
+  const rootName = parts[0];
+  if (rootName && LAYER_SET.has(rootName)) {
+    return rootName as Layer;
+  }
+  return "root";
+}
+
+function layerFromModulePath(modulePath: string): Layer | null {
+  for (const layer of LAYERS) {
+    if (
+      modulePath === `agent_tui::${layer}` ||
+      modulePath.includes(`::${layer}::`) ||
+      modulePath.endsWith(`::${layer}`)
+    ) {
+      return layer;
+    }
+  }
+  return null;
 }
 
 type DistKind = "release" | "npm";

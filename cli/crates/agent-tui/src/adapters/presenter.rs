@@ -1,6 +1,15 @@
 use crate::adapters::ipc::ClientError;
 use crate::adapters::{RpcValue, RpcValueRef};
 use crate::common::Colors;
+use clap::ValueEnum;
+
+/// Output format for CLI commands
+#[derive(Clone, Copy, Debug, ValueEnum, Default, PartialEq)]
+pub enum OutputFormat {
+    #[default]
+    Text,
+    Json,
+}
 
 pub trait Presenter {
     fn present_success(&self, message: &str, warning: Option<&str>);
@@ -516,10 +525,10 @@ impl Presenter for JsonPresenter {
     }
 }
 
-pub fn create_presenter(format: &crate::app::commands::OutputFormat) -> Box<dyn Presenter> {
+pub fn create_presenter(format: &OutputFormat) -> Box<dyn Presenter> {
     match format {
-        crate::app::commands::OutputFormat::Json => Box::new(JsonPresenter),
-        crate::app::commands::OutputFormat::Text => Box::new(TextPresenter),
+        OutputFormat::Json => Box::new(JsonPresenter),
+        OutputFormat::Text => Box::new(TextPresenter),
     }
 }
 

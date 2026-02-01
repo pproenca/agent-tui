@@ -1,6 +1,5 @@
 use std::io::BufRead;
 use std::io::BufReader;
-use std::io::ErrorKind;
 use std::io::Write;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -68,10 +67,10 @@ struct Request {
 
 #[derive(Debug, Deserialize)]
 struct Response {
-    #[allow(dead_code)]
-    jsonrpc: String,
-    #[allow(dead_code)]
-    id: u64,
+    #[serde(rename = "jsonrpc")]
+    _jsonrpc: String,
+    #[serde(rename = "id")]
+    _id: u64,
     result: Option<Value>,
     error: Option<RpcError>,
 }
@@ -94,13 +93,6 @@ pub trait DaemonClient: Send + Sync {
         config: &DaemonClientConfig,
     ) -> Result<Value, ClientError>;
 
-    fn call_with_retry(
-        &mut self,
-        method: &str,
-        params: Option<Value>,
-        max_retries: u32,
-    ) -> Result<Value, ClientError>;
-
     fn call_stream(
         &mut self,
         _method: &str,
@@ -114,17 +106,6 @@ pub trait DaemonClient: Send + Sync {
 
 pub struct UnixSocketClient {
     transport: std::sync::Arc<dyn IpcTransport>,
-}
-
-fn is_retriable_error(error: &ClientError) -> bool {
-    match error {
-        ClientError::ConnectionFailed(io_err) => matches!(
-            io_err.kind(),
-            ErrorKind::ConnectionRefused | ErrorKind::WouldBlock | ErrorKind::TimedOut
-        ),
-        ClientError::RpcError { retryable, .. } => *retryable,
-        _ => false,
-    }
 }
 
 impl UnixSocketClient {
@@ -283,46 +264,6 @@ impl DaemonClient for UnixSocketClient {
         result
     }
 
-    fn call_with_retry(
-        &mut self,
-        method: &str,
-        params: Option<Value>,
-        max_retries: u32,
-    ) -> Result<Value, ClientError> {
-        let config = DaemonClientConfig::default().with_max_retries(max_retries);
-        let mut delay = config.initial_retry_delay;
-        let mut last_error = None;
-
-        for attempt in 0..=config.max_retries {
-            debug!(
-                method = %method,
-                attempt,
-                max_retries = config.max_retries,
-                "RPC retry attempt"
-            );
-            let params_clone = params.clone();
-            match self.call_with_config(method, params_clone, &config) {
-                Ok(result) => return Ok(result),
-                Err(e) => {
-                    if !is_retriable_error(&e) || attempt == config.max_retries {
-                        debug!(
-                            method = %method,
-                            attempt,
-                            retryable = is_retriable_error(&e),
-                            "RPC retry aborted"
-                        );
-                        return Err(e);
-                    }
-                    last_error = Some(e);
-                    std::thread::sleep(delay);
-                    delay *= 2;
-                }
-            }
-        }
-
-        Err(last_error.unwrap_or(ClientError::DaemonNotRunning))
-    }
-
     fn call_stream(
         &mut self,
         method: &str,
@@ -414,6 +355,7 @@ pub fn get_daemon_pid() -> PidLookupResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::ErrorKind;
     use std::sync::Mutex;
 
     #[test]
@@ -506,59 +448,6 @@ mod tests {
         assert_eq!(config.read_timeout, Duration::from_secs(30));
         assert_eq!(config.write_timeout, Duration::from_secs(5));
         assert_eq!(config.max_retries, 5);
-    }
-
-    #[test]
-    fn test_is_retriable_error_connection_refused() {
-        let io_err = std::io::Error::new(ErrorKind::ConnectionRefused, "connection refused");
-        let err = ClientError::ConnectionFailed(io_err);
-        assert!(is_retriable_error(&err));
-    }
-
-    #[test]
-    fn test_is_retriable_error_would_block() {
-        let io_err = std::io::Error::new(ErrorKind::WouldBlock, "would block");
-        let err = ClientError::ConnectionFailed(io_err);
-        assert!(is_retriable_error(&err));
-    }
-
-    #[test]
-    fn test_is_retriable_error_timed_out() {
-        let io_err = std::io::Error::new(ErrorKind::TimedOut, "timed out");
-        let err = ClientError::ConnectionFailed(io_err);
-        assert!(is_retriable_error(&err));
-    }
-
-    #[test]
-    fn test_is_retriable_error_rpc_error_not_retriable() {
-        let err = ClientError::RpcError {
-            code: -32600,
-            message: "Invalid request".to_string(),
-            category: None,
-            retryable: false,
-            context: None,
-            suggestion: None,
-        };
-        assert!(!is_retriable_error(&err));
-    }
-
-    #[test]
-    fn test_is_retriable_error_rpc_lock_timeout() {
-        let err = ClientError::RpcError {
-            code: error_codes::LOCK_TIMEOUT,
-            message: "Lock timeout".to_string(),
-            category: Some(error_codes::ErrorCategory::Busy),
-            retryable: true,
-            context: None,
-            suggestion: None,
-        };
-        assert!(is_retriable_error(&err));
-    }
-
-    #[test]
-    fn test_is_retriable_error_daemon_not_running() {
-        let err = ClientError::DaemonNotRunning;
-        assert!(!is_retriable_error(&err));
     }
 
     static ENV_MUTEX: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();

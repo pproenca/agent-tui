@@ -7,8 +7,8 @@ use crate::adapters::ipc::error_codes;
 
 #[derive(Debug, Deserialize)]
 pub struct RpcRequest {
-    #[allow(dead_code)]
-    jsonrpc: String,
+    #[serde(rename = "jsonrpc")]
+    _jsonrpc: String,
     pub id: u64,
     pub method: String,
     #[serde(default)]
@@ -18,7 +18,7 @@ pub struct RpcRequest {
 impl RpcRequest {
     pub fn new(id: u64, method: String, params: Option<Value>) -> Self {
         Self {
-            jsonrpc: "2.0".to_string(),
+            _jsonrpc: "2.0".to_string(),
             id,
             method,
             params,
@@ -40,10 +40,6 @@ impl RpcRequest {
         self.param_bool_opt(key).unwrap_or(default)
     }
 
-    pub fn param_array(&self, key: &str) -> Option<&Vec<Value>> {
-        self.params.as_ref()?.get(key)?.as_array()
-    }
-
     pub fn param_u64_opt(&self, key: &str) -> Option<u64> {
         self.params
             .as_ref()
@@ -59,31 +55,17 @@ impl RpcRequest {
         self.param_u64(key, default as u64) as u16
     }
 
-    pub fn param_i32(&self, key: &str, default: i32) -> i32 {
-        self.params
-            .as_ref()
-            .and_then(|p| p.get(key))
-            .and_then(|v| v.as_i64())
-            .map(|n| n as i32)
-            .unwrap_or(default)
-    }
-
     #[allow(clippy::result_large_err)]
     pub fn require_str(&self, key: &str) -> Result<&str, RpcResponse> {
         self.param_str(key)
-            .ok_or_else(|| RpcResponse::error(self.id, -32602, &format!("Missing '{}' param", key)))
-    }
-
-    #[allow(clippy::result_large_err)]
-    pub fn require_array(&self, key: &str) -> Result<&Vec<Value>, RpcResponse> {
-        self.param_array(key)
             .ok_or_else(|| RpcResponse::error(self.id, -32602, &format!("Missing '{}' param", key)))
     }
 }
 
 #[derive(Debug, Serialize)]
 pub struct RpcResponse {
-    jsonrpc: String,
+    #[serde(rename = "jsonrpc")]
+    _jsonrpc: String,
     id: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<Value>,
@@ -112,7 +94,7 @@ pub struct ErrorData {
 impl RpcResponse {
     pub fn success(id: u64, result: Value) -> Self {
         Self {
-            jsonrpc: "2.0".to_string(),
+            _jsonrpc: "2.0".to_string(),
             id,
             result: Some(result),
             error: None,
@@ -130,7 +112,7 @@ impl RpcResponse {
 
     pub fn error(id: u64, code: i32, message: &str) -> Self {
         Self {
-            jsonrpc: "2.0".to_string(),
+            _jsonrpc: "2.0".to_string(),
             id,
             result: None,
             error: Some(RpcServerError {
@@ -144,7 +126,7 @@ impl RpcResponse {
     pub fn error_with_context(id: u64, code: i32, message: &str, session_id: Option<&str>) -> Self {
         let data = session_id.map(|sid| json!({ "session_id": sid }));
         Self {
-            jsonrpc: "2.0".to_string(),
+            _jsonrpc: "2.0".to_string(),
             id,
             result: None,
             error: Some(RpcServerError {
@@ -157,7 +139,7 @@ impl RpcResponse {
 
     pub fn error_with_data(id: u64, code: i32, message: &str, error_data: ErrorData) -> Self {
         Self {
-            jsonrpc: "2.0".to_string(),
+            _jsonrpc: "2.0".to_string(),
             id,
             result: None,
             error: Some(RpcServerError {
@@ -200,7 +182,7 @@ mod tests {
 
     fn make_request(params: Option<Value>) -> RpcRequest {
         RpcRequest {
-            jsonrpc: "2.0".to_string(),
+            _jsonrpc: "2.0".to_string(),
             id: 1,
             method: "test".to_string(),
             params,
@@ -231,13 +213,6 @@ mod tests {
         let req = make_request(Some(json!({"enabled": true})));
         assert!(req.param_bool("enabled", false));
         assert!(!req.param_bool("missing", false));
-    }
-
-    #[test]
-    fn test_param_array_extracts_array() {
-        let req = make_request(Some(json!({"items": ["a", "b", "c"]})));
-        let arr = req.param_array("items").unwrap();
-        assert_eq!(arr.len(), 3);
     }
 
     #[test]

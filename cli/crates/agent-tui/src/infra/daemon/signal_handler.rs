@@ -9,8 +9,7 @@ use crate::common::DaemonError;
 use crate::usecases::ports::ShutdownNotifierHandle;
 
 pub struct SignalHandler {
-    #[allow(dead_code)]
-    handle: JoinHandle<()>,
+    _handle: JoinHandle<()>,
 }
 
 impl SignalHandler {
@@ -40,6 +39,6 @@ impl SignalHandler {
                 DaemonError::SignalSetup(format!("failed to spawn signal handler: {}", e))
             })?;
 
-        Ok(Self { handle })
+        Ok(Self { _handle: handle })
     }
 }

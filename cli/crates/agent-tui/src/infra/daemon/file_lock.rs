@@ -6,8 +6,7 @@ use std::path::Path;
 use crate::common::DaemonError;
 
 pub struct LockFile {
-    #[allow(dead_code)]
-    file: File,
+    _file: File,
 }
 
 impl LockFile {
@@ -37,7 +36,7 @@ impl LockFile {
         writeln!(lock_file, "{}", std::process::id())
             .map_err(|e| DaemonError::LockFailed(format!("failed to write PID: {}", e)))?;
 
-        Ok(Self { file: lock_file })
+        Ok(Self { _file: lock_file })
     }
 }
 

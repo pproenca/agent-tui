@@ -413,15 +413,6 @@ mod tests {
         ) -> Result<Value, ClientError> {
             self.call(method, params)
         }
-
-        fn call_with_retry(
-            &mut self,
-            method: &str,
-            params: Option<Value>,
-            _max_retries: u32,
-        ) -> Result<Value, ClientError> {
-            self.call(method, params)
-        }
     }
 
     #[test]

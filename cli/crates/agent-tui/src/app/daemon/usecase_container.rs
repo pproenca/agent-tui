@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::time::Instant;
 
 use crate::adapters::daemon::usecase_container::{
     DiagnosticsUseCases, InputUseCases, SessionUseCases, SnapshotUseCases, UseCaseContainer,
 };
-use crate::usecases::ports::{MetricsProvider, SessionRepository, ShutdownNotifierHandle};
+use crate::usecases::ports::{
+    Clock, MetricsProvider, SessionRepository, ShutdownNotifierHandle, SystemInfoProvider,
+};
 use crate::usecases::{
     AssertUseCaseImpl, AttachUseCaseImpl, CleanupUseCaseImpl, HealthUseCaseImpl,
     KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl, KillUseCaseImpl,
@@ -18,7 +19,8 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
     pub fn new(
         repository: Arc<R>,
         metrics_provider: Arc<dyn MetricsProvider>,
-        start_time: Instant,
+        system_info: Arc<dyn SystemInfoProvider>,
+        clock: Arc<dyn Clock>,
         active_connections: Arc<AtomicUsize>,
         shutdown_flag: Arc<AtomicBool>,
         shutdown_notifier: ShutdownNotifierHandle,
@@ -50,18 +52,18 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 health: HealthUseCaseImpl::new(
                     Arc::clone(&repository),
                     Arc::clone(&metrics_provider),
-                    start_time,
+                    Arc::clone(&system_info),
                     Arc::clone(&active_connections),
                 ),
                 metrics: MetricsUseCaseImpl::new(
                     Arc::clone(&repository),
                     metrics_provider,
-                    start_time,
+                    Arc::clone(&system_info),
                     active_connections,
                 ),
                 shutdown: ShutdownUseCaseImpl::new(shutdown_flag, shutdown_notifier),
             },
-            wait: WaitUseCaseImpl::new(repository),
+            wait: WaitUseCaseImpl::new(repository, clock),
         }
     }
 }

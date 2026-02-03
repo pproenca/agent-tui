@@ -1,6 +1,6 @@
 use crate::common::error_codes::{self, ErrorCategory};
 use crate::usecases::SpawnError;
-use crate::usecases::ports::{LivePreviewError, PtyError, SessionError};
+use crate::usecases::ports::{LivePreviewError, PtyError, SessionError, SpawnErrorKind};
 use serde_json::{Value, json};
 use thiserror::Error;
 
@@ -57,15 +57,18 @@ impl SessionError {
                     "PTY allocation failed. Check system resource limits (ulimit -n) or try restarting."
                         .to_string()
                 }
-                PtyError::Spawn(reason) => {
-                    if reason.contains("not found") || reason.contains("No such file") {
-                        "Command not found. Check if the command exists and is in PATH.".to_string()
-                    } else if reason.contains("Permission denied") {
+                PtyError::Spawn { kind, .. } => match kind {
+                    SpawnErrorKind::NotFound => {
+                        "Command not found. Check if the command exists and is in PATH."
+                            .to_string()
+                    }
+                    SpawnErrorKind::PermissionDenied => {
                         "Permission denied. Check file permissions.".to_string()
-                    } else {
+                    }
+                    SpawnErrorKind::Other => {
                         "Process spawn failed. Check command syntax and permissions.".to_string()
                     }
-                }
+                },
                 PtyError::Write(_) => {
                     "Failed to send input to terminal. The session may have ended. Run 'sessions' to check status."
                         .to_string()

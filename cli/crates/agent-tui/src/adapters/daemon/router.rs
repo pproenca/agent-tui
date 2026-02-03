@@ -78,8 +78,9 @@ mod tests {
     use crate::domain::core::{Component, CursorPosition};
     use crate::domain::{SessionId, SessionInfo};
     use crate::usecases::ports::{
-        LivePreviewSnapshot, MetricsProvider, NoopShutdownNotifier, SessionError, SessionHandle,
-        SessionOps, SessionRepository, StreamCursor, StreamRead, StreamSubscription,
+        Clock, LivePreviewSnapshot, MetricsProvider, NoopShutdownNotifier, SessionError,
+        SessionHandle, SessionOps, SessionRepository, StreamCursor, StreamRead, StreamSubscription,
+        SystemInfoProvider,
     };
     use crossbeam_channel as channel;
     use std::collections::HashMap;
@@ -105,6 +106,43 @@ mod tests {
 
         fn poison_recoveries(&self) -> u64 {
             0
+        }
+    }
+
+    #[derive(Default)]
+    struct TestClock;
+
+    impl Clock for TestClock {
+        fn now(&self) -> Instant {
+            Instant::now()
+        }
+    }
+
+    struct TestSystemInfo {
+        start_time: Instant,
+    }
+
+    impl TestSystemInfo {
+        fn new(start_time: Instant) -> Self {
+            Self { start_time }
+        }
+    }
+
+    impl SystemInfoProvider for TestSystemInfo {
+        fn pid(&self) -> u32 {
+            0
+        }
+
+        fn uptime_ms(&self) -> u64 {
+            self.start_time.elapsed().as_millis() as u64
+        }
+
+        fn version(&self) -> String {
+            "test-version".to_string()
+        }
+
+        fn commit(&self) -> String {
+            "test-commit".to_string()
         }
     }
 
@@ -279,13 +317,16 @@ mod tests {
         let session_repo = Arc::new(TestRepository::default());
         let metrics = Arc::new(TestMetrics);
         let start_time = Instant::now();
+        let system_info = Arc::new(TestSystemInfo::new(start_time));
+        let clock = Arc::new(TestClock::default());
         let active_connections = Arc::new(AtomicUsize::new(0));
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let shutdown_notifier = Arc::new(NoopShutdownNotifier);
         UseCaseContainer::new(
             session_repo,
             metrics,
-            start_time,
+            system_info,
+            clock,
             active_connections,
             shutdown_flag,
             shutdown_notifier,

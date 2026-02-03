@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::{
     KeydownInput, KeydownOutput, KeystrokeInput, KeystrokeOutput, KeyupInput, KeyupOutput,
-    ScrollInput, ScrollOutput, TypeInput, TypeOutput,
+    ScrollDirection, ScrollInput, ScrollOutput, TypeInput, TypeOutput,
 };
 use crate::usecases::ansi_keys;
 use crate::usecases::ports::{SessionError, SessionRepository};
@@ -141,17 +141,11 @@ impl<R: SessionRepository> ScrollUseCase for ScrollUseCaseImpl<R> {
     fn execute(&self, input: ScrollInput) -> Result<ScrollOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 
-        let key_seq: &[u8] = match input.direction.as_str() {
-            "up" => ansi_keys::UP,
-            "down" => ansi_keys::DOWN,
-            "left" => ansi_keys::LEFT,
-            "right" => ansi_keys::RIGHT,
-            _ => {
-                return Err(SessionError::InvalidKey(format!(
-                    "Invalid direction: {}",
-                    input.direction
-                )));
-            }
+        let key_seq: &[u8] = match input.direction {
+            ScrollDirection::Up => ansi_keys::UP,
+            ScrollDirection::Down => ansi_keys::DOWN,
+            ScrollDirection::Left => ansi_keys::LEFT,
+            ScrollDirection::Right => ansi_keys::RIGHT,
         };
 
         for _ in 0..input.amount {

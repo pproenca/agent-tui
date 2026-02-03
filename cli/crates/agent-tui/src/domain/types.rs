@@ -232,7 +232,7 @@ pub struct WaitInput {
     pub session_id: Option<SessionId>,
     pub text: Option<String>,
     pub timeout_ms: u64,
-    pub condition: Option<String>,
+    pub condition: Option<WaitConditionType>,
 }
 
 #[derive(Debug, Clone)]
@@ -244,7 +244,7 @@ pub struct WaitOutput {
 #[derive(Debug, Clone)]
 pub struct ScrollInput {
     pub session_id: Option<SessionId>,
-    pub direction: String,
+    pub direction: ScrollDirection,
     pub amount: u16,
 }
 

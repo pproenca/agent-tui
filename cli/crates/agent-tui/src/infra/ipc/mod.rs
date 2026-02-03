@@ -4,15 +4,11 @@ pub mod client;
 pub mod daemon_lifecycle;
 pub mod error;
 mod mock_client;
-pub mod params;
 pub mod polling;
 pub mod process;
 pub mod socket;
 pub mod transport;
-mod types;
 pub mod version;
-
-pub use crate::common::error_codes;
 
 pub use client::DaemonClient;
 pub use client::DaemonClientConfig;
@@ -31,10 +27,6 @@ pub use transport::TcpSocketTransport;
 pub use transport::UnixSocketTransport;
 pub use transport::default_transport;
 pub use transport::start_daemon_background;
-pub use types::ErrorData;
-pub use types::RpcRequest;
-pub use types::RpcResponse;
-pub use types::RpcServerError;
 pub use version::VersionCheckResult;
 pub use version::VersionMismatch;
 

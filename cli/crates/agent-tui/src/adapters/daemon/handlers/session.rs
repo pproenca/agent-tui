@@ -1,5 +1,5 @@
 use super::common;
-use crate::adapters::ipc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::{RpcRequest, RpcResponse};
 
 use crate::adapters::daemon::DomainError;
 use crate::adapters::{

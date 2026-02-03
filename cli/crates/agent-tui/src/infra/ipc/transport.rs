@@ -8,9 +8,9 @@ use std::net::TcpStream;
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
-use crate::adapters::ipc::error::ClientError;
-use crate::adapters::ipc::polling;
-use crate::adapters::ipc::socket::socket_path;
+use crate::infra::ipc::error::ClientError;
+use crate::infra::ipc::polling;
+use crate::infra::ipc::socket::socket_path;
 use tracing::debug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

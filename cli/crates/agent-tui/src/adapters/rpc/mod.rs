@@ -1,6 +1,11 @@
-use crate::adapters::ipc::{RpcRequest, RpcResponse, params};
+pub mod params;
+pub mod types;
+
+pub use types::{ErrorData, RpcRequest, RpcResponse, RpcServerError};
+
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use serde::Serialize;
 use serde_json::json;
 
 use super::snapshot_adapters::session_info_to_json;
@@ -19,6 +24,16 @@ const MAX_TERMINAL_COLS: u16 = 500;
 const MAX_TERMINAL_ROWS: u16 = 200;
 const MIN_TERMINAL_COLS: u16 = 10;
 const MIN_TERMINAL_ROWS: u16 = 5;
+
+pub fn to_value<T: Serialize>(value: T) -> Result<serde_json::Value, serde_json::Error> {
+    serde_json::to_value(value)
+}
+
+pub fn to_value_opt<T: Serialize>(
+    value: Option<T>,
+) -> Result<Option<serde_json::Value>, serde_json::Error> {
+    value.map(serde_json::to_value).transpose()
+}
 
 pub fn parse_session_id(session: Option<String>) -> Option<SessionId> {
     session.and_then(|s| {

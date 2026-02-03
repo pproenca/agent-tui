@@ -8,23 +8,24 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use crate::adapters::ipc::ClientError;
-use crate::adapters::ipc::DaemonClient;
-use crate::adapters::ipc::ProcessController;
-use crate::adapters::ipc::Signal;
-use crate::adapters::ipc::UnixProcessController;
-use crate::adapters::ipc::params;
-use crate::adapters::ipc::socket_path;
-use crate::adapters::{RpcValue, RpcValueRef, call_no_params, call_with_params};
+use crate::adapters::rpc::params;
+use crate::adapters::{RpcValue, RpcValueRef};
 use crate::common::Colors;
+use crate::infra::ipc::ClientError;
+use crate::infra::ipc::DaemonClient;
+use crate::infra::ipc::ProcessController;
+use crate::infra::ipc::Signal;
+use crate::infra::ipc::UnixProcessController;
+use crate::infra::ipc::socket_path;
 
-use crate::adapters::presenter::{Presenter, create_presenter};
+use crate::adapters::presenter::{ClientErrorView, Presenter, create_presenter};
 use crate::app::attach::DetachKeys;
 use crate::app::commands::LiveStartArgs;
 use crate::app::commands::OutputFormat;
 use crate::app::commands::ScrollDirection;
 use crate::app::commands::WaitParams;
 use crate::app::error::{AttachError, CliError};
+use crate::app::rpc_client::{call_no_params, call_with_params};
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -38,6 +39,15 @@ fn format_uptime_ms(uptime_ms: u64) -> String {
         format!("{}m {}s", mins, secs % 60)
     } else {
         format!("{}s", secs)
+    }
+}
+
+fn client_error_view(error: &ClientError) -> ClientErrorView {
+    ClientErrorView {
+        message: error.to_string(),
+        suggestion: error.suggestion().map(str::to_string),
+        retryable: error.is_retryable(),
+        json: Some(error.to_json_string()),
     }
 }
 
@@ -159,7 +169,8 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
     }
 
     pub fn display_error(&self, error: &ClientError) {
-        self.presenter.present_client_error(error);
+        let view = client_error_view(error);
+        self.presenter.present_client_error(&view);
     }
 }
 
@@ -476,7 +487,16 @@ pub fn handle_health<C: DaemonClient>(ctx: &mut HandlerContext<C>, verbose: bool
     match ctx.format {
         OutputFormat::Json => ctx.presenter().present_value(&result),
         OutputFormat::Text => {
-            let health = HealthResult::from_json(&result, verbose);
+            let health = if verbose {
+                let socket = socket_path();
+                let pid_file = socket.with_extension("pid");
+                HealthResult::from_json(&result).with_paths(
+                    Some(socket.display().to_string()),
+                    Some(pid_file.display().to_string()),
+                )
+            } else {
+                HealthResult::from_json(&result)
+            };
             ctx.presenter().present_health(&health);
         }
     }
@@ -965,8 +985,8 @@ fn is_process_running(pid: u32) -> bool {
     let controller = UnixProcessController;
     matches!(
         controller.check_process(pid),
-        Ok(crate::adapters::ipc::ProcessStatus::Running)
-            | Ok(crate::adapters::ipc::ProcessStatus::NoPermission)
+        Ok(crate::infra::ipc::ProcessStatus::Running)
+            | Ok(crate::infra::ipc::ProcessStatus::NoPermission)
     )
 }
 
@@ -1048,7 +1068,7 @@ fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     loop {
         match controller.check_process(pid) {
-            Ok(crate::adapters::ipc::ProcessStatus::NotFound) => return true,
+            Ok(crate::infra::ipc::ProcessStatus::NotFound) => return true,
             Ok(_) => {}
             Err(_) => {}
         }
@@ -1525,7 +1545,7 @@ pub enum StopResult {
 
 /// Core daemon restart logic that doesn't require an active client connection.
 pub fn restart_daemon_core() -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    use crate::adapters::ipc::{
+    use crate::infra::ipc::{
         PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background,
     };
 
@@ -1554,9 +1574,7 @@ pub fn restart_daemon_core() -> Result<Vec<String>, Box<dyn std::error::Error>> 
 /// Core daemon stop logic that doesn't require an active client connection.
 /// Returns `Ok(StopResult)` on success, including when daemon is already stopped (idempotent).
 pub fn stop_daemon_core(force: bool) -> Result<StopResult, Box<dyn std::error::Error>> {
-    use crate::adapters::ipc::{
-        PidLookupResult, UnixSocketClient, daemon_lifecycle, get_daemon_pid,
-    };
+    use crate::infra::ipc::{PidLookupResult, UnixSocketClient, daemon_lifecycle, get_daemon_pid};
 
     let pid = match get_daemon_pid() {
         PidLookupResult::Found(pid) => pid,
@@ -1808,7 +1826,7 @@ pub fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> Handle
 mod tests {
     use super::*;
     use crate::adapters::RpcValue;
-    use crate::adapters::presenter::{Presenter, TextPresenter};
+    use crate::adapters::presenter::{ClientErrorView, Presenter, TextPresenter};
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -1848,10 +1866,10 @@ mod tests {
                 .push(format!("value: {}", value.to_pretty_json()));
         }
 
-        fn present_client_error(&self, error: &crate::adapters::ipc::ClientError) {
+        fn present_client_error(&self, error: &ClientErrorView) {
             self.output
                 .borrow_mut()
-                .push(format!("client_error: {}", error));
+                .push(format!("client_error: {}", error.message));
         }
 
         fn present_kv(&self, key: &str, value: &str) {

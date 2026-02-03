@@ -1,4 +1,4 @@
-use crate::adapters::ipc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::{RpcRequest, RpcResponse};
 
 use super::common;
 use super::common::session_error_response;
@@ -69,7 +69,7 @@ pub fn handle_shutdown_uc<U: ShutdownUseCase>(usecase: &U, request: RpcRequest) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::ipc::RpcRequest;
+    use crate::adapters::rpc::RpcRequest;
     use crate::domain::ShutdownOutput;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};

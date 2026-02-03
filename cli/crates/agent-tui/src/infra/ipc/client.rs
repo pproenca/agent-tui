@@ -10,13 +10,13 @@ use serde::Serialize;
 use serde_json::Value;
 use tracing::{debug, trace};
 
-use crate::adapters::ipc::error::ClientError;
-use crate::adapters::ipc::error_codes;
-use crate::adapters::ipc::socket::socket_path;
-use crate::adapters::ipc::transport::ClientStream;
-use crate::adapters::ipc::transport::IpcTransport;
-use crate::adapters::ipc::transport::default_transport;
 use crate::common::Colors;
+use crate::common::error_codes;
+use crate::infra::ipc::error::ClientError;
+use crate::infra::ipc::socket::socket_path;
+use crate::infra::ipc::transport::ClientStream;
+use crate::infra::ipc::transport::IpcTransport;
+use crate::infra::ipc::transport::default_transport;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -464,7 +464,7 @@ mod tests {
         let _ = std::fs::remove_file(&socket_path);
 
         std::env::set_var("AGENT_TUI_SOCKET", &socket_path);
-        crate::adapters::ipc::transport::USE_DAEMON_START_STUB
+        crate::infra::ipc::transport::USE_DAEMON_START_STUB
             .store(true, std::sync::atomic::Ordering::SeqCst);
 
         let result = ensure_daemon();
@@ -488,17 +488,17 @@ mod tests {
                 );
             }
         }
-        crate::adapters::ipc::transport::clear_test_listener();
+        crate::infra::ipc::transport::clear_test_listener();
         let _ = std::fs::remove_file(&socket_path);
-        crate::adapters::ipc::transport::USE_DAEMON_START_STUB
+        crate::infra::ipc::transport::USE_DAEMON_START_STUB
             .store(false, std::sync::atomic::Ordering::SeqCst);
         std::env::remove_var("AGENT_TUI_SOCKET");
     }
 
     #[test]
     fn test_in_memory_transport_round_trip() {
-        let transport = std::sync::Arc::new(
-            crate::adapters::ipc::transport::InMemoryTransport::new(|request| {
+        let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new(
+            |request| {
                 let value: serde_json::Value =
                     serde_json::from_str(request.trim()).expect("request json");
                 let id = value
@@ -511,8 +511,8 @@ mod tests {
                     "result": { "ok": true }
                 })
                 .to_string()
-            }),
-        );
+            },
+        ));
 
         let mut client = UnixSocketClient::connect_with_transport(transport).unwrap();
         let result = client.call("health", None).unwrap();

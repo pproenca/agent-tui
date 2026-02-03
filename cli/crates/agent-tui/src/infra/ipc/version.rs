@@ -1,6 +1,4 @@
-use crate::adapters::ValueExt;
-
-use crate::adapters::ipc::client::DaemonClient;
+use crate::infra::ipc::client::DaemonClient;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionMismatch {
@@ -25,8 +23,8 @@ pub fn check_version<C: DaemonClient>(
     match client.call("health", None) {
         Err(e) => VersionCheckResult::CheckFailed(e.to_string()),
         Ok(health) => {
-            let daemon_version = health.str_or("version", "unknown");
-            let daemon_commit = health.str_or("commit", "unknown");
+            let daemon_version = value_str_or(&health, "version", "unknown");
+            let daemon_commit = value_str_or(&health, "commit", "unknown");
             let commit_mismatch = cli_commit != "unknown"
                 && daemon_commit != "unknown"
                 && cli_commit != daemon_commit;
@@ -44,10 +42,14 @@ pub fn check_version<C: DaemonClient>(
     }
 }
 
+fn value_str_or<'a>(value: &'a serde_json::Value, key: &str, default: &'a str) -> &'a str {
+    value.get(key).and_then(|v| v.as_str()).unwrap_or(default)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::ipc::mock_client::MockClient;
+    use crate::infra::ipc::mock_client::MockClient;
     use serde_json::json;
 
     #[test]

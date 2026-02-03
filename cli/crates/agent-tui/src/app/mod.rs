@@ -11,14 +11,15 @@ pub mod commands;
 pub mod daemon;
 pub mod error;
 pub mod handlers;
+pub mod rpc_client;
 
-use crate::adapters::call_no_params;
-use crate::adapters::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
 use crate::app::commands::OutputFormat;
 use crate::app::daemon::start_daemon;
+use crate::app::rpc_client::call_no_params;
 use crate::common::DaemonError;
 use crate::common::telemetry;
 use crate::common::{Colors, color_init};
+use crate::infra::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
 use tracing::debug;
 
 use crate::adapters::presenter::create_presenter;
@@ -492,7 +493,7 @@ impl Application {
                 Ok(true)
             }
             Commands::Daemon(DaemonCommand::Start { foreground: false }) => {
-                crate::adapters::ipc::start_daemon_background()?;
+                crate::infra::ipc::start_daemon_background()?;
                 println!("Daemon started in background");
                 Ok(true)
             }
@@ -920,7 +921,7 @@ impl Default for Application {
 }
 
 fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
-    use crate::adapters::ipc::version::{VersionCheckResult, check_version};
+    use crate::infra::ipc::version::{VersionCheckResult, check_version};
 
     match check_version(client, env!("AGENT_TUI_VERSION"), env!("AGENT_TUI_GIT_SHA")) {
         VersionCheckResult::Match => {}
@@ -960,7 +961,7 @@ fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
 }
 
 fn exit_code_for_client_error(error: &ClientError) -> i32 {
-    use crate::adapters::ipc::error_codes::ErrorCategory;
+    use crate::common::error_codes::ErrorCategory;
 
     if matches!(error, ClientError::DaemonNotRunning) {
         return exit_codes::UNAVAILABLE;

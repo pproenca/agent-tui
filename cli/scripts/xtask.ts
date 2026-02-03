@@ -840,6 +840,33 @@ function architectureCheck(options: { verbose?: boolean } = {}) {
     );
   }
 
+  const adaptersRoot = path.join(srcRoot, "adapters");
+  const adapterInfra = findFirstMatch(adaptersRoot, (_path, line) => {
+    const stripped = line.replace(/\/\/.*$/, "");
+    return [
+      "std::env::",
+      "std::fs::",
+      "std::net::",
+      "std::os::",
+      "std::process::",
+      "std::thread::",
+      "tokio::fs::",
+      "tokio::net::",
+      "tokio::process::",
+      "tokio::signal::",
+      "tokio::task::",
+      "libc::",
+      "mio::",
+      "nix::",
+      "signal_hook::",
+    ].some((token) => stripped.includes(token));
+  });
+  if (adapterInfra) {
+    throw new Error(
+      `Architecture check failed: adapters must not use OS/IO or runtime primitives (found at ${adapterInfra})`,
+    );
+  }
+
   const { edges, summary } = collectLayerDependencies(srcRoot);
   const violations = findLayerViolations(edges);
   if (violations.length > 0) {

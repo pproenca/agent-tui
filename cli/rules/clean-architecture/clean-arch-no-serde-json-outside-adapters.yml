@@ -1,14 +1,17 @@
 id: clean-arch-no-serde-json-outside-adapters
 language: rust
 severity: error
-message: "serde_json::Value and JSON macros must be confined to adapters."
+message: "serde_json::Value and JSON macros must be confined to adapters (and infra/ipc for wire protocol)."
 note: |
   Keep dynamic JSON (serde_json::Value, json! macro, to_value/from_value) out of domain,
-  usecases, infra, common, and app. Typed serialization is allowed in infra for persistence.
+  usecases, common, and app. Infra should avoid dynamic JSON except for infra/ipc wire protocols.
+  Typed serialization is allowed in infra for persistence.
 files:
   - "crates/agent-tui/src/domain/**/*.rs"
   - "crates/agent-tui/src/usecases/**/*.rs"
-  - "crates/agent-tui/src/infra/**/*.rs"
+  - "crates/agent-tui/src/infra/daemon/**/*.rs"
+  - "crates/agent-tui/src/infra/terminal/**/*.rs"
+  - "crates/agent-tui/src/infra/mod.rs"
   - "crates/agent-tui/src/common/**/*.rs"
   - "crates/agent-tui/src/app/**/*.rs"
 rule:

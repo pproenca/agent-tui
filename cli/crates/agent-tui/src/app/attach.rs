@@ -5,11 +5,12 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::adapters::ipc::ClientError;
-use crate::adapters::ipc::DaemonClient;
-use crate::adapters::ipc::params;
-use crate::adapters::{RpcStream, RpcValue, call_stream_with_params, call_with_params};
+use crate::adapters::RpcValue;
+use crate::adapters::rpc::params;
+use crate::app::rpc_client::{RpcStream, call_stream_with_params, call_with_params};
 use crate::common::Colors;
+use crate::infra::ipc::ClientError;
+use crate::infra::ipc::DaemonClient;
 use crate::infra::terminal::key_to_escape_sequence;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -898,7 +899,7 @@ fn display_char(ch: char) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::ipc::MockClient;
+    use crate::infra::ipc::MockClient;
 
     #[test]
     fn test_key_event_to_bytes_char() {

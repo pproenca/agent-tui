@@ -4,7 +4,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::time::Duration;
 
-use crate::adapters::ipc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::{RpcRequest, RpcResponse};
 
 use super::{TransportConnection, TransportError, TransportListener};
 

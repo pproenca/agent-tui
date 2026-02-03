@@ -1,7 +1,7 @@
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::adapters::ipc::error_codes::ErrorCategory;
+use crate::common::error_codes::ErrorCategory;
 
 #[derive(Error, Debug)]
 pub enum ClientError {

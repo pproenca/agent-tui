@@ -1,5 +1,5 @@
 use crate::adapters::daemon::{Router, UseCaseContainer};
-use crate::adapters::ipc::{RpcResponse, socket_path};
+use crate::adapters::rpc::RpcResponse;
 use crate::adapters::{attach_output_to_response, parse_attach_input, session_error_response};
 use crate::common::DaemonError;
 use crate::common::telemetry;
@@ -22,6 +22,7 @@ use crate::infra::daemon::DaemonMetrics;
 use crate::infra::daemon::SessionManager;
 use crate::infra::daemon::SignalHandler;
 use crate::infra::daemon::{LockFile, remove_lock_file};
+use crate::infra::ipc::socket_path;
 use crate::usecases::AttachUseCase;
 use crate::usecases::ports::{MetricsProvider, SessionRepository, StreamCursor};
 use std::sync::Arc;
@@ -228,7 +229,7 @@ impl DaemonServer {
         }
     }
 
-    fn handle_request(&self, request: crate::adapters::ipc::RpcRequest) -> RpcResponse {
+    fn handle_request(&self, request: crate::adapters::rpc::RpcRequest) -> RpcResponse {
         let router = Router::new(&self.usecases);
         router.route(request)
     }
@@ -236,7 +237,7 @@ impl DaemonServer {
     fn handle_attach_stream(
         &self,
         conn: &mut impl TransportConnection,
-        request: crate::adapters::ipc::RpcRequest,
+        request: crate::adapters::rpc::RpcRequest,
     ) -> Result<(), TransportError> {
         let req_id = request.id;
         let input = match parse_attach_input(&request) {
@@ -393,7 +394,7 @@ impl DaemonServer {
     fn handle_live_preview_stream(
         &self,
         conn: &mut impl TransportConnection,
-        request: crate::adapters::ipc::RpcRequest,
+        request: crate::adapters::rpc::RpcRequest,
     ) -> Result<(), TransportError> {
         let req_id = request.id;
         let session_param = request.param_str("session").map(str::to_string);
@@ -720,7 +721,7 @@ impl DaemonServer {
     fn spawn_stream_thread<C: TransportConnection + 'static>(
         self: &Arc<Self>,
         conn: C,
-        request: crate::adapters::ipc::RpcRequest,
+        request: crate::adapters::rpc::RpcRequest,
         kind: StreamKind,
         conn_id: u64,
     ) {

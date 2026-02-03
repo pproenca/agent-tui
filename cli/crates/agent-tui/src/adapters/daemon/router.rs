@@ -1,4 +1,4 @@
-use crate::adapters::ipc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::{RpcRequest, RpcResponse};
 use serde_json::json;
 
 use super::usecase_container::UseCaseContainer;

@@ -1,4 +1,4 @@
-use crate::adapters::ipc::error_codes::{self, ErrorCategory};
+use crate::common::error_codes::{self, ErrorCategory};
 use crate::usecases::SpawnError;
 use crate::usecases::ports::{LivePreviewError, PtyError, SessionError};
 use serde_json::{Value, json};

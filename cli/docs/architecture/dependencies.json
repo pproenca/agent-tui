@@ -491,54 +491,284 @@
       "snippet": "use crate::common::DaemonError;"
     },
     {
+      "source": "infra/ipc/daemon_lifecycle.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/daemon_lifecycle.rs",
+      "line": 4,
+      "snippet": "use crate::infra::ipc::error::ClientError;"
+    },
+    {
+      "source": "infra/ipc/daemon_lifecycle.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/daemon_lifecycle.rs",
+      "line": 5,
+      "snippet": "use crate::infra::ipc::process::{ProcessController, ProcessStatus, Signal};"
+    },
+    {
+      "source": "infra/ipc/daemon_lifecycle.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/daemon_lifecycle.rs",
+      "line": 6,
+      "snippet": "use crate::infra::ipc::{DaemonClient, DaemonClientConfig, polling};"
+    },
+    {
+      "source": "infra/ipc/daemon_lifecycle.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/daemon_lifecycle.rs",
+      "line": 192,
+      "snippet": "use crate::infra::ipc::process::mock::MockProcessController;"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 13,
+      "snippet": "use crate::infra::ipc::error::ClientError;"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 14,
+      "snippet": "use crate::common::error_codes;"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 15,
+      "snippet": "use crate::infra::ipc::socket::socket_path;"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 16,
+      "snippet": "use crate::infra::ipc::transport::ClientStream;"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 17,
+      "snippet": "use crate::infra::ipc::transport::IpcTransport;"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 18,
+      "snippet": "use crate::infra::ipc::transport::default_transport;"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 19,
+      "snippet": "use crate::common::Colors;"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 467,
+      "snippet": "crate::infra::ipc::transport::USE_DAEMON_START_STUB"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 491,
+      "snippet": "crate::infra::ipc::transport::clear_test_listener();"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 493,
+      "snippet": "crate::infra::ipc::transport::USE_DAEMON_START_STUB"
+    },
+    {
+      "source": "infra/ipc/client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/client.rs",
+      "line": 501,
+      "snippet": "crate::infra::ipc::transport::InMemoryTransport::new(|request| {"
+    },
+    {
+      "source": "infra/ipc/error.rs",
+      "target": "crate::common",
+      "sourceLayer": "infra",
+      "targetLayer": "common",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/error.rs",
+      "line": 4,
+      "snippet": "use crate::common::error_codes::ErrorCategory;"
+    },
+    {
+      "source": "infra/ipc/version.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/version.rs",
+      "line": 1,
+      "snippet": "use crate::infra::ipc::client::DaemonClient;"
+    },
+    {
+      "source": "infra/ipc/version.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/version.rs",
+      "line": 55,
+      "snippet": "use crate::infra::ipc::mock_client::MockClient;"
+    },
+    {
+      "source": "infra/ipc/transport.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/transport.rs",
+      "line": 11,
+      "snippet": "use crate::infra::ipc::error::ClientError;"
+    },
+    {
+      "source": "infra/ipc/transport.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/transport.rs",
+      "line": 12,
+      "snippet": "use crate::infra::ipc::polling;"
+    },
+    {
+      "source": "infra/ipc/transport.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/transport.rs",
+      "line": 13,
+      "snippet": "use crate::infra::ipc::socket::socket_path;"
+    },
+    {
+      "source": "infra/ipc/mock_client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/mock_client.rs",
+      "line": 7,
+      "snippet": "use crate::infra::ipc::client::{DaemonClient, DaemonClientConfig};"
+    },
+    {
+      "source": "infra/ipc/mock_client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "infra",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "infra/ipc/mock_client.rs",
+      "line": 8,
+      "snippet": "use crate::infra::ipc::error::ClientError;"
+    },
+    {
       "source": "app/handlers.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 11,
-      "snippet": "use crate::adapters::ipc::ClientError;"
+      "snippet": "use crate::infra::ipc::ClientError;"
     },
     {
       "source": "app/handlers.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 12,
-      "snippet": "use crate::adapters::ipc::DaemonClient;"
+      "snippet": "use crate::infra::ipc::DaemonClient;"
     },
     {
       "source": "app/handlers.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 13,
-      "snippet": "use crate::adapters::ipc::ProcessController;"
+      "snippet": "use crate::infra::ipc::ProcessController;"
     },
     {
       "source": "app/handlers.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 14,
-      "snippet": "use crate::adapters::ipc::Signal;"
+      "snippet": "use crate::infra::ipc::Signal;"
     },
     {
       "source": "app/handlers.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 15,
-      "snippet": "use crate::adapters::ipc::UnixProcessController;"
+      "snippet": "use crate::infra::ipc::UnixProcessController;"
     },
     {
       "source": "app/handlers.rs",
@@ -548,17 +778,17 @@
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 16,
-      "snippet": "use crate::adapters::ipc::params;"
+      "snippet": "use crate::adapters::rpc::params;"
     },
     {
       "source": "app/handlers.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 17,
-      "snippet": "use crate::adapters::ipc::socket_path;"
+      "snippet": "use crate::infra::ipc::socket_path;"
     },
     {
       "source": "app/handlers.rs",
@@ -568,7 +798,7 @@
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 18,
-      "snippet": "use crate::adapters::{RpcValue, RpcValueRef, call_no_params, call_with_params};"
+      "snippet": "use crate::adapters::{RpcValue, RpcValueRef};"
     },
     {
       "source": "app/handlers.rs",
@@ -588,7 +818,7 @@
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 21,
-      "snippet": "use crate::adapters::presenter::{Presenter, create_presenter};"
+      "snippet": "use crate::adapters::presenter::{ClientErrorView, Presenter, create_presenter};"
     },
     {
       "source": "app/handlers.rs",
@@ -598,7 +828,7 @@
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 22,
-      "snippet": "use crate::app::attach::DetachKeys;"
+      "snippet": "use crate::app::rpc_client::{call_no_params, call_with_params};"
     },
     {
       "source": "app/handlers.rs",
@@ -608,7 +838,7 @@
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 23,
-      "snippet": "use crate::app::commands::LiveStartArgs;"
+      "snippet": "use crate::app::attach::DetachKeys;"
     },
     {
       "source": "app/handlers.rs",
@@ -618,7 +848,7 @@
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 24,
-      "snippet": "use crate::app::commands::OutputFormat;"
+      "snippet": "use crate::app::commands::LiveStartArgs;"
     },
     {
       "source": "app/handlers.rs",
@@ -628,7 +858,7 @@
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 25,
-      "snippet": "use crate::app::commands::ScrollDirection;"
+      "snippet": "use crate::app::commands::OutputFormat;"
     },
     {
       "source": "app/handlers.rs",
@@ -638,7 +868,7 @@
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 26,
-      "snippet": "use crate::app::commands::WaitParams;"
+      "snippet": "use crate::app::commands::ScrollDirection;"
     },
     {
       "source": "app/handlers.rs",
@@ -648,6 +878,16 @@
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
       "line": 27,
+      "snippet": "use crate::app::commands::WaitParams;"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 28,
       "snippet": "use crate::app::error::{AttachError, CliError};"
     },
     {
@@ -657,7 +897,7 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 261,
+      "line": 272,
       "snippet": "use crate::adapters::presenter::WaitResult;"
     },
     {
@@ -667,18 +907,38 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 472,
+      "line": 483,
       "snippet": "use crate::adapters::presenter::HealthResult;"
     },
     {
       "source": "app/handlers.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 968,
-      "snippet": "Ok(crate::adapters::ipc::ProcessStatus::Running)"
+      "line": 988,
+      "snippet": "Ok(crate::infra::ipc::ProcessStatus::Running)"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 989,
+      "snippet": "| Ok(crate::infra::ipc::ProcessStatus::NoPermission)"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1071,
+      "snippet": "Ok(crate::infra::ipc::ProcessStatus::NotFound) => return true,"
     },
     {
       "source": "app/handlers.rs",
@@ -687,27 +947,7 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 969,
-      "snippet": "| Ok(crate::adapters::ipc::ProcessStatus::NoPermission)"
-    },
-    {
-      "source": "app/handlers.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "app",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "app/handlers.rs",
-      "line": 1051,
-      "snippet": "Ok(crate::adapters::ipc::ProcessStatus::NotFound) => return true,"
-    },
-    {
-      "source": "app/handlers.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "app",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "app/handlers.rs",
-      "line": 1148,
+      "line": 1168,
       "snippet": "use crate::adapters::presenter::{CleanupFailure, CleanupResult};"
     },
     {
@@ -717,7 +957,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 1253,
+      "line": 1273,
       "snippet": "use crate::app::attach;"
     },
     {
@@ -727,18 +967,28 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 1474,
+      "line": 1494,
       "snippet": "let assert_result = crate::adapters::presenter::AssertResult {"
     },
     {
       "source": "app/handlers.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 1528,
-      "snippet": "use crate::adapters::ipc::{"
+      "line": 1548,
+      "snippet": "use crate::infra::ipc::{"
+    },
+    {
+      "source": "app/handlers.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/handlers.rs",
+      "line": 1577,
+      "snippet": "use crate::infra::ipc::{"
     },
     {
       "source": "app/handlers.rs",
@@ -747,17 +997,7 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 1557,
-      "snippet": "use crate::adapters::ipc::{"
-    },
-    {
-      "source": "app/handlers.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "app",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "app/handlers.rs",
-      "line": 1810,
+      "line": 1830,
       "snippet": "use crate::adapters::RpcValue;"
     },
     {
@@ -767,8 +1007,8 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 1811,
-      "snippet": "use crate::adapters::presenter::{Presenter, TextPresenter};"
+      "line": 1831,
+      "snippet": "use crate::adapters::presenter::{ClientErrorView, Presenter, TextPresenter};"
     },
     {
       "source": "app/handlers.rs",
@@ -777,17 +1017,7 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 1851,
-      "snippet": "fn present_client_error(&self, error: &crate::adapters::ipc::ClientError) {"
-    },
-    {
-      "source": "app/handlers.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "app",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "app/handlers.rs",
-      "line": 1889,
+      "line": 1909,
       "snippet": "fn present_wait_result(&self, result: &crate::adapters::presenter::WaitResult) {"
     },
     {
@@ -797,7 +1027,7 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 1896,
+      "line": 1916,
       "snippet": "fn present_assert_result(&self, result: &crate::adapters::presenter::AssertResult) {"
     },
     {
@@ -807,7 +1037,7 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 1903,
+      "line": 1923,
       "snippet": "fn present_health(&self, health: &crate::adapters::presenter::HealthResult) {"
     },
     {
@@ -817,28 +1047,28 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/handlers.rs",
-      "line": 1910,
+      "line": 1930,
       "snippet": "fn present_cleanup(&self, result: &crate::adapters::presenter::CleanupResult) {"
     },
     {
       "source": "app/attach.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/attach.rs",
       "line": 8,
-      "snippet": "use crate::adapters::ipc::ClientError;"
+      "snippet": "use crate::infra::ipc::ClientError;"
     },
     {
       "source": "app/attach.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/attach.rs",
       "line": 9,
-      "snippet": "use crate::adapters::ipc::DaemonClient;"
+      "snippet": "use crate::infra::ipc::DaemonClient;"
     },
     {
       "source": "app/attach.rs",
@@ -848,7 +1078,7 @@
       "origin": "source-scan",
       "filePath": "app/attach.rs",
       "line": 10,
-      "snippet": "use crate::adapters::ipc::params;"
+      "snippet": "use crate::adapters::rpc::params;"
     },
     {
       "source": "app/attach.rs",
@@ -858,7 +1088,17 @@
       "origin": "source-scan",
       "filePath": "app/attach.rs",
       "line": 11,
-      "snippet": "use crate::adapters::{RpcStream, RpcValue, call_stream_with_params, call_with_params};"
+      "snippet": "use crate::adapters::RpcValue;"
+    },
+    {
+      "source": "app/attach.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/attach.rs",
+      "line": 12,
+      "snippet": "use crate::app::rpc_client::{RpcStream, call_stream_with_params, call_with_params};"
     },
     {
       "source": "app/attach.rs",
@@ -867,7 +1107,7 @@
       "targetLayer": "common",
       "origin": "source-scan",
       "filePath": "app/attach.rs",
-      "line": 12,
+      "line": 13,
       "snippet": "use crate::common::Colors;"
     },
     {
@@ -877,7 +1117,7 @@
       "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/attach.rs",
-      "line": 13,
+      "line": 14,
       "snippet": "use crate::infra::terminal::key_to_escape_sequence;"
     },
     {
@@ -887,28 +1127,28 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/attach.rs",
-      "line": 29,
+      "line": 30,
       "snippet": "pub use crate::app::error::AttachError;"
     },
     {
       "source": "app/attach.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/attach.rs",
-      "line": 901,
-      "snippet": "use crate::adapters::ipc::MockClient;"
+      "line": 902,
+      "snippet": "use crate::infra::ipc::MockClient;"
     },
     {
       "source": "app/error.rs",
-      "target": "crate::adapters",
+      "target": "crate::common",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "common",
       "origin": "source-scan",
       "filePath": "app/error.rs",
       "line": 3,
-      "snippet": "use crate::adapters::ipc::error_codes::{self, ErrorCategory};"
+      "snippet": "use crate::common::error_codes::{self, ErrorCategory};"
     },
     {
       "source": "app/error.rs",
@@ -942,33 +1182,23 @@
     },
     {
       "source": "app/mod.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "app",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "app/mod.rs",
-      "line": 15,
-      "snippet": "use crate::adapters::call_no_params;"
-    },
-    {
-      "source": "app/mod.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "app",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "app/mod.rs",
-      "line": 16,
-      "snippet": "use crate::adapters::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};"
-    },
-    {
-      "source": "app/mod.rs",
       "target": "crate::app",
       "sourceLayer": "app",
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
+      "line": 16,
+      "snippet": "use crate::app::rpc_client::call_no_params;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
       "line": 17,
-      "snippet": "use crate::app::commands::OutputFormat;"
+      "snippet": "use crate::infra::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};"
     },
     {
       "source": "app/mod.rs",
@@ -978,6 +1208,16 @@
       "origin": "source-scan",
       "filePath": "app/mod.rs",
       "line": 18,
+      "snippet": "use crate::app::commands::OutputFormat;"
+    },
+    {
+      "source": "app/mod.rs",
+      "target": "crate::app",
+      "sourceLayer": "app",
+      "targetLayer": "app",
+      "origin": "source-scan",
+      "filePath": "app/mod.rs",
+      "line": 19,
       "snippet": "use crate::app::daemon::start_daemon;"
     },
     {
@@ -987,7 +1227,7 @@
       "targetLayer": "common",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 19,
+      "line": 20,
       "snippet": "use crate::common::DaemonError;"
     },
     {
@@ -997,7 +1237,7 @@
       "targetLayer": "common",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 20,
+      "line": 21,
       "snippet": "use crate::common::telemetry;"
     },
     {
@@ -1007,7 +1247,7 @@
       "targetLayer": "common",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 21,
+      "line": 22,
       "snippet": "use crate::common::{Colors, color_init};"
     },
     {
@@ -1017,7 +1257,7 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 24,
+      "line": 25,
       "snippet": "use crate::adapters::presenter::create_presenter;"
     },
     {
@@ -1027,7 +1267,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 25,
+      "line": 26,
       "snippet": "use crate::app::attach::AttachError;"
     },
     {
@@ -1037,7 +1277,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 26,
+      "line": 27,
       "snippet": "use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs, Shell};"
     },
     {
@@ -1047,18 +1287,18 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 27,
+      "line": 28,
       "snippet": "use crate::app::handlers::HandlerContext;"
     },
     {
       "source": "app/mod.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 495,
-      "snippet": "crate::adapters::ipc::start_daemon_background()?;"
+      "line": 496,
+      "snippet": "crate::infra::ipc::start_daemon_background()?;"
     },
     {
       "source": "app/mod.rs",
@@ -1067,7 +1307,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 683,
+      "line": 684,
       "snippet": "return Err(Box::new(crate::app::error::CliError::new("
     },
     {
@@ -1077,7 +1317,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 693,
+      "line": 694,
       "snippet": "return Err(Box::new(crate::app::error::CliError::new("
     },
     {
@@ -1087,7 +1327,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 723,
+      "line": 724,
       "snippet": "use crate::app::commands::SessionsCommand;"
     },
     {
@@ -1097,7 +1337,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 764,
+      "line": 765,
       "snippet": "if let Some(cli_error) = e.downcast_ref::<crate::app::error::CliError>() {"
     },
     {
@@ -1107,7 +1347,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 841,
+      "line": 842,
       "snippet": ".downcast_ref::<crate::app::error::CliError>()"
     },
     {
@@ -1117,7 +1357,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 851,
+      "line": 852,
       "snippet": "return Box::new(crate::app::error::CliError::new("
     },
     {
@@ -1127,7 +1367,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 859,
+      "line": 860,
       "snippet": "return Box::new(crate::app::error::CliError::new("
     },
     {
@@ -1137,7 +1377,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 867,
+      "line": 868,
       "snippet": "return Box::new(crate::app::error::CliError::new("
     },
     {
@@ -1147,7 +1387,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 875,
+      "line": 876,
       "snippet": "Box::new(crate::app::error::CliError::new("
     },
     {
@@ -1157,28 +1397,28 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 884,
+      "line": 885,
       "snippet": "fn print_cli_error(error: &crate::app::error::CliError) {"
     },
     {
       "source": "app/mod.rs",
-      "target": "crate::adapters",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 923,
-      "snippet": "use crate::adapters::ipc::version::{VersionCheckResult, check_version};"
+      "line": 924,
+      "snippet": "use crate::infra::ipc::version::{VersionCheckResult, check_version};"
     },
     {
       "source": "app/mod.rs",
-      "target": "crate::adapters",
+      "target": "crate::common",
       "sourceLayer": "app",
-      "targetLayer": "adapters",
+      "targetLayer": "common",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 963,
-      "snippet": "use crate::adapters::ipc::error_codes::ErrorCategory;"
+      "line": 964,
+      "snippet": "use crate::common::error_codes::ErrorCategory;"
     },
     {
       "source": "app/mod.rs",
@@ -1187,7 +1427,7 @@
       "targetLayer": "app",
       "origin": "source-scan",
       "filePath": "app/mod.rs",
-      "line": 986,
+      "line": 987,
       "snippet": "use crate::app::commands::{Cli, Commands, DaemonCommand, OutputFormat};"
     },
     {
@@ -1228,7 +1468,7 @@
       "origin": "source-scan",
       "filePath": "app/daemon/transport/unix_socket.rs",
       "line": 7,
-      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+      "snippet": "use crate::adapters::rpc::{RpcRequest, RpcResponse};"
     },
     {
       "source": "app/daemon/transport/mod.rs",
@@ -1238,7 +1478,7 @@
       "origin": "source-scan",
       "filePath": "app/daemon/transport/mod.rs",
       "line": 5,
-      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+      "snippet": "use crate::adapters::rpc::{RpcRequest, RpcResponse};"
     },
     {
       "source": "app/daemon/server.rs",
@@ -1258,7 +1498,7 @@
       "origin": "source-scan",
       "filePath": "app/daemon/server.rs",
       "line": 2,
-      "snippet": "use crate::adapters::ipc::{RpcResponse, socket_path};"
+      "snippet": "use crate::adapters::rpc::RpcResponse;"
     },
     {
       "source": "app/daemon/server.rs",
@@ -1362,13 +1602,13 @@
     },
     {
       "source": "app/daemon/server.rs",
-      "target": "crate::usecases",
+      "target": "crate::infra",
       "sourceLayer": "app",
-      "targetLayer": "usecases",
+      "targetLayer": "infra",
       "origin": "source-scan",
       "filePath": "app/daemon/server.rs",
       "line": 25,
-      "snippet": "use crate::usecases::AttachUseCase;"
+      "snippet": "use crate::infra::ipc::socket_path;"
     },
     {
       "source": "app/daemon/server.rs",
@@ -1378,6 +1618,16 @@
       "origin": "source-scan",
       "filePath": "app/daemon/server.rs",
       "line": 26,
+      "snippet": "use crate::usecases::AttachUseCase;"
+    },
+    {
+      "source": "app/daemon/server.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "app",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "app/daemon/server.rs",
+      "line": 27,
       "snippet": "use crate::usecases::ports::{MetricsProvider, SessionRepository, StreamCursor};"
     },
     {
@@ -1387,7 +1637,7 @@
       "targetLayer": "usecases",
       "origin": "source-scan",
       "filePath": "app/daemon/server.rs",
-      "line": 58,
+      "line": 59,
       "snippet": "fn notifier(&self) -> crate::usecases::ports::ShutdownNotifierHandle {"
     },
     {
@@ -1397,7 +1647,7 @@
       "targetLayer": "usecases",
       "origin": "source-scan",
       "filePath": "app/daemon/server.rs",
-      "line": 85,
+      "line": 86,
       "snippet": "impl crate::usecases::ports::ShutdownNotifier for ShutdownNotify {"
     },
     {
@@ -1407,7 +1657,7 @@
       "targetLayer": "usecases",
       "origin": "source-scan",
       "filePath": "app/daemon/server.rs",
-      "line": 193,
+      "line": 194,
       "snippet": "shutdown_notifier: crate::usecases::ports::ShutdownNotifierHandle,"
     },
     {
@@ -1417,8 +1667,8 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/daemon/server.rs",
-      "line": 231,
-      "snippet": "fn handle_request(&self, request: crate::adapters::ipc::RpcRequest) -> RpcResponse {"
+      "line": 232,
+      "snippet": "fn handle_request(&self, request: crate::adapters::rpc::RpcRequest) -> RpcResponse {"
     },
     {
       "source": "app/daemon/server.rs",
@@ -1427,8 +1677,8 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/daemon/server.rs",
-      "line": 239,
-      "snippet": "request: crate::adapters::ipc::RpcRequest,"
+      "line": 240,
+      "snippet": "request: crate::adapters::rpc::RpcRequest,"
     },
     {
       "source": "app/daemon/server.rs",
@@ -1437,8 +1687,8 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/daemon/server.rs",
-      "line": 396,
-      "snippet": "request: crate::adapters::ipc::RpcRequest,"
+      "line": 397,
+      "snippet": "request: crate::adapters::rpc::RpcRequest,"
     },
     {
       "source": "app/daemon/server.rs",
@@ -1447,8 +1697,68 @@
       "targetLayer": "adapters",
       "origin": "source-scan",
       "filePath": "app/daemon/server.rs",
-      "line": 723,
-      "snippet": "request: crate::adapters::ipc::RpcRequest,"
+      "line": 724,
+      "snippet": "request: crate::adapters::rpc::RpcRequest,"
+    },
+    {
+      "source": "app/daemon/usecase_container.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/daemon/usecase_container.rs",
+      "line": 5,
+      "snippet": "use crate::adapters::daemon::{DiagnosticsUseCases, InputUseCases, SessionUseCases, SnapshotUseCases, UseCaseContainer};"
+    },
+    {
+      "source": "app/daemon/usecase_container.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "app",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "app/daemon/usecase_container.rs",
+      "line": 6,
+      "snippet": "use crate::usecases::ports::{MetricsProvider, SessionRepository, ShutdownNotifierHandle};"
+    },
+    {
+      "source": "app/daemon/usecase_container.rs",
+      "target": "crate::usecases",
+      "sourceLayer": "app",
+      "targetLayer": "usecases",
+      "origin": "source-scan",
+      "filePath": "app/daemon/usecase_container.rs",
+      "line": 7,
+      "snippet": "use crate::usecases::{"
+    },
+    {
+      "source": "app/rpc_client.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "app",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "app/rpc_client.rs",
+      "line": 3,
+      "snippet": "use crate::adapters::RpcValue;"
+    },
+    {
+      "source": "app/rpc_client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/rpc_client.rs",
+      "line": 4,
+      "snippet": "use crate::infra::ipc::ClientError;"
+    },
+    {
+      "source": "app/rpc_client.rs",
+      "target": "crate::infra",
+      "sourceLayer": "app",
+      "targetLayer": "infra",
+      "origin": "source-scan",
+      "filePath": "app/rpc_client.rs",
+      "line": 5,
+      "snippet": "use crate::infra::ipc::client::{DaemonClient, StreamAbortHandle, StreamResponse};"
     },
     {
       "source": "adapters/snapshot_adapters.rs",
@@ -1472,43 +1782,23 @@
     },
     {
       "source": "adapters/presenter.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/presenter.rs",
-      "line": 2,
-      "snippet": "use crate::adapters::ipc::ClientError;"
-    },
-    {
-      "source": "adapters/presenter.rs",
       "target": "crate::common",
       "sourceLayer": "adapters",
       "targetLayer": "common",
       "origin": "source-scan",
       "filePath": "adapters/presenter.rs",
-      "line": 3,
+      "line": 2,
       "snippet": "use crate::common::Colors;"
     },
     {
-      "source": "adapters/presenter.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/presenter.rs",
-      "line": 78,
-      "snippet": "use crate::adapters::ipc::socket_path;"
-    },
-    {
       "source": "adapters/daemon/error.rs",
-      "target": "crate::adapters",
+      "target": "crate::common",
       "sourceLayer": "adapters",
-      "targetLayer": "adapters",
+      "targetLayer": "common",
       "origin": "source-scan",
       "filePath": "adapters/daemon/error.rs",
       "line": 1,
-      "snippet": "use crate::adapters::ipc::error_codes::{self, ErrorCategory};"
+      "snippet": "use crate::common::error_codes::{self, ErrorCategory};"
     },
     {
       "source": "adapters/daemon/error.rs",
@@ -1538,7 +1828,7 @@
       "origin": "source-scan",
       "filePath": "adapters/daemon/router.rs",
       "line": 1,
-      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+      "snippet": "use crate::adapters::rpc::{RpcRequest, RpcResponse};"
     },
     {
       "source": "adapters/daemon/router.rs",
@@ -1597,8 +1887,8 @@
       "targetLayer": "usecases",
       "origin": "source-scan",
       "filePath": "adapters/daemon/usecase_container.rs",
-      "line": 5,
-      "snippet": "use crate::usecases::ports::{MetricsProvider, SessionRepository, ShutdownNotifierHandle};"
+      "line": 1,
+      "snippet": "use crate::usecases::ports::SessionRepository;"
     },
     {
       "source": "adapters/daemon/usecase_container.rs",
@@ -1607,7 +1897,7 @@
       "targetLayer": "usecases",
       "origin": "source-scan",
       "filePath": "adapters/daemon/usecase_container.rs",
-      "line": 6,
+      "line": 2,
       "snippet": "use crate::usecases::{"
     },
     {
@@ -1618,7 +1908,7 @@
       "origin": "source-scan",
       "filePath": "adapters/daemon/handlers/session.rs",
       "line": 2,
-      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+      "snippet": "use crate::adapters::rpc::{RpcRequest, RpcResponse};"
     },
     {
       "source": "adapters/daemon/handlers/session.rs",
@@ -1668,7 +1958,7 @@
       "origin": "source-scan",
       "filePath": "adapters/daemon/handlers/diagnostics.rs",
       "line": 1,
-      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+      "snippet": "use crate::adapters::rpc::{RpcRequest, RpcResponse};"
     },
     {
       "source": "adapters/daemon/handlers/diagnostics.rs",
@@ -1708,7 +1998,7 @@
       "origin": "source-scan",
       "filePath": "adapters/daemon/handlers/diagnostics.rs",
       "line": 72,
-      "snippet": "use crate::adapters::ipc::RpcRequest;"
+      "snippet": "use crate::adapters::rpc::RpcRequest;"
     },
     {
       "source": "adapters/daemon/handlers/diagnostics.rs",
@@ -1728,7 +2018,7 @@
       "origin": "source-scan",
       "filePath": "adapters/daemon/handlers/wait.rs",
       "line": 1,
-      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+      "snippet": "use crate::adapters::rpc::{RpcRequest, RpcResponse};"
     },
     {
       "source": "adapters/daemon/handlers/wait.rs",
@@ -1758,7 +2048,7 @@
       "origin": "source-scan",
       "filePath": "adapters/daemon/handlers/snapshot.rs",
       "line": 1,
-      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+      "snippet": "use crate::adapters::rpc::{RpcRequest, RpcResponse};"
     },
     {
       "source": "adapters/daemon/handlers/snapshot.rs",
@@ -1788,7 +2078,7 @@
       "origin": "source-scan",
       "filePath": "adapters/daemon/handlers/input.rs",
       "line": 1,
-      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse};"
+      "snippet": "use crate::adapters::rpc::{RpcRequest, RpcResponse};"
     },
     {
       "source": "adapters/daemon/handlers/input.rs",
@@ -1818,7 +2108,7 @@
       "origin": "source-scan",
       "filePath": "adapters/daemon/handlers/common.rs",
       "line": 1,
-      "snippet": "use crate::adapters::ipc::RpcRequest;"
+      "snippet": "use crate::adapters::rpc::RpcRequest;"
     },
     {
       "source": "adapters/daemon/handlers/common.rs",
@@ -1841,364 +2131,74 @@
       "snippet": "use crate::domain::MetricsOutput;"
     },
     {
-      "source": "adapters/ipc/daemon_lifecycle.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/daemon_lifecycle.rs",
-      "line": 4,
-      "snippet": "use crate::adapters::ipc::error::ClientError;"
-    },
-    {
-      "source": "adapters/ipc/daemon_lifecycle.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/daemon_lifecycle.rs",
-      "line": 5,
-      "snippet": "use crate::adapters::ipc::process::{ProcessController, ProcessStatus, Signal};"
-    },
-    {
-      "source": "adapters/ipc/daemon_lifecycle.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/daemon_lifecycle.rs",
-      "line": 6,
-      "snippet": "use crate::adapters::ipc::{DaemonClient, DaemonClientConfig, polling};"
-    },
-    {
-      "source": "adapters/ipc/daemon_lifecycle.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/daemon_lifecycle.rs",
-      "line": 192,
-      "snippet": "use crate::adapters::ipc::process::mock::MockProcessController;"
-    },
-    {
-      "source": "adapters/ipc/types.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/types.rs",
-      "line": 6,
-      "snippet": "use crate::adapters::ipc::error_codes;"
-    },
-    {
-      "source": "adapters/ipc/client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 13,
-      "snippet": "use crate::adapters::ipc::error::ClientError;"
-    },
-    {
-      "source": "adapters/ipc/client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 14,
-      "snippet": "use crate::adapters::ipc::error_codes;"
-    },
-    {
-      "source": "adapters/ipc/client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 15,
-      "snippet": "use crate::adapters::ipc::socket::socket_path;"
-    },
-    {
-      "source": "adapters/ipc/client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 16,
-      "snippet": "use crate::adapters::ipc::transport::ClientStream;"
-    },
-    {
-      "source": "adapters/ipc/client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 17,
-      "snippet": "use crate::adapters::ipc::transport::IpcTransport;"
-    },
-    {
-      "source": "adapters/ipc/client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 18,
-      "snippet": "use crate::adapters::ipc::transport::default_transport;"
-    },
-    {
-      "source": "adapters/ipc/client.rs",
+      "source": "adapters/rpc/types.rs",
       "target": "crate::common",
       "sourceLayer": "adapters",
       "targetLayer": "common",
       "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 19,
-      "snippet": "use crate::common::Colors;"
+      "filePath": "adapters/rpc/types.rs",
+      "line": 6,
+      "snippet": "use crate::common::error_codes;"
     },
     {
-      "source": "adapters/ipc/client.rs",
+      "source": "adapters/rpc/mod.rs",
       "target": "crate::adapters",
       "sourceLayer": "adapters",
       "targetLayer": "adapters",
       "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 467,
-      "snippet": "crate::adapters::ipc::transport::USE_DAEMON_START_STUB"
-    },
-    {
-      "source": "adapters/ipc/client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 491,
-      "snippet": "crate::adapters::ipc::transport::clear_test_listener();"
-    },
-    {
-      "source": "adapters/ipc/client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 493,
-      "snippet": "crate::adapters::ipc::transport::USE_DAEMON_START_STUB"
-    },
-    {
-      "source": "adapters/ipc/client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/client.rs",
-      "line": 501,
-      "snippet": "crate::adapters::ipc::transport::InMemoryTransport::new(|request| {"
-    },
-    {
-      "source": "adapters/ipc/error.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/error.rs",
-      "line": 4,
-      "snippet": "use crate::adapters::ipc::error_codes::ErrorCategory;"
-    },
-    {
-      "source": "adapters/ipc/version.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/version.rs",
-      "line": 1,
-      "snippet": "use crate::adapters::ValueExt;"
-    },
-    {
-      "source": "adapters/ipc/version.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/version.rs",
-      "line": 3,
-      "snippet": "use crate::adapters::ipc::client::DaemonClient;"
-    },
-    {
-      "source": "adapters/ipc/version.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/version.rs",
-      "line": 50,
-      "snippet": "use crate::adapters::ipc::mock_client::MockClient;"
-    },
-    {
-      "source": "adapters/ipc/transport.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/transport.rs",
+      "filePath": "adapters/rpc/mod.rs",
       "line": 11,
-      "snippet": "use crate::adapters::ipc::error::ClientError;"
-    },
-    {
-      "source": "adapters/ipc/transport.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/transport.rs",
-      "line": 12,
-      "snippet": "use crate::adapters::ipc::polling;"
-    },
-    {
-      "source": "adapters/ipc/transport.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/transport.rs",
-      "line": 13,
-      "snippet": "use crate::adapters::ipc::socket::socket_path;"
-    },
-    {
-      "source": "adapters/ipc/mock_client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/mock_client.rs",
-      "line": 7,
-      "snippet": "use crate::adapters::ipc::client::{DaemonClient, DaemonClientConfig};"
-    },
-    {
-      "source": "adapters/ipc/mock_client.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/mock_client.rs",
-      "line": 8,
-      "snippet": "use crate::adapters::ipc::error::ClientError;"
-    },
-    {
-      "source": "adapters/ipc/mod.rs",
-      "target": "crate::common",
-      "sourceLayer": "adapters",
-      "targetLayer": "common",
-      "origin": "source-scan",
-      "filePath": "adapters/ipc/mod.rs",
-      "line": 15,
-      "snippet": "pub use crate::common::error_codes;"
-    },
-    {
-      "source": "adapters/rpc_value.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/rpc_value.rs",
-      "line": 4,
-      "snippet": "use crate::adapters::ValueExt;"
-    },
-    {
-      "source": "adapters/rpc_value.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/rpc_value.rs",
-      "line": 5,
-      "snippet": "use crate::adapters::ipc::client::{DaemonClient, StreamResponse};"
-    },
-    {
-      "source": "adapters/rpc_value.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/rpc_value.rs",
-      "line": 6,
-      "snippet": "use crate::adapters::ipc::error::ClientError;"
-    },
-    {
-      "source": "adapters/rpc_value.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/rpc_value.rs",
-      "line": 162,
-      "snippet": "pub fn abort_handle(&self) -> Option<crate::adapters::ipc::client::StreamAbortHandle> {"
-    },
-    {
-      "source": "adapters/rpc.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/rpc.rs",
-      "line": 1,
-      "snippet": "use crate::adapters::ipc::{RpcRequest, RpcResponse, params};"
-    },
-    {
-      "source": "adapters/rpc.rs",
-      "target": "crate::adapters",
-      "sourceLayer": "adapters",
-      "targetLayer": "adapters",
-      "origin": "source-scan",
-      "filePath": "adapters/rpc.rs",
-      "line": 7,
       "snippet": "use crate::adapters::daemon::DomainError;"
     },
     {
-      "source": "adapters/rpc.rs",
+      "source": "adapters/rpc/mod.rs",
       "target": "crate::domain",
       "sourceLayer": "adapters",
       "targetLayer": "domain",
       "origin": "source-scan",
-      "filePath": "adapters/rpc.rs",
-      "line": 8,
+      "filePath": "adapters/rpc/mod.rs",
+      "line": 12,
       "snippet": "use crate::domain::{"
     },
     {
-      "source": "adapters/rpc.rs",
+      "source": "adapters/rpc/mod.rs",
       "target": "crate::usecases",
       "sourceLayer": "adapters",
       "targetLayer": "usecases",
       "origin": "source-scan",
-      "filePath": "adapters/rpc.rs",
-      "line": 16,
+      "filePath": "adapters/rpc/mod.rs",
+      "line": 20,
       "snippet": "use crate::usecases::ports::SessionError;"
     },
     {
-      "source": "adapters/rpc.rs",
+      "source": "adapters/rpc/mod.rs",
       "target": "crate::common",
       "sourceLayer": "adapters",
       "targetLayer": "common",
       "origin": "source-scan",
-      "filePath": "adapters/rpc.rs",
-      "line": 120,
+      "filePath": "adapters/rpc/mod.rs",
+      "line": 124,
       "snippet": "use crate::common::strip_ansi_codes;"
     },
     {
-      "source": "adapters/rpc.rs",
+      "source": "adapters/rpc/mod.rs",
       "target": "crate::domain",
       "sourceLayer": "adapters",
       "targetLayer": "domain",
       "origin": "source-scan",
-      "filePath": "adapters/rpc.rs",
-      "line": 332,
+      "filePath": "adapters/rpc/mod.rs",
+      "line": 336,
       "snippet": "let condition_type = crate::domain::AssertConditionType::parse(condition_type)"
+    },
+    {
+      "source": "adapters/rpc_value.rs",
+      "target": "crate::adapters",
+      "sourceLayer": "adapters",
+      "targetLayer": "adapters",
+      "origin": "source-scan",
+      "filePath": "adapters/rpc_value.rs",
+      "line": 4,
+      "snippet": "use crate::adapters::ValueExt;"
     },
     {
       "source": "common/daemon_error.rs",
@@ -2862,21 +2862,21 @@
     }
   ],
   "summary": [
-    "adapters -> adapters (50)",
+    "adapters -> adapters (19)",
     "adapters -> common (4)",
     "adapters -> domain (8)",
     "adapters -> usecases (13)",
-    "app -> adapters (47)",
-    "app -> app (28)",
-    "app -> common (7)",
+    "app -> adapters (28)",
+    "app -> app (31)",
+    "app -> common (9)",
     "app -> domain (1)",
-    "app -> infra (7)",
-    "app -> usecases (6)",
+    "app -> infra (27)",
+    "app -> usecases (8)",
     "common -> common (1)",
     "domain -> domain (19)",
-    "infra -> common (8)",
+    "infra -> common (11)",
     "infra -> domain (13)",
-    "infra -> infra (15)",
+    "infra -> infra (35)",
     "infra -> usecases (13)",
     "usecases -> domain (21)",
     "usecases -> usecases (25)"

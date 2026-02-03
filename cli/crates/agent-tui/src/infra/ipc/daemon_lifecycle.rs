@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::adapters::ipc::error::ClientError;
-use crate::adapters::ipc::process::{ProcessController, ProcessStatus, Signal};
-use crate::adapters::ipc::{DaemonClient, DaemonClientConfig, polling};
+use crate::infra::ipc::error::ClientError;
+use crate::infra::ipc::process::{ProcessController, ProcessStatus, Signal};
+use crate::infra::ipc::{DaemonClient, DaemonClientConfig, polling};
 
 pub struct StopResult {
     pub pid: u32,
@@ -189,7 +189,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::ipc::process::mock::MockProcessController;
+    use crate::infra::ipc::process::mock::MockProcessController;
     use tempfile::tempdir;
 
     #[test]

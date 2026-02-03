@@ -1,4 +1,4 @@
-use crate::adapters::ipc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::{RpcRequest, RpcResponse};
 
 use super::common;
 use super::common::session_error_response;

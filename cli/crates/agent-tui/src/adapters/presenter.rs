@@ -1,5 +1,4 @@
 use crate::adapters::RpcValue;
-use crate::adapters::ipc::ClientError;
 use crate::common::Colors;
 use clap::ValueEnum;
 
@@ -18,7 +17,7 @@ pub trait Presenter {
 
     fn present_value(&self, value: &RpcValue);
 
-    fn present_client_error(&self, error: &ClientError);
+    fn present_client_error(&self, error: &ClientErrorView);
 
     fn present_kv(&self, key: &str, value: &str);
 
@@ -41,6 +40,14 @@ pub trait Presenter {
     fn present_health(&self, health: &HealthResult);
 
     fn present_cleanup(&self, result: &CleanupResult);
+}
+
+#[derive(Clone, Debug)]
+pub struct ClientErrorView {
+    pub message: String,
+    pub suggestion: Option<String>,
+    pub retryable: bool,
+    pub json: Option<String>,
 }
 
 pub struct WaitResult {
@@ -74,20 +81,7 @@ pub struct HealthResult {
 }
 
 impl HealthResult {
-    pub fn from_json(value: &RpcValue, verbose: bool) -> Self {
-        use crate::adapters::ipc::socket_path;
-
-        let (socket, pid_file) = if verbose {
-            let socket = socket_path();
-            let pid_file = socket.with_extension("pid");
-            (
-                Some(socket.display().to_string()),
-                Some(pid_file.display().to_string()),
-            )
-        } else {
-            (None, None)
-        };
-
+    pub fn from_json(value: &RpcValue) -> Self {
         Self {
             status: value.str_or("status", "unknown").to_string(),
             pid: value.u64_or("pid", 0),
@@ -95,9 +89,19 @@ impl HealthResult {
             session_count: value.u64_or("session_count", 0),
             version: value.str_or("version", "?").to_string(),
             commit: value.str_or("commit", "unknown").to_string(),
-            socket_path: socket,
-            pid_file_path: pid_file,
+            socket_path: None,
+            pid_file_path: None,
         }
+    }
+
+    pub fn with_paths(
+        mut self,
+        socket_path: Option<String>,
+        pid_file_path: Option<String>,
+    ) -> Self {
+        self.socket_path = socket_path;
+        self.pid_file_path = pid_file_path;
+        self
     }
 }
 
@@ -139,12 +143,17 @@ impl Presenter for TextPresenter {
         }
     }
 
-    fn present_client_error(&self, error: &ClientError) {
-        eprintln!("{}: {} {}", PROGRAM_NAME, Colors::error("Error:"), error);
-        if let Some(suggestion) = error.suggestion() {
+    fn present_client_error(&self, error: &ClientErrorView) {
+        eprintln!(
+            "{}: {} {}",
+            PROGRAM_NAME,
+            Colors::error("Error:"),
+            error.message
+        );
+        if let Some(suggestion) = error.suggestion.as_deref() {
             eprintln!("{} {}", Colors::dim("Suggestion:"), suggestion);
         }
-        if error.is_retryable() {
+        if error.retryable {
             eprintln!(
                 "{}",
                 Colors::dim("(This error may be transient - retry may succeed)")
@@ -304,8 +313,24 @@ impl Presenter for JsonPresenter {
         println!("{}", value.to_pretty_json());
     }
 
-    fn present_client_error(&self, error: &ClientError) {
-        eprintln!("{}", error.to_json());
+    fn present_client_error(&self, error: &ClientErrorView) {
+        if let Some(json) = error.json.as_deref() {
+            eprintln!("{}", json);
+            return;
+        }
+
+        let mut output = serde_json::json!({
+            "success": false,
+            "error": error.message,
+            "retryable": error.retryable,
+        });
+        if let Some(suggestion) = error.suggestion.as_ref() {
+            output["suggestion"] = serde_json::json!(suggestion);
+        }
+        eprintln!(
+            "{}",
+            serde_json::to_string_pretty(&output).unwrap_or_default()
+        );
     }
 
     fn present_kv(&self, key: &str, value: &str) {

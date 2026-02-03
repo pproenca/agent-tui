@@ -2,8 +2,6 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::adapters::ValueExt;
-use crate::adapters::ipc::client::{DaemonClient, StreamResponse};
-use crate::adapters::ipc::error::ClientError;
 
 #[derive(Clone, Debug)]
 pub struct RpcValue(Value);
@@ -13,10 +11,6 @@ pub struct RpcValueRef<'a>(&'a Value);
 
 #[derive(Clone, Copy, Debug)]
 pub struct RpcArrayRef<'a>(&'a [Value]);
-
-pub struct RpcStream {
-    inner: StreamResponse,
-}
 
 impl RpcValue {
     pub fn new(value: Value) -> Self {
@@ -146,66 +140,4 @@ impl<'a> RpcArrayRef<'a> {
     pub fn first(self) -> Option<RpcValueRef<'a>> {
         self.0.first().map(RpcValueRef)
     }
-}
-
-impl RpcStream {
-    pub fn new(inner: StreamResponse) -> Self {
-        Self { inner }
-    }
-
-    pub fn next_result(&mut self) -> Result<Option<RpcValue>, ClientError> {
-        self.inner
-            .next_result()
-            .map(|value| value.map(RpcValue::new))
-    }
-
-    pub fn abort_handle(&self) -> Option<crate::adapters::ipc::client::StreamAbortHandle> {
-        self.inner.abort_handle()
-    }
-}
-
-pub fn call_with_params<C, P>(
-    client: &mut C,
-    method: &str,
-    params: P,
-) -> Result<RpcValue, ClientError>
-where
-    C: DaemonClient,
-    P: Serialize,
-{
-    let value = serde_json::to_value(params)?;
-    client.call(method, Some(value)).map(RpcValue::new)
-}
-
-pub fn call_with_optional_params<C, P>(
-    client: &mut C,
-    method: &str,
-    params: Option<P>,
-) -> Result<RpcValue, ClientError>
-where
-    C: DaemonClient,
-    P: Serialize,
-{
-    let value = params.map(serde_json::to_value).transpose()?;
-    client.call(method, value).map(RpcValue::new)
-}
-
-pub fn call_no_params<C>(client: &mut C, method: &str) -> Result<RpcValue, ClientError>
-where
-    C: DaemonClient,
-{
-    client.call(method, None).map(RpcValue::new)
-}
-
-pub fn call_stream_with_params<C, P>(
-    client: &mut C,
-    method: &str,
-    params: P,
-) -> Result<RpcStream, ClientError>
-where
-    C: DaemonClient,
-    P: Serialize,
-{
-    let value = serde_json::to_value(params)?;
-    client.call_stream(method, Some(value)).map(RpcStream::new)
 }

@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::Value;
 use serde_json::json;
 
-use crate::adapters::ipc::error_codes;
+use crate::common::error_codes;
 
 #[derive(Debug, Deserialize)]
 pub struct RpcRequest {

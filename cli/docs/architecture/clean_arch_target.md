@@ -80,7 +80,7 @@ Dependency Direction (must be enforced)
 
 Boundary Rules
 - No std::process::exit outside main.rs
-- No JSON types outside adapters (serde_json::Value restricted to adapters)
+- No JSON types outside adapters (serde_json::Value restricted to adapters; infra/ipc may use it for wire protocol)
 - No IO or threading inside domain/usecases
 - Usecases get time/sleep via ports (Sleeper trait)
 - Repositories and external calls are ports implemented in infra

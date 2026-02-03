@@ -2,7 +2,7 @@ pub mod unix_socket;
 
 pub use unix_socket::{UnixSocketConnection, UnixSocketListener};
 
-use crate::adapters::ipc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::{RpcRequest, RpcResponse};
 use std::time::Duration;
 
 #[derive(Debug)]

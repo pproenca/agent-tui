@@ -1,4 +1,5 @@
 use crate::common::error_codes::{self, ErrorCategory};
+use crate::usecases::ports::SpawnErrorKind;
 use crate::usecases::ports::PtyError as PortPtyError;
 use thiserror::Error;
 
@@ -6,8 +7,8 @@ use thiserror::Error;
 pub enum PtyError {
     #[error("Failed to open PTY: {0}")]
     Open(String),
-    #[error("Failed to spawn process: {0}")]
-    Spawn(String),
+    #[error("Failed to spawn process: {reason}")]
+    Spawn { reason: String, kind: SpawnErrorKind },
     #[error("Failed to write to PTY: {0}")]
     Write(String),
     #[error("Failed to read from PTY: {0}")]
@@ -44,15 +45,17 @@ impl PtyError {
                 "PTY allocation failed. Check system resource limits (ulimit -n) or try restarting."
                     .to_string()
             }
-            PtyError::Spawn(reason) => {
-                if reason.contains("not found") || reason.contains("No such file") {
+            PtyError::Spawn { kind, .. } => match kind {
+                SpawnErrorKind::NotFound => {
                     "Command not found. Check if the command exists and is in PATH.".to_string()
-                } else if reason.contains("Permission denied") {
+                }
+                SpawnErrorKind::PermissionDenied => {
                     "Permission denied. Check file permissions.".to_string()
-                } else {
+                }
+                SpawnErrorKind::Other => {
                     "Process spawn failed. Check command syntax and permissions.".to_string()
                 }
-            }
+            },
             PtyError::Write(_) => {
                 "Failed to send input to terminal. The session may have ended. Run 'sessions' to check status."
                     .to_string()
@@ -74,7 +77,7 @@ impl PtyError {
     pub fn operation(&self) -> &'static str {
         match self {
             PtyError::Open(_) => "open",
-            PtyError::Spawn(_) => "spawn",
+            PtyError::Spawn { .. } => "spawn",
             PtyError::Write(_) => "write",
             PtyError::Read(_) => "read",
             PtyError::Resize(_) => "resize",
@@ -84,10 +87,10 @@ impl PtyError {
     pub fn reason(&self) -> &str {
         match self {
             PtyError::Open(r)
-            | PtyError::Spawn(r)
             | PtyError::Write(r)
             | PtyError::Read(r)
             | PtyError::Resize(r) => r,
+            PtyError::Spawn { reason, .. } => reason,
         }
     }
 }
@@ -98,7 +101,7 @@ impl PtyError {
     pub fn to_port_error(self) -> PortPtyError {
         match self {
             PtyError::Open(reason) => PortPtyError::Open(reason),
-            PtyError::Spawn(reason) => PortPtyError::Spawn(reason),
+            PtyError::Spawn { reason, kind } => PortPtyError::Spawn { reason, kind },
             PtyError::Write(reason) => PortPtyError::Write(reason),
             PtyError::Read(reason) => PortPtyError::Read(reason),
             PtyError::Resize(reason) => PortPtyError::Resize(reason),
@@ -124,7 +127,10 @@ mod tests {
 
     #[test]
     fn test_pty_error_context() {
-        let err = PtyError::Spawn("command not found".into());
+        let err = PtyError::Spawn {
+            reason: "command not found".into(),
+            kind: SpawnErrorKind::NotFound,
+        };
         let ctx = err.context();
         assert_eq!(ctx.operation, "spawn");
         assert_eq!(ctx.reason, "command not found");
@@ -132,13 +138,19 @@ mod tests {
 
     #[test]
     fn test_pty_error_suggestion_not_found() {
-        let err = PtyError::Spawn("No such file or directory".into());
+        let err = PtyError::Spawn {
+            reason: "No such file or directory".into(),
+            kind: SpawnErrorKind::NotFound,
+        };
         assert!(err.suggestion().contains("not found"));
     }
 
     #[test]
     fn test_pty_error_suggestion_permission() {
-        let err = PtyError::Spawn("Permission denied".into());
+        let err = PtyError::Spawn {
+            reason: "Permission denied".into(),
+            kind: SpawnErrorKind::PermissionDenied,
+        };
         assert!(err.suggestion().contains("Permission"));
     }
 
@@ -147,13 +159,24 @@ mod tests {
         assert!(PtyError::Read("timeout".into()).is_retryable());
         assert!(PtyError::Write("broken pipe".into()).is_retryable());
         assert!(!PtyError::Open("failed".into()).is_retryable());
-        assert!(!PtyError::Spawn("not found".into()).is_retryable());
+        assert!(!PtyError::Spawn {
+            reason: "not found".into(),
+            kind: SpawnErrorKind::NotFound
+        }
+        .is_retryable());
     }
 
     #[test]
     fn test_pty_error_operation() {
         assert_eq!(PtyError::Open("x".into()).operation(), "open");
-        assert_eq!(PtyError::Spawn("x".into()).operation(), "spawn");
+        assert_eq!(
+            PtyError::Spawn {
+                reason: "x".into(),
+                kind: SpawnErrorKind::Other
+            }
+            .operation(),
+            "spawn"
+        );
         assert_eq!(PtyError::Write("x".into()).operation(), "write");
         assert_eq!(PtyError::Read("x".into()).operation(), "read");
         assert_eq!(PtyError::Resize("x".into()).operation(), "resize");

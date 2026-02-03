@@ -1,12 +1,13 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
 
 use crate::domain::{
     HealthInput, HealthOutput, MetricsInput, MetricsOutput, PtyReadInput, PtyReadOutput,
     PtyWriteInput, PtyWriteOutput,
 };
-use crate::usecases::ports::{MetricsProvider, SessionError, SessionRepository};
+use crate::usecases::ports::{
+    MetricsProvider, SessionError, SessionRepository, SystemInfoProvider,
+};
 
 pub trait PtyReadUseCase: Send + Sync {
     fn execute(&self, input: PtyReadInput) -> Result<PtyReadOutput, SessionError>;
@@ -93,7 +94,7 @@ pub trait HealthUseCase: Send + Sync {
 pub struct HealthUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
     metrics: Arc<dyn MetricsProvider>,
-    start_time: Instant,
+    system_info: Arc<dyn SystemInfoProvider>,
     active_connections: Arc<AtomicUsize>,
 }
 
@@ -101,13 +102,13 @@ impl<R: SessionRepository> HealthUseCaseImpl<R> {
     pub fn new(
         repository: Arc<R>,
         metrics: Arc<dyn MetricsProvider>,
-        start_time: Instant,
+        system_info: Arc<dyn SystemInfoProvider>,
         active_connections: Arc<AtomicUsize>,
     ) -> Self {
         Self {
             repository,
             metrics,
-            start_time,
+            system_info,
             active_connections,
         }
     }
@@ -118,11 +119,11 @@ impl<R: SessionRepository> HealthUseCase for HealthUseCaseImpl<R> {
     fn execute(&self, _input: HealthInput) -> Result<HealthOutput, SessionError> {
         Ok(HealthOutput {
             status: "healthy".to_string(),
-            pid: std::process::id(),
-            uptime_ms: self.start_time.elapsed().as_millis() as u64,
+            pid: self.system_info.pid(),
+            uptime_ms: self.system_info.uptime_ms(),
             session_count: self.repository.session_count(),
-            version: env!("AGENT_TUI_VERSION").to_string(),
-            commit: env!("AGENT_TUI_GIT_SHA").to_string(),
+            version: self.system_info.version(),
+            commit: self.system_info.commit(),
             active_connections: self.active_connections.load(Ordering::Relaxed),
             total_requests: self.metrics.requests(),
             error_count: self.metrics.errors(),
@@ -137,7 +138,7 @@ pub trait MetricsUseCase: Send + Sync {
 pub struct MetricsUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
     metrics: Arc<dyn MetricsProvider>,
-    start_time: Instant,
+    system_info: Arc<dyn SystemInfoProvider>,
     active_connections: Arc<AtomicUsize>,
 }
 
@@ -145,13 +146,13 @@ impl<R: SessionRepository> MetricsUseCaseImpl<R> {
     pub fn new(
         repository: Arc<R>,
         metrics: Arc<dyn MetricsProvider>,
-        start_time: Instant,
+        system_info: Arc<dyn SystemInfoProvider>,
         active_connections: Arc<AtomicUsize>,
     ) -> Self {
         Self {
             repository,
             metrics,
-            start_time,
+            system_info,
             active_connections,
         }
     }
@@ -165,7 +166,7 @@ impl<R: SessionRepository> MetricsUseCase for MetricsUseCaseImpl<R> {
             errors_total: self.metrics.errors(),
             lock_timeouts: self.metrics.lock_timeouts(),
             poison_recoveries: self.metrics.poison_recoveries(),
-            uptime_ms: self.start_time.elapsed().as_millis() as u64,
+            uptime_ms: self.system_info.uptime_ms(),
             active_connections: self.active_connections.load(Ordering::Relaxed),
             session_count: self.repository.session_count(),
         })
@@ -179,6 +180,7 @@ mod tests {
     use crate::domain::SessionId;
     use crate::usecases::ports::test_support::{MockError, MockSessionRepository};
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::AtomicUsize;
 
     #[derive(Default)]
     struct TestMetrics {
@@ -224,6 +226,42 @@ mod tests {
         }
     }
 
+    struct TestSystemInfo {
+        pid: u32,
+        uptime_ms: u64,
+        version: String,
+        commit: String,
+    }
+
+    impl TestSystemInfo {
+        fn new() -> Self {
+            Self {
+                pid: 4242,
+                uptime_ms: 1234,
+                version: "test-version".to_string(),
+                commit: "test-commit".to_string(),
+            }
+        }
+    }
+
+    impl SystemInfoProvider for TestSystemInfo {
+        fn pid(&self) -> u32 {
+            self.pid
+        }
+
+        fn uptime_ms(&self) -> u64 {
+            self.uptime_ms
+        }
+
+        fn version(&self) -> String {
+            self.version.clone()
+        }
+
+        fn commit(&self) -> String {
+            self.commit.clone()
+        }
+    }
+
     #[test]
     fn test_health_usecase_returns_correct_output() {
         let repo = Arc::new(
@@ -236,10 +274,11 @@ mod tests {
         metrics.record_request();
         metrics.record_error();
 
+        let system_info = Arc::new(TestSystemInfo::new());
         let active_connections = Arc::new(AtomicUsize::new(3));
-        let start_time = Instant::now();
 
-        let usecase = HealthUseCaseImpl::new(repo, metrics, start_time, active_connections);
+        let usecase =
+            HealthUseCaseImpl::new(repo, metrics, system_info, active_connections);
 
         let output = usecase.execute(HealthInput).unwrap();
 
@@ -263,10 +302,11 @@ mod tests {
         metrics.record_lock_timeout();
         metrics.record_poison_recovery();
 
+        let system_info = Arc::new(TestSystemInfo::new());
         let active_connections = Arc::new(AtomicUsize::new(1));
-        let start_time = Instant::now();
 
-        let usecase = MetricsUseCaseImpl::new(repo, metrics, start_time, active_connections);
+        let usecase =
+            MetricsUseCaseImpl::new(repo, metrics, system_info, active_connections);
 
         let output = usecase.execute(MetricsInput).unwrap();
 

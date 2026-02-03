@@ -7,7 +7,10 @@ use crate::usecases::WaitUseCase;
 
 pub fn handle_wait_uc<U: WaitUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "wait").entered();
-    let input = parse_wait_input(&request);
+    let input = match parse_wait_input(&request) {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
     let req_id = request.id;
 
     match usecase.execute(input) {

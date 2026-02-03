@@ -200,19 +200,37 @@ pub fn parse_keyup_input(request: &RpcRequest) -> Result<KeyupInput, RpcResponse
     })
 }
 
-pub fn parse_wait_input(request: &RpcRequest) -> WaitInput {
+#[allow(clippy::result_large_err)]
+pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> {
     let rpc_params: params::WaitParams = request
         .params
         .as_ref()
         .and_then(|p| serde_json::from_value(p.clone()).ok())
         .unwrap_or_default();
 
-    WaitInput {
+    let condition = match rpc_params.condition.as_deref() {
+        Some(raw) => Some(crate::domain::WaitConditionType::parse(raw).map_err(|e| {
+            RpcResponse::error(request.id, -32602, &format!("Invalid condition: {}", e))
+        })?),
+        None => None,
+    };
+
+    if let Some(condition) = condition {
+        if condition.requires_text() && rpc_params.text.as_deref().is_none() {
+            return Err(RpcResponse::error(
+                request.id,
+                -32602,
+                "Invalid condition: text is required",
+            ));
+        }
+    }
+
+    Ok(WaitInput {
         session_id: parse_session_id(rpc_params.session),
         text: rpc_params.text,
         timeout_ms: rpc_params.timeout_ms,
-        condition: rpc_params.condition,
-    }
+        condition,
+    })
 }
 
 pub fn wait_output_to_response(id: u64, output: WaitOutput) -> RpcResponse {
@@ -227,7 +245,8 @@ pub fn wait_output_to_response(id: u64, output: WaitOutput) -> RpcResponse {
 
 #[allow(clippy::result_large_err)]
 pub fn parse_scroll_input(request: &RpcRequest) -> Result<ScrollInput, RpcResponse> {
-    let direction = request.require_str("direction")?.to_string();
+    let direction = crate::domain::ScrollDirection::parse(request.require_str("direction")?)
+        .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid direction: {}", e)))?;
 
     Ok(ScrollInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),
@@ -495,9 +514,17 @@ mod tests {
             "wait",
             Some(json!({"text": "ready", "timeout_ms": 5000})),
         );
-        let input = parse_wait_input(&request);
+        let input = parse_wait_input(&request).unwrap();
         assert_eq!(input.text.unwrap(), "ready");
         assert_eq!(input.timeout_ms, 5000);
+    }
+
+    #[test]
+    fn test_parse_wait_input_requires_text() {
+        let request = make_request(1, "wait", Some(json!({"condition": "text"})));
+        let response = parse_wait_input(&request).unwrap_err();
+        let value = serde_json::to_value(response).unwrap();
+        assert_eq!(value["error"]["code"], -32602);
     }
 
     #[test]

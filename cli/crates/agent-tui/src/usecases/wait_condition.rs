@@ -3,6 +3,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
 
+use crate::domain::WaitConditionType;
 use crate::usecases::ports::SessionOps;
 
 #[derive(Debug, Clone)]
@@ -13,13 +14,14 @@ pub enum WaitCondition {
 }
 
 impl WaitCondition {
-    pub fn parse(condition: Option<&str>, text: Option<&str>) -> Option<Self> {
+    pub fn parse(condition: Option<WaitConditionType>, text: Option<&str>) -> Option<Self> {
         match condition {
-            Some("text") => text.map(|t| WaitCondition::Text(t.to_string())),
-            Some("stable") => Some(WaitCondition::Stable),
-            Some("text_gone") => text.map(|t| WaitCondition::TextGone(t.to_string())),
+            Some(WaitConditionType::Text) => text.map(|t| WaitCondition::Text(t.to_string())),
+            Some(WaitConditionType::Stable) => Some(WaitCondition::Stable),
+            Some(WaitConditionType::TextGone) => {
+                text.map(|t| WaitCondition::TextGone(t.to_string()))
+            }
             None => text.map(|t| WaitCondition::Text(t.to_string())),
-            _ => None,
         }
     }
 }
@@ -178,19 +180,19 @@ mod tests {
 
     #[test]
     fn test_wait_condition_parse_text() {
-        let cond = WaitCondition::parse(Some("text"), Some("hello"));
+        let cond = WaitCondition::parse(Some(WaitConditionType::Text), Some("hello"));
         assert!(matches!(cond, Some(WaitCondition::Text(t)) if t == "hello"));
     }
 
     #[test]
     fn test_wait_condition_parse_text_gone() {
-        let cond = WaitCondition::parse(Some("text_gone"), Some("loading"));
+        let cond = WaitCondition::parse(Some(WaitConditionType::TextGone), Some("loading"));
         assert!(matches!(cond, Some(WaitCondition::TextGone(t)) if t == "loading"));
     }
 
     #[test]
     fn test_wait_condition_parse_stable() {
-        let cond = WaitCondition::parse(Some("stable"), None);
+        let cond = WaitCondition::parse(Some(WaitConditionType::Stable), None);
         assert!(matches!(cond, Some(WaitCondition::Stable)));
     }
 
@@ -202,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_wait_condition_parse_invalid() {
-        let cond = WaitCondition::parse(Some("unknown"), Some("hello"));
+        let cond = WaitCondition::parse(Some(WaitConditionType::Text), None);
         assert!(cond.is_none());
     }
 }

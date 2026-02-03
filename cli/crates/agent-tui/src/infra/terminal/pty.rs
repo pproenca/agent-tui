@@ -17,6 +17,7 @@ use portable_pty::native_pty_system;
 use tracing::{debug, warn};
 
 use crate::common::mutex_lock_or_recover;
+use crate::usecases::ports::SpawnErrorKind;
 
 pub use crate::infra::terminal::error::PtyError;
 
@@ -76,10 +77,17 @@ impl PtyHandle {
 
         cmd.env("TERM", "xterm-256color");
 
-        let child = pair
-            .slave
-            .spawn_command(cmd)
-            .map_err(|e| PtyError::Spawn(e.to_string()))?;
+        let child = pair.slave.spawn_command(cmd).map_err(|e| {
+            let kind = match e.kind() {
+                io::ErrorKind::NotFound => SpawnErrorKind::NotFound,
+                io::ErrorKind::PermissionDenied => SpawnErrorKind::PermissionDenied,
+                _ => SpawnErrorKind::Other,
+            };
+            PtyError::Spawn {
+                reason: e.to_string(),
+                kind,
+            }
+        })?;
 
         let reader = pair
             .master
@@ -276,7 +284,10 @@ impl PtyHandle {
 
         self.child
             .kill()
-            .map_err(|e| PtyError::Spawn(e.to_string()))
+            .map_err(|e| PtyError::Spawn {
+                reason: e.to_string(),
+                kind: SpawnErrorKind::Other,
+            })
     }
 
     pub(crate) fn take_read_rx(&mut self) -> Option<channel::Receiver<ReadEvent>> {

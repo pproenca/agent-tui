@@ -1,11 +1,18 @@
 use thiserror::Error;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpawnErrorKind {
+    NotFound,
+    PermissionDenied,
+    Other,
+}
+
 #[derive(Error, Debug)]
 pub enum PtyError {
     #[error("Failed to open PTY: {0}")]
     Open(String),
-    #[error("Failed to spawn process: {0}")]
-    Spawn(String),
+    #[error("Failed to spawn process: {reason}")]
+    Spawn { reason: String, kind: SpawnErrorKind },
     #[error("Failed to write to PTY: {0}")]
     Write(String),
     #[error("Failed to read from PTY: {0}")]
@@ -18,7 +25,7 @@ impl PtyError {
     pub fn operation(&self) -> &'static str {
         match self {
             PtyError::Open(_) => "open",
-            PtyError::Spawn(_) => "spawn",
+            PtyError::Spawn { .. } => "spawn",
             PtyError::Write(_) => "write",
             PtyError::Read(_) => "read",
             PtyError::Resize(_) => "resize",
@@ -28,10 +35,17 @@ impl PtyError {
     pub fn reason(&self) -> &str {
         match self {
             PtyError::Open(r)
-            | PtyError::Spawn(r)
             | PtyError::Write(r)
             | PtyError::Read(r)
             | PtyError::Resize(r) => r,
+            PtyError::Spawn { reason, .. } => reason,
+        }
+    }
+
+    pub fn spawn_kind(&self) -> Option<SpawnErrorKind> {
+        match self {
+            PtyError::Spawn { kind, .. } => Some(*kind),
+            _ => None,
         }
     }
 

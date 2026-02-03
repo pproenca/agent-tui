@@ -6,8 +6,7 @@ use crate::domain::{
     SpawnOutput,
 };
 use crate::usecases::SpawnError;
-use crate::usecases::ports::SessionError;
-use crate::usecases::ports::SessionRepository;
+use crate::usecases::ports::{PtyError, SessionError, SessionRepository, SpawnErrorKind};
 
 pub trait SpawnUseCase: Send + Sync {
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SpawnError>;
@@ -53,19 +52,22 @@ impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
             Err(SessionError::AlreadyExists(session_id)) => {
                 Err(SpawnError::SessionAlreadyExists { session_id })
             }
-            Err(e) => {
-                let err_str = e.to_string();
-                if err_str.contains("No such file") || err_str.contains("not found") {
-                    Err(SpawnError::CommandNotFound { command })
-                } else if err_str.contains("Permission denied") {
-                    Err(SpawnError::PermissionDenied { command })
-                } else {
-                    Err(SpawnError::PtyError {
-                        operation: "spawn".to_string(),
-                        reason: err_str,
-                    })
-                }
-            }
+            Err(SessionError::Pty(PtyError::Spawn { kind, reason })) => match kind {
+                SpawnErrorKind::NotFound => Err(SpawnError::CommandNotFound { command }),
+                SpawnErrorKind::PermissionDenied => Err(SpawnError::PermissionDenied { command }),
+                SpawnErrorKind::Other => Err(SpawnError::PtyError {
+                    operation: "spawn".to_string(),
+                    reason,
+                }),
+            },
+            Err(SessionError::Pty(pty_err)) => Err(SpawnError::PtyError {
+                operation: pty_err.operation().to_string(),
+                reason: pty_err.reason().to_string(),
+            }),
+            Err(e) => Err(SpawnError::PtyError {
+                operation: "spawn".to_string(),
+                reason: e.to_string(),
+            }),
         }
     }
 }
@@ -472,7 +474,10 @@ mod tests {
     fn test_spawn_usecase_classifies_command_not_found_error() {
         let repo = Arc::new(
             MockSessionRepository::builder()
-                .with_spawn_error(MockError::Pty("No such file or directory".to_string()))
+                .with_spawn_error(MockError::Pty {
+                    kind: crate::usecases::ports::SpawnErrorKind::NotFound,
+                    reason: "No such file or directory".to_string(),
+                })
                 .build(),
         );
         let usecase = SpawnUseCaseImpl::new(repo);
@@ -498,7 +503,10 @@ mod tests {
     fn test_spawn_usecase_classifies_not_found_variant_error() {
         let repo = Arc::new(
             MockSessionRepository::builder()
-                .with_spawn_error(MockError::Pty("command not found".to_string()))
+                .with_spawn_error(MockError::Pty {
+                    kind: crate::usecases::ports::SpawnErrorKind::NotFound,
+                    reason: "command not found".to_string(),
+                })
                 .build(),
         );
         let usecase = SpawnUseCaseImpl::new(repo);
@@ -524,7 +532,10 @@ mod tests {
     fn test_spawn_usecase_classifies_permission_denied_error() {
         let repo = Arc::new(
             MockSessionRepository::builder()
-                .with_spawn_error(MockError::Pty("Permission denied".to_string()))
+                .with_spawn_error(MockError::Pty {
+                    kind: crate::usecases::ports::SpawnErrorKind::PermissionDenied,
+                    reason: "Permission denied".to_string(),
+                })
                 .build(),
         );
         let usecase = SpawnUseCaseImpl::new(repo);
@@ -550,7 +561,10 @@ mod tests {
     fn test_spawn_usecase_classifies_generic_pty_error() {
         let repo = Arc::new(
             MockSessionRepository::builder()
-                .with_spawn_error(MockError::Pty("unknown error occurred".to_string()))
+                .with_spawn_error(MockError::Pty {
+                    kind: crate::usecases::ports::SpawnErrorKind::Other,
+                    reason: "unknown error occurred".to_string(),
+                })
                 .build(),
         );
         let usecase = SpawnUseCaseImpl::new(repo);

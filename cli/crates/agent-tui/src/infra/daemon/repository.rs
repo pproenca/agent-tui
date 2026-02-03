@@ -3,11 +3,12 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::common::mutex_lock_or_recover;
+use crate::domain::ScrollDirection;
 use crate::domain::core::Component;
 use crate::domain::core::CursorPosition;
 use crate::usecases::ports::{
     LivePreviewSnapshot, SessionError, SessionHandle, SessionOps, SessionRepository, StreamCursor,
-    StreamRead,
+    StreamRead, StreamWaiterHandle,
 };
 
 use crate::infra::daemon::session::{
@@ -59,12 +60,12 @@ impl SessionOps for SessionHandleImpl {
         session_guard.screen_render()
     }
 
-    fn pty_write(&self, data: &[u8]) -> Result<(), SessionError> {
+    fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError> {
         let session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.pty_write(data)
     }
 
-    fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
+    fn terminal_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
         let mut cursor = self.pty_cursor.lock().unwrap_or_else(|e| e.into_inner());
         let read = self.stream.read(&mut cursor, buf.len(), timeout_ms)?;
         let bytes_read = read.data.len().min(buf.len());
@@ -81,7 +82,7 @@ impl SessionOps for SessionHandleImpl {
         self.stream.read(cursor, max_bytes, timeout_ms)
     }
 
-    fn stream_subscribe(&self) -> crate::usecases::ports::StreamSubscription {
+    fn stream_subscribe(&self) -> StreamWaiterHandle {
         self.stream.subscribe()
     }
 
@@ -108,6 +109,11 @@ impl SessionOps for SessionHandleImpl {
     fn keyup(&self, key: &str) -> Result<(), SessionError> {
         let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.keyup(key)
+    }
+
+    fn scroll(&self, direction: ScrollDirection, amount: u16) -> Result<(), SessionError> {
+        let session_guard = mutex_lock_or_recover(&self.inner);
+        session_guard.scroll(direction, amount)
     }
 
     fn is_running(&self) -> bool {

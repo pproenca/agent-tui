@@ -287,27 +287,27 @@ pub struct GetTitleOutput {
 }
 
 #[derive(Debug, Clone)]
-pub struct PtyReadInput {
+pub struct TerminalReadInput {
     pub session_id: Option<SessionId>,
     pub max_bytes: usize,
     pub timeout_ms: u64,
 }
 
 #[derive(Debug, Clone)]
-pub struct PtyReadOutput {
+pub struct TerminalReadOutput {
     pub session_id: SessionId,
     pub data: Vec<u8>,
     pub bytes_read: usize,
 }
 
 #[derive(Debug, Clone)]
-pub struct PtyWriteInput {
+pub struct TerminalWriteInput {
     pub session_id: Option<SessionId>,
     pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]
-pub struct PtyWriteOutput {
+pub struct TerminalWriteOutput {
     pub session_id: SessionId,
     pub bytes_written: usize,
     pub success: bool,
@@ -327,7 +327,6 @@ pub struct AttachInput {
 pub struct AttachOutput {
     pub session_id: SessionId,
     pub success: bool,
-    pub message: String,
 }
 
 #[derive(Debug, Clone)]

@@ -2,37 +2,29 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::domain::{
-    HealthInput, HealthOutput, MetricsInput, MetricsOutput, PtyReadInput, PtyReadOutput,
-    PtyWriteInput, PtyWriteOutput,
+    HealthInput, HealthOutput, MetricsInput, MetricsOutput, TerminalReadInput, TerminalReadOutput,
+    TerminalWriteInput, TerminalWriteOutput,
 };
 use crate::usecases::ports::{
     MetricsProvider, SessionError, SessionRepository, SystemInfoProvider,
 };
 
-pub trait PtyReadUseCase: Send + Sync {
-    fn execute(&self, input: PtyReadInput) -> Result<PtyReadOutput, SessionError>;
+pub trait TerminalReadUseCase: Send + Sync {
+    fn execute(&self, input: TerminalReadInput) -> Result<TerminalReadOutput, SessionError>;
 }
 
-pub struct PtyReadUseCaseImpl<R: SessionRepository> {
+pub struct TerminalReadUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
 
-impl<R: SessionRepository> PtyReadUseCaseImpl<R> {
+impl<R: SessionRepository> TerminalReadUseCaseImpl<R> {
     pub fn new(repository: Arc<R>) -> Self {
         Self { repository }
     }
 }
 
-impl<R: SessionRepository> PtyReadUseCase for PtyReadUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(
-            session = ?input.session_id,
-            max_bytes = input.max_bytes,
-            timeout_ms = input.timeout_ms
-        )
-    )]
-    fn execute(&self, input: PtyReadInput) -> Result<PtyReadOutput, SessionError> {
+impl<R: SessionRepository> TerminalReadUseCase for TerminalReadUseCaseImpl<R> {
+    fn execute(&self, input: TerminalReadInput) -> Result<TerminalReadOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let max_bytes = if input.max_bytes == 0 {
             4096
@@ -46,9 +38,9 @@ impl<R: SessionRepository> PtyReadUseCase for PtyReadUseCaseImpl<R> {
         }
         .min(i32::MAX as u64) as i32;
         let mut buf = vec![0u8; max_bytes];
-        let bytes_read = session.pty_try_read(&mut buf, timeout_ms)?;
+        let bytes_read = session.terminal_try_read(&mut buf, timeout_ms)?;
         buf.truncate(bytes_read);
-        Ok(PtyReadOutput {
+        Ok(TerminalReadOutput {
             session_id: session.session_id(),
             data: buf,
             bytes_read,
@@ -56,30 +48,26 @@ impl<R: SessionRepository> PtyReadUseCase for PtyReadUseCaseImpl<R> {
     }
 }
 
-pub trait PtyWriteUseCase: Send + Sync {
-    fn execute(&self, input: PtyWriteInput) -> Result<PtyWriteOutput, SessionError>;
+pub trait TerminalWriteUseCase: Send + Sync {
+    fn execute(&self, input: TerminalWriteInput) -> Result<TerminalWriteOutput, SessionError>;
 }
 
-pub struct PtyWriteUseCaseImpl<R: SessionRepository> {
+pub struct TerminalWriteUseCaseImpl<R: SessionRepository> {
     repository: Arc<R>,
 }
 
-impl<R: SessionRepository> PtyWriteUseCaseImpl<R> {
+impl<R: SessionRepository> TerminalWriteUseCaseImpl<R> {
     pub fn new(repository: Arc<R>) -> Self {
         Self { repository }
     }
 }
 
-impl<R: SessionRepository> PtyWriteUseCase for PtyWriteUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(session = ?input.session_id, bytes_len = input.data.len())
-    )]
-    fn execute(&self, input: PtyWriteInput) -> Result<PtyWriteOutput, SessionError> {
+impl<R: SessionRepository> TerminalWriteUseCase for TerminalWriteUseCaseImpl<R> {
+    fn execute(&self, input: TerminalWriteInput) -> Result<TerminalWriteOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let bytes_len = input.data.len();
-        session.pty_write(&input.data)?;
-        Ok(PtyWriteOutput {
+        session.terminal_write(&input.data)?;
+        Ok(TerminalWriteOutput {
             session_id: session.session_id(),
             bytes_written: bytes_len,
             success: true,
@@ -115,7 +103,6 @@ impl<R: SessionRepository> HealthUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> HealthUseCase for HealthUseCaseImpl<R> {
-    #[tracing::instrument(skip(self, _input))]
     fn execute(&self, _input: HealthInput) -> Result<HealthOutput, SessionError> {
         Ok(HealthOutput {
             status: "healthy".to_string(),
@@ -159,7 +146,6 @@ impl<R: SessionRepository> MetricsUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> MetricsUseCase for MetricsUseCaseImpl<R> {
-    #[tracing::instrument(skip(self, _input))]
     fn execute(&self, _input: MetricsInput) -> Result<MetricsOutput, SessionError> {
         Ok(MetricsOutput {
             requests_total: self.metrics.requests(),
@@ -317,11 +303,11 @@ mod tests {
     }
 
     #[test]
-    fn test_pty_read_usecase_returns_error_when_no_active_session() {
+    fn test_terminal_read_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
-        let usecase = PtyReadUseCaseImpl::new(repo);
+        let usecase = TerminalReadUseCaseImpl::new(repo);
 
-        let input = PtyReadInput {
+        let input = TerminalReadInput {
             session_id: None,
             max_bytes: 4096,
             timeout_ms: 0,
@@ -332,15 +318,15 @@ mod tests {
     }
 
     #[test]
-    fn test_pty_read_usecase_returns_error_when_session_not_found() {
+    fn test_terminal_read_usecase_returns_error_when_session_not_found() {
         let repo = Arc::new(
             MockSessionRepository::builder()
                 .with_resolve_error(MockError::NotFound("missing".to_string()))
                 .build(),
         );
-        let usecase = PtyReadUseCaseImpl::new(repo);
+        let usecase = TerminalReadUseCaseImpl::new(repo);
 
-        let input = PtyReadInput {
+        let input = TerminalReadInput {
             session_id: Some(SessionId::new("missing")),
             max_bytes: 1024,
             timeout_ms: 0,
@@ -351,11 +337,11 @@ mod tests {
     }
 
     #[test]
-    fn test_pty_write_usecase_returns_error_when_no_active_session() {
+    fn test_terminal_write_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
-        let usecase = PtyWriteUseCaseImpl::new(repo);
+        let usecase = TerminalWriteUseCaseImpl::new(repo);
 
-        let input = PtyWriteInput {
+        let input = TerminalWriteInput {
             session_id: None,
             data: b"hello".to_vec(),
         };
@@ -365,15 +351,15 @@ mod tests {
     }
 
     #[test]
-    fn test_pty_write_usecase_returns_error_when_session_not_found() {
+    fn test_terminal_write_usecase_returns_error_when_session_not_found() {
         let repo = Arc::new(
             MockSessionRepository::builder()
                 .with_resolve_error(MockError::NotFound("missing".to_string()))
                 .build(),
         );
-        let usecase = PtyWriteUseCaseImpl::new(repo);
+        let usecase = TerminalWriteUseCaseImpl::new(repo);
 
-        let input = PtyWriteInput {
+        let input = TerminalWriteInput {
             session_id: Some(SessionId::new("missing")),
             data: b"test data".to_vec(),
         };

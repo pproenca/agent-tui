@@ -8,6 +8,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crossbeam_channel as channel;
+use crossterm::event::KeyCode;
 use libc::{POLLERR, POLLHUP, POLLOUT, poll, pollfd};
 use portable_pty::Child;
 use portable_pty::CommandBuilder;
@@ -434,6 +435,17 @@ pub fn key_to_escape_sequence(key: &str) -> Option<Vec<u8>> {
 
         _ => None,
     }
+}
+
+pub(crate) fn keycode_to_escape_sequence(code: KeyCode) -> Option<Vec<u8>> {
+    let key = match code {
+        KeyCode::Up => "Up",
+        KeyCode::Down => "Down",
+        KeyCode::Left => "Left",
+        KeyCode::Right => "Right",
+        _ => return None,
+    };
+    key_to_escape_sequence(key)
 }
 
 #[cfg(test)]

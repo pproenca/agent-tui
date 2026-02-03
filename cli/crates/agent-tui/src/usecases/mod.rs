@@ -1,4 +1,3 @@
-mod ansi_keys;
 mod diagnostics;
 mod input;
 mod session;
@@ -9,8 +8,8 @@ mod wait;
 mod wait_condition;
 
 pub use diagnostics::{
-    HealthUseCase, HealthUseCaseImpl, MetricsUseCase, MetricsUseCaseImpl, PtyReadUseCase,
-    PtyReadUseCaseImpl, PtyWriteUseCase, PtyWriteUseCaseImpl,
+    HealthUseCase, HealthUseCaseImpl, MetricsUseCase, MetricsUseCaseImpl, TerminalReadUseCase,
+    TerminalReadUseCaseImpl, TerminalWriteUseCase, TerminalWriteUseCaseImpl,
 };
 pub use input::{
     KeydownUseCase, KeydownUseCaseImpl, KeystrokeUseCase, KeystrokeUseCaseImpl, KeyupUseCase,

@@ -1,12 +1,22 @@
+use crate::domain::ScrollDirection;
 use crate::domain::core::CursorPosition;
 use crate::domain::core::vom::Component;
-use std::sync::Mutex;
-
 use crate::domain::session_types::SessionId;
 use crate::usecases::ports::{
-    LivePreviewSnapshot, SessionOps, StreamCursor, StreamRead, StreamSubscription,
+    LivePreviewSnapshot, SessionOps, StreamCursor, StreamRead, StreamWaiter, StreamWaiterHandle,
 };
-use crate::usecases::ports::{PtyError, SessionError};
+use crate::usecases::ports::{SessionError, TerminalError};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Duration;
+
+struct MockStreamWaiter;
+
+impl StreamWaiter for MockStreamWaiter {
+    fn wait(&self, _timeout: Option<Duration>) -> bool {
+        true
+    }
+}
 
 pub struct MockSession {
     pub id: String,
@@ -17,7 +27,7 @@ pub struct MockSession {
     screen_text: String,
     components: Vec<Component>,
     update_error: Option<SessionError>,
-    pty_write_error: Option<SessionError>,
+    terminal_write_error: Option<SessionError>,
     written_data: Mutex<Vec<Vec<u8>>>,
 }
 
@@ -36,7 +46,7 @@ impl MockSession {
             screen_text: String::new(),
             components: Vec::new(),
             update_error: None,
-            pty_write_error: None,
+            terminal_write_error: None,
             written_data: Mutex::new(Vec::new()),
         }
     }
@@ -53,7 +63,9 @@ impl MockSession {
 impl SessionOps for MockSession {
     fn update(&self) -> Result<(), SessionError> {
         if let Some(ref err) = self.update_error {
-            Err(SessionError::Pty(PtyError::Write(err.to_string())))
+            Err(SessionError::Terminal(TerminalError::Write(
+                err.to_string(),
+            )))
         } else {
             Ok(())
         }
@@ -67,16 +79,18 @@ impl SessionOps for MockSession {
         self.screen_text.clone()
     }
 
-    fn pty_write(&self, data: &[u8]) -> Result<(), SessionError> {
-        if let Some(ref err) = self.pty_write_error {
-            Err(SessionError::Pty(PtyError::Write(err.to_string())))
+    fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError> {
+        if let Some(ref err) = self.terminal_write_error {
+            Err(SessionError::Terminal(TerminalError::Write(
+                err.to_string(),
+            )))
         } else {
             self.written_data.lock().unwrap().push(data.to_vec());
             Ok(())
         }
     }
 
-    fn pty_try_read(&self, _buf: &mut [u8], _timeout_ms: i32) -> Result<usize, SessionError> {
+    fn terminal_try_read(&self, _buf: &mut [u8], _timeout_ms: i32) -> Result<usize, SessionError> {
         Ok(0)
     }
 
@@ -95,9 +109,8 @@ impl SessionOps for MockSession {
         })
     }
 
-    fn stream_subscribe(&self) -> StreamSubscription {
-        let (_tx, rx) = crossbeam_channel::bounded(1);
-        StreamSubscription::new(rx)
+    fn stream_subscribe(&self) -> StreamWaiterHandle {
+        Arc::new(MockStreamWaiter)
     }
 
     fn analyze_screen(&self) -> Vec<Component> {
@@ -117,6 +130,10 @@ impl SessionOps for MockSession {
     }
 
     fn keyup(&self, _key: &str) -> Result<(), SessionError> {
+        Ok(())
+    }
+
+    fn scroll(&self, _direction: ScrollDirection, _amount: u16) -> Result<(), SessionError> {
         Ok(())
     }
 
@@ -222,11 +239,11 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_session_pty_write_tracks_data() {
+    fn test_mock_session_terminal_write_tracks_data() {
         let session = MockSession::new("test");
 
-        session.pty_write(b"hello").unwrap();
-        session.pty_write(b"world").unwrap();
+        session.terminal_write(b"hello").unwrap();
+        session.terminal_write(b"world").unwrap();
 
         let written = session.written_data();
         assert_eq!(written.len(), 2);

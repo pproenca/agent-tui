@@ -1,4 +1,4 @@
-use crate::usecases::ports::{PtyError, SessionError, SpawnErrorKind};
+use crate::usecases::ports::{SessionError, SpawnErrorKind, TerminalError};
 
 #[derive(Debug, Clone, Default)]
 pub enum MockError {
@@ -6,7 +6,7 @@ pub enum MockError {
     NoActiveSession,
     NotFound(String),
     LimitReached(usize),
-    Pty {
+    Terminal {
         kind: SpawnErrorKind,
         reason: String,
     },
@@ -18,7 +18,7 @@ impl MockError {
             MockError::NoActiveSession => SessionError::NoActiveSession,
             MockError::NotFound(id) => SessionError::NotFound(id.clone()),
             MockError::LimitReached(max) => SessionError::LimitReached(*max),
-            MockError::Pty { kind, reason } => SessionError::Pty(PtyError::Spawn {
+            MockError::Terminal { kind, reason } => SessionError::Terminal(TerminalError::Spawn {
                 reason: reason.clone(),
                 kind: *kind,
             }),

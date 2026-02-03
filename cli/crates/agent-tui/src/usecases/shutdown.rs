@@ -23,10 +23,10 @@ impl ShutdownUseCaseImpl {
 }
 
 impl ShutdownUseCase for ShutdownUseCaseImpl {
-    #[tracing::instrument(skip(self, _input))]
     fn execute(&self, _input: ShutdownInput) -> ShutdownOutput {
         self.shutdown_flag.store(true, Ordering::SeqCst);
         self.notifier.notify();
+
         ShutdownOutput { acknowledged: true }
     }
 }

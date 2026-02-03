@@ -2,9 +2,9 @@ use crate::usecases::ports::SessionRepository;
 use crate::usecases::{
     AssertUseCaseImpl, AttachUseCaseImpl, CleanupUseCaseImpl, HealthUseCaseImpl,
     KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl, KillUseCaseImpl,
-    MetricsUseCaseImpl, PtyReadUseCaseImpl, PtyWriteUseCaseImpl, ResizeUseCaseImpl,
-    RestartUseCaseImpl, ScrollUseCaseImpl, SessionsUseCaseImpl, ShutdownUseCaseImpl,
-    SnapshotUseCaseImpl, SpawnUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
+    MetricsUseCaseImpl, ResizeUseCaseImpl, RestartUseCaseImpl, ScrollUseCaseImpl,
+    SessionsUseCaseImpl, ShutdownUseCaseImpl, SnapshotUseCaseImpl, SpawnUseCaseImpl,
+    TerminalReadUseCaseImpl, TerminalWriteUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
 };
 
 pub struct UseCaseContainer<R: SessionRepository + 'static> {
@@ -39,8 +39,8 @@ pub struct InputUseCases<R: SessionRepository + 'static> {
 }
 
 pub struct DiagnosticsUseCases<R: SessionRepository + 'static> {
-    pub pty_read: PtyReadUseCaseImpl<R>,
-    pub pty_write: PtyWriteUseCaseImpl<R>,
+    pub terminal_read: TerminalReadUseCaseImpl<R>,
+    pub terminal_write: TerminalWriteUseCaseImpl<R>,
     pub health: HealthUseCaseImpl<R>,
     pub metrics: MetricsUseCaseImpl<R>,
     pub shutdown: ShutdownUseCaseImpl,

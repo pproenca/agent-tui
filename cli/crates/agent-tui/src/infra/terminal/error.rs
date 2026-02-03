@@ -1,6 +1,6 @@
 use crate::common::error_codes::{self, ErrorCategory};
-use crate::usecases::ports::PtyError as PortPtyError;
 use crate::usecases::ports::SpawnErrorKind;
+use crate::usecases::ports::TerminalError as PortTerminalError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -98,13 +98,13 @@ impl PtyError {
 impl PtyError {
     /// Convert this infra error to the port error type.
     /// This keeps the dependency direction correct (infra -> usecases).
-    pub fn to_port_error(self) -> PortPtyError {
+    pub fn to_port_error(self) -> PortTerminalError {
         match self {
-            PtyError::Open(reason) => PortPtyError::Open(reason),
-            PtyError::Spawn { reason, kind } => PortPtyError::Spawn { reason, kind },
-            PtyError::Write(reason) => PortPtyError::Write(reason),
-            PtyError::Read(reason) => PortPtyError::Read(reason),
-            PtyError::Resize(reason) => PortPtyError::Resize(reason),
+            PtyError::Open(reason) => PortTerminalError::Open(reason),
+            PtyError::Spawn { reason, kind } => PortTerminalError::Spawn { reason, kind },
+            PtyError::Write(reason) => PortTerminalError::Write(reason),
+            PtyError::Read(reason) => PortTerminalError::Read(reason),
+            PtyError::Resize(reason) => PortTerminalError::Resize(reason),
         }
     }
 }

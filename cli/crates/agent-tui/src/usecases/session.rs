@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use crate::domain::{
-    AttachInput, AttachOutput, CleanupFailure, CleanupInput, CleanupOutput, KillOutput,
-    ResizeInput, ResizeOutput, RestartOutput, SessionInput, SessionsOutput, SpawnInput,
-    SpawnOutput,
+    AssertConditionType, AssertInput, AssertOutput, AttachInput, AttachOutput, CleanupFailure,
+    CleanupInput, CleanupOutput, KillOutput, ResizeInput, ResizeOutput, RestartOutput,
+    SessionInput, SessionsOutput, SpawnInput, SpawnOutput,
 };
 use crate::usecases::SpawnError;
-use crate::usecases::ports::{PtyError, SessionError, SessionRepository, SpawnErrorKind};
+use crate::usecases::ports::{SessionError, SessionRepository, SpawnErrorKind, TerminalError};
 
 pub trait SpawnUseCase: Send + Sync {
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SpawnError>;
@@ -23,17 +23,6 @@ impl<R: SessionRepository> SpawnUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(
-            session = ?input.session_id,
-            command = %input.command,
-            args_len = input.args.len(),
-            cwd = ?input.cwd,
-            cols = input.cols,
-            rows = input.rows
-        )
-    )]
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SpawnError> {
         let session_id_str = input.session_id.map(|id| id.to_string());
         let command = input.command.clone();
@@ -52,22 +41,48 @@ impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
             Err(SessionError::AlreadyExists(session_id)) => {
                 Err(SpawnError::SessionAlreadyExists { session_id })
             }
-            Err(SessionError::Pty(PtyError::Spawn { kind, reason })) => match kind {
+            Err(SessionError::Terminal(TerminalError::Spawn { kind, reason })) => match kind {
                 SpawnErrorKind::NotFound => Err(SpawnError::CommandNotFound { command }),
                 SpawnErrorKind::PermissionDenied => Err(SpawnError::PermissionDenied { command }),
-                SpawnErrorKind::Other => Err(SpawnError::PtyError {
+                SpawnErrorKind::Other => Err(SpawnError::TerminalError {
                     operation: "spawn".to_string(),
                     reason,
                 }),
             },
-            Err(SessionError::Pty(pty_err)) => Err(SpawnError::PtyError {
-                operation: pty_err.operation().to_string(),
-                reason: pty_err.reason().to_string(),
+            Err(SessionError::Terminal(term_err)) => Err(SpawnError::TerminalError {
+                operation: term_err.operation().to_string(),
+                reason: term_err.reason().to_string(),
             }),
-            Err(e) => Err(SpawnError::PtyError {
+            Err(e) => Err(SpawnError::TerminalError {
                 operation: "spawn".to_string(),
                 reason: e.to_string(),
             }),
+        }
+    }
+}
+
+pub trait SessionsUseCase: Send + Sync {
+    fn execute(&self) -> SessionsOutput;
+}
+
+pub struct SessionsUseCaseImpl<R: SessionRepository> {
+    repository: Arc<R>,
+}
+
+impl<R: SessionRepository> SessionsUseCaseImpl<R> {
+    pub fn new(repository: Arc<R>) -> Self {
+        Self { repository }
+    }
+}
+
+impl<R: SessionRepository> SessionsUseCase for SessionsUseCaseImpl<R> {
+    fn execute(&self) -> SessionsOutput {
+        let sessions = self.repository.list();
+        let active_session = self.repository.active_session_id();
+
+        SessionsOutput {
+            sessions,
+            active_session,
         }
     }
 }
@@ -87,44 +102,16 @@ impl<R: SessionRepository> KillUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> KillUseCase for KillUseCaseImpl<R> {
-    #[tracing::instrument(skip(self, input), fields(session = ?input.session_id))]
     fn execute(&self, input: SessionInput) -> Result<KillOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
-        let id = session.session_id();
+        let session_id = session.session_id();
 
-        self.repository.kill(id.as_str())?;
+        self.repository.kill(session_id.as_str())?;
 
         Ok(KillOutput {
-            session_id: id,
+            session_id,
             success: true,
         })
-    }
-}
-
-pub trait SessionsUseCase: Send + Sync {
-    fn execute(&self) -> SessionsOutput;
-}
-
-pub struct SessionsUseCaseImpl<R: SessionRepository> {
-    repository: Arc<R>,
-}
-
-impl<R: SessionRepository> SessionsUseCaseImpl<R> {
-    pub fn new(repository: Arc<R>) -> Self {
-        Self { repository }
-    }
-}
-
-impl<R: SessionRepository> SessionsUseCase for SessionsUseCaseImpl<R> {
-    #[tracing::instrument(skip(self))]
-    fn execute(&self) -> SessionsOutput {
-        let sessions = self.repository.list();
-        let active_session = self.repository.active_session_id();
-
-        SessionsOutput {
-            sessions,
-            active_session,
-        }
     }
 }
 
@@ -143,23 +130,21 @@ impl<R: SessionRepository> RestartUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> RestartUseCase for RestartUseCaseImpl<R> {
-    #[tracing::instrument(skip(self, input), fields(session = ?input.session_id))]
     fn execute(&self, input: SessionInput) -> Result<RestartOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
+        let old_session_id = session.session_id();
+        let command = session.command();
+        let (cols, rows) = session.size();
 
-        let (old_id, command, cols, rows) = {
-            let (c, r) = session.size();
-            (session.session_id(), session.command(), c, r)
-        };
+        self.repository.kill(old_session_id.as_str())?;
 
-        self.repository.kill(old_id.as_str())?;
-
-        let (new_session_id, pid) =
-            self.repository
-                .spawn(&command, &[], None, None, None, cols, rows)?;
+        let args: Vec<String> = Vec::new();
+        let (new_session_id, pid) = self
+            .repository
+            .spawn(&command, &args, None, None, None, cols, rows)?;
 
         Ok(RestartOutput {
-            old_session_id: old_id,
+            old_session_id,
             new_session_id,
             command,
             pid,
@@ -182,14 +167,11 @@ impl<R: SessionRepository> AttachUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> AttachUseCase for AttachUseCaseImpl<R> {
-    #[tracing::instrument(skip(self, input), fields(session = %input.session_id))]
     fn execute(&self, input: AttachInput) -> Result<AttachOutput, SessionError> {
         let session_id_str = input.session_id.to_string();
         let session = self.repository.resolve(Some(&session_id_str))?;
 
-        let is_running = session.is_running();
-
-        if !is_running {
+        if !session.is_running() {
             return Err(SessionError::NotFound(format!(
                 "{} (session not running)",
                 session_id_str
@@ -201,7 +183,6 @@ impl<R: SessionRepository> AttachUseCase for AttachUseCaseImpl<R> {
         Ok(AttachOutput {
             session_id: input.session_id,
             success: true,
-            message: format!("Now attached to session {}", session_id_str),
         })
     }
 }
@@ -221,10 +202,6 @@ impl<R: SessionRepository> ResizeUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> ResizeUseCase for ResizeUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(session = ?input.session_id, cols = input.cols, rows = input.rows)
-    )]
     fn execute(&self, input: ResizeInput) -> Result<ResizeOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         session.resize(input.cols, input.rows)?;
@@ -253,31 +230,29 @@ impl<R: SessionRepository> CleanupUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> CleanupUseCase for CleanupUseCaseImpl<R> {
-    #[tracing::instrument(skip(self, input), fields(all = input.all))]
     fn execute(&self, input: CleanupInput) -> CleanupOutput {
         let sessions = self.repository.list();
         let mut cleaned = 0;
         let mut failures = Vec::new();
 
-        for info in sessions {
-            let should_cleanup = input.all || !info.is_active();
+        for session in sessions {
+            let should_cleanup = input.all || !session.running;
+            if !should_cleanup {
+                continue;
+            }
 
-            if should_cleanup {
-                match self.repository.kill(info.id.as_str()) {
-                    Ok(_) => cleaned += 1,
-                    Err(e) => failures.push(CleanupFailure {
-                        session_id: info.id.clone(),
-                        error: e.to_string(),
-                    }),
-                }
+            match self.repository.kill(session.id.as_str()) {
+                Ok(()) => cleaned += 1,
+                Err(err) => failures.push(CleanupFailure {
+                    session_id: session.id,
+                    error: err.to_string(),
+                }),
             }
         }
 
         CleanupOutput { cleaned, failures }
     }
 }
-
-use crate::domain::{AssertConditionType, AssertInput, AssertOutput};
 
 pub trait AssertUseCase: Send + Sync {
     fn execute(&self, input: AssertInput) -> Result<AssertOutput, SessionError>;
@@ -294,14 +269,6 @@ impl<R: SessionRepository> AssertUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> AssertUseCase for AssertUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(
-            session = ?input.session_id,
-            condition = %input.condition_type.as_str(),
-            value_len = input.value.len()
-        )
-    )]
     fn execute(&self, input: AssertInput) -> Result<AssertOutput, SessionError> {
         let condition = format!("{}:{}", input.condition_type.as_str(), input.value);
 
@@ -474,7 +441,7 @@ mod tests {
     fn test_spawn_usecase_classifies_command_not_found_error() {
         let repo = Arc::new(
             MockSessionRepository::builder()
-                .with_spawn_error(MockError::Pty {
+                .with_spawn_error(MockError::Terminal {
                     kind: crate::usecases::ports::SpawnErrorKind::NotFound,
                     reason: "No such file or directory".to_string(),
                 })
@@ -503,7 +470,7 @@ mod tests {
     fn test_spawn_usecase_classifies_not_found_variant_error() {
         let repo = Arc::new(
             MockSessionRepository::builder()
-                .with_spawn_error(MockError::Pty {
+                .with_spawn_error(MockError::Terminal {
                     kind: crate::usecases::ports::SpawnErrorKind::NotFound,
                     reason: "command not found".to_string(),
                 })
@@ -532,7 +499,7 @@ mod tests {
     fn test_spawn_usecase_classifies_permission_denied_error() {
         let repo = Arc::new(
             MockSessionRepository::builder()
-                .with_spawn_error(MockError::Pty {
+                .with_spawn_error(MockError::Terminal {
                     kind: crate::usecases::ports::SpawnErrorKind::PermissionDenied,
                     reason: "Permission denied".to_string(),
                 })
@@ -558,10 +525,10 @@ mod tests {
     }
 
     #[test]
-    fn test_spawn_usecase_classifies_generic_pty_error() {
+    fn test_spawn_usecase_classifies_generic_terminal_error() {
         let repo = Arc::new(
             MockSessionRepository::builder()
-                .with_spawn_error(MockError::Pty {
+                .with_spawn_error(MockError::Terminal {
                     kind: crate::usecases::ports::SpawnErrorKind::Other,
                     reason: "unknown error occurred".to_string(),
                 })
@@ -581,11 +548,11 @@ mod tests {
 
         let result = usecase.execute(input);
         match result {
-            Err(SpawnError::PtyError { operation, reason }) => {
+            Err(SpawnError::TerminalError { operation, reason }) => {
                 assert_eq!(operation, "spawn");
                 assert!(reason.contains("unknown error"));
             }
-            _ => panic!("Expected PtyError but got {:?}", result),
+            _ => panic!("Expected TerminalError but got {:?}", result),
         }
     }
 

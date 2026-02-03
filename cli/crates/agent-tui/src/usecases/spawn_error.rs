@@ -14,6 +14,6 @@ pub enum SpawnError {
     #[error("Permission denied: {command}")]
     PermissionDenied { command: String },
 
-    #[error("PTY error during {operation}: {reason}")]
-    PtyError { operation: String, reason: String },
+    #[error("Terminal error during {operation}: {reason}")]
+    TerminalError { operation: String, reason: String },
 }

@@ -12,11 +12,11 @@ use super::snapshot_adapters::session_info_to_json;
 use crate::adapters::daemon::DomainError;
 use crate::domain::{
     AssertInput, AssertOutput, AttachInput, AttachOutput, CleanupInput, CleanupOutput,
-    HealthOutput, KeydownInput, KeystrokeInput, KeyupInput, KillOutput, MetricsOutput,
-    PtyReadInput, PtyReadOutput, PtyWriteInput, PtyWriteOutput, ResizeInput, ResizeOutput,
-    RestartOutput, ScrollInput, ScrollOutput, SessionId, SessionInput, SessionsOutput,
-    ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput, TypeInput, WaitInput,
-    WaitOutput,
+    HealthOutput, KeydownInput, KeystrokeInput, KeyupInput, KillOutput, MetricsOutput, ResizeInput,
+    ResizeOutput, RestartOutput, ScrollInput, ScrollOutput, SessionId, SessionInput,
+    SessionsOutput, ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput,
+    TerminalReadInput, TerminalReadOutput, TerminalWriteInput, TerminalWriteOutput, TypeInput,
+    WaitInput, WaitOutput,
 };
 use crate::usecases::ports::SessionError;
 
@@ -332,12 +332,14 @@ pub fn parse_attach_input(request: &RpcRequest) -> Result<AttachInput, RpcRespon
 }
 
 pub fn attach_output_to_response(id: u64, output: AttachOutput) -> RpcResponse {
+    let session_id = output.session_id.as_str();
+    let message = format!("Now attached to session {}", session_id);
     RpcResponse::success(
         id,
         json!({
-            "session_id": output.session_id.as_str(),
+            "session_id": session_id,
             "success": output.success,
-            "message": output.message
+            "message": message
         }),
     )
 }
@@ -419,7 +421,7 @@ pub fn shutdown_output_to_response(id: u64, output: ShutdownOutput) -> RpcRespon
     RpcResponse::success(id, json!({ "acknowledged": output.acknowledged }))
 }
 
-pub fn pty_read_output_to_response(id: u64, output: PtyReadOutput) -> RpcResponse {
+pub fn terminal_read_output_to_response(id: u64, output: TerminalReadOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -430,7 +432,7 @@ pub fn pty_read_output_to_response(id: u64, output: PtyReadOutput) -> RpcRespons
     )
 }
 
-pub fn pty_write_output_to_response(id: u64, output: PtyWriteOutput) -> RpcResponse {
+pub fn terminal_write_output_to_response(id: u64, output: TerminalWriteOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -441,7 +443,7 @@ pub fn pty_write_output_to_response(id: u64, output: PtyWriteOutput) -> RpcRespo
     )
 }
 
-pub fn parse_pty_read_input(request: &RpcRequest) -> PtyReadInput {
+pub fn parse_terminal_read_input(request: &RpcRequest) -> TerminalReadInput {
     let rpc_params: params::PtyReadParams = request
         .params
         .as_ref()
@@ -451,7 +453,7 @@ pub fn parse_pty_read_input(request: &RpcRequest) -> PtyReadInput {
             max_bytes: 4096,
         });
 
-    PtyReadInput {
+    TerminalReadInput {
         session_id: parse_session_id(rpc_params.session),
         max_bytes: rpc_params.max_bytes,
         timeout_ms: request.param_u64("timeout_ms", 1000),
@@ -459,7 +461,7 @@ pub fn parse_pty_read_input(request: &RpcRequest) -> PtyReadInput {
 }
 
 #[allow(clippy::result_large_err)]
-pub fn parse_pty_write_input(request: &RpcRequest) -> Result<PtyWriteInput, RpcResponse> {
+pub fn parse_terminal_write_input(request: &RpcRequest) -> Result<TerminalWriteInput, RpcResponse> {
     let rpc_params: params::PtyWriteParams = request
         .params
         .as_ref()
@@ -474,7 +476,7 @@ pub fn parse_pty_write_input(request: &RpcRequest) -> Result<PtyWriteInput, RpcR
         .decode(&rpc_params.data)
         .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid base64: {}", e)))?;
 
-    Ok(PtyWriteInput {
+    Ok(TerminalWriteInput {
         session_id: parse_session_id(rpc_params.session),
         data,
     })
@@ -544,17 +546,17 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_pty_read_input_defaults() {
+    fn test_parse_terminal_read_input_defaults() {
         let request = make_request(1, "pty_read", Some(json!({})));
-        let input = parse_pty_read_input(&request);
+        let input = parse_terminal_read_input(&request);
         assert_eq!(input.max_bytes, 4096);
     }
 
     #[test]
-    fn test_parse_pty_write_input() {
+    fn test_parse_terminal_write_input() {
         let data = STANDARD.encode(b"hello");
         let request = make_request(1, "pty_write", Some(json!({"data": data})));
-        let input = parse_pty_write_input(&request).unwrap();
+        let input = parse_terminal_write_input(&request).unwrap();
         assert_eq!(input.data, b"hello");
     }
 

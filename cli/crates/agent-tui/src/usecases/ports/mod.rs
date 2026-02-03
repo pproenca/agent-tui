@@ -9,11 +9,11 @@ pub mod terminal_engine;
 pub(crate) mod test_support;
 
 pub use clock::Clock;
-pub use errors::{LivePreviewError, PtyError, SessionError, SpawnErrorKind};
+pub use errors::{LivePreviewError, SessionError, SpawnErrorKind, TerminalError};
 pub use metrics::MetricsProvider;
 pub use session_repository::{
     LivePreviewSnapshot, SessionHandle, SessionOps, SessionRepository, StreamCursor, StreamRead,
-    StreamSubscription,
+    StreamWaiter, StreamWaiterHandle,
 };
 pub use shutdown_notifier::{NoopShutdownNotifier, ShutdownNotifier, ShutdownNotifierHandle};
 pub use system_info::SystemInfoProvider;

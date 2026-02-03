@@ -1,6 +1,6 @@
 use crate::common::error_codes::{self, ErrorCategory};
-use crate::usecases::ports::SpawnErrorKind;
 use crate::usecases::ports::PtyError as PortPtyError;
+use crate::usecases::ports::SpawnErrorKind;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -8,7 +8,10 @@ pub enum PtyError {
     #[error("Failed to open PTY: {0}")]
     Open(String),
     #[error("Failed to spawn process: {reason}")]
-    Spawn { reason: String, kind: SpawnErrorKind },
+    Spawn {
+        reason: String,
+        kind: SpawnErrorKind,
+    },
     #[error("Failed to write to PTY: {0}")]
     Write(String),
     #[error("Failed to read from PTY: {0}")]
@@ -86,10 +89,7 @@ impl PtyError {
 
     pub fn reason(&self) -> &str {
         match self {
-            PtyError::Open(r)
-            | PtyError::Write(r)
-            | PtyError::Read(r)
-            | PtyError::Resize(r) => r,
+            PtyError::Open(r) | PtyError::Write(r) | PtyError::Read(r) | PtyError::Resize(r) => r,
             PtyError::Spawn { reason, .. } => reason,
         }
     }
@@ -159,11 +159,13 @@ mod tests {
         assert!(PtyError::Read("timeout".into()).is_retryable());
         assert!(PtyError::Write("broken pipe".into()).is_retryable());
         assert!(!PtyError::Open("failed".into()).is_retryable());
-        assert!(!PtyError::Spawn {
-            reason: "not found".into(),
-            kind: SpawnErrorKind::NotFound
-        }
-        .is_retryable());
+        assert!(
+            !PtyError::Spawn {
+                reason: "not found".into(),
+                kind: SpawnErrorKind::NotFound
+            }
+            .is_retryable()
+        );
     }
 
     #[test]

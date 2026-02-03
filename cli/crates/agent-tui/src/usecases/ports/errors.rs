@@ -12,7 +12,10 @@ pub enum PtyError {
     #[error("Failed to open PTY: {0}")]
     Open(String),
     #[error("Failed to spawn process: {reason}")]
-    Spawn { reason: String, kind: SpawnErrorKind },
+    Spawn {
+        reason: String,
+        kind: SpawnErrorKind,
+    },
     #[error("Failed to write to PTY: {0}")]
     Write(String),
     #[error("Failed to read from PTY: {0}")]
@@ -34,10 +37,7 @@ impl PtyError {
 
     pub fn reason(&self) -> &str {
         match self {
-            PtyError::Open(r)
-            | PtyError::Write(r)
-            | PtyError::Read(r)
-            | PtyError::Resize(r) => r,
+            PtyError::Open(r) | PtyError::Write(r) | PtyError::Read(r) | PtyError::Resize(r) => r,
             PtyError::Spawn { reason, .. } => reason,
         }
     }

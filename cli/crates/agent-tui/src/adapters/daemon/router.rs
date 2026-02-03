@@ -318,7 +318,7 @@ mod tests {
         let metrics = Arc::new(TestMetrics);
         let start_time = Instant::now();
         let system_info = Arc::new(TestSystemInfo::new(start_time));
-        let clock = Arc::new(TestClock::default());
+        let clock = Arc::new(TestClock);
         let active_connections = Arc::new(AtomicUsize::new(0));
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let shutdown_notifier = Arc::new(NoopShutdownNotifier);

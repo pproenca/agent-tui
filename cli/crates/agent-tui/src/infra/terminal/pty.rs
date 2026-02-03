@@ -78,10 +78,14 @@ impl PtyHandle {
         cmd.env("TERM", "xterm-256color");
 
         let child = pair.slave.spawn_command(cmd).map_err(|e| {
-            let kind = match e.kind() {
-                io::ErrorKind::NotFound => SpawnErrorKind::NotFound,
-                io::ErrorKind::PermissionDenied => SpawnErrorKind::PermissionDenied,
-                _ => SpawnErrorKind::Other,
+            let kind = if let Some(io_err) = e.downcast_ref::<io::Error>() {
+                match io_err.kind() {
+                    io::ErrorKind::NotFound => SpawnErrorKind::NotFound,
+                    io::ErrorKind::PermissionDenied => SpawnErrorKind::PermissionDenied,
+                    _ => SpawnErrorKind::Other,
+                }
+            } else {
+                SpawnErrorKind::Other
             };
             PtyError::Spawn {
                 reason: e.to_string(),
@@ -282,12 +286,10 @@ impl PtyHandle {
             return Ok(());
         }
 
-        self.child
-            .kill()
-            .map_err(|e| PtyError::Spawn {
-                reason: e.to_string(),
-                kind: SpawnErrorKind::Other,
-            })
+        self.child.kill().map_err(|e| PtyError::Spawn {
+            reason: e.to_string(),
+            kind: SpawnErrorKind::Other,
+        })
     }
 
     pub(crate) fn take_read_rx(&mut self) -> Option<channel::Receiver<ReadEvent>> {

@@ -35,9 +35,8 @@ impl<R: SessionRepository> WaitUseCase for WaitUseCaseImpl<R> {
         let timeout = Duration::from_millis(input.timeout_ms);
         let start = self.clock.now();
 
-        let condition =
-            WaitCondition::parse(input.condition, input.text.as_deref())
-                .unwrap_or(WaitCondition::Stable);
+        let condition = WaitCondition::parse(input.condition, input.text.as_deref())
+            .unwrap_or(WaitCondition::Stable);
 
         let mut stable_tracker = StableTracker::new(3);
         let poll_interval = Duration::from_millis(50);
@@ -86,14 +85,14 @@ mod tests {
     #[test]
     fn test_wait_usecase_can_be_constructed_with_mock_clock() {
         let repo = Arc::new(MockSessionRepository::new());
-        let clock = Arc::new(TestClock::default());
+        let clock = Arc::new(TestClock);
         let _usecase = WaitUseCaseImpl::new(repo, clock);
     }
 
     #[test]
     fn test_wait_usecase_returns_error_when_no_active_session() {
         let repo = Arc::new(MockSessionRepository::new());
-        let clock = Arc::new(TestClock::default());
+        let clock = Arc::new(TestClock);
         let usecase = WaitUseCaseImpl::new(repo, clock);
 
         let input = WaitInput {
@@ -114,7 +113,7 @@ mod tests {
                 .with_resolve_error(MockError::NotFound("missing".to_string()))
                 .build(),
         );
-        let clock = Arc::new(TestClock::default());
+        let clock = Arc::new(TestClock);
         let usecase = WaitUseCaseImpl::new(repo, clock);
 
         let input = WaitInput {
@@ -131,7 +130,7 @@ mod tests {
     #[test]
     fn test_wait_usecase_returns_error_with_stable_condition() {
         let repo = Arc::new(MockSessionRepository::new());
-        let clock = Arc::new(TestClock::default());
+        let clock = Arc::new(TestClock);
         let usecase = WaitUseCaseImpl::new(repo, clock);
 
         let input = WaitInput {

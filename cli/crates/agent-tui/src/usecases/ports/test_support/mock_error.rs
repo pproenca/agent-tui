@@ -6,7 +6,10 @@ pub enum MockError {
     NoActiveSession,
     NotFound(String),
     LimitReached(usize),
-    Pty { kind: SpawnErrorKind, reason: String },
+    Pty {
+        kind: SpawnErrorKind,
+        reason: String,
+    },
 }
 
 impl MockError {

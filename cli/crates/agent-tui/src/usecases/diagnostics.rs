@@ -179,8 +179,8 @@ mod tests {
 
     use crate::domain::SessionId;
     use crate::usecases::ports::test_support::{MockError, MockSessionRepository};
-    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     #[derive(Default)]
     struct TestMetrics {
@@ -277,8 +277,7 @@ mod tests {
         let system_info = Arc::new(TestSystemInfo::new());
         let active_connections = Arc::new(AtomicUsize::new(3));
 
-        let usecase =
-            HealthUseCaseImpl::new(repo, metrics, system_info, active_connections);
+        let usecase = HealthUseCaseImpl::new(repo, metrics, system_info, active_connections);
 
         let output = usecase.execute(HealthInput).unwrap();
 
@@ -305,8 +304,7 @@ mod tests {
         let system_info = Arc::new(TestSystemInfo::new());
         let active_connections = Arc::new(AtomicUsize::new(1));
 
-        let usecase =
-            MetricsUseCaseImpl::new(repo, metrics, system_info, active_connections);
+        let usecase = MetricsUseCaseImpl::new(repo, metrics, system_info, active_connections);
 
         let output = usecase.execute(MetricsInput).unwrap();
 

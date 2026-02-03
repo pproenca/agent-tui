@@ -246,7 +246,9 @@ pub fn wait_output_to_response(id: u64, output: WaitOutput) -> RpcResponse {
 #[allow(clippy::result_large_err)]
 pub fn parse_scroll_input(request: &RpcRequest) -> Result<ScrollInput, RpcResponse> {
     let direction = crate::domain::ScrollDirection::parse(request.require_str("direction")?)
-        .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid direction: {}", e)))?;
+        .map_err(|e| {
+            RpcResponse::error(request.id, -32602, &format!("Invalid direction: {}", e))
+        })?;
 
     Ok(ScrollInput {
         session_id: parse_session_id(request.param_str("session").map(String::from)),

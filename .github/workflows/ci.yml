@@ -247,8 +247,8 @@ jobs:
       - name: Test basic workflow
         run: |
           agent-tui run bash
-          agent-tui input "echo 'test'"
-          agent-tui input Enter
+          agent-tui type "echo 'test'"
+          agent-tui press Enter
           agent-tui wait "test"
           agent-tui screenshot
           agent-tui kill

@@ -32,10 +32,9 @@ Use this file when you need complete CLI coverage and exact options.
 - `agent-tui resize --cols <n> --rows <n>`
 - `agent-tui restart`
 
-### Press / Type / Input
-- `agent-tui press <key...>`
+### Press / Type
+- `agent-tui press <key...> [--hold|--release]`
 - `agent-tui type "text"`
-- `agent-tui input <key|text> [--hold|--release]`
   - Keys: Enter, Tab, Escape, Backspace, Delete, Arrow keys, Home, End, PageUp, PageDown, F1-F12
   - Modifiers: Ctrl+<key>, Alt+<key>, Shift+<key>
 

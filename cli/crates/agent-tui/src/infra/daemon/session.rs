@@ -11,6 +11,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crossterm::cursor;
+use crossterm::event::KeyCode;
 use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
@@ -27,11 +28,15 @@ use uuid::Uuid;
 use crate::common::mutex_lock_or_recover;
 use crate::common::rwlock_read_or_recover;
 use crate::common::rwlock_write_or_recover;
+use crate::domain::ScrollDirection;
 use crate::infra::terminal::CursorPosition;
 use crate::infra::terminal::key_to_escape_sequence;
+use crate::infra::terminal::keycode_to_escape_sequence;
 use crate::infra::terminal::render_screen;
 use crate::infra::terminal::{PtyHandle, ReadEvent};
-use crate::usecases::ports::{LivePreviewSnapshot, StreamCursor, StreamRead};
+use crate::usecases::ports::{
+    LivePreviewSnapshot, StreamCursor, StreamRead, StreamWaiter, StreamWaiterHandle,
+};
 
 use super::pty_session::PtySession;
 use crate::infra::daemon::TerminalState;
@@ -84,8 +89,21 @@ impl StreamReader {
         self.inner.read(cursor, max_bytes, timeout_ms)
     }
 
-    pub fn subscribe(&self) -> crate::usecases::ports::StreamSubscription {
+    pub fn subscribe(&self) -> StreamWaiterHandle {
         self.inner.subscribe()
+    }
+}
+
+struct StreamWaiterImpl {
+    receiver: channel::Receiver<()>,
+}
+
+impl StreamWaiter for StreamWaiterImpl {
+    fn wait(&self, timeout: Option<Duration>) -> bool {
+        match timeout {
+            Some(timeout) => self.receiver.recv_timeout(timeout).is_ok(),
+            None => self.receiver.recv().is_ok(),
+        }
     }
 }
 
@@ -172,14 +190,14 @@ impl StreamBuffer {
         self.cv.notify_all();
     }
 
-    fn subscribe(&self) -> crate::usecases::ports::StreamSubscription {
+    fn subscribe(&self) -> StreamWaiterHandle {
         let (tx, rx) = channel::bounded(1);
         self.notify_listeners();
         {
             let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
             notifiers.push(tx);
         }
-        crate::usecases::ports::StreamSubscription::new(rx)
+        Arc::new(StreamWaiterImpl { receiver: rx })
     }
 
     fn latest_seq(&self) -> u64 {
@@ -231,9 +249,9 @@ impl StreamBuffer {
 
         let state = self.state.read().unwrap_or_else(|e| e.into_inner());
         if let Some(error) = state.error.clone() {
-            return Err(SessionError::Pty(crate::usecases::ports::PtyError::Read(
-                error,
-            )));
+            return Err(SessionError::Terminal(
+                crate::usecases::ports::TerminalError::Read(error),
+            ));
         }
 
         let latest_cursor = StreamCursor {
@@ -509,6 +527,23 @@ impl Session {
         Ok(())
     }
 
+    pub fn scroll(&self, direction: ScrollDirection, amount: u16) -> Result<(), SessionError> {
+        let key_code = match direction {
+            ScrollDirection::Up => KeyCode::Up,
+            ScrollDirection::Down => KeyCode::Down,
+            ScrollDirection::Left => KeyCode::Left,
+            ScrollDirection::Right => KeyCode::Right,
+        };
+        let seq = keycode_to_escape_sequence(key_code)
+            .ok_or_else(|| SessionError::InvalidKey(direction.as_str().to_string()))?;
+
+        for _ in 0..amount {
+            self.pty.write(&seq)?;
+        }
+
+        Ok(())
+    }
+
     pub fn type_text(&self, text: &str) -> Result<(), SessionError> {
         self.pty.write_str(text)?;
         Ok(())
@@ -552,7 +587,7 @@ impl Session {
         StreamReader::new(Arc::clone(&self.stream))
     }
 
-    pub fn stream_subscribe(&self) -> crate::usecases::ports::StreamSubscription {
+    pub fn stream_subscribe(&self) -> StreamWaiterHandle {
         self.stream.subscribe()
     }
 
@@ -688,7 +723,7 @@ impl SessionManager {
             .unwrap_or_else(generate_session_id);
 
         let pty = PtyHandle::spawn(command, args, cwd, env, cols, rows)
-            .map_err(|e| SessionError::Pty(e.to_port_error()))?;
+            .map_err(|e| SessionError::Terminal(e.to_port_error()))?;
         let pid = pty.pid().unwrap_or(0);
 
         let session = Session::new(id.clone(), command.to_string(), pty, cols, rows);

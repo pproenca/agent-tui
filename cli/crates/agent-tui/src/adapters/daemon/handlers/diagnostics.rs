@@ -3,13 +3,13 @@ use crate::adapters::rpc::{RpcRequest, RpcResponse};
 use super::common;
 use super::common::session_error_response;
 use crate::adapters::{
-    health_output_to_response, metrics_output_to_response, parse_pty_read_input,
-    parse_pty_write_input, pty_read_output_to_response, pty_write_output_to_response,
-    shutdown_output_to_response,
+    health_output_to_response, metrics_output_to_response, parse_terminal_read_input,
+    parse_terminal_write_input, shutdown_output_to_response, terminal_read_output_to_response,
+    terminal_write_output_to_response,
 };
 use crate::domain::{HealthInput, MetricsInput, ShutdownInput};
 use crate::usecases::{
-    HealthUseCase, MetricsUseCase, PtyReadUseCase, PtyWriteUseCase, ShutdownUseCase,
+    HealthUseCase, MetricsUseCase, ShutdownUseCase, TerminalReadUseCase, TerminalWriteUseCase,
 };
 
 pub fn handle_health_uc<U: HealthUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
@@ -34,27 +34,33 @@ pub fn handle_metrics_uc<U: MetricsUseCase>(usecase: &U, request: RpcRequest) ->
     }
 }
 
-pub fn handle_pty_read_uc<U: PtyReadUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+pub fn handle_terminal_read_uc<U: TerminalReadUseCase>(
+    usecase: &U,
+    request: RpcRequest,
+) -> RpcResponse {
     let _span = common::handler_span(&request, "pty_read").entered();
     let req_id = request.id;
-    let input = parse_pty_read_input(&request);
+    let input = parse_terminal_read_input(&request);
 
     match usecase.execute(input) {
-        Ok(output) => pty_read_output_to_response(req_id, output),
+        Ok(output) => terminal_read_output_to_response(req_id, output),
         Err(e) => session_error_response(req_id, e),
     }
 }
 
-pub fn handle_pty_write_uc<U: PtyWriteUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+pub fn handle_terminal_write_uc<U: TerminalWriteUseCase>(
+    usecase: &U,
+    request: RpcRequest,
+) -> RpcResponse {
     let _span = common::handler_span(&request, "pty_write").entered();
     let req_id = request.id;
-    let input = match parse_pty_write_input(&request) {
+    let input = match parse_terminal_write_input(&request) {
         Ok(i) => i,
         Err(resp) => return resp,
     };
 
     match usecase.execute(input) {
-        Ok(output) => pty_write_output_to_response(req_id, output),
+        Ok(output) => terminal_write_output_to_response(req_id, output),
         Err(e) => session_error_response(req_id, e),
     }
 }

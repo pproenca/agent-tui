@@ -10,9 +10,9 @@ use crate::usecases::ports::{
 use crate::usecases::{
     AssertUseCaseImpl, AttachUseCaseImpl, CleanupUseCaseImpl, HealthUseCaseImpl,
     KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl, KillUseCaseImpl,
-    MetricsUseCaseImpl, PtyReadUseCaseImpl, PtyWriteUseCaseImpl, ResizeUseCaseImpl,
-    RestartUseCaseImpl, ScrollUseCaseImpl, SessionsUseCaseImpl, ShutdownUseCaseImpl,
-    SnapshotUseCaseImpl, SpawnUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
+    MetricsUseCaseImpl, ResizeUseCaseImpl, RestartUseCaseImpl, ScrollUseCaseImpl,
+    SessionsUseCaseImpl, ShutdownUseCaseImpl, SnapshotUseCaseImpl, SpawnUseCaseImpl,
+    TerminalReadUseCaseImpl, TerminalWriteUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
 };
 
 impl<R: SessionRepository + 'static> UseCaseContainer<R> {
@@ -47,8 +47,8 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 scroll: ScrollUseCaseImpl::new(Arc::clone(&repository)),
             },
             diagnostics: DiagnosticsUseCases {
-                pty_read: PtyReadUseCaseImpl::new(Arc::clone(&repository)),
-                pty_write: PtyWriteUseCaseImpl::new(Arc::clone(&repository)),
+                terminal_read: TerminalReadUseCaseImpl::new(Arc::clone(&repository)),
+                terminal_write: TerminalWriteUseCaseImpl::new(Arc::clone(&repository)),
                 health: HealthUseCaseImpl::new(
                     Arc::clone(&repository),
                     Arc::clone(&metrics_provider),

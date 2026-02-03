@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use crate::domain::{
     KeydownInput, KeydownOutput, KeystrokeInput, KeystrokeOutput, KeyupInput, KeyupOutput,
-    ScrollDirection, ScrollInput, ScrollOutput, TypeInput, TypeOutput,
+    ScrollInput, ScrollOutput, TypeInput, TypeOutput,
 };
-use crate::usecases::ansi_keys;
 use crate::usecases::ports::{SessionError, SessionRepository};
 
 pub trait KeystrokeUseCase: Send + Sync {
@@ -22,10 +21,6 @@ impl<R: SessionRepository> KeystrokeUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> KeystrokeUseCase for KeystrokeUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(session = ?input.session_id, key = %input.key)
-    )]
     fn execute(&self, input: KeystrokeInput) -> Result<KeystrokeOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         session.keystroke(&input.key)?;
@@ -49,10 +44,6 @@ impl<R: SessionRepository> TypeUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> TypeUseCase for TypeUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(session = ?input.session_id, text_len = input.text.len())
-    )]
     fn execute(&self, input: TypeInput) -> Result<TypeOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         session.type_text(&input.text)?;
@@ -76,10 +67,6 @@ impl<R: SessionRepository> KeydownUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> KeydownUseCase for KeydownUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(session = ?input.session_id, key = %input.key)
-    )]
     fn execute(&self, input: KeydownInput) -> Result<KeydownOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         session.keydown(&input.key)?;
@@ -103,10 +90,6 @@ impl<R: SessionRepository> KeyupUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> KeyupUseCase for KeyupUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(session = ?input.session_id, key = %input.key)
-    )]
     fn execute(&self, input: KeyupInput) -> Result<KeyupOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         session.keyup(&input.key)?;
@@ -130,27 +113,9 @@ impl<R: SessionRepository> ScrollUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> ScrollUseCase for ScrollUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(
-            session = ?input.session_id,
-            direction = %input.direction,
-            amount = input.amount
-        )
-    )]
     fn execute(&self, input: ScrollInput) -> Result<ScrollOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
-
-        let key_seq: &[u8] = match input.direction {
-            ScrollDirection::Up => ansi_keys::UP,
-            ScrollDirection::Down => ansi_keys::DOWN,
-            ScrollDirection::Left => ansi_keys::LEFT,
-            ScrollDirection::Right => ansi_keys::RIGHT,
-        };
-
-        for _ in 0..input.amount {
-            session.pty_write(key_seq)?;
-        }
+        session.scroll(input.direction, input.amount)?;
 
         Ok(ScrollOutput { success: true })
     }

@@ -21,15 +21,6 @@ impl<R: SessionRepository> WaitUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> WaitUseCase for WaitUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(
-            session = ?input.session_id,
-            timeout_ms = input.timeout_ms,
-            condition = ?input.condition,
-            text_len = input.text.as_ref().map(|t| t.len())
-        )
-    )]
     fn execute(&self, input: WaitInput) -> Result<WaitOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
         let timeout = Duration::from_millis(input.timeout_ms);

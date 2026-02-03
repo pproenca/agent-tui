@@ -19,16 +19,6 @@ impl<R: SessionRepository> SnapshotUseCaseImpl<R> {
 }
 
 impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
-    #[tracing::instrument(
-        skip(self, input),
-        fields(
-            session = ?input.session_id,
-            include_cursor = input.include_cursor,
-            include_render = input.include_render,
-            strip_ansi = input.strip_ansi,
-            region = ?input.region
-        )
-    )]
     fn execute(&self, input: SnapshotInput) -> Result<SnapshotOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_deref())?;
 

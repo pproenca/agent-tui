@@ -50,12 +50,12 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
 
             "wait" => handlers::wait::handle_wait_uc(&self.usecases.wait, request),
 
-            "pty_read" => handlers::diagnostics::handle_pty_read_uc(
-                &self.usecases.diagnostics.pty_read,
+            "pty_read" => handlers::diagnostics::handle_terminal_read_uc(
+                &self.usecases.diagnostics.terminal_read,
                 request,
             ),
-            "pty_write" => handlers::diagnostics::handle_pty_write_uc(
-                &self.usecases.diagnostics.pty_write,
+            "pty_write" => handlers::diagnostics::handle_terminal_write_uc(
+                &self.usecases.diagnostics.terminal_write,
                 request,
             ),
             "shutdown" => handlers::diagnostics::handle_shutdown_uc(
@@ -75,17 +75,18 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::ScrollDirection;
     use crate::domain::core::{Component, CursorPosition};
     use crate::domain::{SessionId, SessionInfo};
     use crate::usecases::ports::{
         Clock, LivePreviewSnapshot, MetricsProvider, NoopShutdownNotifier, SessionError,
-        SessionHandle, SessionOps, SessionRepository, StreamCursor, StreamRead, StreamSubscription,
-        SystemInfoProvider,
+        SessionHandle, SessionOps, SessionRepository, StreamCursor, StreamRead, StreamWaiter,
+        StreamWaiterHandle, SystemInfoProvider,
     };
-    use crossbeam_channel as channel;
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize};
+    use std::time::Duration;
     use std::time::Instant;
 
     #[derive(Default)]
@@ -150,6 +151,14 @@ mod tests {
         id: SessionId,
     }
 
+    struct TestStreamWaiter;
+
+    impl StreamWaiter for TestStreamWaiter {
+        fn wait(&self, _timeout: Option<Duration>) -> bool {
+            true
+        }
+    }
+
     impl SessionOps for TestSession {
         fn update(&self) -> Result<(), SessionError> {
             Ok(())
@@ -163,11 +172,15 @@ mod tests {
             String::new()
         }
 
-        fn pty_write(&self, _data: &[u8]) -> Result<(), SessionError> {
+        fn terminal_write(&self, _data: &[u8]) -> Result<(), SessionError> {
             Ok(())
         }
 
-        fn pty_try_read(&self, _buf: &mut [u8], _timeout_ms: i32) -> Result<usize, SessionError> {
+        fn terminal_try_read(
+            &self,
+            _buf: &mut [u8],
+            _timeout_ms: i32,
+        ) -> Result<usize, SessionError> {
             Ok(0)
         }
 
@@ -187,9 +200,8 @@ mod tests {
             })
         }
 
-        fn stream_subscribe(&self) -> StreamSubscription {
-            let (_sender, receiver) = channel::bounded(1);
-            StreamSubscription::new(receiver)
+        fn stream_subscribe(&self) -> StreamWaiterHandle {
+            Arc::new(TestStreamWaiter)
         }
 
         fn analyze_screen(&self) -> Vec<Component> {
@@ -209,6 +221,10 @@ mod tests {
         }
 
         fn keyup(&self, _key: &str) -> Result<(), SessionError> {
+            Ok(())
+        }
+
+        fn scroll(&self, _direction: ScrollDirection, _amount: u16) -> Result<(), SessionError> {
             Ok(())
         }
 

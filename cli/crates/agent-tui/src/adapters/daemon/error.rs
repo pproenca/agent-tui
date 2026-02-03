@@ -1,6 +1,6 @@
 use crate::common::error_codes::{self, ErrorCategory};
 use crate::usecases::SpawnError;
-use crate::usecases::ports::{LivePreviewError, PtyError, SessionError, SpawnErrorKind};
+use crate::usecases::ports::{LivePreviewError, SessionError, SpawnErrorKind, TerminalError};
 use serde_json::{Value, json};
 use thiserror::Error;
 
@@ -12,7 +12,7 @@ impl SessionError {
             SessionError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
             SessionError::InvalidKey(_) => error_codes::INVALID_KEY,
             SessionError::LimitReached(_) => error_codes::SESSION_LIMIT,
-            SessionError::Pty(_) => error_codes::PTY_ERROR,
+            SessionError::Terminal(_) => error_codes::PTY_ERROR,
             SessionError::Persistence { .. } => error_codes::PERSISTENCE_ERROR,
         }
     }
@@ -28,9 +28,9 @@ impl SessionError {
             SessionError::NoActiveSession => json!({}),
             SessionError::InvalidKey(key) => json!({ "key": key }),
             SessionError::LimitReached(max) => json!({ "max_sessions": max }),
-            SessionError::Pty(pty_err) => json!({
-                "operation": pty_err.operation(),
-                "reason": pty_err.reason()
+            SessionError::Terminal(terminal_err) => json!({
+                "operation": terminal_err.operation(),
+                "reason": terminal_err.reason()
             }),
             SessionError::Persistence { operation, reason } => {
                 json!({ "operation": operation, "reason": reason })
@@ -52,12 +52,12 @@ impl SessionError {
             SessionError::LimitReached(_) => {
                 "Kill unused sessions with 'kill <session_id>' or increase limit with AGENT_TUI_MAX_SESSIONS env var.".to_string()
             }
-            SessionError::Pty(pty_err) => match pty_err {
-                PtyError::Open(_) => {
-                    "PTY allocation failed. Check system resource limits (ulimit -n) or try restarting."
+            SessionError::Terminal(terminal_err) => match terminal_err {
+                TerminalError::Open(_) => {
+                    "Terminal allocation failed. Check system resource limits (ulimit -n) or try restarting."
                         .to_string()
                 }
-                PtyError::Spawn { kind, .. } => match kind {
+                TerminalError::Spawn { kind, .. } => match kind {
                     SpawnErrorKind::NotFound => {
                         "Command not found. Check if the command exists and is in PATH."
                             .to_string()
@@ -69,15 +69,15 @@ impl SessionError {
                         "Process spawn failed. Check command syntax and permissions.".to_string()
                     }
                 },
-                PtyError::Write(_) => {
+                TerminalError::Write(_) => {
                     "Failed to send input to terminal. The session may have ended. Run 'sessions' to check status."
                         .to_string()
                 }
-                PtyError::Read(_) => {
+                TerminalError::Read(_) => {
                     "Failed to read terminal output. The session may have ended. Run 'sessions' to check status."
                         .to_string()
                 }
-                PtyError::Resize(_) => {
+                TerminalError::Resize(_) => {
                     "Failed to resize terminal. Try again or restart the session.".to_string()
                 }
             },
@@ -89,7 +89,7 @@ impl SessionError {
 
     pub fn is_retryable(&self) -> bool {
         match self {
-            SessionError::Pty(pty_err) => pty_err.is_retryable(),
+            SessionError::Terminal(terminal_err) => terminal_err.is_retryable(),
             SessionError::Persistence { .. } => true,
             _ => error_codes::is_retryable(self.code()),
         }
@@ -168,8 +168,8 @@ pub enum DomainError {
     #[error("Lock timeout{}", session_id.as_ref().map(|id| format!(" for session: {}", id)).unwrap_or_default())]
     LockTimeout { session_id: Option<String> },
 
-    #[error("PTY error during {operation}: {reason}")]
-    PtyError { operation: String, reason: String },
+    #[error("Terminal error during {operation}: {reason}")]
+    TerminalError { operation: String, reason: String },
 
     #[error("Timeout waiting for: {condition}")]
     WaitTimeout {
@@ -197,7 +197,7 @@ impl DomainError {
             DomainError::InvalidKey { .. } => error_codes::INVALID_KEY,
             DomainError::SessionLimitReached { .. } => error_codes::SESSION_LIMIT,
             DomainError::LockTimeout { .. } => error_codes::LOCK_TIMEOUT,
-            DomainError::PtyError { .. } => error_codes::PTY_ERROR,
+            DomainError::TerminalError { .. } => error_codes::PTY_ERROR,
             DomainError::WaitTimeout { .. } => error_codes::WAIT_TIMEOUT,
             DomainError::CommandNotFound { .. } => error_codes::COMMAND_NOT_FOUND,
             DomainError::PermissionDenied { .. } => error_codes::PERMISSION_DENIED,
@@ -228,7 +228,7 @@ impl DomainError {
                 Some(id) => json!({ "session_id": id }),
                 None => json!({}),
             },
-            DomainError::PtyError { operation, reason } => {
+            DomainError::TerminalError { operation, reason } => {
                 json!({
                     "operation": operation,
                     "reason": reason
@@ -275,7 +275,7 @@ impl DomainError {
                 "Session is busy. Try again in a moment, or run 'sessions' to check session status."
                     .to_string()
             }
-            DomainError::PtyError { .. } => {
+            DomainError::TerminalError { .. } => {
                 "Terminal communication error. The session may have ended. Run 'sessions' to check status.".to_string()
             }
             DomainError::WaitTimeout { condition, .. } => {
@@ -311,9 +311,9 @@ impl From<SessionError> for DomainError {
             SessionError::NoActiveSession => DomainError::NoActiveSession,
             SessionError::InvalidKey(key) => DomainError::InvalidKey { key },
             SessionError::LimitReached(max) => DomainError::SessionLimitReached { max },
-            SessionError::Pty(pty_err) => DomainError::PtyError {
-                operation: pty_err.operation().to_string(),
-                reason: pty_err.reason().to_string(),
+            SessionError::Terminal(terminal_err) => DomainError::TerminalError {
+                operation: terminal_err.operation().to_string(),
+                reason: terminal_err.reason().to_string(),
             },
             SessionError::Persistence { operation, reason } => DomainError::Generic {
                 message: format!("Persistence error during {}: {}", operation, reason),
@@ -331,8 +331,8 @@ impl From<SpawnError> for DomainError {
             }
             SpawnError::CommandNotFound { command } => DomainError::CommandNotFound { command },
             SpawnError::PermissionDenied { command } => DomainError::PermissionDenied { command },
-            SpawnError::PtyError { operation, reason } => {
-                DomainError::PtyError { operation, reason }
+            SpawnError::TerminalError { operation, reason } => {
+                DomainError::TerminalError { operation, reason }
             }
         }
     }
@@ -475,17 +475,17 @@ mod tests {
     }
 
     #[test]
-    fn test_pty_error_conversion_preserves_context() {
-        let pty_err = PtyError::Write("broken pipe".into());
-        let session_err = SessionError::Pty(pty_err);
+    fn test_terminal_error_conversion_preserves_context() {
+        let terminal_err = TerminalError::Write("broken pipe".into());
+        let session_err = SessionError::Terminal(terminal_err);
         let domain_err: DomainError = session_err.into();
 
         match domain_err {
-            DomainError::PtyError { operation, reason } => {
+            DomainError::TerminalError { operation, reason } => {
                 assert_eq!(operation, "write");
                 assert_eq!(reason, "broken pipe");
             }
-            _ => panic!("Expected PtyError variant"),
+            _ => panic!("Expected TerminalError variant"),
         }
     }
 }

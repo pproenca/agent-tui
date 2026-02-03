@@ -8,49 +8,52 @@ pub enum SpawnErrorKind {
 }
 
 #[derive(Error, Debug)]
-pub enum PtyError {
-    #[error("Failed to open PTY: {0}")]
+pub enum TerminalError {
+    #[error("Failed to open terminal: {0}")]
     Open(String),
     #[error("Failed to spawn process: {reason}")]
     Spawn {
         reason: String,
         kind: SpawnErrorKind,
     },
-    #[error("Failed to write to PTY: {0}")]
+    #[error("Failed to write to terminal: {0}")]
     Write(String),
-    #[error("Failed to read from PTY: {0}")]
+    #[error("Failed to read from terminal: {0}")]
     Read(String),
-    #[error("Failed to resize PTY: {0}")]
+    #[error("Failed to resize terminal: {0}")]
     Resize(String),
 }
 
-impl PtyError {
+impl TerminalError {
     pub fn operation(&self) -> &'static str {
         match self {
-            PtyError::Open(_) => "open",
-            PtyError::Spawn { .. } => "spawn",
-            PtyError::Write(_) => "write",
-            PtyError::Read(_) => "read",
-            PtyError::Resize(_) => "resize",
+            TerminalError::Open(_) => "open",
+            TerminalError::Spawn { .. } => "spawn",
+            TerminalError::Write(_) => "write",
+            TerminalError::Read(_) => "read",
+            TerminalError::Resize(_) => "resize",
         }
     }
 
     pub fn reason(&self) -> &str {
         match self {
-            PtyError::Open(r) | PtyError::Write(r) | PtyError::Read(r) | PtyError::Resize(r) => r,
-            PtyError::Spawn { reason, .. } => reason,
+            TerminalError::Open(r)
+            | TerminalError::Write(r)
+            | TerminalError::Read(r)
+            | TerminalError::Resize(r) => r,
+            TerminalError::Spawn { reason, .. } => reason,
         }
     }
 
     pub fn spawn_kind(&self) -> Option<SpawnErrorKind> {
         match self {
-            PtyError::Spawn { kind, .. } => Some(*kind),
+            TerminalError::Spawn { kind, .. } => Some(*kind),
             _ => None,
         }
     }
 
     pub fn is_retryable(&self) -> bool {
-        matches!(self, PtyError::Read(_) | PtyError::Write(_))
+        matches!(self, TerminalError::Read(_) | TerminalError::Write(_))
     }
 }
 
@@ -62,8 +65,8 @@ pub enum SessionError {
     AlreadyExists(String),
     #[error("No active session")]
     NoActiveSession,
-    #[error("PTY error: {0}")]
-    Pty(#[from] PtyError),
+    #[error("Terminal error: {0}")]
+    Terminal(#[from] TerminalError),
     #[error("Invalid key: {0}")]
     InvalidKey(String),
     #[error("Session limit reached: maximum {0} sessions allowed")]

@@ -2,8 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crossbeam_channel as channel;
-
+use crate::domain::ScrollDirection;
 use crate::domain::core::{Component, CursorPosition};
 use crate::domain::session_types::{SessionId, SessionInfo};
 
@@ -31,42 +30,31 @@ pub struct StreamRead {
     pub closed: bool,
 }
 
-#[derive(Clone)]
-pub struct StreamSubscription {
-    receiver: channel::Receiver<()>,
+pub trait StreamWaiter: Send + Sync {
+    fn wait(&self, timeout: Option<Duration>) -> bool;
 }
 
-impl StreamSubscription {
-    pub(crate) fn new(receiver: channel::Receiver<()>) -> Self {
-        Self { receiver }
-    }
-
-    pub fn wait(&self, timeout: Option<Duration>) -> bool {
-        match timeout {
-            Some(timeout) => self.receiver.recv_timeout(timeout).is_ok(),
-            None => self.receiver.recv().is_ok(),
-        }
-    }
-}
+pub type StreamWaiterHandle = Arc<dyn StreamWaiter>;
 
 pub trait SessionOps: Send + Sync {
     fn update(&self) -> Result<(), SessionError>;
     fn screen_text(&self) -> String;
     fn screen_render(&self) -> String;
-    fn pty_write(&self, data: &[u8]) -> Result<(), SessionError>;
-    fn pty_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError>;
+    fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError>;
+    fn terminal_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError>;
     fn stream_read(
         &self,
         cursor: &mut StreamCursor,
         max_bytes: usize,
         timeout_ms: i32,
     ) -> Result<StreamRead, SessionError>;
-    fn stream_subscribe(&self) -> StreamSubscription;
+    fn stream_subscribe(&self) -> StreamWaiterHandle;
     fn analyze_screen(&self) -> Vec<Component>;
     fn keystroke(&self, key: &str) -> Result<(), SessionError>;
     fn type_text(&self, text: &str) -> Result<(), SessionError>;
     fn keydown(&self, key: &str) -> Result<(), SessionError>;
     fn keyup(&self, key: &str) -> Result<(), SessionError>;
+    fn scroll(&self, direction: ScrollDirection, amount: u16) -> Result<(), SessionError>;
     fn is_running(&self) -> bool;
     fn resize(&self, cols: u16, rows: u16) -> Result<(), SessionError>;
     fn cursor(&self) -> CursorPosition;

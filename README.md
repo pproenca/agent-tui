@@ -104,7 +104,6 @@ agent-tui press Enter              # Press key
 agent-tui press Ctrl+C             # Key combination
 agent-tui press ArrowDown ArrowDown Enter  # Multiple keys
 agent-tui type "hello"             # Type text character by character
-agent-tui input Tab                # Unified input (keys or text)
 agent-tui scroll down 5            # Scroll viewport
 ```
 

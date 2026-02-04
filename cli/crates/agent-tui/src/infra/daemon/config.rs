@@ -4,6 +4,7 @@ use std::env;
 use std::time::Duration;
 
 use crate::infra::daemon::session::DEFAULT_MAX_SESSIONS;
+use tracing::warn;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 64;
 const DEFAULT_LOCK_TIMEOUT_SECS: u64 = 5;
@@ -48,30 +49,17 @@ impl DaemonConfig {
 
     pub fn from_env() -> Self {
         Self {
-            max_connections: env::var("AGENT_TUI_MAX_CONNECTIONS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(DEFAULT_MAX_CONNECTIONS),
-            lock_timeout: Duration::from_secs(
-                env::var("AGENT_TUI_LOCK_TIMEOUT")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(DEFAULT_LOCK_TIMEOUT_SECS),
-            ),
-            idle_timeout: Duration::from_secs(
-                env::var("AGENT_TUI_IDLE_TIMEOUT")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(DEFAULT_IDLE_TIMEOUT_SECS),
-            ),
-            max_request_bytes: env::var("AGENT_TUI_MAX_REQUEST")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(DEFAULT_MAX_REQUEST_BYTES),
-            max_sessions: env::var("AGENT_TUI_MAX_SESSIONS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(DEFAULT_MAX_SESSIONS),
+            max_connections: parse_env_usize("AGENT_TUI_MAX_CONNECTIONS", DEFAULT_MAX_CONNECTIONS),
+            lock_timeout: Duration::from_secs(parse_env_u64(
+                "AGENT_TUI_LOCK_TIMEOUT",
+                DEFAULT_LOCK_TIMEOUT_SECS,
+            )),
+            idle_timeout: Duration::from_secs(parse_env_u64(
+                "AGENT_TUI_IDLE_TIMEOUT",
+                DEFAULT_IDLE_TIMEOUT_SECS,
+            )),
+            max_request_bytes: parse_env_usize("AGENT_TUI_MAX_REQUEST", DEFAULT_MAX_REQUEST_BYTES),
+            max_sessions: parse_env_usize("AGENT_TUI_MAX_SESSIONS", DEFAULT_MAX_SESSIONS),
         }
     }
 
@@ -101,9 +89,76 @@ impl DaemonConfig {
     }
 }
 
+fn parse_env_usize(key: &str, default: usize) -> usize {
+    let value = match env::var(key) {
+        Ok(value) => value,
+        Err(_) => return default,
+    };
+    if value.trim().is_empty() {
+        return default;
+    }
+    match value.parse::<usize>() {
+        Ok(parsed) => parsed,
+        Err(_) => {
+            warn!(value = %value, key, "Invalid numeric config; using default");
+            default
+        }
+    }
+}
+
+fn parse_env_u64(key: &str, default: u64) -> u64 {
+    let value = match env::var(key) {
+        Ok(value) => value,
+        Err(_) => return default,
+    };
+    if value.trim().is_empty() {
+        return default;
+    }
+    match value.parse::<u64>() {
+        Ok(parsed) => parsed,
+        Err(_) => {
+            warn!(value = %value, key, "Invalid numeric config; using default");
+            default
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prev = env::var(key).ok();
+            // SAFETY: Test-only environment override.
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(prev) = self.prev.take() {
+                // SAFETY: Test-only environment restoration.
+                unsafe {
+                    env::set_var(self.key, prev);
+                }
+            } else {
+                // SAFETY: Test-only environment cleanup.
+                unsafe {
+                    env::remove_var(self.key);
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_default_config() {
@@ -135,5 +190,27 @@ mod tests {
         assert_eq!(config.idle_timeout(), Duration::from_secs(600));
         assert_eq!(config.max_request_bytes(), 2_097_152);
         assert_eq!(config.max_sessions(), 32);
+    }
+
+    #[test]
+    fn test_invalid_env_uses_defaults() {
+        let _max_conn = EnvGuard::set("AGENT_TUI_MAX_CONNECTIONS", "nope");
+        let _lock = EnvGuard::set("AGENT_TUI_LOCK_TIMEOUT", "bad");
+        let _idle = EnvGuard::set("AGENT_TUI_IDLE_TIMEOUT", "bad");
+        let _max_req = EnvGuard::set("AGENT_TUI_MAX_REQUEST", "bad");
+        let _max_sessions = EnvGuard::set("AGENT_TUI_MAX_SESSIONS", "bad");
+
+        let config = DaemonConfig::from_env();
+        assert_eq!(config.max_connections(), DEFAULT_MAX_CONNECTIONS);
+        assert_eq!(
+            config.lock_timeout(),
+            Duration::from_secs(DEFAULT_LOCK_TIMEOUT_SECS)
+        );
+        assert_eq!(
+            config.idle_timeout(),
+            Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS)
+        );
+        assert_eq!(config.max_request_bytes(), DEFAULT_MAX_REQUEST_BYTES);
+        assert_eq!(config.max_sessions(), DEFAULT_MAX_SESSIONS);
     }
 }

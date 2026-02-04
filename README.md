@@ -124,8 +124,13 @@ agent-tui screenshot --json
 | `AGENT_TUI_API_ALLOW_REMOTE` | Allow remote API connections | `false` |
 | `AGENT_TUI_API_TOKEN` | API authentication token | Auto-generated |
 | `AGENT_TUI_API_STATE` | API state file path | `~/.agent-tui/api.json` |
+| `AGENT_TUI_SESSION_STORE` | Session metadata log path | `~/.agent-tui/sessions.jsonl` |
 | `AGENT_TUI_UI_URL` | External UI URL | - |
 | `AGENT_TUI_DETACH_KEYS` | Attach detach key sequence | `Ctrl+]` |
+| `AGENT_TUI_LOG` | Log file path (optional) | - |
+| `AGENT_TUI_LOG_FORMAT` | Log format (`text` or `json`) | `text` |
+| `AGENT_TUI_LOG_STREAM` | Log output stream (`stderr` or `stdout`) | `stderr` |
+| `PORT` | Fallback port for API listen | - |
 | `NO_COLOR` | Disable colored output | - |
 
 ## Architecture
@@ -149,6 +154,8 @@ The tool follows Clean Architecture principles:
 - **Use Cases** - Business logic (screenshot, input, wait conditions)
 - **Adapters** - External interfaces (CLI, RPC, HTTP API)
 - **Infrastructure** - Terminal emulation, daemon runtime
+
+See `docs/ops/process-model.md` for process types and deployment guidance.
 
 ## Development
 

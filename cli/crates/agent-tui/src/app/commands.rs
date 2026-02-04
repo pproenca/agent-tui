@@ -222,7 +222,7 @@ EXAMPLES:
     agent-tui press Shift --release")]
     Press {
         /// Keys to press (e.g., Enter, Ctrl+C, ArrowDown)
-        #[arg(required = true, value_name = "KEY", allow_hyphen_values = true)]
+        #[arg(required = true, value_name = "KEY")]
         keys: Vec<String>,
 
         /// Hold a modifier key down (Ctrl, Alt, Shift, Meta)

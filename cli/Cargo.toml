@@ -32,8 +32,9 @@ axum = { version = "0.7", features = ["ws"] }
 tower-http = { version = "0.5", features = ["cors"] }
 libc = "0.2"
 signal-hook = "0.4"
+sysinfo = "0.33"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
 tattoy-wezterm-term = "0.1.0-fork.5"
 tattoy-wezterm-surface = "0.1.0-fork.2"

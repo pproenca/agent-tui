@@ -927,6 +927,7 @@ CONFIGURATION:
     AGENT_TUI_API_TOKEN          Override token (or 'none' to disable)
     AGENT_TUI_API_STATE          State file path (default: ~/.agent-tui/api.json)
     AGENT_TUI_UI_URL             External UI URL to open with --open (CLI appends api/ws/token/session)
+    PORT                         Fallback port for API listen when AGENT_TUI_API_LISTEN is unset
 
 SECURITY:
     API is token-protected by default. Use --allow-remote only when needed.
@@ -1458,6 +1459,13 @@ Show environment diagnostics.
 Displays all environment variables and configuration that affect
 agent-tui behavior. Useful for debugging connection issues.
 
+CONFIGURATION:
+    AGENT_TUI_SESSION_STORE      Session metadata log path (default: ~/.agent-tui/sessions.jsonl)
+    AGENT_TUI_LOG                Log file path (optional)
+    AGENT_TUI_LOG_FORMAT         Log format (text or json; default: text)
+    AGENT_TUI_LOG_STREAM         Log output stream (stderr or stdout; default: stderr)
+    PORT                         Fallback port for API listen when AGENT_TUI_API_LISTEN is unset
+
 Usage: env [OPTIONS]
 
 Options:
@@ -1580,4 +1588,3 @@ Arguments:
   [COMMAND]...
           Print help for the subcommand(s)
 ```
-

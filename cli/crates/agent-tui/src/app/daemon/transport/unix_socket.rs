@@ -17,7 +17,7 @@ use super::TransportConnection;
 use super::TransportError;
 use super::TransportListener;
 
-const MAX_REQUEST_SIZE: usize = 1024 * 1024;
+const DEFAULT_MAX_REQUEST_SIZE: usize = 1024 * 1024;
 
 struct SizeLimitedReader<R> {
     inner: R,
@@ -67,11 +67,18 @@ pub struct UnixSocketConnection {
 
 impl UnixSocketConnection {
     pub fn new(stream: UnixStream) -> Result<Self, TransportError> {
+        Self::new_with_max(stream, DEFAULT_MAX_REQUEST_SIZE)
+    }
+
+    pub fn new_with_max(
+        stream: UnixStream,
+        max_request_bytes: usize,
+    ) -> Result<Self, TransportError> {
         // Ensure accepted sockets are blocking so timeouts can be set reliably.
         let _ = stream.set_nonblocking(false);
         let reader_stream = stream.try_clone()?;
         Ok(Self {
-            reader: SizeLimitedReader::new(BufReader::new(reader_stream), MAX_REQUEST_SIZE),
+            reader: SizeLimitedReader::new(BufReader::new(reader_stream), max_request_bytes),
             writer: stream,
         })
     }
@@ -113,12 +120,16 @@ impl TransportConnection for UnixSocketConnection {
 
 pub struct UnixSocketListener {
     inner: UnixListener,
+    max_request_bytes: usize,
 }
 
 impl UnixSocketListener {
-    pub fn bind(path: &Path) -> Result<Self, TransportError> {
+    pub fn bind(path: &Path, max_request_bytes: usize) -> Result<Self, TransportError> {
         let listener = UnixListener::bind(path)?;
-        Ok(Self { inner: listener })
+        Ok(Self {
+            inner: listener,
+            max_request_bytes,
+        })
     }
 
     pub fn into_inner(self) -> UnixListener {
@@ -137,7 +148,7 @@ impl TransportListener for UnixSocketListener {
 
     fn accept(&self) -> Result<Self::Connection, TransportError> {
         let (stream, _addr) = self.inner.accept()?;
-        UnixSocketConnection::new(stream)
+        UnixSocketConnection::new_with_max(stream, self.max_request_bytes)
     }
 
     fn set_nonblocking(&self, nonblocking: bool) -> Result<(), TransportError> {

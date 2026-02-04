@@ -31,7 +31,6 @@ fn main() -> Result<()> {
     fs::write(&output_path, output)
         .with_context(|| format!("failed to write {}", output_path.display()))?;
 
-    println!("Wrote {}", output_path.display());
     Ok(())
 }
 
@@ -44,10 +43,7 @@ fn render_command(mut cmd: Command, path: Vec<String>, output: &mut String) {
     output.push_str(help.trim_end());
     output.push_str("\n```\n\n");
 
-    let subcommands: Vec<Command> = cmd
-        .get_subcommands()
-        .cloned()
-        .collect();
+    let subcommands: Vec<Command> = cmd.get_subcommands().cloned().collect();
 
     for sub in subcommands {
         let name = sub.get_name().to_string();

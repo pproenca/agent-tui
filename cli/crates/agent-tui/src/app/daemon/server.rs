@@ -58,7 +58,6 @@ use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
-const MAX_CONNECTIONS: usize = 64;
 const CHANNEL_CAPACITY: usize = 128;
 const ATTACH_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
 const ATTACH_STREAM_MAX_TICK_BYTES: usize = 512 * 1024;
@@ -126,6 +125,8 @@ pub struct DaemonServer {
     connection_wait_lock: Arc<std::sync::Mutex<()>>,
     connection_cv: Arc<std::sync::Condvar>,
     metrics: Arc<DaemonMetrics>,
+    shutdown_flag: Arc<AtomicBool>,
+    stream_threads: std::sync::Mutex<Vec<thread::JoinHandle<()>>>,
 }
 
 struct ThreadPool {
@@ -244,12 +245,18 @@ impl DaemonServer {
             connection_wait_lock: Arc::new(std::sync::Mutex::new(())),
             connection_cv: Arc::new(std::sync::Condvar::new()),
             metrics,
+            shutdown_flag: Arc::clone(&shutdown_flag),
+            stream_threads: std::sync::Mutex::new(Vec::new()),
         }
     }
 
     fn session_repository_handle(&self) -> Arc<dyn SessionRepository> {
         let repository: Arc<dyn SessionRepository> = self.session_manager.clone();
         repository
+    }
+
+    fn should_shutdown(&self) -> bool {
+        self.shutdown_flag.load(Ordering::Relaxed)
     }
 
     pub fn shutdown_all_sessions(&self) {
@@ -280,6 +287,47 @@ impl DaemonServer {
             // SAFETY: shutting down a socket fd is safe and idempotent for active connections.
             unsafe {
                 libc::shutdown(fd, libc::SHUT_RDWR);
+            }
+        }
+    }
+
+    fn register_stream_thread(&self, handle: thread::JoinHandle<()>) {
+        let mut guard = self
+            .stream_threads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        guard.push(handle);
+    }
+
+    fn join_stream_threads(&self, timeout: Duration) {
+        let handles = {
+            let mut guard = self
+                .stream_threads
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            guard.drain(..).collect::<Vec<_>>()
+        };
+
+        for handle in handles {
+            let (tx, rx) = mpsc::channel();
+            let joiner = thread::Builder::new()
+                .name("stream-joiner".to_string())
+                .spawn(move || {
+                    let _ = handle.join();
+                    let _ = tx.send(());
+                });
+            match joiner {
+                Ok(_) => {
+                    if rx.recv_timeout(timeout).is_err() {
+                        warn!(
+                            timeout_ms = timeout.as_millis(),
+                            "Timed out joining stream thread"
+                        );
+                    }
+                }
+                Err(err) => {
+                    warn!(error = %err, "Failed to spawn stream joiner thread");
+                }
             }
         }
     }
@@ -371,6 +419,11 @@ impl DaemonServer {
         let mut cursor = StreamCursor { seq: stream_seq };
 
         loop {
+            if self.should_shutdown() {
+                let response = RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
+                let _ = conn.write_response(&response);
+                return Ok(());
+            }
             let mut budget = ATTACH_STREAM_MAX_TICK_BYTES;
             let mut sent_any = false;
 
@@ -439,6 +492,12 @@ impl DaemonServer {
             }
 
             if !subscription.wait(Some(ATTACH_STREAM_HEARTBEAT)) {
+                if self.should_shutdown() {
+                    let response =
+                        RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
+                    let _ = conn.write_response(&response);
+                    return Ok(());
+                }
                 let response =
                     RpcResponse::success_json(req_id, &AttachEvent { event: "heartbeat" });
                 conn.write_response(&response)?;
@@ -554,6 +613,17 @@ impl DaemonServer {
         let mut last_size = (snapshot.cols, snapshot.rows);
 
         loop {
+            if self.should_shutdown() {
+                let response = RpcResponse::success_json(
+                    req_id,
+                    &LivePreviewClosed {
+                        event: "closed",
+                        time: start_time.elapsed().as_secs_f64(),
+                    },
+                );
+                let _ = conn.write_response(&response);
+                return Ok(());
+            }
             let mut budget = LIVE_PREVIEW_STREAM_MAX_TICK_BYTES;
             let mut sent_any = false;
 
@@ -668,6 +738,17 @@ impl DaemonServer {
             }
 
             if !subscription.wait(Some(LIVE_PREVIEW_STREAM_HEARTBEAT)) {
+                if self.should_shutdown() {
+                    let response = RpcResponse::success_json(
+                        req_id,
+                        &LivePreviewClosed {
+                            event: "closed",
+                            time: start_time.elapsed().as_secs_f64(),
+                        },
+                    );
+                    let _ = conn.write_response(&response);
+                    return Ok(());
+                }
                 let response = RpcResponse::success_json(
                     req_id,
                     &LivePreviewHeartbeat {
@@ -851,28 +932,34 @@ impl DaemonServer {
                 }
                 server_for_thread.unregister_connection(conn_fd);
             });
-
-        if spawn_result.is_err() {
-            let Some((mut conn, request)) =
-                payload.lock().unwrap_or_else(|e| e.into_inner()).take()
-            else {
-                warn!("Stream payload missing; dropping connection");
+        match spawn_result {
+            Ok(handle) => {
+                server.register_stream_thread(handle);
+            }
+            Err(_) => {
+                let Some((mut conn, request)) =
+                    payload.lock().unwrap_or_else(|e| e.into_inner()).take()
+                else {
+                    warn!("Stream payload missing; dropping connection");
+                    let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
+                    if remaining == 0 {
+                        server.connection_cv.notify_all();
+                    }
+                    return;
+                };
+                warn!("Failed to spawn stream thread, handling on worker thread");
+                let _ = match kind {
+                    StreamKind::Attach => server.handle_attach_stream(&mut conn, request),
+                    StreamKind::LivePreview => {
+                        server.handle_live_preview_stream(&mut conn, request)
+                    }
+                };
                 let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
                 if remaining == 0 {
                     server.connection_cv.notify_all();
                 }
-                return;
-            };
-            warn!("Failed to spawn stream thread, handling on worker thread");
-            let _ = match kind {
-                StreamKind::Attach => server.handle_attach_stream(&mut conn, request),
-                StreamKind::LivePreview => server.handle_live_preview_stream(&mut conn, request),
-            };
-            let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
-            if remaining == 0 {
-                server.connection_cv.notify_all();
+                server.unregister_connection(conn_fd);
             }
-            server.unregister_connection(conn_fd);
         }
     }
 }
@@ -887,7 +974,10 @@ fn init_logging() -> telemetry::TelemetryGuard {
     telemetry::init_tracing("info")
 }
 
-fn bind_socket(socket_path: &std::path::Path) -> Result<UnixSocketListener, DaemonError> {
+fn bind_socket(
+    socket_path: &std::path::Path,
+    max_request_bytes: usize,
+) -> Result<UnixSocketListener, DaemonError> {
     if socket_path.exists() {
         std::fs::remove_file(socket_path).map_err(|e| DaemonError::SocketBind {
             operation: "remove stale socket",
@@ -895,9 +985,11 @@ fn bind_socket(socket_path: &std::path::Path) -> Result<UnixSocketListener, Daem
         })?;
     }
 
-    let listener = UnixSocketListener::bind(socket_path).map_err(|e| DaemonError::SocketBind {
-        operation: "bind socket",
-        source: Box::new(e),
+    let listener = UnixSocketListener::bind(socket_path, max_request_bytes).map_err(|e| {
+        DaemonError::SocketBind {
+            operation: "bind socket",
+            source: Box::new(e),
+        }
     })?;
     listener
         .set_nonblocking(true)
@@ -1035,14 +1127,16 @@ pub fn start_daemon() -> Result<(), DaemonError> {
 
     let _lock = LockFile::acquire(&lock_path)?;
 
-    let listener = bind_socket(&socket_path)?;
+    let config = DaemonConfig::from_env();
+    let max_connections = config.max_connections();
+    let max_request_bytes = config.max_request_bytes();
+    let listener = bind_socket(&socket_path, max_request_bytes)?;
     info!(socket = %socket_path.display(), pid = std::process::id(), "Daemon started");
 
     let shutdown = Arc::new(AtomicBool::new(false));
     let waker = ShutdownWaker::new()
         .map_err(|e| DaemonError::SignalSetup(format!("failed to create shutdown waker: {}", e)))?;
     let shutdown_notifier = waker.notifier();
-    let config = DaemonConfig::from_env();
     let server = Arc::new(DaemonServer::with_config(
         config,
         Arc::clone(&shutdown),
@@ -1072,7 +1166,7 @@ pub fn start_daemon() -> Result<(), DaemonError> {
 
     let _signal_handler = SignalHandler::setup(Arc::clone(&shutdown), Some(shutdown_notifier))?;
 
-    let pool = ThreadPool::new(MAX_CONNECTIONS, Arc::clone(&server))
+    let pool = ThreadPool::new(max_connections, Arc::clone(&server))
         .map_err(|e| DaemonError::ThreadPool(e.to_string()))?;
 
     let mut waker = waker;
@@ -1081,6 +1175,7 @@ pub fn start_daemon() -> Result<(), DaemonError> {
     info!("Shutting down daemon...");
     server.shutdown_connections();
     wait_for_connections(&server, 5);
+    server.join_stream_threads(Duration::from_secs(2));
     cleanup(&socket_path, &lock_path, &server, pool, api_handle);
 
     Ok(())
@@ -1138,5 +1233,23 @@ mod tests {
         );
 
         drop(client);
+    }
+
+    #[test]
+    fn join_stream_threads_drains_handles() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
+            Arc::new(NoopShutdownNotifier);
+        let server = Arc::new(DaemonServer::with_config(
+            DaemonConfig::default(),
+            Arc::clone(&shutdown),
+            notifier,
+        ));
+
+        let handle = std::thread::spawn(|| {});
+        server.register_stream_thread(handle);
+        server.join_stream_threads(Duration::from_secs(1));
+
+        assert!(server.stream_threads.lock().unwrap().is_empty());
     }
 }

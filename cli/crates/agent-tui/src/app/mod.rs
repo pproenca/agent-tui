@@ -484,7 +484,10 @@ impl Application {
                 .context("failed to connect to daemon")?,
         };
 
-        if !matches!(cli.command, Commands::Daemon(_) | Commands::Version | Commands::Health) {
+        if !matches!(
+            cli.command,
+            Commands::Daemon(_) | Commands::Version | Commands::Health
+        ) {
             check_version_mismatch(&mut client);
         }
 

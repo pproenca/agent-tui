@@ -52,6 +52,7 @@ const API_VERSION: &str = "1";
 const DEFAULT_API_LISTEN: &str = "127.0.0.1:0";
 const DEFAULT_MAX_WS_CONNECTIONS: usize = 32;
 const DEFAULT_WS_QUEUE_CAPACITY: usize = 128;
+const API_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const LIVE_PREVIEW_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
 const LIVE_PREVIEW_STREAM_MAX_TICK_BYTES: usize = 256 * 1024;
 const LIVE_PREVIEW_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
@@ -84,9 +85,19 @@ impl ApiConfig {
         let enabled = env_bool("AGENT_TUI_API_DISABLED")
             .map(|v| !v)
             .unwrap_or(true);
-        let listen = std::env::var("AGENT_TUI_API_LISTEN")
-            .unwrap_or_else(|_| DEFAULT_API_LISTEN.to_string());
         let allow_remote = env_bool("AGENT_TUI_API_ALLOW_REMOTE").unwrap_or(false);
+        let listen = std::env::var("AGENT_TUI_API_LISTEN")
+            .ok()
+            .and_then(|value| {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            })
+            .or_else(|| listen_from_port(allow_remote))
+            .unwrap_or_else(|| DEFAULT_API_LISTEN.to_string());
         let token = match std::env::var("AGENT_TUI_API_TOKEN") {
             Ok(value) => {
                 let trimmed = value.trim();
@@ -179,6 +190,7 @@ struct ApiState {
     ws_url: String,
     ws_limits: Arc<Semaphore>,
     ws_queue_capacity: usize,
+    shutdown_rx: watch::Receiver<bool>,
 }
 
 #[derive(Deserialize)]
@@ -390,6 +402,8 @@ pub fn start_api_server(
         warn!(error = %err, "Failed to write API state file");
     }
 
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
     let state = Arc::new(ApiState {
         session_repository,
         token: config.token.clone(),
@@ -401,10 +415,12 @@ pub fn start_api_server(
         ws_url: ws_url.clone(),
         ws_limits: Arc::new(Semaphore::new(config.max_ws_connections)),
         ws_queue_capacity: config.ws_queue_capacity,
+        shutdown_rx: shutdown_rx.clone(),
     });
 
-    let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
     let state_path = config.state_path.clone();
+    let shutdown_flag = Arc::clone(&shutdown_flag);
+    let shutdown_tx_for_thread = shutdown_tx.clone();
 
     let join = thread::Builder::new()
         .name("agent-tui-api".to_string())
@@ -432,12 +448,47 @@ pub fn start_api_server(
                     }
                 };
                 info!(url = %http_url, "API server listening");
+                let mut shutdown_rx_server = shutdown_rx.clone();
+                let mut shutdown_rx_wait = shutdown_rx.clone();
                 let server = axum::serve(listener, app).with_graceful_shutdown(async move {
-                    let _ = shutdown_rx.changed().await;
+                    let _ = shutdown_rx_server.changed().await;
                 });
-                if let Err(err) = server.await {
-                    error!(error = %err, "API server failed");
+                let mut server_task = tokio::spawn(async move { server.await });
+
+                let shutdown_task = tokio::spawn(async move {
+                    while !shutdown_flag.load(Ordering::Relaxed) {
+                        tokio::time::sleep(Duration::from_millis(200)).await;
+                    }
+                    let _ = shutdown_tx_for_thread.send(true);
+                });
+
+                tokio::select! {
+                    join_result = &mut server_task => {
+                        if let Err(err) = join_result {
+                            error!(error = %err, "API server task failed");
+                        }
+                    }
+                    changed = shutdown_rx_wait.changed() => {
+                        if changed.is_err() {
+                            warn!("API shutdown channel closed");
+                        }
+                        match tokio::time::timeout(API_SHUTDOWN_TIMEOUT, &mut server_task).await {
+                            Ok(join_result) => {
+                                if let Err(err) = join_result {
+                                    error!(error = %err, "API server task failed");
+                                }
+                            }
+                            Err(_) => {
+                                warn!(
+                                    timeout_ms = API_SHUTDOWN_TIMEOUT.as_millis(),
+                                    "API server shutdown timed out; aborting"
+                                );
+                                server_task.abort();
+                            }
+                        }
+                    }
                 }
+                shutdown_task.abort();
                 let _ = std::fs::remove_file(state_path);
             });
         })
@@ -445,15 +496,6 @@ pub fn start_api_server(
             operation: "spawn api thread",
             source: e,
         })?;
-
-    let shutdown_watcher = shutdown_flag;
-    let shutdown_tx_clone = shutdown_tx.clone();
-    thread::spawn(move || {
-        while !shutdown_watcher.load(Ordering::Relaxed) {
-            thread::sleep(Duration::from_millis(200));
-        }
-        let _ = shutdown_tx_clone.send(true);
-    });
 
     Ok(ApiServerHandle {
         shutdown_tx: Some(shutdown_tx),
@@ -636,30 +678,47 @@ async fn ws_handler(
     let state = state.clone();
     let session_id = session.session_id().to_string();
     let queue_capacity = state.ws_queue_capacity;
+    let shutdown_rx = state.shutdown_rx.clone();
+    let ctx = WsContext {
+        state,
+        session,
+        session_id,
+        _permit: permit,
+        queue_capacity,
+        output_encoding,
+        shutdown_rx,
+    };
     ws.on_upgrade(move |socket| async move {
-        handle_ws(
-            socket,
-            state,
-            session,
-            session_id,
-            permit,
-            queue_capacity,
-            output_encoding,
-        )
-        .await;
+        handle_ws(socket, ctx).await;
     })
     .into_response()
 }
 
-async fn handle_ws(
-    mut socket: WebSocket,
+struct WsContext {
     state: Arc<ApiState>,
     session: SessionHandle,
     session_id: String,
     _permit: tokio::sync::OwnedSemaphorePermit,
     queue_capacity: usize,
     output_encoding: OutputEncoding,
-) {
+    shutdown_rx: watch::Receiver<bool>,
+}
+
+async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
+    let WsContext {
+        state,
+        session,
+        session_id,
+        _permit,
+        queue_capacity,
+        output_encoding,
+        mut shutdown_rx,
+    } = ctx;
+    if *shutdown_rx.borrow() {
+        let _ = socket.send(Message::Close(None)).await;
+        return;
+    }
+
     let hello = HelloEvent {
         event: "hello",
         api_version: state.api_version,
@@ -694,6 +753,14 @@ async fn handle_ws(
 
     loop {
         tokio::select! {
+            changed = shutdown_rx.changed() => {
+                if changed.is_err() {
+                    warn!("API shutdown channel closed");
+                }
+                stop.store(true, Ordering::Relaxed);
+                let _ = socket.send(Message::Close(None)).await;
+                break;
+            }
             maybe = rx.recv() => {
                 match maybe {
                     Some(WsPayload::Text(payload)) => {
@@ -729,6 +796,9 @@ fn stream_live_preview(
     stop: Arc<AtomicBool>,
     output_encoding: OutputEncoding,
 ) {
+    if stop.load(Ordering::Relaxed) {
+        return;
+    }
     let start_time = Instant::now();
 
     if let Err(err) = session.update() {
@@ -1086,7 +1156,88 @@ fn env_bool(key: &str) -> Option<bool> {
         })
 }
 
+fn listen_from_port(allow_remote: bool) -> Option<String> {
+    let value = std::env::var("PORT").ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match trimmed.parse::<u16>() {
+        Ok(port) => {
+            let host = if allow_remote { "0.0.0.0" } else { "127.0.0.1" };
+            Some(format!("{}:{}", host, port))
+        }
+        Err(_) => {
+            warn!(value = %trimmed, "Invalid PORT; using default listen address");
+            None
+        }
+    }
+}
+
 fn generate_token() -> String {
     let bytes: [u8; 16] = rand::random();
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApiConfig;
+
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: Test-only environment override.
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, prev }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: Test-only environment override.
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(prev) = self.prev.take() {
+                // SAFETY: Test-only environment restoration.
+                unsafe {
+                    std::env::set_var(self.key, prev);
+                }
+            } else {
+                // SAFETY: Test-only environment cleanup.
+                unsafe {
+                    std::env::remove_var(self.key);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_api_config_port_fallback() {
+        let _listen = EnvGuard::remove("AGENT_TUI_API_LISTEN");
+        let _port = EnvGuard::set("PORT", "5555");
+        let _allow = EnvGuard::remove("AGENT_TUI_API_ALLOW_REMOTE");
+        let config = ApiConfig::from_env();
+        assert_eq!(config.listen, "127.0.0.1:5555");
+    }
+
+    #[test]
+    fn test_api_config_listen_precedence() {
+        let _listen = EnvGuard::set("AGENT_TUI_API_LISTEN", "127.0.0.1:9999");
+        let _port = EnvGuard::set("PORT", "5555");
+        let config = ApiConfig::from_env();
+        assert_eq!(config.listen, "127.0.0.1:9999");
+    }
 }

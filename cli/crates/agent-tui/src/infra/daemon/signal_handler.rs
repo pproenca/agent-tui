@@ -29,7 +29,17 @@ impl SignalHandler {
             .name("signal-handler".to_string())
             .spawn(move || {
                 let notifier = notifier;
-                if let Some(sig) = signals.forever().next() {
+                let mut shutdown_initiated = false;
+                for sig in signals.forever() {
+                    if shutdown_initiated {
+                        info!(signal = sig, "Received second signal, forcing shutdown");
+                        shutdown.store(true, Ordering::SeqCst);
+                        if let Some(notifier) = notifier.as_ref() {
+                            notifier.notify();
+                        }
+                        continue;
+                    }
+                    shutdown_initiated = true;
                     info!(
                         signal = sig,
                         "Received signal, initiating graceful shutdown"

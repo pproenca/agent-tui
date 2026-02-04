@@ -36,6 +36,7 @@ dependencies = [
  "rand 0.9.2",
  "serde",
  "serde_json",
+ "shell-words",
  "signal-hook 0.4.3",
  "sysinfo",
  "tattoy-wezterm-surface",
@@ -47,6 +48,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 

@@ -790,10 +790,8 @@ impl DaemonServer {
             });
 
         if spawn_result.is_err() {
-            let Some((mut conn, request)) = payload
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .take()
+            let Some((mut conn, request)) =
+                payload.lock().unwrap_or_else(|e| e.into_inner()).take()
             else {
                 warn!("Stream payload missing; dropping connection");
                 let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
@@ -827,16 +825,22 @@ fn init_logging() -> telemetry::TelemetryGuard {
 
 fn bind_socket(socket_path: &std::path::Path) -> Result<UnixSocketListener, DaemonError> {
     if socket_path.exists() {
-        std::fs::remove_file(socket_path).map_err(|e| {
-            DaemonError::SocketBind(format!("failed to remove stale socket: {}", e))
+        std::fs::remove_file(socket_path).map_err(|e| DaemonError::SocketBind {
+            operation: "remove stale socket",
+            source: Box::new(e),
         })?;
     }
 
-    let listener = UnixSocketListener::bind(socket_path)
-        .map_err(|e| DaemonError::SocketBind(format!("failed to bind socket: {}", e)))?;
+    let listener = UnixSocketListener::bind(socket_path).map_err(|e| DaemonError::SocketBind {
+        operation: "bind socket",
+        source: Box::new(e),
+    })?;
     listener
         .set_nonblocking(true)
-        .map_err(|e| DaemonError::SocketBind(format!("failed to set non-blocking: {}", e)))?;
+        .map_err(|e| DaemonError::SocketBind {
+            operation: "set non-blocking",
+            source: Box::new(e),
+        })?;
 
     Ok(listener)
 }
@@ -863,6 +867,8 @@ fn run_accept_loop(
     ];
 
     while !shutdown.load(Ordering::Relaxed) {
+        // SAFETY: `fds` is a stack-allocated array that outlives the call, and the length
+        // matches the number of elements passed to `poll`.
         let poll_result = unsafe { poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, -1) };
         if poll_result < 0 {
             let err = std::io::Error::last_os_error();

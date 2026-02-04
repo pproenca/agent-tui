@@ -1103,9 +1103,9 @@ fn stop_ui_server() -> Result<StopUiResult> {
     }
 
     let controller = UnixProcessController;
-    controller.send_signal(state.pid, Signal::Term).map_err(|e| {
-        anyhow::anyhow!("Failed to stop UI server (pid {}): {}", state.pid, e)
-    })?;
+    controller
+        .send_signal(state.pid, Signal::Term)
+        .map_err(|e| anyhow::anyhow!("Failed to stop UI server (pid {}): {}", state.pid, e))?;
 
     if wait_for_process_exit(state.pid, Duration::from_secs(2)) {
         let _ = std::fs::remove_file(&state_path);
@@ -1162,18 +1162,18 @@ fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<()> {
         Command::new("xdg-open")
     };
 
-        let status = cmd
-            .arg(url)
-            .status()
-            .map_err(|e| anyhow::anyhow!("Failed to launch browser: {}", e))?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(anyhow::anyhow!(
-                "Browser command exited with status {}",
-                status
-            ))
-        }
+    let status = cmd
+        .arg(url)
+        .status()
+        .map_err(|e| anyhow::anyhow!("Failed to launch browser: {}", e))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "Browser command exited with status {}",
+            status
+        ))
+    }
 }
 
 pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -> HandlerResult {
@@ -1189,9 +1189,7 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
         for session in sessions.iter() {
             let id = session.get("id").and_then(|v| v.as_str());
             let should_cleanup = all || !session.bool_or("running", false);
-            if should_cleanup
-                && let Some(id) = id
-            {
+            if should_cleanup && let Some(id) = id {
                 let params = params::SessionParams {
                     session: Some(id.to_string()),
                 };

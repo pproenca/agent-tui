@@ -59,9 +59,10 @@ impl PtyHandle {
             pixel_height: 0,
         };
 
-        let pair = pty_system
-            .openpty(size)
-            .map_err(|e| PtyError::Open(e.to_string()))?;
+        let pair = pty_system.openpty(size).map_err(|e| PtyError::Open {
+            reason: e.to_string(),
+            source: None,
+        })?;
 
         let mut cmd = CommandBuilder::new(command);
         cmd.args(args);
@@ -94,16 +95,16 @@ impl PtyHandle {
             }
         })?;
 
-        let reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|e| PtyError::Open(e.to_string()))?;
+        let reader = pair.master.try_clone_reader().map_err(|e| PtyError::Open {
+            reason: e.to_string(),
+            source: None,
+        })?;
         let read_rx = spawn_reader(reader);
 
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|e| PtyError::Open(e.to_string()))?;
+        let writer = pair.master.take_writer().map_err(|e| PtyError::Open {
+            reason: e.to_string(),
+            source: None,
+        })?;
 
         Ok(Self {
             master: pair.master,
@@ -138,16 +139,23 @@ impl PtyHandle {
         while offset < data.len() {
             match writer.write(&data[offset..]) {
                 Ok(0) => {
-                    return Err(PtyError::Write(
-                        "write returned 0 bytes, PTY closed".to_string(),
-                    ));
+                    return Err(PtyError::Write {
+                        reason: "write returned 0 bytes, PTY closed".to_string(),
+                        source: None,
+                    });
                 }
                 Ok(n) => offset += n,
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     self.wait_writable()?;
                 }
-                Err(e) => return Err(PtyError::Write(e.to_string())),
+                Err(e) => {
+                    let reason = e.to_string();
+                    return Err(PtyError::Write {
+                        reason,
+                        source: Some(e),
+                    });
+                }
             }
         }
         Ok(())
@@ -169,17 +177,26 @@ impl PtyHandle {
                 revents: 0,
             }];
             loop {
+                // SAFETY: `poll` is called with a valid pointer to `fds` and length 1.
+                // The array lives for the duration of the call.
                 let rc = unsafe { poll(fds.as_mut_ptr(), 1, -1) };
                 if rc < 0 {
                     let err = io::Error::last_os_error();
                     if err.kind() == io::ErrorKind::Interrupted {
                         continue;
                     }
-                    return Err(PtyError::Write(err.to_string()));
+                    let reason = err.to_string();
+                    return Err(PtyError::Write {
+                        reason,
+                        source: Some(err),
+                    });
                 }
                 let events = fds[0].revents;
                 if events & (POLLHUP | POLLERR) != 0 {
-                    return Err(PtyError::Write("PTY closed".to_string()));
+                    return Err(PtyError::Write {
+                        reason: "PTY closed".to_string(),
+                        source: None,
+                    });
                 }
                 if events & POLLOUT != 0 {
                     return Ok(());
@@ -199,7 +216,10 @@ impl PtyHandle {
 
         if self.read_closed && self.read_buffer.is_empty() {
             if let Some(error) = self.read_error.take() {
-                return Err(PtyError::Read(error));
+                return Err(PtyError::Read {
+                    reason: error,
+                    source: None,
+                });
             }
             return Ok(0);
         }
@@ -210,9 +230,10 @@ impl PtyHandle {
                 let read_rx = match self.read_rx.as_ref() {
                     Some(rx) => rx,
                     None => {
-                        return Err(PtyError::Read(
-                            "PTY read channel is not available".to_string(),
-                        ));
+                        return Err(PtyError::Read {
+                            reason: "PTY read channel is not available".to_string(),
+                            source: None,
+                        });
                     }
                 };
 
@@ -261,8 +282,14 @@ impl PtyHandle {
             }
         }
 
-        if total == 0 && self.read_closed && let Some(error) = self.read_error.take() {
-            return Err(PtyError::Read(error));
+        if total == 0
+            && self.read_closed
+            && let Some(error) = self.read_error.take()
+        {
+            return Err(PtyError::Read {
+                reason: error,
+                source: None,
+            });
         }
 
         Ok(total)
@@ -275,9 +302,10 @@ impl PtyHandle {
             pixel_width: 0,
             pixel_height: 0,
         };
-        self.master
-            .resize(self.size)
-            .map_err(|e| PtyError::Resize(e.to_string()))
+        self.master.resize(self.size).map_err(|e| PtyError::Resize {
+            reason: e.to_string(),
+            source: None,
+        })
     }
 
     pub fn kill(&mut self) -> Result<(), PtyError> {

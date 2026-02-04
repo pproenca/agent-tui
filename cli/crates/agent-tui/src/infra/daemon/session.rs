@@ -360,7 +360,9 @@ fn spawn_pump(
                 "Failed to spawn named session pump thread; falling back to unnamed thread"
             );
             match payload.lock().unwrap_or_else(|e| e.into_inner()).take() {
-                Some((session, pty_rx, rx)) => thread::spawn(move || pump_loop(session, pty_rx, rx)),
+                Some((session, pty_rx, rx)) => {
+                    thread::spawn(move || pump_loop(session, pty_rx, rx))
+                }
                 None => thread::spawn(|| {}),
             }
         }
@@ -1292,10 +1294,12 @@ mod tests {
     impl Drop for HomeGuard {
         fn drop(&mut self) {
             if let Some(home) = self.0.take() {
+                // SAFETY: Test-only environment restoration after HOME override.
                 unsafe {
                     std::env::set_var("HOME", home);
                 }
             } else {
+                // SAFETY: Test-only cleanup of HOME override.
                 unsafe {
                     std::env::remove_var("HOME");
                 }
@@ -1334,6 +1338,7 @@ mod tests {
     fn test_spawn_rejects_duplicate_session_id() {
         let temp_home = tempdir().unwrap();
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
         unsafe {
             std::env::set_var("HOME", temp_home.path());
         }

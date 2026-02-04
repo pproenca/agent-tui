@@ -1,14 +1,23 @@
 use crate::common::error_codes::{self, ErrorCategory};
+use std::error::Error as StdError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum DaemonError {
-    #[error("Failed to bind socket: {0}")]
-    SocketBind(String),
+    #[error("Failed to bind socket ({operation}): {source}")]
+    SocketBind {
+        operation: &'static str,
+        #[source]
+        source: Box<dyn StdError + Send + Sync>,
+    },
     #[error("Another daemon instance is already running")]
     AlreadyRunning,
-    #[error("Failed to acquire lock: {0}")]
-    LockFailed(String),
+    #[error("Failed to acquire lock ({operation}): {source}")]
+    LockFailed {
+        operation: &'static str,
+        #[source]
+        source: Box<dyn StdError + Send + Sync>,
+    },
     #[error("Failed to setup signal handler: {0}")]
     SignalSetup(String),
     #[error("Failed to create thread pool: {0}")]
@@ -26,14 +35,14 @@ impl DaemonError {
 
     pub fn suggestion(&self) -> String {
         match self {
-            DaemonError::SocketBind(_) => {
+            DaemonError::SocketBind { .. } => {
                 "Check if the socket directory is writable. Try: rm /tmp/agent-tui.sock".to_string()
             }
             DaemonError::AlreadyRunning => {
                 "Another daemon is running. Use 'agent-tui sessions' to connect or kill existing daemon."
                     .to_string()
             }
-            DaemonError::LockFailed(_) => {
+            DaemonError::LockFailed { .. } => {
                 "Lock file issue. Try removing the lock file: rm /tmp/agent-tui.sock.lock".to_string()
             }
             DaemonError::SignalSetup(_) => {
@@ -46,6 +55,6 @@ impl DaemonError {
     }
 
     pub fn is_retryable(&self) -> bool {
-        matches!(self, DaemonError::LockFailed(_))
+        matches!(self, DaemonError::LockFailed { .. })
     }
 }

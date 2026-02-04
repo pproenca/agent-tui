@@ -1,23 +1,40 @@
 use crate::common::error_codes::{self, ErrorCategory};
 use crate::usecases::ports::SpawnErrorKind;
 use crate::usecases::ports::TerminalError as PortTerminalError;
+use std::io;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PtyError {
-    #[error("Failed to open PTY: {0}")]
-    Open(String),
+    #[error("Failed to open PTY: {reason}")]
+    Open {
+        reason: String,
+        #[source]
+        source: Option<io::Error>,
+    },
     #[error("Failed to spawn process: {reason}")]
     Spawn {
         reason: String,
         kind: SpawnErrorKind,
     },
-    #[error("Failed to write to PTY: {0}")]
-    Write(String),
-    #[error("Failed to read from PTY: {0}")]
-    Read(String),
-    #[error("Failed to resize PTY: {0}")]
-    Resize(String),
+    #[error("Failed to write to PTY: {reason}")]
+    Write {
+        reason: String,
+        #[source]
+        source: Option<io::Error>,
+    },
+    #[error("Failed to read from PTY: {reason}")]
+    Read {
+        reason: String,
+        #[source]
+        source: Option<io::Error>,
+    },
+    #[error("Failed to resize PTY: {reason}")]
+    Resize {
+        reason: String,
+        #[source]
+        source: Option<io::Error>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,7 +61,7 @@ impl PtyError {
 
     pub fn suggestion(&self) -> String {
         match self {
-            PtyError::Open(_) => {
+            PtyError::Open { .. } => {
                 "PTY allocation failed. Check system resource limits (ulimit -n) or try restarting."
                     .to_string()
             }
@@ -59,37 +76,40 @@ impl PtyError {
                     "Process spawn failed. Check command syntax and permissions.".to_string()
                 }
             },
-            PtyError::Write(_) => {
+            PtyError::Write { .. } => {
                 "Failed to send input to terminal. The session may have ended. Run 'sessions' to check status."
                     .to_string()
             }
-            PtyError::Read(_) => {
+            PtyError::Read { .. } => {
                 "Failed to read terminal output. The session may have ended. Run 'sessions' to check status."
                     .to_string()
             }
-            PtyError::Resize(_) => {
+            PtyError::Resize { .. } => {
                 "Failed to resize terminal. Try again or restart the session.".to_string()
             }
         }
     }
 
     pub fn is_retryable(&self) -> bool {
-        matches!(self, PtyError::Read(_) | PtyError::Write(_))
+        matches!(self, PtyError::Read { .. } | PtyError::Write { .. })
     }
 
     pub fn operation(&self) -> &'static str {
         match self {
-            PtyError::Open(_) => "open",
+            PtyError::Open { .. } => "open",
             PtyError::Spawn { .. } => "spawn",
-            PtyError::Write(_) => "write",
-            PtyError::Read(_) => "read",
-            PtyError::Resize(_) => "resize",
+            PtyError::Write { .. } => "write",
+            PtyError::Read { .. } => "read",
+            PtyError::Resize { .. } => "resize",
         }
     }
 
     pub fn reason(&self) -> &str {
         match self {
-            PtyError::Open(r) | PtyError::Write(r) | PtyError::Read(r) | PtyError::Resize(r) => r,
+            PtyError::Open { reason, .. }
+            | PtyError::Write { reason, .. }
+            | PtyError::Read { reason, .. }
+            | PtyError::Resize { reason, .. } => reason,
             PtyError::Spawn { reason, .. } => reason,
         }
     }
@@ -100,11 +120,11 @@ impl PtyError {
     /// This keeps the dependency direction correct (infra -> usecases).
     pub fn to_port_error(self) -> PortTerminalError {
         match self {
-            PtyError::Open(reason) => PortTerminalError::Open(reason),
+            PtyError::Open { reason, .. } => PortTerminalError::Open(reason),
             PtyError::Spawn { reason, kind } => PortTerminalError::Spawn { reason, kind },
-            PtyError::Write(reason) => PortTerminalError::Write(reason),
-            PtyError::Read(reason) => PortTerminalError::Read(reason),
-            PtyError::Resize(reason) => PortTerminalError::Resize(reason),
+            PtyError::Write { reason, .. } => PortTerminalError::Write(reason),
+            PtyError::Read { reason, .. } => PortTerminalError::Read(reason),
+            PtyError::Resize { reason, .. } => PortTerminalError::Resize(reason),
         }
     }
 }
@@ -115,13 +135,19 @@ mod tests {
 
     #[test]
     fn test_pty_error_code() {
-        let err = PtyError::Open("test".into());
+        let err = PtyError::Open {
+            reason: "test".into(),
+            source: None,
+        };
         assert_eq!(err.code(), error_codes::PTY_ERROR);
     }
 
     #[test]
     fn test_pty_error_category() {
-        let err = PtyError::Write("broken pipe".into());
+        let err = PtyError::Write {
+            reason: "broken pipe".into(),
+            source: None,
+        };
         assert_eq!(err.category(), ErrorCategory::External);
     }
 
@@ -156,9 +182,27 @@ mod tests {
 
     #[test]
     fn test_pty_error_is_retryable() {
-        assert!(PtyError::Read("timeout".into()).is_retryable());
-        assert!(PtyError::Write("broken pipe".into()).is_retryable());
-        assert!(!PtyError::Open("failed".into()).is_retryable());
+        assert!(
+            PtyError::Read {
+                reason: "timeout".into(),
+                source: None,
+            }
+            .is_retryable()
+        );
+        assert!(
+            PtyError::Write {
+                reason: "broken pipe".into(),
+                source: None,
+            }
+            .is_retryable()
+        );
+        assert!(
+            !PtyError::Open {
+                reason: "failed".into(),
+                source: None,
+            }
+            .is_retryable()
+        );
         assert!(
             !PtyError::Spawn {
                 reason: "not found".into(),
@@ -170,7 +214,14 @@ mod tests {
 
     #[test]
     fn test_pty_error_operation() {
-        assert_eq!(PtyError::Open("x".into()).operation(), "open");
+        assert_eq!(
+            PtyError::Open {
+                reason: "x".into(),
+                source: None,
+            }
+            .operation(),
+            "open"
+        );
         assert_eq!(
             PtyError::Spawn {
                 reason: "x".into(),
@@ -179,14 +230,38 @@ mod tests {
             .operation(),
             "spawn"
         );
-        assert_eq!(PtyError::Write("x".into()).operation(), "write");
-        assert_eq!(PtyError::Read("x".into()).operation(), "read");
-        assert_eq!(PtyError::Resize("x".into()).operation(), "resize");
+        assert_eq!(
+            PtyError::Write {
+                reason: "x".into(),
+                source: None,
+            }
+            .operation(),
+            "write"
+        );
+        assert_eq!(
+            PtyError::Read {
+                reason: "x".into(),
+                source: None,
+            }
+            .operation(),
+            "read"
+        );
+        assert_eq!(
+            PtyError::Resize {
+                reason: "x".into(),
+                source: None,
+            }
+            .operation(),
+            "resize"
+        );
     }
 
     #[test]
     fn test_pty_error_reason() {
-        let err = PtyError::Open("allocation failed".into());
+        let err = PtyError::Open {
+            reason: "allocation failed".into(),
+            source: None,
+        };
         assert_eq!(err.reason(), "allocation failed");
     }
 }

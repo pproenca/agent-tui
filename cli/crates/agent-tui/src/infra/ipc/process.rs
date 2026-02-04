@@ -25,6 +25,8 @@ impl ProcessController for UnixProcessController {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "PID out of range")
         })?;
 
+        // SAFETY: `kill` with signal 0 performs a permission check without sending a signal.
+        // `pid_t` is derived from a validated u32 and is safe for libc calls.
         let result = unsafe { libc::kill(pid_t, 0) };
         if result == 0 {
             return Ok(ProcessStatus::Running);
@@ -48,6 +50,7 @@ impl ProcessController for UnixProcessController {
             Signal::Kill => libc::SIGKILL,
         };
 
+        // SAFETY: `pid_t` is validated and `sig` is a valid libc signal constant.
         let result = unsafe { libc::kill(pid_t, sig) };
         if result == 0 {
             Ok(())

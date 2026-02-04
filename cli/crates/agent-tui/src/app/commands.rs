@@ -606,6 +606,7 @@ mod tests {
 
     #[test]
     fn test_cli_defaults() {
+        // SAFETY: Test-only cleanup of NO_COLOR to verify default parsing.
         unsafe {
             std::env::remove_var("NO_COLOR");
         }

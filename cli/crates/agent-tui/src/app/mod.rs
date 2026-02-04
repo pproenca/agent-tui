@@ -87,10 +87,7 @@ fn handle_completions_command(
 ) -> Result<()> {
     if install {
         let shell = resolve_shell(shell).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Shell not specified. Use one of: {}",
-                supported_shells()
-            )
+            anyhow::anyhow!("Shell not specified. Use one of: {}", supported_shells())
         })?;
         run_completions_wizard(shell, true, yes)?;
         return Ok(());
@@ -99,10 +96,7 @@ fn handle_completions_command(
     let stdout_tty = io::stdout().is_terminal();
     if print || !stdout_tty {
         let shell = resolve_shell(shell).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Shell not specified. Use one of: {}",
-                supported_shells()
-            )
+            anyhow::anyhow!("Shell not specified. Use one of: {}", supported_shells())
         })?;
         let mut cmd = Cli::command();
         generate(shell, &mut cmd, PROGRAM_NAME, &mut io::stdout());
@@ -121,11 +115,7 @@ fn handle_completions_command(
     Ok(())
 }
 
-fn run_completions_wizard(
-    shell: Shell,
-    install: bool,
-    yes: bool,
-) -> Result<()> {
+fn run_completions_wizard(shell: Shell, install: bool, yes: bool) -> Result<()> {
     println!("{}", Colors::bold("Shell completions"));
     println!("Detected shell: {}", shell_label(shell));
     println!();
@@ -344,10 +334,7 @@ fn generate_completions_bytes(shell: Shell) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn completion_status(
-    expected: &[u8],
-    path: &PathBuf,
-) -> Result<CompletionStatus> {
+fn completion_status(expected: &[u8], path: &PathBuf) -> Result<CompletionStatus> {
     match fs::read(path) {
         Ok(existing) => {
             if existing == expected {
@@ -357,15 +344,13 @@ fn completion_status(
             }
         }
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(CompletionStatus::Missing),
-        Err(err) => Err(err)
-            .with_context(|| format!("failed to read completion file {}", path.display())),
+        Err(err) => {
+            Err(err).with_context(|| format!("failed to read completion file {}", path.display()))
+        }
     }
 }
 
-fn install_completions(
-    script: &[u8],
-    path: &PathBuf,
-) -> Result<InstallOutcome> {
+fn install_completions(script: &[u8], path: &PathBuf) -> Result<InstallOutcome> {
     let status = completion_status(script, path)?;
     if matches!(status, CompletionStatus::UpToDate) {
         return Ok(InstallOutcome::AlreadyUpToDate(path.clone()));
@@ -373,10 +358,7 @@ fn install_completions(
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "failed to create completion directory {}",
-                parent.display()
-            )
+            format!("failed to create completion directory {}", parent.display())
         })?;
     }
     fs::write(path, script)
@@ -550,10 +532,7 @@ impl Application {
         }
     }
 
-    fn handle_daemon_status_without_autostart(
-        &self,
-        cli: &Cli,
-    ) -> Result<()> {
+    fn handle_daemon_status_without_autostart(&self, cli: &Cli) -> Result<()> {
         match UnixSocketClient::connect() {
             Ok(mut client) => {
                 // Verify daemon is actually responding before showing status
@@ -607,10 +586,7 @@ impl Application {
         }
     }
 
-    fn handle_daemon_stop_without_autostart(
-        &self,
-        force: bool,
-    ) -> Result<()> {
+    fn handle_daemon_stop_without_autostart(&self, force: bool) -> Result<()> {
         match handlers::stop_daemon_core(force)? {
             handlers::StopResult::Stopped { warnings, .. } => {
                 for warning in &warnings {
@@ -625,10 +601,7 @@ impl Application {
         Ok(())
     }
 
-    fn handle_daemon_restart_without_autostart(
-        &self,
-        cli: &Cli,
-    ) -> Result<()> {
+    fn handle_daemon_restart_without_autostart(&self, cli: &Cli) -> Result<()> {
         let format = cli.effective_format();
         let presenter = create_presenter(&format);
 
@@ -852,11 +825,7 @@ impl Application {
 }
 
 impl Application {
-    fn wrap_error(
-        &self,
-        error: anyhow::Error,
-        format: OutputFormat,
-    ) -> anyhow::Error {
+    fn wrap_error(&self, error: anyhow::Error, format: OutputFormat) -> anyhow::Error {
         if find_error::<DaemonNotRunningError>(&error).is_some() {
             return error;
         }
@@ -1016,6 +985,7 @@ mod tests {
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
+            // SAFETY: Test-only environment override to isolate the daemon socket.
             unsafe {
                 env::set_var("AGENT_TUI_SOCKET", &socket_path);
             }
@@ -1043,6 +1013,7 @@ mod tests {
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
+            // SAFETY: Test-only environment override to isolate the daemon socket.
             unsafe {
                 env::set_var("AGENT_TUI_SOCKET", &socket_path);
             }
@@ -1075,6 +1046,7 @@ mod tests {
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
+            // SAFETY: Test-only environment override to isolate the daemon socket.
             unsafe {
                 env::set_var("AGENT_TUI_SOCKET", &socket_path);
             }
@@ -1104,6 +1076,7 @@ mod tests {
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
+            // SAFETY: Test-only environment override to isolate the daemon socket.
             unsafe {
                 env::set_var("AGENT_TUI_SOCKET", &socket_path);
             }

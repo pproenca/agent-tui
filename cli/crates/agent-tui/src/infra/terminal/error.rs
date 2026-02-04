@@ -118,13 +118,25 @@ impl PtyError {
 impl PtyError {
     /// Convert this infra error to the port error type.
     /// This keeps the dependency direction correct (infra -> usecases).
-    pub fn to_port_error(self) -> PortTerminalError {
+    pub fn into_port_error(self) -> PortTerminalError {
         match self {
-            PtyError::Open { reason, .. } => PortTerminalError::Open(reason),
+            PtyError::Open { reason, source } => PortTerminalError::Open {
+                reason,
+                source: source.map(|err| Box::new(err) as _),
+            },
             PtyError::Spawn { reason, kind } => PortTerminalError::Spawn { reason, kind },
-            PtyError::Write { reason, .. } => PortTerminalError::Write(reason),
-            PtyError::Read { reason, .. } => PortTerminalError::Read(reason),
-            PtyError::Resize { reason, .. } => PortTerminalError::Resize(reason),
+            PtyError::Write { reason, source } => PortTerminalError::Write {
+                reason,
+                source: source.map(|err| Box::new(err) as _),
+            },
+            PtyError::Read { reason, source } => PortTerminalError::Read {
+                reason,
+                source: source.map(|err| Box::new(err) as _),
+            },
+            PtyError::Resize { reason, source } => PortTerminalError::Resize {
+                reason,
+                source: source.map(|err| Box::new(err) as _),
+            },
         }
     }
 }

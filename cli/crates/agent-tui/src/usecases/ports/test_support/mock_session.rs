@@ -63,9 +63,10 @@ impl MockSession {
 impl SessionOps for MockSession {
     fn update(&self) -> Result<(), SessionError> {
         if let Some(ref err) = self.update_error {
-            Err(SessionError::Terminal(TerminalError::Write(
-                err.to_string(),
-            )))
+            Err(SessionError::Terminal(TerminalError::Write {
+                reason: err.to_string(),
+                source: None,
+            }))
         } else {
             Ok(())
         }
@@ -81,9 +82,10 @@ impl SessionOps for MockSession {
 
     fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError> {
         if let Some(ref err) = self.terminal_write_error {
-            Err(SessionError::Terminal(TerminalError::Write(
-                err.to_string(),
-            )))
+            Err(SessionError::Terminal(TerminalError::Write {
+                reason: err.to_string(),
+                source: None,
+            }))
         } else {
             self.written_data.lock().unwrap().push(data.to_vec());
             Ok(())

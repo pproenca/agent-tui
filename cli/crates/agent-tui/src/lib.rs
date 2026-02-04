@@ -1,4 +1,5 @@
 #![deny(clippy::all)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod adapters;
 pub mod app;

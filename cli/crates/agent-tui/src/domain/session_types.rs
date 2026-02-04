@@ -133,7 +133,7 @@ impl TerminalSize {
 
 impl Default for TerminalSize {
     fn default() -> Self {
-        Self::new(80, 24).unwrap()
+        Self { cols: 80, rows: 24 }
     }
 }
 

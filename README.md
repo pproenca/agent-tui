@@ -217,7 +217,7 @@ The tool follows Clean Architecture principles:
 
 ### Prerequisites
 
-- Rust 1.70+
+- Rust stable (1.85+)
 - Bun (for web UI)
 - just (task runner)
 

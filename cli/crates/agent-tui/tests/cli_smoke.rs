@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 mod common;
 
 use common::{MockResponse, TEST_SESSION_ID, TestHarness};

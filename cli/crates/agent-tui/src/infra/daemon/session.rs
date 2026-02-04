@@ -236,13 +236,16 @@ impl StreamBuffer {
             drop(state);
 
             if let Some(wait) = timeout {
-                let (new_guard, result) = self.cv.wait_timeout(guard, wait).unwrap();
+                let (new_guard, result) = self
+                    .cv
+                    .wait_timeout(guard, wait)
+                    .unwrap_or_else(|e| e.into_inner());
                 guard = new_guard;
                 if result.timed_out() {
                     break;
                 }
             } else {
-                guard = self.cv.wait(guard).unwrap();
+                guard = self.cv.wait(guard).unwrap_or_else(|e| e.into_inner());
             }
         }
         drop(guard);
@@ -337,10 +340,31 @@ fn spawn_pump(
         let (_tx, rx) = channel::bounded(1);
         rx
     });
-    let join = thread::Builder::new()
-        .name(thread_name)
-        .spawn(move || pump_loop(session, pty_rx, rx))
-        .expect("Failed to spawn session pump thread");
+    let payload = Arc::new(Mutex::new(Some((session, pty_rx, rx))));
+    let payload_for_thread = Arc::clone(&payload);
+    let join = match thread::Builder::new().name(thread_name).spawn(move || {
+        let Some((session, pty_rx, rx)) = payload_for_thread
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        else {
+            warn!("Session pump payload missing; pump thread exiting");
+            return;
+        };
+        pump_loop(session, pty_rx, rx);
+    }) {
+        Ok(handle) => handle,
+        Err(err) => {
+            warn!(
+                error = %err,
+                "Failed to spawn named session pump thread; falling back to unnamed thread"
+            );
+            match payload.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                Some((session, pty_rx, rx)) => thread::spawn(move || pump_loop(session, pty_rx, rx)),
+                None => thread::spawn(|| {}),
+            }
+        }
+    };
     (tx, join)
 }
 

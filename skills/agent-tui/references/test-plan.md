@@ -10,7 +10,7 @@ Use this file when writing step-by-step tests.
 
 ## Step Structure
 - Step 1: `screenshot` (or `screenshot --json`)
-- Step 2: Action (`press`, `input`, `scroll`)
+- Step 2: Action (`press`, `type`, `scroll`)
 - Step 3: `wait --assert` for expected text or `wait --stable`
 - Step 4: Repeat until done
 - Step 5: Cleanup (`kill`)
@@ -19,7 +19,7 @@ Use this file when writing step-by-step tests.
 1) `agent-tui run <app>`
 2) `agent-tui --session <id> screenshot --format json`
 3) `agent-tui --session <id> press Tab`
-4) `agent-tui --session <id> input "value"`
+4) `agent-tui --session <id> type "value"`
 5) `agent-tui --session <id> press Enter`
 6) `agent-tui --session <id> wait "Success" --assert`
 7) `agent-tui --session <id> kill`

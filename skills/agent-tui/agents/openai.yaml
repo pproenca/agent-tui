@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent TUI"
+  short_description: "Automate terminal UIs with agent-tui workflows"
+  default_prompt: "Automate a TUI by running the app, taking fresh screenshots after each action, using press/type/scroll, waiting with --assert or --stable, and cleaning up with kill. Ask for the command, expected UI text, inputs, and whether live preview is desired."

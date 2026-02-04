@@ -1141,7 +1141,10 @@ fn stop_ui_server() -> Result<StopUiResult> {
 fn build_ui_url(base: &str, state: &ApiState) -> String {
     let (base, fragment) = base.split_once('#').unwrap_or((base, ""));
     if let Ok(mut url) = url::Url::parse(base) {
-        let existing = url.query_pairs().collect::<Vec<_>>();
+        let existing: Vec<(String, String)> = url
+            .query_pairs()
+            .map(|(key, value)| (key.into_owned(), value.into_owned()))
+            .collect();
         {
             let mut pairs = url.query_pairs_mut();
             pairs.clear();

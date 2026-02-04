@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![expect(clippy::print_stderr, reason = "Test diagnostics for mock daemon")]
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

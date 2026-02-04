@@ -232,10 +232,10 @@ pub fn is_error_message(text: &str) -> bool {
         return true;
     }
 
-    if let Some(first_char) = text.chars().next() {
-        if FAILURE_CHARS.contains(&first_char) {
-            return true;
-        }
+    if let Some(first_char) = text.chars().next()
+        && FAILURE_CHARS.contains(&first_char)
+    {
+        return true;
     }
 
     false

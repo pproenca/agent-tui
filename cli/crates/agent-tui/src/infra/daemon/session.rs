@@ -1292,9 +1292,13 @@ mod tests {
     impl Drop for HomeGuard {
         fn drop(&mut self) {
             if let Some(home) = self.0.take() {
-                std::env::set_var("HOME", home);
+                unsafe {
+                    std::env::set_var("HOME", home);
+                }
             } else {
-                std::env::remove_var("HOME");
+                unsafe {
+                    std::env::remove_var("HOME");
+                }
             }
         }
     }
@@ -1330,7 +1334,9 @@ mod tests {
     fn test_spawn_rejects_duplicate_session_id() {
         let temp_home = tempdir().unwrap();
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        std::env::set_var("HOME", temp_home.path());
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
 
         let manager = SessionManager::with_max_sessions(2);
         let session_id = "dup-session".to_string();

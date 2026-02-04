@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::infra::ipc::error::ClientError;
 use crate::infra::ipc::polling;
 use crate::infra::ipc::socket::socket_path;
-use tracing::debug;
+use tracing::{debug, error, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportKind {
@@ -291,10 +291,10 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
     let log_file = match OpenOptions::new().create(true).append(true).open(&log_path) {
         Ok(f) => Some(f),
         Err(e) => {
-            eprintln!(
-                "Warning: Could not open daemon log file {}: {}",
-                log_path.display(),
-                e
+            warn!(
+                error = %e,
+                path = %log_path.display(),
+                "Could not open daemon log file"
             );
             None
         }
@@ -322,17 +322,17 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
 
         delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
 
-        if i == polling::MAX_STARTUP_POLLS - 1 {
-            if let Ok(log_content) = std::fs::read_to_string(&log_path) {
-                let last_lines: String = log_content
-                    .lines()
-                    .rev()
-                    .take(5)
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if !last_lines.is_empty() {
-                    eprintln!("Daemon failed to start. Recent log output:\n{}", last_lines);
-                }
+        if i == polling::MAX_STARTUP_POLLS - 1
+            && let Ok(log_content) = std::fs::read_to_string(&log_path)
+        {
+            let last_lines: String = log_content
+                .lines()
+                .rev()
+                .take(5)
+                .collect::<Vec<_>>()
+                .join("\n");
+            if !last_lines.is_empty() {
+                error!("Daemon failed to start. Recent log output:\n{}", last_lines);
             }
         }
     }

@@ -68,10 +68,10 @@ fn infer_role(cluster: &Cluster, cursor: &CursorPosition, options: &ClassifyOpti
         return Role::MenuItem;
     }
 
-    if let Some(Color::Indexed(idx)) = &cluster.style.bg_color {
-        if *idx == TAB_BG_BLUE || *idx == TAB_BG_CYAN {
-            return Role::Tab;
-        }
+    if let Some(Color::Indexed(idx)) = &cluster.style.bg_color
+        && (*idx == TAB_BG_BLUE || *idx == TAB_BG_CYAN)
+    {
+        return Role::Tab;
     }
 
     if is_error_message(text) {

@@ -1,3 +1,5 @@
+#![expect(clippy::print_stderr, reason = "CLI/TUI output after terminal restore")]
+
 use std::io;
 use std::io::Read;
 use std::io::Write;
@@ -314,10 +316,10 @@ fn attach_ipc_loop<C: DaemonClient>(
                                 }
                             }
                             if detach {
-                                if hint_active {
-                                    if let Ok(mut guard) = stdout.lock() {
-                                        render_detach_hint(&mut *guard, None);
-                                    }
+                                if hint_active
+                                    && let Ok(mut guard) = stdout.lock()
+                                {
+                                    render_detach_hint(&mut *guard, None);
                                 }
                                 if let Some(handle) = abort_handle.as_ref() {
                                     handle.abort();
@@ -708,11 +710,11 @@ fn stream_output_loop(
                 data,
                 dropped_bytes,
             }) => {
-                if !data.is_empty() {
-                    if let Ok(mut guard) = stdout.lock() {
-                        guard.write_all(&data).map_err(AttachError::Terminal)?;
-                        guard.flush().map_err(AttachError::Terminal)?;
-                    }
+                if !data.is_empty()
+                    && let Ok(mut guard) = stdout.lock()
+                {
+                    guard.write_all(&data).map_err(AttachError::Terminal)?;
+                    guard.flush().map_err(AttachError::Terminal)?;
                 }
                 if report_drops && dropped_bytes > 0 {
                     eprintln!(

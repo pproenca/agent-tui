@@ -1,3 +1,5 @@
+#![expect(clippy::print_stderr, reason = "Tracing not initialized yet")]
+
 use std::io::IsTerminal;
 use std::path::PathBuf;
 

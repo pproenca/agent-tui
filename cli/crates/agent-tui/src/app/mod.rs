@@ -1,3 +1,7 @@
+#![expect(clippy::print_stdout, reason = "CLI output is emitted here")]
+#![expect(clippy::print_stderr, reason = "CLI output is emitted here")]
+
+use anyhow::{Context, Result};
 use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
@@ -80,18 +84,26 @@ fn handle_completions_command(
     print: bool,
     install: bool,
     yes: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<()> {
     if install {
-        let shell = resolve_shell(shell)
-            .ok_or_else(|| format!("Shell not specified. Use one of: {}", supported_shells()))?;
+        let shell = resolve_shell(shell).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Shell not specified. Use one of: {}",
+                supported_shells()
+            )
+        })?;
         run_completions_wizard(shell, true, yes)?;
         return Ok(());
     }
 
     let stdout_tty = io::stdout().is_terminal();
     if print || !stdout_tty {
-        let shell = resolve_shell(shell)
-            .ok_or_else(|| format!("Shell not specified. Use one of: {}", supported_shells()))?;
+        let shell = resolve_shell(shell).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Shell not specified. Use one of: {}",
+                supported_shells()
+            )
+        })?;
         let mut cmd = Cli::command();
         generate(shell, &mut cmd, PROGRAM_NAME, &mut io::stdout());
         return Ok(());
@@ -113,7 +125,7 @@ fn run_completions_wizard(
     shell: Shell,
     install: bool,
     yes: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<()> {
     println!("{}", Colors::bold("Shell completions"));
     println!("Detected shell: {}", shell_label(shell));
     println!();
@@ -325,7 +337,7 @@ fn home_dir() -> Option<PathBuf> {
     }
 }
 
-fn generate_completions_bytes(shell: Shell) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn generate_completions_bytes(shell: Shell) -> Result<Vec<u8>> {
     let mut cmd = Cli::command();
     let mut out = Vec::new();
     generate(shell, &mut cmd, PROGRAM_NAME, &mut out);
@@ -335,7 +347,7 @@ fn generate_completions_bytes(shell: Shell) -> Result<Vec<u8>, Box<dyn std::erro
 fn completion_status(
     expected: &[u8],
     path: &PathBuf,
-) -> Result<CompletionStatus, Box<dyn std::error::Error>> {
+) -> Result<CompletionStatus> {
     match fs::read(path) {
         Ok(existing) => {
             if existing == expected {
@@ -345,23 +357,30 @@ fn completion_status(
             }
         }
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(CompletionStatus::Missing),
-        Err(err) => Err(err.into()),
+        Err(err) => Err(err)
+            .with_context(|| format!("failed to read completion file {}", path.display())),
     }
 }
 
 fn install_completions(
     script: &[u8],
     path: &PathBuf,
-) -> Result<InstallOutcome, Box<dyn std::error::Error>> {
+) -> Result<InstallOutcome> {
     let status = completion_status(script, path)?;
     if matches!(status, CompletionStatus::UpToDate) {
         return Ok(InstallOutcome::AlreadyUpToDate(path.clone()));
     }
 
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create completion directory {}",
+                parent.display()
+            )
+        })?;
     }
-    fs::write(path, script)?;
+    fs::write(path, script)
+        .with_context(|| format!("failed to write completions to {}", path.display()))?;
     Ok(match status {
         CompletionStatus::Missing => InstallOutcome::Installed(path.clone()),
         CompletionStatus::OutOfDate => InstallOutcome::Updated(path.clone()),
@@ -442,14 +461,15 @@ impl Application {
         Self
     }
 
-    pub fn run(&self) -> i32 {
-        match self.execute() {
+    pub fn run(&self) -> Result<i32> {
+        let exit_code = match self.execute() {
             Ok(()) => exit_codes::SUCCESS,
             Err(e) => self.handle_error(e),
-        }
+        };
+        Ok(exit_code)
     }
 
-    fn execute(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn execute(&self) -> Result<()> {
         let cli = Cli::parse();
         let _telemetry = telemetry::init_tracing(if cli.verbose { "debug" } else { "warn" });
         color_init(cli.no_color);
@@ -463,7 +483,8 @@ impl Application {
 
         if self
             .handle_standalone_commands(&cli)
-            .map_err(|e| self.wrap_error(e, format))?
+            .map_err(|e| self.wrap_error(e, format))
+            .context("failed to handle standalone command")?
         {
             return Ok(());
         }
@@ -471,10 +492,12 @@ impl Application {
         let mut client: UnixSocketClient = match &cli.command {
             Commands::Run { .. } | Commands::Live { .. } => self
                 .connect_to_daemon_autostart()
-                .map_err(|e| self.wrap_error(e, format))?,
+                .map_err(|e| self.wrap_error(e, format))
+                .context("failed to connect to daemon with autostart")?,
             _ => self
                 .connect_to_daemon_no_autostart()
-                .map_err(|e| self.wrap_error(e, format))?,
+                .map_err(|e| self.wrap_error(e, format))
+                .context("failed to connect to daemon")?,
         };
 
         if !matches!(cli.command, Commands::Daemon(_) | Commands::Version) {
@@ -484,9 +507,10 @@ impl Application {
         let mut ctx = HandlerContext::new(&mut client, cli.session, format);
         self.dispatch_command(&mut ctx, &cli.command, cli.verbose)
             .map_err(|e| self.wrap_error(e, format))
+            .with_context(|| format!("failed to execute command {:?}", cli.command))
     }
 
-    fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool, Box<dyn std::error::Error>> {
+    fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool> {
         match &cli.command {
             Commands::Daemon(DaemonCommand::Start { foreground: true }) => {
                 start_daemon()?;
@@ -529,7 +553,7 @@ impl Application {
     fn handle_daemon_status_without_autostart(
         &self,
         cli: &Cli,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<()> {
         match UnixSocketClient::connect() {
             Ok(mut client) => {
                 // Verify daemon is actually responding before showing status
@@ -542,13 +566,13 @@ impl Application {
                     Err(_) => {
                         // Connected but daemon not responding - treat as not running
                         self.print_daemon_not_running_status(cli);
-                        Err(Box::new(DaemonNotRunningError))
+                        Err(anyhow::Error::new(DaemonNotRunningError))
                     }
                 }
             }
             Err(ClientError::DaemonNotRunning) => {
                 self.print_daemon_not_running_status(cli);
-                Err(Box::new(DaemonNotRunningError))
+                Err(anyhow::Error::new(DaemonNotRunningError))
             }
             Err(e) => Err(e.into()),
         }
@@ -586,7 +610,7 @@ impl Application {
     fn handle_daemon_stop_without_autostart(
         &self,
         force: bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<()> {
         match handlers::stop_daemon_core(force)? {
             handlers::StopResult::Stopped { warnings, .. } => {
                 for warning in &warnings {
@@ -604,7 +628,7 @@ impl Application {
     fn handle_daemon_restart_without_autostart(
         &self,
         cli: &Cli,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<()> {
         let format = cli.effective_format();
         let presenter = create_presenter(&format);
 
@@ -620,16 +644,14 @@ impl Application {
         Ok(())
     }
 
-    fn connect_to_daemon_autostart(&self) -> Result<UnixSocketClient, Box<dyn std::error::Error>> {
+    fn connect_to_daemon_autostart(&self) -> Result<UnixSocketClient> {
         ensure_daemon().map_err(Into::into)
     }
 
-    fn connect_to_daemon_no_autostart(
-        &self,
-    ) -> Result<UnixSocketClient, Box<dyn std::error::Error>> {
+    fn connect_to_daemon_no_autostart(&self) -> Result<UnixSocketClient> {
         match UnixSocketClient::connect() {
             Ok(client) => Ok(client),
-            Err(ClientError::DaemonNotRunning) => Err(Box::new(ClientError::DaemonNotRunning)),
+            Err(ClientError::DaemonNotRunning) => Err(ClientError::DaemonNotRunning.into()),
             Err(e) => Err(e.into()),
         }
     }
@@ -639,7 +661,7 @@ impl Application {
         ctx: &mut HandlerContext<C>,
         command: &Commands,
         verbose: bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<()> {
         match command {
             Commands::Daemon(daemon_cmd) => match daemon_cmd {
                 DaemonCommand::Start { .. } => unreachable!("Handled in standalone"),
@@ -681,7 +703,7 @@ impl Application {
                 const PRESS_INTER_KEY_DELAY_MS: u64 = 50;
                 if *hold {
                     if keys.len() != 1 {
-                        return Err(Box::new(crate::app::error::CliError::new(
+                        return Err(anyhow::Error::new(crate::app::error::CliError::new(
                             ctx.format,
                             "Press --hold requires exactly one key (Ctrl, Alt, Shift, Meta)",
                             None,
@@ -691,7 +713,7 @@ impl Application {
                     handlers::handle_keydown(ctx, keys[0].clone())?
                 } else if *release {
                     if keys.len() != 1 {
-                        return Err(Box::new(crate::app::error::CliError::new(
+                        return Err(anyhow::Error::new(crate::app::error::CliError::new(
                             ctx.format,
                             "Press --release requires exactly one key (Ctrl, Alt, Shift, Meta)",
                             None,
@@ -755,19 +777,19 @@ impl Application {
         Ok(())
     }
 
-    fn handle_error(&self, e: Box<dyn std::error::Error>) -> i32 {
+    fn handle_error(&self, e: anyhow::Error) -> i32 {
         // Handle DaemonNotRunningError specially - no error message printed,
         // output was already shown by the handler, just return LSB exit code 3
-        if e.downcast_ref::<DaemonNotRunningError>().is_some() {
+        if find_error::<DaemonNotRunningError>(&e).is_some() {
             return exit_codes::NOT_RUNNING;
         }
 
-        if let Some(cli_error) = e.downcast_ref::<crate::app::error::CliError>() {
+        if let Some(cli_error) = find_error::<crate::app::error::CliError>(&e) {
             print_cli_error(cli_error);
             return cli_error.exit_code;
         }
 
-        if let Some(client_error) = e.downcast_ref::<ClientError>() {
+        if let Some(client_error) = find_error::<ClientError>(&e) {
             eprintln!(
                 "{}: {} {}",
                 PROGRAM_NAME,
@@ -784,7 +806,7 @@ impl Application {
                 );
             }
             exit_code_for_client_error(client_error)
-        } else if let Some(attach_error) = e.downcast_ref::<AttachError>() {
+        } else if let Some(attach_error) = find_error::<AttachError>(&e) {
             eprintln!(
                 "{}: {} {}",
                 PROGRAM_NAME,
@@ -803,7 +825,7 @@ impl Application {
                 );
             }
             attach_error.exit_code()
-        } else if let Some(daemon_error) = e.downcast_ref::<DaemonError>() {
+        } else if let Some(daemon_error) = find_error::<DaemonError>(&e) {
             eprintln!(
                 "{}: {} {}",
                 PROGRAM_NAME,
@@ -832,40 +854,37 @@ impl Application {
 impl Application {
     fn wrap_error(
         &self,
-        error: Box<dyn std::error::Error>,
+        error: anyhow::Error,
         format: OutputFormat,
-    ) -> Box<dyn std::error::Error> {
-        if error.downcast_ref::<DaemonNotRunningError>().is_some() {
+    ) -> anyhow::Error {
+        if find_error::<DaemonNotRunningError>(&error).is_some() {
             return error;
         }
-        if error
-            .downcast_ref::<crate::app::error::CliError>()
-            .is_some()
-        {
+        if find_error::<crate::app::error::CliError>(&error).is_some() {
             return error;
         }
         if format != OutputFormat::Json {
             return error;
         }
 
-        if let Some(client_error) = error.downcast_ref::<ClientError>() {
-            return Box::new(crate::app::error::CliError::new(
+        if let Some(client_error) = find_error::<ClientError>(&error) {
+            return anyhow::Error::new(crate::app::error::CliError::new(
                 format,
                 client_error.to_string(),
                 Some(client_error.to_json_string()),
                 exit_code_for_client_error(client_error),
             ));
         }
-        if let Some(attach_error) = error.downcast_ref::<AttachError>() {
-            return Box::new(crate::app::error::CliError::new(
+        if let Some(attach_error) = find_error::<AttachError>(&error) {
+            return anyhow::Error::new(crate::app::error::CliError::new(
                 format,
                 attach_error.to_string(),
                 Some(serde_json::to_string_pretty(&attach_error.to_payload()).unwrap_or_default()),
                 attach_error.exit_code(),
             ));
         }
-        if let Some(daemon_error) = error.downcast_ref::<DaemonError>() {
-            return Box::new(crate::app::error::CliError::new(
+        if let Some(daemon_error) = find_error::<DaemonError>(&error) {
+            return anyhow::Error::new(crate::app::error::CliError::new(
                 format,
                 daemon_error.to_string(),
                 None,
@@ -873,13 +892,17 @@ impl Application {
             ));
         }
 
-        Box::new(crate::app::error::CliError::new(
+        anyhow::Error::new(crate::app::error::CliError::new(
             format,
             error.to_string(),
             None,
             exit_codes::GENERAL_ERROR,
         ))
     }
+}
+
+fn find_error<T: std::error::Error + 'static>(error: &anyhow::Error) -> Option<&T> {
+    error.chain().find_map(|source| source.downcast_ref::<T>())
 }
 
 fn print_cli_error(error: &crate::app::error::CliError) {
@@ -993,7 +1016,9 @@ mod tests {
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
-            env::set_var("AGENT_TUI_SOCKET", &socket_path);
+            unsafe {
+                env::set_var("AGENT_TUI_SOCKET", &socket_path);
+            }
 
             let app = Application::new();
             let cli = Cli {
@@ -1018,7 +1043,9 @@ mod tests {
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
-            env::set_var("AGENT_TUI_SOCKET", &socket_path);
+            unsafe {
+                env::set_var("AGENT_TUI_SOCKET", &socket_path);
+            }
 
             let app = Application::new();
             let cli = Cli {
@@ -1048,7 +1075,9 @@ mod tests {
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
-            env::set_var("AGENT_TUI_SOCKET", &socket_path);
+            unsafe {
+                env::set_var("AGENT_TUI_SOCKET", &socket_path);
+            }
 
             let app = Application::new();
             let cli = Cli {
@@ -1075,7 +1104,9 @@ mod tests {
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
-            env::set_var("AGENT_TUI_SOCKET", &socket_path);
+            unsafe {
+                env::set_var("AGENT_TUI_SOCKET", &socket_path);
+            }
 
             let app = Application::new();
             let cli = Cli {
@@ -1097,7 +1128,7 @@ mod tests {
         #[test]
         fn handle_error_returns_not_running_exit_code() {
             let app = Application::new();
-            let err: Box<dyn std::error::Error> = Box::new(DaemonNotRunningError);
+            let err = anyhow::Error::new(DaemonNotRunningError);
             let exit_code = app.handle_error(err);
             assert_eq!(exit_code, exit_codes::NOT_RUNNING);
         }

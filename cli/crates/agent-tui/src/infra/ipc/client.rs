@@ -1,3 +1,5 @@
+#![expect(clippy::print_stderr, reason = "CLI status messages during daemon autostart")]
+
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
@@ -463,7 +465,9 @@ mod tests {
         let socket_path = temp_dir.path().join("agent-tui.sock");
         let _ = std::fs::remove_file(&socket_path);
 
-        std::env::set_var("AGENT_TUI_SOCKET", &socket_path);
+        unsafe {
+            std::env::set_var("AGENT_TUI_SOCKET", &socket_path);
+        }
         crate::infra::ipc::transport::USE_DAEMON_START_STUB
             .store(true, std::sync::atomic::Ordering::SeqCst);
 
@@ -492,7 +496,9 @@ mod tests {
         let _ = std::fs::remove_file(&socket_path);
         crate::infra::ipc::transport::USE_DAEMON_START_STUB
             .store(false, std::sync::atomic::Ordering::SeqCst);
-        std::env::remove_var("AGENT_TUI_SOCKET");
+        unsafe {
+            std::env::remove_var("AGENT_TUI_SOCKET");
+        }
     }
 
     #[test]

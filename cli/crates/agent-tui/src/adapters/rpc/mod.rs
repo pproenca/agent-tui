@@ -215,14 +215,15 @@ pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> 
         None => None,
     };
 
-    if let Some(condition) = condition {
-        if condition.requires_text() && rpc_params.text.as_deref().is_none() {
-            return Err(RpcResponse::error(
-                request.id,
-                -32602,
-                "Invalid condition: text is required",
-            ));
-        }
+    if let Some(condition) = condition
+        && condition.requires_text()
+        && rpc_params.text.as_deref().is_none()
+    {
+        return Err(RpcResponse::error(
+            request.id,
+            -32602,
+            "Invalid condition: text is required",
+        ));
     }
 
     Ok(WaitInput {

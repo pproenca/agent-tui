@@ -291,14 +291,15 @@ EXAMPLES:
 
     /// List and manage sessions
     #[command(long_about = "\
-Manage sessions - list, show details, attach, cleanup, or status.
+Manage sessions - list, show details, attach, switch active, cleanup, or status.
 
 By default, lists all active sessions.
 
 MODES:
     list              List active sessions (default)
     show <id>         Show details for a session
-    attach [id]       Attach with TTY (defaults to --session or active)
+    attach            Attach with TTY (defaults to --session or active)
+    switch <id>       Set the active session
     cleanup [--all]   Remove dead/orphaned sessions
     status            Show daemon health")]
     #[command(after_long_help = "\
@@ -307,8 +308,9 @@ EXAMPLES:
     agent-tui sessions list               # List sessions (explicit)
     agent-tui sessions show abc123        # Show session details
     agent-tui sessions attach             # Attach to active session (TTY)
-    agent-tui sessions attach abc123      # Attach to session by id (TTY)
-    agent-tui sessions attach -T abc123   # Attach without TTY (stream output only)
+    agent-tui -s abc123 sessions attach   # Attach to session by id (TTY)
+    agent-tui sessions switch abc123      # Set active session
+    agent-tui -s abc123 sessions attach -T # Attach without TTY (stream output only)
     agent-tui sessions attach --detach-keys 'ctrl-]'  # Custom detach sequence
     agent-tui sessions cleanup            # Remove dead sessions
     agent-tui sessions cleanup --all      # Remove all sessions
@@ -419,10 +421,8 @@ pub enum SessionsCommand {
         session_id: String,
     },
 
-    /// Attach to a session (TTY by default; detach with Ctrl-P Ctrl-Q or --detach-keys)
+    /// Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-Q or --detach-keys)
     Attach {
-        #[arg(value_name = "ID")]
-        session_id: Option<String>,
         /// Disable TTY mode (stream output only)
         #[arg(short = 'T', long = "no-tty")]
         no_tty: bool,
@@ -433,6 +433,13 @@ pub enum SessionsCommand {
             env = "AGENT_TUI_DETACH_KEYS"
         )]
         detach_keys: Option<DetachKeys>,
+    },
+
+    /// Set the active session without attaching
+    #[command(alias = "select")]
+    Switch {
+        #[arg(value_name = "ID")]
+        session_id: String,
     },
 
     /// Remove dead/orphaned sessions
@@ -865,7 +872,6 @@ mod tests {
         assert!(matches!(
             command,
             Some(SessionsCommand::Attach {
-                session_id: None,
                 no_tty: false,
                 detach_keys: None
             })
@@ -873,31 +879,25 @@ mod tests {
     }
 
     #[test]
-    fn test_sessions_attach_with_id() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "attach", "my-session"]);
-        let Commands::Sessions { command } = cli.command else {
-            panic!("Expected Sessions command, got {:?}", cli.command);
-        };
+    fn test_sessions_attach_with_id_rejected() {
+        let err = Cli::try_parse_from(["agent-tui", "sessions", "attach", "my-session"])
+            .err()
+            .expect("expected parse error");
         assert!(matches!(
-            command,
-            Some(SessionsCommand::Attach {
-                session_id: Some(_),
-                no_tty: false,
-                detach_keys: None
-            })
+            err.kind(),
+            ErrorKind::UnknownArgument | ErrorKind::InvalidSubcommand
         ));
     }
 
     #[test]
     fn test_sessions_attach_no_tty() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "attach", "-T", "my-session"]);
+        let cli = Cli::parse_from(["agent-tui", "sessions", "attach", "-T"]);
         let Commands::Sessions { command } = cli.command else {
             panic!("Expected Sessions command, got {:?}", cli.command);
         };
         assert!(matches!(
             command,
             Some(SessionsCommand::Attach {
-                session_id: Some(_),
                 no_tty: true,
                 detach_keys: None
             })
@@ -946,6 +946,18 @@ mod tests {
         assert!(matches!(
             command,
             Some(SessionsCommand::Show { session_id: _ })
+        ));
+    }
+
+    #[test]
+    fn test_sessions_switch_with_id() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "switch", "abc123"]);
+        let Commands::Sessions { command } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
+        };
+        assert!(matches!(
+            command,
+            Some(SessionsCommand::Switch { session_id: _ })
         ));
     }
 

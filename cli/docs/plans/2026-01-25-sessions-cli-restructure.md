@@ -27,16 +27,16 @@ server mismatch where `pty_read` accepts `timeout_ms` on the client but the daem
 agent-tui sessions                 # list (default)
 agent-tui sessions list            # list (explicit)
 agent-tui sessions show <id>       # show details for a session
-agent-tui sessions attach [id]     # interactive attach; defaults to --session or active
+agent-tui sessions attach          # interactive attach; defaults to --session or active
+agent-tui sessions switch <id>     # set active session
 agent-tui sessions cleanup [--all] # remove dead/orphaned sessions
 agent-tui sessions status          # show daemon health (respects -v)
 ```
 
 ### Attach resolution rules
-1. If `attach [id]` is provided, use it.
-2. Else if `--session <id>` is set, use it.
-3. Else call `sessions` RPC and use `active_session`.
-4. If no active session, return a user-facing error suggesting `sessions list` or `--session`.
+1. If `--session <id>` is set, use it.
+2. Else call `sessions` RPC and use `active_session`.
+3. If no active session, return a user-facing error suggesting `sessions list`, `sessions switch <id>`, or `--session`.
 
 ### JSON output shape
 - `sessions` list: unchanged (daemon result pass-through).
@@ -60,5 +60,4 @@ agent-tui sessions status          # show daemon health (respects -v)
 
 ## Risks
 - Breaking change for scripts using `sessions --attach/--cleanup/--status`.
-- If no active session is reported, `sessions attach` requires explicit `--session` or ID.
-
+- If no active session is reported, `sessions attach` requires explicit `--session` or `sessions switch <id>`.

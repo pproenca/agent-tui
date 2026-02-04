@@ -868,7 +868,7 @@ impl SessionManager {
                         id: id.clone(),
                         command: "(locked)".to_string(),
                         pid: 0,
-                        running: true,
+                        running: false,
                         created_at: "".to_string(),
                         size: (80, 24),
                     },

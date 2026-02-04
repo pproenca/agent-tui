@@ -1,3 +1,5 @@
+//! Daemon-facing adapters (HTTP/RPC routing and controller wiring).
+
 pub mod error;
 pub mod handlers;
 pub mod router;

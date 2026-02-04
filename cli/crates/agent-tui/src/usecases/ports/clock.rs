@@ -1,4 +1,5 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 pub trait Clock: Send + Sync {
     fn now(&self) -> Instant;

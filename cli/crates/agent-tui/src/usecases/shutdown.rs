@@ -1,7 +1,9 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
-use crate::domain::{ShutdownInput, ShutdownOutput};
+use crate::domain::ShutdownInput;
+use crate::domain::ShutdownOutput;
 use crate::usecases::ports::ShutdownNotifier;
 
 pub trait ShutdownUseCase: Send + Sync {

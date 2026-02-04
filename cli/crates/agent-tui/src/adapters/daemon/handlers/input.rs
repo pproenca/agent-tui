@@ -1,12 +1,19 @@
-use crate::adapters::rpc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::RpcRequest;
+use crate::adapters::rpc::RpcResponse;
 
 use super::common;
 use super::common::session_error_response;
-use crate::adapters::{
-    parse_keydown_input, parse_keystroke_input, parse_keyup_input, parse_scroll_input,
-    parse_type_input, scroll_output_to_response,
-};
-use crate::usecases::{KeydownUseCase, KeystrokeUseCase, KeyupUseCase, ScrollUseCase, TypeUseCase};
+use crate::adapters::parse_keydown_input;
+use crate::adapters::parse_keystroke_input;
+use crate::adapters::parse_keyup_input;
+use crate::adapters::parse_scroll_input;
+use crate::adapters::parse_type_input;
+use crate::adapters::scroll_output_to_response;
+use crate::usecases::KeydownUseCase;
+use crate::usecases::KeystrokeUseCase;
+use crate::usecases::KeyupUseCase;
+use crate::usecases::ScrollUseCase;
+use crate::usecases::TypeUseCase;
 
 pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "keystroke").entered();

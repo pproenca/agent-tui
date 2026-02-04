@@ -6,14 +6,21 @@ use crate::common::mutex_lock_or_recover;
 use crate::domain::ScrollDirection;
 use crate::domain::core::Component;
 use crate::domain::core::CursorPosition;
-use crate::usecases::ports::{
-    LivePreviewSnapshot, SessionError, SessionHandle, SessionOps, SessionRepository, StreamCursor,
-    StreamRead, StreamWaiterHandle,
-};
+use crate::usecases::ports::LivePreviewSnapshot;
+use crate::usecases::ports::SessionError;
+use crate::usecases::ports::SessionHandle;
+use crate::usecases::ports::SessionOps;
+use crate::usecases::ports::SessionRepository;
+use crate::usecases::ports::StreamCursor;
+use crate::usecases::ports::StreamRead;
+use crate::usecases::ports::StreamWaiterHandle;
 
-use crate::infra::daemon::session::{
-    PUMP_FLUSH_TIMEOUT, Session, SessionId, SessionInfo, SessionManager, StreamReader,
-};
+use crate::infra::daemon::session::PUMP_FLUSH_TIMEOUT;
+use crate::infra::daemon::session::Session;
+use crate::infra::daemon::session::SessionId;
+use crate::infra::daemon::session::SessionInfo;
+use crate::infra::daemon::session::SessionManager;
+use crate::infra::daemon::session::StreamReader;
 
 struct SessionHandleImpl {
     inner: Arc<Mutex<Session>>,

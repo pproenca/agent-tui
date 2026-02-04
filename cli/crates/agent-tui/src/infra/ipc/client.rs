@@ -8,12 +8,14 @@ use std::io::BufReader;
 use std::io::Write;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
-use tracing::{debug, trace};
+use tracing::debug;
+use tracing::trace;
 
 use crate::common::Colors;
 use crate::common::error_codes;

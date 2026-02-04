@@ -1,11 +1,24 @@
+use crate::usecases::AssertUseCaseImpl;
+use crate::usecases::AttachUseCaseImpl;
+use crate::usecases::CleanupUseCaseImpl;
+use crate::usecases::HealthUseCaseImpl;
+use crate::usecases::KeydownUseCaseImpl;
+use crate::usecases::KeystrokeUseCaseImpl;
+use crate::usecases::KeyupUseCaseImpl;
+use crate::usecases::KillUseCaseImpl;
+use crate::usecases::MetricsUseCaseImpl;
+use crate::usecases::ResizeUseCaseImpl;
+use crate::usecases::RestartUseCaseImpl;
+use crate::usecases::ScrollUseCaseImpl;
+use crate::usecases::SessionsUseCaseImpl;
+use crate::usecases::ShutdownUseCaseImpl;
+use crate::usecases::SnapshotUseCaseImpl;
+use crate::usecases::SpawnUseCaseImpl;
+use crate::usecases::TerminalReadUseCaseImpl;
+use crate::usecases::TerminalWriteUseCaseImpl;
+use crate::usecases::TypeUseCaseImpl;
+use crate::usecases::WaitUseCaseImpl;
 use crate::usecases::ports::SessionRepository;
-use crate::usecases::{
-    AssertUseCaseImpl, AttachUseCaseImpl, CleanupUseCaseImpl, HealthUseCaseImpl,
-    KeydownUseCaseImpl, KeystrokeUseCaseImpl, KeyupUseCaseImpl, KillUseCaseImpl,
-    MetricsUseCaseImpl, ResizeUseCaseImpl, RestartUseCaseImpl, ScrollUseCaseImpl,
-    SessionsUseCaseImpl, ShutdownUseCaseImpl, SnapshotUseCaseImpl, SpawnUseCaseImpl,
-    TerminalReadUseCaseImpl, TerminalWriteUseCaseImpl, TypeUseCaseImpl, WaitUseCaseImpl,
-};
 
 pub struct UseCaseContainer<R: SessionRepository + 'static> {
     pub session: SessionUseCases<R>,

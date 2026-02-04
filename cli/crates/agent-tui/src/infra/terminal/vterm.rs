@@ -2,10 +2,18 @@ use std::io;
 use std::sync::Arc;
 
 use tattoy_wezterm_surface::CursorVisibility;
-use tattoy_wezterm_term::color::{ColorAttribute, ColorPalette};
-use tattoy_wezterm_term::{Intensity, Terminal, TerminalConfiguration, TerminalSize, Underline};
+use tattoy_wezterm_term::Intensity;
+use tattoy_wezterm_term::Terminal;
+use tattoy_wezterm_term::TerminalConfiguration;
+use tattoy_wezterm_term::TerminalSize;
+use tattoy_wezterm_term::Underline;
+use tattoy_wezterm_term::color::ColorAttribute;
+use tattoy_wezterm_term::color::ColorPalette;
 
-use crate::domain::core::{CellStyle, Color, ScreenGrid, ScreenSnapshot};
+use crate::domain::core::CellStyle;
+use crate::domain::core::Color;
+use crate::domain::core::ScreenGrid;
+use crate::domain::core::ScreenSnapshot;
 use crate::usecases::ports::TerminalEngine;
 
 #[derive(Debug, Clone)]

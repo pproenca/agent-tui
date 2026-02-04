@@ -4,12 +4,15 @@ use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::adapters::RpcValue;
 use crate::adapters::rpc::params;
-use crate::app::rpc_client::{RpcStream, call_stream_with_params, call_with_params};
+use crate::app::rpc_client::RpcStream;
+use crate::app::rpc_client::call_stream_with_params;
+use crate::app::rpc_client::call_with_params;
 use crate::common::Colors;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::DaemonClient;
@@ -908,7 +911,7 @@ fn display_char(ch: char) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::ipc::MockClient;
+    use crate::test_support::MockClient;
 
     #[test]
     fn test_key_event_to_bytes_char() {

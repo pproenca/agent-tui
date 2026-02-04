@@ -1,11 +1,16 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::fs::{self, File, OpenOptions};
+use std::fs;
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::BufReader;
 use std::io::BufWriter;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
-use std::sync::{Arc, Condvar, Mutex, RwLock};
+use std::sync::Arc;
+use std::sync::Condvar;
+use std::sync::Mutex;
+use std::sync::RwLock;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -30,13 +35,16 @@ use crate::common::rwlock_read_or_recover;
 use crate::common::rwlock_write_or_recover;
 use crate::domain::ScrollDirection;
 use crate::infra::terminal::CursorPosition;
+use crate::infra::terminal::PtyHandle;
+use crate::infra::terminal::ReadEvent;
 use crate::infra::terminal::key_to_escape_sequence;
 use crate::infra::terminal::keycode_to_escape_sequence;
 use crate::infra::terminal::render_screen;
-use crate::infra::terminal::{PtyHandle, ReadEvent};
-use crate::usecases::ports::{
-    LivePreviewSnapshot, StreamCursor, StreamRead, StreamWaiter, StreamWaiterHandle,
-};
+use crate::usecases::ports::LivePreviewSnapshot;
+use crate::usecases::ports::StreamCursor;
+use crate::usecases::ports::StreamRead;
+use crate::usecases::ports::StreamWaiter;
+use crate::usecases::ports::StreamWaiterHandle;
 
 use super::pty_session::PtySession;
 use crate::infra::daemon::TerminalState;
@@ -1132,7 +1140,8 @@ impl SessionPersistence {
 
 #[cfg(test)]
 mod stream_tests {
-    use super::{StreamBuffer, StreamCursor};
+    use super::StreamBuffer;
+    use super::StreamCursor;
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
@@ -1223,10 +1232,14 @@ mod stream_tests {
 
 #[cfg(test)]
 mod pump_tests {
-    use super::{Session, StreamCursor, spawn_pump};
+    use super::Session;
+    use super::StreamCursor;
+    use super::spawn_pump;
     use crate::infra::terminal::PtyHandle;
-    use std::sync::{Arc, Mutex};
-    use std::time::{Duration, Instant};
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::time::Duration;
+    use std::time::Instant;
 
     #[cfg(unix)]
     #[test]

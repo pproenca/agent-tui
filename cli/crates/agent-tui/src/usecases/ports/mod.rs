@@ -1,3 +1,5 @@
+//! Port interfaces owned by use cases.
+
 pub mod clock;
 pub mod errors;
 pub mod metrics;
@@ -9,12 +11,20 @@ pub mod terminal_engine;
 pub(crate) mod test_support;
 
 pub use clock::Clock;
-pub use errors::{LivePreviewError, SessionError, SpawnErrorKind, TerminalError};
+pub use errors::LivePreviewError;
+pub use errors::SessionError;
+pub use errors::SpawnErrorKind;
+pub use errors::TerminalError;
 pub use metrics::MetricsProvider;
-pub use session_repository::{
-    LivePreviewSnapshot, SessionHandle, SessionOps, SessionRepository, StreamCursor, StreamRead,
-    StreamWaiter, StreamWaiterHandle,
-};
-pub use shutdown_notifier::{ShutdownNotifier, ShutdownNotifierHandle};
+pub use session_repository::LivePreviewSnapshot;
+pub use session_repository::SessionHandle;
+pub use session_repository::SessionOps;
+pub use session_repository::SessionRepository;
+pub use session_repository::StreamCursor;
+pub use session_repository::StreamRead;
+pub use session_repository::StreamWaiter;
+pub use session_repository::StreamWaiterHandle;
+pub use shutdown_notifier::ShutdownNotifier;
+pub use shutdown_notifier::ShutdownNotifierHandle;
 pub use system_info::SystemInfoProvider;
 pub use terminal_engine::TerminalEngine;

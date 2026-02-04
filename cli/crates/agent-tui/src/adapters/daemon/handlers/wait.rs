@@ -1,8 +1,10 @@
-use crate::adapters::rpc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::RpcRequest;
+use crate::adapters::rpc::RpcResponse;
 
 use super::common;
 use super::common::session_error_response;
-use crate::adapters::{parse_wait_input, wait_output_to_response};
+use crate::adapters::parse_wait_input;
+use crate::adapters::wait_output_to_response;
 use crate::usecases::WaitUseCase;
 
 pub fn handle_wait_uc<U: WaitUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {

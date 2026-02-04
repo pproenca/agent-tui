@@ -28,7 +28,12 @@ pub enum ClientError {
     InvalidResponse,
 
     #[error("Failed to send signal to process {pid}: {message}")]
-    SignalFailed { pid: u32, message: String },
+    SignalFailed {
+        pid: u32,
+        message: String,
+        #[source]
+        source: Option<std::io::Error>,
+    },
 
     #[error("Unexpected response: {message}")]
     UnexpectedResponse { message: String },
@@ -115,7 +120,7 @@ impl ClientError {
                 "category": "internal",
                 "retryable": false,
             }),
-            ClientError::SignalFailed { pid, message } => serde_json::json!({
+            ClientError::SignalFailed { pid, message, .. } => serde_json::json!({
                 "code": -32000,
                 "message": format!("Failed to send signal to process {}: {}", pid, message),
                 "category": "external",

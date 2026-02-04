@@ -1,4 +1,6 @@
-use crate::usecases::ports::{SessionError, SpawnErrorKind, TerminalError};
+use crate::usecases::ports::SessionError;
+use crate::usecases::ports::SpawnErrorKind;
+use crate::usecases::ports::TerminalError;
 
 #[derive(Debug, Clone, Default)]
 pub enum MockError {

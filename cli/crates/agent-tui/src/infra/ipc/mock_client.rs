@@ -4,7 +4,8 @@ use std::sync::Mutex;
 
 use serde_json::Value;
 
-use crate::infra::ipc::client::{DaemonClient, DaemonClientConfig};
+use crate::infra::ipc::client::DaemonClient;
+use crate::infra::ipc::client::DaemonClientConfig;
 use crate::infra::ipc::error::ClientError;
 
 type CallRecord = Vec<(String, Option<Value>)>;

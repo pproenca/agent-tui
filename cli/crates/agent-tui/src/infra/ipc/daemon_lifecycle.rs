@@ -1,9 +1,14 @@
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
+use crate::infra::ipc::DaemonClient;
+use crate::infra::ipc::DaemonClientConfig;
 use crate::infra::ipc::error::ClientError;
-use crate::infra::ipc::process::{ProcessController, ProcessStatus, Signal};
-use crate::infra::ipc::{DaemonClient, DaemonClientConfig, polling};
+use crate::infra::ipc::polling;
+use crate::infra::ipc::process::ProcessController;
+use crate::infra::ipc::process::ProcessStatus;
+use crate::infra::ipc::process::Signal;
 
 pub struct StopResult {
     pub pid: u32,
@@ -18,12 +23,14 @@ pub fn stop_daemon<P: ProcessController>(
 ) -> Result<StopResult, ClientError> {
     let mut warnings = Vec::new();
 
-    match controller
-        .check_process(pid)
-        .map_err(|e| ClientError::SignalFailed {
+    match controller.check_process(pid).map_err(|e| {
+        let message = e.to_string();
+        ClientError::SignalFailed {
             pid,
-            message: e.to_string(),
-        })? {
+            message,
+            source: Some(e),
+        }
+    })? {
         ProcessStatus::NotFound => {
             cleanup_daemon_files_with_warnings(socket_path, &mut warnings);
             return Err(ClientError::DaemonNotRunning);
@@ -32,37 +39,44 @@ pub fn stop_daemon<P: ProcessController>(
             return Err(ClientError::SignalFailed {
                 pid,
                 message: "Permission denied".to_string(),
+                source: None,
             });
         }
         ProcessStatus::Running => {}
     }
 
     let signal = if force { Signal::Kill } else { Signal::Term };
-    controller
-        .send_signal(pid, signal)
-        .map_err(|e| ClientError::SignalFailed {
+    controller.send_signal(pid, signal).map_err(|e| {
+        let message = e.to_string();
+        ClientError::SignalFailed {
             pid,
-            message: e.to_string(),
-        })?;
+            message,
+            source: Some(e),
+        }
+    })?;
 
     wait_for_socket_removal(socket_path);
 
-    match controller
-        .check_process(pid)
-        .map_err(|e| ClientError::SignalFailed {
+    match controller.check_process(pid).map_err(|e| {
+        let message = e.to_string();
+        ClientError::SignalFailed {
             pid,
-            message: e.to_string(),
-        })? {
+            message,
+            source: Some(e),
+        }
+    })? {
         ProcessStatus::Running => {
             return Err(ClientError::SignalFailed {
                 pid,
                 message: "Daemon did not shut down".to_string(),
+                source: None,
             });
         }
         ProcessStatus::NoPermission => {
             return Err(ClientError::SignalFailed {
                 pid,
                 message: "Permission denied".to_string(),
+                source: None,
             });
         }
         ProcessStatus::NotFound => {}
@@ -189,7 +203,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::ipc::process::mock::MockProcessController;
+    use crate::test_support::MockProcessController;
     use tempfile::tempdir;
 
     #[test]
@@ -241,7 +255,11 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ClientError::SignalFailed { pid: 1234, message }) if message.contains("did not shut down")
+            Err(ClientError::SignalFailed {
+                pid: 1234,
+                message,
+                ..
+            }) if message.contains("did not shut down")
         ));
     }
 
@@ -256,7 +274,8 @@ mod tests {
             result,
             Err(ClientError::SignalFailed {
                 pid: 1234,
-                message
+                message,
+                ..
             }) if message.contains("Permission denied")
         ));
     }
@@ -365,7 +384,8 @@ mod tests {
         assert!(mock.signals_sent().is_empty());
     }
 
-    use serde_json::{Value, json};
+    use serde_json::Value;
+    use serde_json::json;
     use std::sync::Mutex;
 
     struct MockDaemonClient {

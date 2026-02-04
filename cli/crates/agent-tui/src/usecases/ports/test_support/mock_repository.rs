@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use super::mock_error::MockError;
 use crate::domain::SessionId;
 use crate::domain::SessionInfo;
-use crate::usecases::ports::{SessionError, SessionHandle, SessionRepository};
+use crate::usecases::ports::SessionError;
+use crate::usecases::ports::SessionHandle;
+use crate::usecases::ports::SessionRepository;
 
 #[derive(Default)]
 pub struct MockSessionRepository {

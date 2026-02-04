@@ -1,5 +1,7 @@
 #![deny(clippy::all)]
 
+//! IPC layer for CLI/daemon coordination and lifecycle management.
+
 pub mod client;
 pub mod daemon_lifecycle;
 pub mod error;
@@ -20,7 +22,10 @@ pub use client::get_daemon_pid;
 pub use error::ClientError;
 #[cfg(test)]
 pub use mock_client::MockClient;
-pub use process::{ProcessController, ProcessStatus, Signal, UnixProcessController};
+pub use process::ProcessController;
+pub use process::ProcessStatus;
+pub use process::Signal;
+pub use process::UnixProcessController;
 pub use socket::socket_path;
 pub use transport::start_daemon_background;
 

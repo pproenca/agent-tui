@@ -1,3 +1,5 @@
+//! Interface adapters that translate external formats into use-case inputs.
+
 pub mod daemon;
 mod metrics_adapters;
 pub mod presenter;
@@ -7,5 +9,6 @@ mod snapshot_adapters;
 mod value_ext;
 
 pub use rpc::*;
-pub use rpc_value::{RpcValue, RpcValueRef};
+pub use rpc_value::RpcValue;
+pub use rpc_value::RpcValueRef;
 pub use value_ext::ValueExt;

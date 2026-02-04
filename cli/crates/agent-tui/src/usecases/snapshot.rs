@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::domain::{SnapshotInput, SnapshotOutput, core_cursor_to_domain};
+use crate::domain::SnapshotInput;
+use crate::domain::SnapshotOutput;
+use crate::domain::core_cursor_to_domain;
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionRepository;
 
@@ -51,7 +53,7 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::usecases::ports::test_support::MockSessionRepository;
+    use crate::test_support::MockSessionRepository;
 
     #[test]
     fn test_snapshot_usecase_returns_error_when_no_session() {

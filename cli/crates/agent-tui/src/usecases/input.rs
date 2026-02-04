@@ -1,10 +1,17 @@
 use std::sync::Arc;
 
-use crate::domain::{
-    KeydownInput, KeydownOutput, KeystrokeInput, KeystrokeOutput, KeyupInput, KeyupOutput,
-    ScrollInput, ScrollOutput, TypeInput, TypeOutput,
-};
-use crate::usecases::ports::{SessionError, SessionRepository};
+use crate::domain::KeydownInput;
+use crate::domain::KeydownOutput;
+use crate::domain::KeystrokeInput;
+use crate::domain::KeystrokeOutput;
+use crate::domain::KeyupInput;
+use crate::domain::KeyupOutput;
+use crate::domain::ScrollInput;
+use crate::domain::ScrollOutput;
+use crate::domain::TypeInput;
+use crate::domain::TypeOutput;
+use crate::usecases::ports::SessionError;
+use crate::usecases::ports::SessionRepository;
 
 pub trait KeystrokeUseCase: Send + Sync {
     fn execute(&self, input: KeystrokeInput) -> Result<KeystrokeOutput, SessionError>;
@@ -125,7 +132,8 @@ impl<R: SessionRepository> ScrollUseCase for ScrollUseCaseImpl<R> {
 mod tests {
     use super::*;
     use crate::domain::SessionId;
-    use crate::usecases::ports::test_support::{MockError, MockSessionRepository};
+    use crate::test_support::MockError;
+    use crate::test_support::MockSessionRepository;
 
     #[test]
     fn test_keystroke_usecase_returns_error_when_no_active_session() {

@@ -1,5 +1,7 @@
 #![deny(clippy::all)]
 
+//! Terminal/PTY infrastructure and rendering.
+
 pub mod error;
 mod pty;
 mod render;

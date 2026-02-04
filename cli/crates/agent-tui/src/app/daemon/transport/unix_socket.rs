@@ -1,12 +1,18 @@
-use std::io::{BufRead, BufReader, Write};
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Write;
 use std::os::unix::io::AsRawFd;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixListener;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::adapters::rpc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::RpcRequest;
+use crate::adapters::rpc::RpcResponse;
 
-use super::{TransportConnection, TransportError, TransportListener};
+use super::TransportConnection;
+use super::TransportError;
+use super::TransportListener;
 
 const MAX_REQUEST_SIZE: usize = 1024 * 1024;
 

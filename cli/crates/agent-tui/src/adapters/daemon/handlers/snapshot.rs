@@ -1,8 +1,10 @@
-use crate::adapters::rpc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::RpcRequest;
+use crate::adapters::rpc::RpcResponse;
 
 use super::common;
 use super::common::session_error_response;
-use crate::adapters::{parse_snapshot_input, snapshot_output_to_response};
+use crate::adapters::parse_snapshot_input;
+use crate::adapters::snapshot_output_to_response;
 use crate::usecases::SnapshotUseCase;
 
 pub fn handle_snapshot_uc<U: SnapshotUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {

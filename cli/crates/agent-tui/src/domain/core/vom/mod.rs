@@ -1,3 +1,5 @@
+//! Visual Object Model (VOM) primitives and analysis.
+
 pub mod classifier;
 pub mod patterns;
 pub mod segmentation;

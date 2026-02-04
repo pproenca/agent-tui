@@ -257,6 +257,9 @@ static TEST_LISTENER: std::sync::OnceLock<
 #[cfg(test)]
 pub(crate) static USE_DAEMON_START_STUB: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+#[cfg(test)]
+static DAEMON_START_TEST_REAPED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(test)]
 fn start_daemon_background_stub() -> Result<(), ClientError> {
@@ -289,7 +292,6 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
     use std::process::Command;
     use std::process::Stdio;
 
-    let exe = std::env::current_exe()?;
     let log_path = socket_path().with_extension("log");
 
     let log_file = match OpenOptions::new().create(true).append(true).open(&log_path) {
@@ -309,26 +311,28 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
         None => Stdio::null(),
     };
 
-    Command::new(exe)
-        .args(["daemon", "start", "--foreground"])
+    #[cfg(test)]
+    let test_command = std::env::var("AGENT_TUI_DAEMON_START_TEST_CMD").ok();
+    #[cfg(not(test))]
+    let test_command: Option<String> = None;
+
+    let mut command = if let Some(cmd) = test_command {
+        Command::new(cmd)
+    } else {
+        let exe = std::env::current_exe()?;
+        let mut cmd = Command::new(exe);
+        cmd.args(["daemon", "start", "--foreground"]);
+        cmd
+    };
+
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(stderr)
         .spawn()?;
 
-    let mut delay = polling::INITIAL_POLL_INTERVAL;
-    let transport = UnixSocketTransport;
-    for i in 0..polling::MAX_STARTUP_POLLS {
-        std::thread::sleep(delay);
-        if transport.is_daemon_running() {
-            return Ok(());
-        }
-
-        delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
-
-        if i == polling::MAX_STARTUP_POLLS - 1
-            && let Ok(log_content) = std::fs::read_to_string(&log_path)
-        {
+    let log_recent_failure = || {
+        if let Ok(log_content) = std::fs::read_to_string(&log_path) {
             let last_lines: String = log_content
                 .lines()
                 .rev()
@@ -339,8 +343,48 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
                 error!("Daemon failed to start. Recent log output:\n{}", last_lines);
             }
         }
+    };
+
+    let mut delay = polling::INITIAL_POLL_INTERVAL;
+    let transport = UnixSocketTransport;
+    for i in 0..polling::MAX_STARTUP_POLLS {
+        if let Ok(Some(_status)) = child.try_wait() {
+            #[cfg(test)]
+            {
+                DAEMON_START_TEST_REAPED.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            log_recent_failure();
+            return Err(ClientError::DaemonNotRunning);
+        }
+        std::thread::sleep(delay);
+        if transport.is_daemon_running() {
+            let _ = std::thread::Builder::new()
+                .name("daemon-reaper".to_string())
+                .spawn(move || {
+                    let _ = child.wait();
+                });
+            return Ok(());
+        }
+
+        delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
+
+        if i == polling::MAX_STARTUP_POLLS - 1 {
+            log_recent_failure();
+        }
     }
 
+    if let Ok(Some(_status)) = child.try_wait() {
+        #[cfg(test)]
+        {
+            DAEMON_START_TEST_REAPED.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        return Err(ClientError::DaemonNotRunning);
+    }
+    let _ = std::thread::Builder::new()
+        .name("daemon-reaper".to_string())
+        .spawn(move || {
+            let _ = child.wait();
+        });
     Err(ClientError::DaemonNotRunning)
 }
 
@@ -350,4 +394,60 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
         return start_daemon_background_stub();
     }
     start_daemon_background_impl()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::unwrap_used,
+        reason = "Test-only assertions use expect/unwrap for clarity."
+    )]
+
+    use super::*;
+    use std::sync::atomic::Ordering;
+    use tempfile::TempDir;
+
+    struct EnvGuard {
+        key: &'static str,
+        value: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: impl Into<String>) -> Self {
+            let value = value.into();
+            let prev = std::env::var(key).ok();
+            // SAFETY: test-only environment mutation for isolated test setup.
+            unsafe {
+                std::env::set_var(key, &value);
+            }
+            Self { key, value: prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: test-only environment restoration after mutation.
+            unsafe {
+                match self.value.take() {
+                    Some(prev) => std::env::set_var(self.key, prev),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn start_daemon_background_reaps_early_exit() {
+        let temp_dir = TempDir::new_in("/tmp").expect("Failed to create temp dir");
+        let socket_path = temp_dir.path().join("daemon.sock");
+        let _socket_guard = EnvGuard::set("AGENT_TUI_SOCKET", socket_path.display().to_string());
+        let _cmd_guard = EnvGuard::set("AGENT_TUI_DAEMON_START_TEST_CMD", "true");
+
+        DAEMON_START_TEST_REAPED.store(false, Ordering::SeqCst);
+
+        let result = start_daemon_background_impl();
+        assert!(matches!(result, Err(ClientError::DaemonNotRunning)));
+        assert!(DAEMON_START_TEST_REAPED.load(Ordering::SeqCst));
+    }
 }

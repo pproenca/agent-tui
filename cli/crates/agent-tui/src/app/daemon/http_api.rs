@@ -25,6 +25,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc as std_mpsc;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -149,7 +150,16 @@ impl ApiServerHandle {
             let _ = tx.send(true);
         }
         if let Some(join) = self.join.take() {
-            let _ = join.join();
+            let (done_tx, done_rx) = std_mpsc::channel();
+            let _ = thread::Builder::new()
+                .name("api-shutdown".to_string())
+                .spawn(move || {
+                    let _ = join.join();
+                    let _ = done_tx.send(());
+                });
+            if done_rx.recv_timeout(Duration::from_secs(2)).is_err() {
+                warn!("API server did not stop within shutdown timeout");
+            }
         }
         if !self.state_path.as_os_str().is_empty() {
             let _ = std::fs::remove_file(&self.state_path);

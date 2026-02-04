@@ -1,7 +1,7 @@
 pub mod params;
 pub mod types;
 
-pub use types::{ErrorData, RpcRequest, RpcResponse, RpcServerError};
+pub use types::{RpcRequest, RpcResponse};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;

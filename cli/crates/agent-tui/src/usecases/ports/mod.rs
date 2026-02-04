@@ -15,6 +15,6 @@ pub use session_repository::{
     LivePreviewSnapshot, SessionHandle, SessionOps, SessionRepository, StreamCursor, StreamRead,
     StreamWaiter, StreamWaiterHandle,
 };
-pub use shutdown_notifier::{NoopShutdownNotifier, ShutdownNotifier, ShutdownNotifierHandle};
+pub use shutdown_notifier::{ShutdownNotifier, ShutdownNotifierHandle};
 pub use system_info::SystemInfoProvider;
 pub use terminal_engine::TerminalEngine;

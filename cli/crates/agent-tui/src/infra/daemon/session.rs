@@ -28,6 +28,7 @@ use bytes::Bytes;
 use chrono::DateTime;
 use chrono::Local;
 use chrono::NaiveDateTime;
+use chrono::TimeZone;
 use chrono::Utc;
 use crossbeam_channel as channel;
 use serde::Deserialize;
@@ -1370,11 +1371,11 @@ fn verify_persisted_session_identity(session: &PersistedSession) -> ProcessIdent
         return ProcessIdentity::Mismatch;
     }
 
-    if let (Some(cmdline), Some(expected)) = (info.cmdline.as_ref(), expected_command(&session.command))
+    if let (Some(cmdline), Some(expected)) =
+        (info.cmdline.as_ref(), expected_command(&session.command))
+        && !cmdline.contains(expected)
     {
-        if !cmdline.contains(expected) {
-            return ProcessIdentity::Unknown;
-        }
+        return ProcessIdentity::Unknown;
     }
 
     ProcessIdentity::Match
@@ -1416,8 +1417,7 @@ fn process_info_from_proc(pid: u32) -> Option<ProcessInfo> {
     let now = Utc::now();
     let boot_time = now - chrono::Duration::milliseconds((uptime_secs * 1000.0) as i64);
     let start_secs = start_ticks as f64 / ticks_per_second as f64;
-    let start_time =
-        boot_time + chrono::Duration::milliseconds((start_secs * 1000.0) as i64);
+    let start_time = boot_time + chrono::Duration::milliseconds((start_secs * 1000.0) as i64);
 
     let cmdline_path = format!("/proc/{pid}/cmdline");
     let cmdline = fs::read(cmdline_path)

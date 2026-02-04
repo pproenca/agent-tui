@@ -4,6 +4,7 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
+use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixListener;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -73,6 +74,10 @@ impl UnixSocketConnection {
             reader: SizeLimitedReader::new(BufReader::new(reader_stream), MAX_REQUEST_SIZE),
             writer: stream,
         })
+    }
+
+    pub fn raw_fd(&self) -> RawFd {
+        self.writer.as_raw_fd()
     }
 }
 

@@ -14,9 +14,11 @@ use libc::POLLIN;
 use libc::poll;
 use libc::pollfd;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::io::Read;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
+use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixStream;
 use tracing::debug;
 use tracing::error;
@@ -120,6 +122,7 @@ pub struct DaemonServer {
     session_manager: Arc<SessionManager>,
     usecases: UseCaseContainer<SessionManager>,
     active_connections: Arc<AtomicUsize>,
+    active_fds: Arc<std::sync::Mutex<HashSet<RawFd>>>,
     connection_wait_lock: Arc<std::sync::Mutex<()>>,
     connection_cv: Arc<std::sync::Condvar>,
     metrics: Arc<DaemonMetrics>,
@@ -230,13 +233,14 @@ impl DaemonServer {
             system_info,
             clock,
             Arc::clone(&active_connections),
-            shutdown_flag,
+            Arc::clone(&shutdown_flag),
             shutdown_notifier,
         );
         Self {
             session_manager,
             usecases,
             active_connections,
+            active_fds: Arc::new(std::sync::Mutex::new(HashSet::new())),
             connection_wait_lock: Arc::new(std::sync::Mutex::new(())),
             connection_cv: Arc::new(std::sync::Condvar::new()),
             metrics,
@@ -253,6 +257,29 @@ impl DaemonServer {
         for info in sessions {
             if let Err(e) = self.session_manager.kill(info.id.as_str()) {
                 warn!(session_id = %info.id, error = %e, "Failed to kill session during shutdown");
+            }
+        }
+    }
+
+    fn register_connection(&self, fd: RawFd) {
+        let mut fds = self.active_fds.lock().unwrap_or_else(|e| e.into_inner());
+        fds.insert(fd);
+    }
+
+    fn unregister_connection(&self, fd: RawFd) {
+        let mut fds = self.active_fds.lock().unwrap_or_else(|e| e.into_inner());
+        fds.remove(&fd);
+    }
+
+    fn shutdown_connections(&self) {
+        let fds = {
+            let guard = self.active_fds.lock().unwrap_or_else(|e| e.into_inner());
+            guard.iter().copied().collect::<Vec<_>>()
+        };
+        for fd in fds {
+            // SAFETY: shutting down a socket fd is safe and idempotent for active connections.
+            unsafe {
+                libc::shutdown(fd, libc::SHUT_RDWR);
             }
         }
     }
@@ -653,9 +680,11 @@ impl DaemonServer {
         }
     }
 
-    fn handle_client(self: Arc<Self>, mut conn: impl TransportConnection + 'static) {
+    fn handle_client(self: Arc<Self>, mut conn: UnixSocketConnection) {
         let idle_timeout = DaemonConfig::from_env().idle_timeout();
         let conn_id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
+        let conn_fd = conn.raw_fd();
+        self.register_connection(conn_fd);
         let conn_span = tracing::info_span!("daemon_connection", conn_id);
         let _conn_guard = conn_span.enter();
         debug!(conn_id, "Client connected");
@@ -721,12 +750,12 @@ impl DaemonServer {
             self.metrics.record_request();
 
             if method == "attach_stream" {
-                self.spawn_stream_thread(conn, request, StreamKind::Attach, conn_id);
+                self.spawn_stream_thread(conn, request, StreamKind::Attach, conn_id, conn_fd);
                 return;
             }
 
             if method == "live_preview_stream" {
-                self.spawn_stream_thread(conn, request, StreamKind::LivePreview, conn_id);
+                self.spawn_stream_thread(conn, request, StreamKind::LivePreview, conn_id, conn_fd);
                 return;
             }
 
@@ -748,15 +777,17 @@ impl DaemonServer {
                 }
             }
         }
+        self.unregister_connection(conn_fd);
         debug!(conn_id, "Client disconnected");
     }
 
-    fn spawn_stream_thread<C: TransportConnection + 'static>(
+    fn spawn_stream_thread(
         self: &Arc<Self>,
-        conn: C,
+        conn: UnixSocketConnection,
         request: crate::adapters::rpc::RpcRequest,
         kind: StreamKind,
         conn_id: u64,
+        conn_fd: RawFd,
     ) {
         let server = Arc::clone(self);
         let method = match kind {
@@ -787,6 +818,7 @@ impl DaemonServer {
                     if remaining == 0 {
                         server_for_thread.connection_cv.notify_all();
                     }
+                    server_for_thread.unregister_connection(conn_fd);
                     return;
                 };
                 let stream_result = match kind {
@@ -817,6 +849,7 @@ impl DaemonServer {
                 if remaining == 0 {
                     server_for_thread.connection_cv.notify_all();
                 }
+                server_for_thread.unregister_connection(conn_fd);
             });
 
         if spawn_result.is_err() {
@@ -839,6 +872,7 @@ impl DaemonServer {
             if remaining == 0 {
                 server.connection_cv.notify_all();
             }
+            server.unregister_connection(conn_fd);
         }
     }
 }
@@ -1045,8 +1079,64 @@ pub fn start_daemon() -> Result<(), DaemonError> {
     run_accept_loop(&listener, &pool, &shutdown, &mut waker);
 
     info!("Shutting down daemon...");
+    server.shutdown_connections();
     wait_for_connections(&server, 5);
     cleanup(&socket_path, &lock_path, &server, pool, api_handle);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::unwrap_used,
+        reason = "Test-only assertions use expect/unwrap for clarity."
+    )]
+
+    use super::*;
+    use crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier;
+    use std::sync::mpsc;
+
+    #[test]
+    fn shutdown_connections_closes_idle_client() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
+            Arc::new(NoopShutdownNotifier);
+        let server = Arc::new(DaemonServer::with_config(
+            DaemonConfig::default(),
+            Arc::clone(&shutdown),
+            notifier,
+        ));
+
+        let (client, server_stream) = UnixStream::pair().expect("failed to create unix pair");
+        let conn = UnixSocketConnection::new(server_stream).expect("failed to wrap connection");
+
+        let (tx, rx) = mpsc::channel();
+        let server_clone = Arc::clone(&server);
+        std::thread::spawn(move || {
+            server_clone.handle_client(conn);
+            let _ = tx.send(());
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            if !server.active_fds.lock().unwrap().is_empty() {
+                break;
+            }
+            if Instant::now() >= deadline {
+                panic!("connection was not registered");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        server.shutdown_connections();
+
+        assert!(
+            rx.recv_timeout(Duration::from_secs(1)).is_ok(),
+            "client handler did not exit after shutdown"
+        );
+
+        drop(client);
+    }
 }

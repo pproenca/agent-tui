@@ -26,6 +26,8 @@ use tracing::warn;
 
 use bytes::Bytes;
 use chrono::DateTime;
+use chrono::Local;
+use chrono::NaiveDateTime;
 use chrono::Utc;
 use crossbeam_channel as channel;
 use serde::Deserialize;
@@ -57,6 +59,10 @@ pub use crate::infra::daemon::SessionError;
 
 const STREAM_MAX_BUFFER_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const PUMP_FLUSH_TIMEOUT: Duration = Duration::from_millis(50);
+const STARTUP_TERMINATE_TIMEOUT: Duration = Duration::from_millis(500);
+const STARTUP_KILL_TIMEOUT: Duration = Duration::from_millis(500);
+const STARTUP_KILL_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const STARTUP_PID_START_TOLERANCE_SECS: i64 = 30;
 
 pub fn generate_session_id() -> SessionId {
     SessionId::new(Uuid::new_v4().to_string()[..8].to_string())
@@ -647,10 +653,12 @@ impl Session {
             }
             ReadEvent::Eof => {
                 self.stream.close(None);
+                let _ = self.pty.is_running();
                 false
             }
             ReadEvent::Error(error) => {
                 self.stream.close(Some(error));
+                let _ = self.pty.is_running();
                 false
             }
         }
@@ -1124,16 +1132,53 @@ impl SessionPersistence {
         let sessions = self.load_unlocked();
         let mut cleaned = 0;
 
-        let active_sessions: Vec<PersistedSession> = sessions
-            .into_iter()
-            .filter(|s| {
-                let running = is_process_running(s.pid);
-                if !running {
+        let mut active_sessions = Vec::new();
+        for session in sessions {
+            if session.pid == 0 {
+                cleaned += 1;
+                continue;
+            }
+
+            reap_child_if_any(session.pid);
+            if !is_process_running(session.pid) {
+                cleaned += 1;
+                continue;
+            }
+
+            match verify_persisted_session_identity(&session) {
+                ProcessIdentity::Match => {
+                    let _ = terminate_process_group(session.pid);
+                    reap_child_if_any(session.pid);
+                    if !is_process_running(session.pid) {
+                        cleaned += 1;
+                        continue;
+                    }
+
+                    warn!(
+                        session_id = %session.id,
+                        pid = session.pid,
+                        "Failed to terminate persisted session; leaving entry"
+                    );
+                    active_sessions.push(session);
+                }
+                ProcessIdentity::Mismatch => {
+                    warn!(
+                        session_id = %session.id,
+                        pid = session.pid,
+                        "Persisted PID does not match session identity; removing entry without terminating"
+                    );
                     cleaned += 1;
                 }
-                running
-            })
-            .collect();
+                ProcessIdentity::Unknown => {
+                    warn!(
+                        session_id = %session.id,
+                        pid = session.pid,
+                        "Unable to verify persisted PID identity; skipping termination"
+                    );
+                    active_sessions.push(session);
+                }
+            }
+        }
 
         self.save_unlocked(&active_sessions)?;
         Ok(cleaned)
@@ -1288,6 +1333,176 @@ impl Default for SessionPersistence {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessIdentity {
+    Match,
+    Mismatch,
+    Unknown,
+}
+
+struct ProcessInfo {
+    start_time: Option<DateTime<Utc>>,
+    cmdline: Option<String>,
+}
+
+fn verify_persisted_session_identity(session: &PersistedSession) -> ProcessIdentity {
+    if session.pid == std::process::id() {
+        return ProcessIdentity::Mismatch;
+    }
+
+    let created_at = match DateTime::parse_from_rfc3339(&session.created_at) {
+        Ok(parsed) => parsed.with_timezone(&Utc),
+        Err(_) => return ProcessIdentity::Unknown,
+    };
+
+    let info = match process_info(session.pid) {
+        Some(info) => info,
+        None => return ProcessIdentity::Unknown,
+    };
+
+    let start_time = match info.start_time {
+        Some(start_time) => start_time,
+        None => return ProcessIdentity::Unknown,
+    };
+
+    let delta_seconds = (start_time - created_at).num_seconds().abs();
+    if delta_seconds > STARTUP_PID_START_TOLERANCE_SECS {
+        return ProcessIdentity::Mismatch;
+    }
+
+    if let (Some(cmdline), Some(expected)) = (info.cmdline.as_ref(), expected_command(&session.command))
+    {
+        if !cmdline.contains(expected) {
+            return ProcessIdentity::Unknown;
+        }
+    }
+
+    ProcessIdentity::Match
+}
+
+fn expected_command(command: &str) -> Option<&str> {
+    let trimmed = command.trim();
+    if trimmed.is_empty() || trimmed == "(locked)" {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn process_info(pid: u32) -> Option<ProcessInfo> {
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(info) = process_info_from_proc(pid) {
+            return Some(info);
+        }
+    }
+
+    process_info_from_ps(pid)
+}
+
+#[cfg(target_os = "linux")]
+fn process_info_from_proc(pid: u32) -> Option<ProcessInfo> {
+    let stat_path = format!("/proc/{pid}/stat");
+    let stat = fs::read_to_string(stat_path).ok()?;
+    let start_ticks = parse_proc_start_time(&stat)?;
+
+    let ticks_per_second = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    if ticks_per_second <= 0 {
+        return None;
+    }
+
+    let uptime = fs::read_to_string("/proc/uptime").ok()?;
+    let uptime_secs: f64 = uptime.split_whitespace().next()?.parse().ok()?;
+    let now = Utc::now();
+    let boot_time = now - chrono::Duration::milliseconds((uptime_secs * 1000.0) as i64);
+    let start_secs = start_ticks as f64 / ticks_per_second as f64;
+    let start_time =
+        boot_time + chrono::Duration::milliseconds((start_secs * 1000.0) as i64);
+
+    let cmdline_path = format!("/proc/{pid}/cmdline");
+    let cmdline = fs::read(cmdline_path)
+        .ok()
+        .and_then(|bytes| parse_cmdline_bytes(&bytes));
+
+    Some(ProcessInfo {
+        start_time: Some(start_time),
+        cmdline,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn parse_proc_start_time(stat: &str) -> Option<u64> {
+    let end = stat.rfind(')')?;
+    let after = stat.get(end + 2..)?;
+    let mut fields = after.split_whitespace();
+    let start_time = fields.nth(19)?;
+    start_time.parse().ok()
+}
+
+fn process_info_from_ps(pid: u32) -> Option<ProcessInfo> {
+    let output = std::process::Command::new("ps")
+        .arg("-o")
+        .arg("lstart=")
+        .arg("-o")
+        .arg("command=")
+        .arg("-p")
+        .arg(pid.to_string())
+        .env("LC_ALL", "C")
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let line = stdout.lines().next().unwrap_or("").trim();
+    if line.is_empty() {
+        return None;
+    }
+
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    if tokens.len() < 5 {
+        return None;
+    }
+
+    let day = if tokens[2].len() == 1 {
+        format!("0{}", tokens[2])
+    } else {
+        tokens[2].to_string()
+    };
+    let lstart = format!(
+        "{} {} {} {} {}",
+        tokens[0], tokens[1], day, tokens[3], tokens[4]
+    );
+    let naive = NaiveDateTime::parse_from_str(&lstart, "%a %b %d %H:%M:%S %Y").ok()?;
+    let local_dt = Local.from_local_datetime(&naive).single()?;
+
+    let cmdline = if tokens.len() > 5 {
+        Some(tokens[5..].join(" "))
+    } else {
+        None
+    };
+
+    Some(ProcessInfo {
+        start_time: Some(local_dt.with_timezone(&Utc)),
+        cmdline,
+    })
+}
+
+fn parse_cmdline_bytes(bytes: &[u8]) -> Option<String> {
+    if bytes.is_empty() {
+        return None;
+    }
+    let mut cmdline = String::from_utf8_lossy(bytes).replace('\0', " ");
+    cmdline = cmdline.trim().to_string();
+    if cmdline.is_empty() {
+        None
+    } else {
+        Some(cmdline)
+    }
+}
+
 fn is_process_running(pid: u32) -> bool {
     // SAFETY: `kill` with signal 0 performs a permission check without sending any signal.
     // This is a standard POSIX idiom to check if a process exists. The pid is validated
@@ -1297,6 +1512,74 @@ fn is_process_running(pid: u32) -> bool {
         Err(_) => return false,
     };
     unsafe { libc::kill(pid_t, 0) == 0 }
+}
+
+#[cfg(unix)]
+fn reap_child_if_any(pid: u32) {
+    let pid_t: libc::pid_t = match pid.try_into() {
+        Ok(pid_t) => pid_t,
+        Err(_) => return,
+    };
+    let mut status: libc::c_int = 0;
+    loop {
+        // SAFETY: waitpid is safe with a valid pid and status pointer.
+        let rc = unsafe { libc::waitpid(pid_t, &mut status, libc::WNOHANG) };
+        if rc == -1 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+        }
+        break;
+    }
+}
+
+#[cfg(not(unix))]
+fn reap_child_if_any(_pid: u32) {}
+
+fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if !is_process_running(pid) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return !is_process_running(pid);
+        }
+        std::thread::sleep(STARTUP_KILL_POLL_INTERVAL);
+    }
+}
+
+fn terminate_process_group(pid: u32) -> bool {
+    let pid_t: libc::pid_t = match pid.try_into() {
+        Ok(pid_t) => pid_t,
+        Err(_) => return false,
+    };
+
+    // SAFETY: negative pid targets the process group created for the session leader.
+    let rc = unsafe { libc::kill(-pid_t, libc::SIGTERM) };
+    if rc == 0 && wait_for_process_exit(pid, STARTUP_TERMINATE_TIMEOUT) {
+        return true;
+    }
+    if rc != 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::ESRCH) {
+            return true;
+        }
+    }
+
+    let rc = unsafe { libc::kill(-pid_t, libc::SIGKILL) };
+    if rc == 0 {
+        return wait_for_process_exit(pid, STARTUP_KILL_TIMEOUT);
+    }
+    if rc != 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::ESRCH) {
+            return true;
+        }
+    }
+
+    false
 }
 
 impl From<&SessionInfo> for PersistedSession {
@@ -1385,5 +1668,71 @@ mod tests {
         ));
 
         let _ = manager.kill(&session_id);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_startup_cleanup_kills_persisted_session_process_group() {
+        use std::os::unix::process::CommandExt;
+        use std::process::Command;
+
+        let temp_home = tempdir().unwrap();
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg("sleep 10");
+        // SAFETY: pre-exec runs in the child before exec.
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+
+        let mut child = cmd.spawn().expect("failed to spawn test child");
+        let pid = child.id();
+        assert!(pid > 0);
+
+        let persistence = SessionPersistence::new();
+        persistence
+            .add_session(PersistedSession {
+                id: "orphan".to_string(),
+                command: "sleep".to_string(),
+                pid,
+                created_at: Utc::now().to_rfc3339(),
+                cols: 80,
+                rows: 24,
+            })
+            .expect("failed to persist session");
+
+        let _manager = SessionManager::with_max_sessions(1);
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while is_process_running(pid) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        if is_process_running(pid) {
+            let pid_t: libc::pid_t = pid.try_into().unwrap_or(0);
+            if pid_t > 0 {
+                // SAFETY: negative pid targets the process group for cleanup.
+                unsafe {
+                    libc::kill(-pid_t, libc::SIGKILL);
+                }
+            }
+        }
+
+        let _ = child.wait();
+
+        assert!(!is_process_running(pid));
+
+        let sessions = persistence.load();
+        assert!(sessions.is_empty());
     }
 }

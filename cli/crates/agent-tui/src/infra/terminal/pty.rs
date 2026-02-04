@@ -8,6 +8,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
+use std::time::Instant;
 
 use crossbeam_channel as channel;
 use crossterm::event::KeyCode;
@@ -39,6 +40,10 @@ pub struct PtyHandle {
     read_closed: bool,
     read_error: Option<String>,
 }
+
+const TERMINATE_TIMEOUT: Duration = Duration::from_millis(500);
+const KILL_TIMEOUT: Duration = Duration::from_millis(500);
+const KILL_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
 impl Drop for PtyHandle {
     fn drop(&mut self) {
@@ -320,10 +325,37 @@ impl PtyHandle {
             return Ok(());
         }
 
+        #[cfg(unix)]
+        {
+            if let Some(pid) = self.child.process_id() {
+                if let Err(err) = signal_process_group(pid, libc::SIGTERM) {
+                    if let Err(kill_err) = self.child.kill() {
+                        return Err(PtyError::Spawn {
+                            reason: format!(
+                                "failed to signal process group ({}) and kill child: {}",
+                                err, kill_err
+                            ),
+                            kind: SpawnErrorKind::Other,
+                        });
+                    }
+                    let _ = self.wait_for_exit(KILL_TIMEOUT);
+                    return Ok(());
+                } else if self.wait_for_exit(TERMINATE_TIMEOUT) {
+                    return Ok(());
+                }
+
+                let _ = signal_process_group(pid, libc::SIGKILL);
+                let _ = self.wait_for_exit(KILL_TIMEOUT);
+                return Ok(());
+            }
+        }
+
         self.child.kill().map_err(|e| PtyError::Spawn {
             reason: e.to_string(),
             kind: SpawnErrorKind::Other,
-        })
+        })?;
+        let _ = self.wait_for_exit(KILL_TIMEOUT);
+        Ok(())
     }
 
     pub(crate) fn take_read_rx(&mut self) -> Option<channel::Receiver<ReadEvent>> {
@@ -332,6 +364,22 @@ impl PtyHandle {
 }
 
 impl PtyHandle {
+    fn wait_for_exit(&mut self, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => return true,
+                Ok(None) => {}
+                Err(_) => return false,
+            }
+
+            if Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(KILL_POLL_INTERVAL);
+        }
+    }
+
     fn handle_read_event(&mut self, event: ReadEvent) {
         match event {
             ReadEvent::Data(data) => self.read_buffer.extend(data),
@@ -341,6 +389,23 @@ impl PtyHandle {
                 self.read_error = Some(error);
             }
         }
+    }
+}
+
+#[cfg(unix)]
+fn signal_process_group(pid: u32, signal: libc::c_int) -> io::Result<()> {
+    let pid_t: libc::pid_t = pid
+        .try_into()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid pid"))?;
+    // SAFETY: negative pid sends the signal to the process group.
+    let rc = unsafe { libc::kill(-pid_t, signal) };
+    if rc == 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    match err.raw_os_error() {
+        Some(code) if code == libc::ESRCH => Ok(()),
+        _ => Err(err),
     }
 }
 

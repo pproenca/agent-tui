@@ -95,7 +95,7 @@ jobs:
 
           VERSION="$(printf '%s' "$VERSION" | tr -d '\r\n')"
 
-          if ! [[ "$VERSION" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+([.-].+)?$ ]]; then
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].+)?$ ]]; then
             echo "::error::Invalid version: $VERSION"
             exit 1
           fi

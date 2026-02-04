@@ -9,7 +9,7 @@ Use this file when you need a complete, end-to-end command sequence.
 3) First snapshot (text or structure):
    - `agent-tui --session <id> screenshot --format json`
 4) Act based on the latest screen:
-   - `agent-tui --session <id> input "value"`
+   - `agent-tui --session <id> type "value"`
    - `agent-tui --session <id> press Enter`
    - `agent-tui --session <id> scroll down 5`
 5) Wait for expected state:
@@ -22,7 +22,7 @@ Use this file when you need a complete, end-to-end command sequence.
 1) `agent-tui run <app>`
 2) `agent-tui --session <id> screenshot --format json`
 3) Focus the input (if needed): `agent-tui --session <id> press Tab`
-4) Type value: `agent-tui --session <id> input "my-value"`
+4) Type value: `agent-tui --session <id> type "my-value"`
 5) Submit: `agent-tui --session <id> press Enter`
 6) Wait for success: `agent-tui --session <id> wait "Success" --assert`
 7) Cleanup: `agent-tui --session <id> kill`
@@ -31,7 +31,7 @@ Use this file when you need a complete, end-to-end command sequence.
 1) Start: `agent-tui run <app>`
 2) Stabilize: `agent-tui --session <id> wait --stable`
 3) Snapshot: `agent-tui --session <id> screenshot --format json`
-4) Act: `agent-tui --session <id> press Enter` or `agent-tui --session <id> input "text"`
+4) Act: `agent-tui --session <id> press Enter` or `agent-tui --session <id> type "text"`
 5) Re-stabilize: `agent-tui --session <id> wait --stable`
 6) Re-snapshot and continue.
 7) Cleanup: `agent-tui --session <id> kill`

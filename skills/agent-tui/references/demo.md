@@ -1,6 +1,6 @@
 # Live Demo Script
 
-Goal: show a real terminal app launch, capture screenshots, send input, and verify outcomes in real-time.
+Goal: show a real terminal app launch, capture screenshots, send keystrokes, and verify outcomes in real-time.
 
 ## Suggested Demo (htop)
 

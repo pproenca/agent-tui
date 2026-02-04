@@ -13,7 +13,7 @@ Use this file when you need a quick command choice based on intent.
 
 ## Action Strategy
 - Navigate/confirm: `press` (keys or sequences).
-- Enter text: `input "text"` (or `type "text"`).
+- Enter text: `type "text"`.
 - Move viewport: `scroll <dir> [amount]`.
 
 ## Reliability

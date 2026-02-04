@@ -51,8 +51,9 @@ Use this file when you need complete CLI coverage and exact options.
 
 ### Sessions
 - `agent-tui sessions` (list)
+- `agent-tui sessions list`
 - `agent-tui sessions show <id>`
-- `agent-tui sessions switch <id>` (alias: `select`)
+- `agent-tui sessions switch <id>`
 - `agent-tui sessions attach` (use `-s <id>` to target)
   - `-T, --no-tty`: stream only.
   - `--detach-keys <keys>`: custom detach sequence (env: `AGENT_TUI_DETACH_KEYS`).
@@ -60,12 +61,14 @@ Use this file when you need complete CLI coverage and exact options.
 - `agent-tui sessions status`
 
 ### Live Preview
-- `agent-tui live start [--open]`
+- `agent-tui live start [--open] [--browser <cmd>]`
 - `agent-tui live status`
 - `agent-tui live stop`
 - Options:
   - `--open`: open UI in browser (uses `AGENT_TUI_UI_URL` if set).
   - `--browser <cmd>`: override `$BROWSER`.
+- Deprecated:
+  - `--listen`, `--allow-remote`, `--max-viewers` (use env vars and restart the daemon).
 
 ### Daemon
 - `agent-tui daemon start [--foreground]`
@@ -74,8 +77,10 @@ Use this file when you need complete CLI coverage and exact options.
 - `agent-tui daemon restart`
 
 ### Debugging
+- `agent-tui health`
 - `agent-tui env`
 - `agent-tui version`
+- `agent-tui help`
 
 ### Shell Completions
 - `agent-tui completions <bash|zsh|fish|powershell|elvish>`
@@ -89,4 +94,9 @@ Use this file when you need complete CLI coverage and exact options.
 - `AGENT_TUI_API_STATE`: state file path (default: `~/.agent-tui/api.json`).
 - `AGENT_TUI_API_MAX_CONNECTIONS`: max live connections.
 - `AGENT_TUI_UI_URL`: base URL to open with `live start --open`.
+- `AGENT_TUI_SESSION_STORE`: session metadata log path (default: `~/.agent-tui/sessions.jsonl`).
+- `AGENT_TUI_LOG`: log file path (optional).
+- `AGENT_TUI_LOG_FORMAT`: log format (text or json; default: text).
+- `AGENT_TUI_LOG_STREAM`: log output stream (stderr or stdout; default: stderr).
 - `BROWSER`: browser command (overridden by `--browser`).
+- `PORT`: fallback port for API listen when `AGENT_TUI_API_LISTEN` is unset.

@@ -484,7 +484,7 @@ impl Application {
                 .context("failed to connect to daemon")?,
         };
 
-        if !matches!(cli.command, Commands::Daemon(_) | Commands::Version) {
+        if !matches!(cli.command, Commands::Daemon(_) | Commands::Version | Commands::Health) {
             check_version_mismatch(&mut client);
         }
 
@@ -506,6 +506,10 @@ impl Application {
                 Ok(true)
             }
             Commands::Daemon(DaemonCommand::Status) => {
+                self.handle_daemon_status_without_autostart(cli)?;
+                Ok(true)
+            }
+            Commands::Health => {
                 self.handle_daemon_status_without_autostart(cli)?;
                 Ok(true)
             }
@@ -748,6 +752,7 @@ impl Application {
             },
 
             Commands::Version => handlers::handle_version(ctx)?,
+            Commands::Health => handlers::handle_health(ctx, verbose)?,
             Commands::Env => handlers::handle_env(ctx.format)?,
         }
         Ok(())

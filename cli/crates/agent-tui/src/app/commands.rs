@@ -86,7 +86,7 @@ pub struct Cli {
     )]
     pub format: OutputFormat,
 
-    /// Shorthand for --format json
+    /// Shorthand for --format json (overrides --format if both are set)
     #[arg(long, global = true, help_heading = "Output Options")]
     pub json: bool,
 
@@ -204,6 +204,10 @@ EXAMPLES:
     /// Restart the current session
     #[command(long_about = "\
 Restart the current session command, creating a new session.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui restart
+    agent-tui --session abc123 restart")]
     Restart,
     /// Send key press(es) to the terminal (supports modifier hold/release)
     #[command(after_long_help = "\
@@ -218,7 +222,7 @@ EXAMPLES:
     agent-tui press Shift --release")]
     Press {
         /// Keys to press (e.g., Enter, Ctrl+C, ArrowDown)
-        #[arg(required = true, value_name = "KEY")]
+        #[arg(required = true, value_name = "KEY", allow_hyphen_values = true)]
         keys: Vec<String>,
 
         /// Hold a modifier key down (Ctrl, Alt, Shift, Meta)
@@ -237,7 +241,7 @@ EXAMPLES:
     agent-tui type \"user@example.com\"")]
     Type {
         /// Text to type
-        #[arg(value_name = "TEXT")]
+        #[arg(value_name = "TEXT", allow_hyphen_values = true)]
         text: String,
     },
 
@@ -315,6 +319,7 @@ EXAMPLES:
     agent-tui sessions cleanup            # Remove dead sessions
     agent-tui sessions cleanup --all      # Remove all sessions
     agent-tui sessions status             # Show daemon health")]
+    #[command(after_help = "Default action: list (same as `sessions list`).")]
     Sessions {
         #[command(subcommand)]
         command: Option<SessionsCommand>,
@@ -342,6 +347,7 @@ EXAMPLES:
     agent-tui live start
     agent-tui live status
     agent-tui live stop")]
+    #[command(after_help = "Default action: info (same as `live start`).")]
     Live {
         #[command(subcommand)]
         command: Option<LiveCommand>,
@@ -356,7 +362,22 @@ Show detailed version information.
 
 Shows version info for both the CLI binary and the running daemon.
 Useful for debugging and ensuring CLI/daemon compatibility.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui version
+    agent-tui --format json version")]
     Version,
+
+    /// Show daemon health status
+    #[command(long_about = "\
+Show daemon health status and version information.
+
+Alias for `agent-tui daemon status`.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui health
+    agent-tui --format json health")]
+    Health,
 
     /// Show environment diagnostics
     #[command(long_about = "\
@@ -413,6 +434,7 @@ INSTALLATION:
 #[derive(Debug, Subcommand)]
 pub enum SessionsCommand {
     /// List active sessions
+    #[command(alias = "ls")]
     List,
 
     /// Show details for a specific session
@@ -456,6 +478,7 @@ pub enum SessionsCommand {
 #[derive(Debug, Subcommand)]
 pub enum LiveCommand {
     /// Show the live preview API details
+    #[command(alias = "info")]
     Start(LiveStartArgs),
 
     /// Stop the live preview API (stop the daemon)
@@ -473,12 +496,13 @@ pub struct LiveStartArgs {
         long,
         value_name = "ADDR",
         num_args = 0..=1,
-        default_missing_value = "127.0.0.1:0"
+        default_missing_value = "127.0.0.1:0",
+        help_heading = "Deprecated"
     )]
     pub listen: Option<String>,
 
     /// Deprecated (use AGENT_TUI_API_ALLOW_REMOTE and restart the daemon)
-    #[arg(long)]
+    #[arg(long, help_heading = "Deprecated")]
     pub allow_remote: bool,
 
     /// Open the preview URL in a browser (uses AGENT_TUI_UI_URL if set)
@@ -486,11 +510,16 @@ pub struct LiveStartArgs {
     pub open: bool,
 
     /// Browser command to use (overrides $BROWSER)
-    #[arg(long, value_name = "CMD")]
+    #[arg(long, value_name = "CMD", value_hint = ValueHint::CommandName)]
     pub browser: Option<String>,
 
     /// Deprecated (use AGENT_TUI_API_MAX_CONNECTIONS and restart the daemon)
-    #[arg(long, value_name = "COUNT", env = "AGENT_TUI_API_MAX_CONNECTIONS")]
+    #[arg(
+        long,
+        value_name = "COUNT",
+        env = "AGENT_TUI_API_MAX_CONNECTIONS",
+        help_heading = "Deprecated"
+    )]
     pub max_viewers: Option<u16>,
 }
 
@@ -581,7 +610,7 @@ impl ScrollDirection {
 )]
 pub struct WaitParams {
     /// Text to wait for (positional)
-    #[arg(value_name = "TEXT")]
+    #[arg(value_name = "TEXT", allow_hyphen_values = true)]
     pub text: Option<String>,
 
     /// Timeout in milliseconds (default: 30000)
@@ -610,6 +639,8 @@ pub struct WaitParams {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::ColorChoice;
+    use clap::CommandFactory;
     use clap::Parser;
     use clap::error::ErrorKind;
 
@@ -773,6 +804,15 @@ mod tests {
     }
 
     #[test]
+    fn test_wait_allows_hyphen_text() {
+        let cli = Cli::parse_from(["agent-tui", "wait", "-flaglike"]);
+        let Commands::Wait { params } = cli.command else {
+            panic!("Expected Wait command, got {:?}", cli.command);
+        };
+        assert_eq!(params.text, Some("-flaglike".to_string()));
+    }
+
+    #[test]
     fn test_wait_stable() {
         let cli = Cli::parse_from(["agent-tui", "wait", "--stable"]);
         let Commands::Wait { params } = cli.command else {
@@ -857,6 +897,15 @@ mod tests {
     #[test]
     fn test_sessions_list_explicit() {
         let cli = Cli::parse_from(["agent-tui", "sessions", "list"]);
+        let Commands::Sessions { command } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
+        };
+        assert!(matches!(command, Some(SessionsCommand::List)));
+    }
+
+    #[test]
+    fn test_sessions_list_alias_ls() {
+        let cli = Cli::parse_from(["agent-tui", "sessions", "ls"]);
         let Commands::Sessions { command } = cli.command else {
             panic!("Expected Sessions command, got {:?}", cli.command);
         };
@@ -968,6 +1017,12 @@ mod tests {
     }
 
     #[test]
+    fn test_health_command() {
+        let cli = Cli::parse_from(["agent-tui", "health"]);
+        assert!(matches!(cli.command, Commands::Health));
+    }
+
+    #[test]
     fn test_env_command() {
         let cli = Cli::parse_from(["agent-tui", "env"]);
         assert!(matches!(cli.command, Commands::Env));
@@ -1013,6 +1068,15 @@ mod tests {
         assert!(!print);
         assert!(!install);
         assert!(!yes);
+    }
+
+    #[test]
+    fn test_live_info_alias() {
+        let cli = Cli::parse_from(["agent-tui", "live", "info"]);
+        let Commands::Live { command } = cli.command else {
+            panic!("Expected Live command, got {:?}", cli.command);
+        };
+        assert!(matches!(command, Some(LiveCommand::Start(_))));
     }
 
     #[test]
@@ -1139,6 +1203,15 @@ mod tests {
     }
 
     #[test]
+    fn test_press_allows_hyphen_key() {
+        let cli = Cli::parse_from(["agent-tui", "press", "-"]);
+        let Commands::Press { keys, .. } = cli.command else {
+            panic!("Expected Press command, got {:?}", cli.command);
+        };
+        assert_eq!(keys, vec!["-".to_string()]);
+    }
+
+    #[test]
     fn test_press_hold_command() {
         let cli = Cli::parse_from(["agent-tui", "press", "Shift", "--hold"]);
         let Commands::Press {
@@ -1187,11 +1260,27 @@ mod tests {
     }
 
     #[test]
+    fn test_type_allows_hyphen_text() {
+        let cli = Cli::parse_from(["agent-tui", "type", "-n"]);
+        let Commands::Type { text } = cli.command else {
+            panic!("Expected Type command, got {:?}", cli.command);
+        };
+        assert_eq!(text, "-n");
+    }
+
+    #[test]
     fn test_type_command_with_spaces() {
         let cli = Cli::parse_from(["agent-tui", "type", "Hello, World!"]);
         let Commands::Type { text } = cli.command else {
             panic!("Expected Type command, got {:?}", cli.command);
         };
         assert_eq!(text, "Hello, World!");
+    }
+
+    #[test]
+    fn test_cli_long_help_renders_without_color() {
+        let mut cmd = Cli::command();
+        cmd = cmd.color(ColorChoice::Never);
+        let _ = cmd.render_long_help().to_string();
     }
 }

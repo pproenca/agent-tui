@@ -79,77 +79,13 @@ agent-tui wait "Loading complete"
 agent-tui kill
 ```
 
-## Commands
+## CLI Reference
 
-### Session Management
+For the full CLI reference (auto-generated from clap), see `docs/cli/agent-tui.md`.
 
-```bash
-agent-tui run [COMMAND] [ARGS]     # Run TUI app (--cols, --rows, --cwd)
-agent-tui sessions list            # List active sessions
-agent-tui sessions switch <ID>     # Set active session
-agent-tui sessions attach          # Attach to active session (use -s <ID> to target)
-agent-tui kill                     # Kill current session
-agent-tui restart                  # Restart session
-```
-
-### Screenshots
-
-```bash
-agent-tui screenshot               # Capture screenshot
-```
-
-### Input
-
-```bash
-agent-tui press Enter              # Press key
-agent-tui press Ctrl+C             # Key combination
-agent-tui press ArrowDown ArrowDown Enter  # Multiple keys
-agent-tui type "hello"             # Type text character by character
-agent-tui scroll down 5            # Scroll viewport
-```
-
-### Wait Conditions
-
-```bash
-agent-tui wait "Ready"             # Wait for text
-agent-tui wait --stable            # Wait for screen stability
-agent-tui wait "Loading" -g        # Wait for text to disappear (gone)
-agent-tui wait "Done" -t 5000      # Custom timeout (ms)
-agent-tui wait "Error" --assert    # Assert condition (exit 1 if not met)
-```
-
-### Daemon & Live Preview
-
-```bash
-agent-tui daemon start             # Start daemon
-agent-tui daemon start --foreground # Run in foreground
-agent-tui daemon stop              # Stop daemon
-agent-tui daemon status            # Check daemon health
-
-agent-tui live start               # Start HTTP/WebSocket API
-agent-tui live status              # Show API status
-agent-tui live stop                # Stop API
-```
-
-### Utilities
-
-```bash
-agent-tui health                   # CLI health check
-agent-tui version                  # Version info
-agent-tui env                      # Environment diagnostics
-agent-tui resize --cols 120 --rows 40  # Resize terminal
-agent-tui completions bash         # Generate shell completions
-```
-
-### Global Options
-
-| Option | Description |
-|--------|-------------|
-| `-s, --session ID` | Specify session ID |
-| `-f, --format FMT` | Output format: `text` or `json` |
-| `--json` | Shorthand for `--format json` |
-| `--no-color` | Disable colored output |
-| `-v, --verbose` | Verbose output |
+You can also run:
+- `agent-tui --help`
+- `agent-tui <command> --help`
 
 ## Output Formats
 

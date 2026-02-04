@@ -74,6 +74,10 @@ clean:
 doc:
     cargo doc --workspace --no-deps --open
 
+# Generate clap-based CLI docs.
+cli-docs:
+    cargo run -p agent-tui --bin agent-tui-cli-docs
+
 # Watch Rust workspace and rebuild on changes (requires cargo-watch).
 watch: _ensure-cargo-watch
     cargo watch -x "build"

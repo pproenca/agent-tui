@@ -16,7 +16,10 @@ impl LockFile {
             .create(true)
             .truncate(false)
             .open(lock_path)
-            .map_err(|e| DaemonError::LockFailed(format!("failed to open lock file: {}", e)))?;
+            .map_err(|e| DaemonError::LockFailed {
+                operation: "open lock file",
+                source: Box::new(e),
+            })?;
 
         let fd = lock_file.as_raw_fd();
 
@@ -28,13 +31,16 @@ impl LockFile {
             return Err(DaemonError::AlreadyRunning);
         }
 
-        lock_file
-            .set_len(0)
-            .map_err(|e| DaemonError::LockFailed(format!("failed to truncate lock file: {}", e)))?;
+        lock_file.set_len(0).map_err(|e| DaemonError::LockFailed {
+            operation: "truncate lock file",
+            source: Box::new(e),
+        })?;
 
         let mut lock_file = lock_file;
-        writeln!(lock_file, "{}", std::process::id())
-            .map_err(|e| DaemonError::LockFailed(format!("failed to write PID: {}", e)))?;
+        writeln!(lock_file, "{}", std::process::id()).map_err(|e| DaemonError::LockFailed {
+            operation: "write PID",
+            source: Box::new(e),
+        })?;
 
         Ok(Self { _file: lock_file })
     }

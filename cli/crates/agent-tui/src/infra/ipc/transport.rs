@@ -292,6 +292,36 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
     use std::process::Command;
     use std::process::Stdio;
 
+    fn spawn_daemon_reaper(child: std::process::Child) {
+        let child = std::sync::Arc::new(std::sync::Mutex::new(child));
+        let child_for_thread = std::sync::Arc::clone(&child);
+        match std::thread::Builder::new()
+            .name("daemon-reaper".to_string())
+            .spawn(move || {
+                let mut child = child_for_thread.lock().unwrap_or_else(|e| e.into_inner());
+                let _ = child.wait();
+            }) {
+            Ok(_) => {}
+            Err(err) => {
+                warn!(error = %err, "Failed to spawn daemon reaper thread");
+                let mut child = child.lock().unwrap_or_else(|e| e.into_inner());
+                let _ = child.wait();
+            }
+        }
+    }
+
+    fn terminate_daemon_child(mut child: std::process::Child) {
+        if let Ok(Some(_status)) = child.try_wait() {
+            return;
+        }
+        if let Err(err) = child.kill() {
+            warn!(error = %err, "Failed to terminate daemon process");
+        }
+        if let Err(err) = child.wait() {
+            warn!(error = %err, "Failed to reap daemon process");
+        }
+    }
+
     let log_path = socket_path().with_extension("log");
 
     let log_file = match OpenOptions::new().create(true).append(true).open(&log_path) {
@@ -358,11 +388,7 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
         }
         std::thread::sleep(delay);
         if transport.is_daemon_running() {
-            let _ = std::thread::Builder::new()
-                .name("daemon-reaper".to_string())
-                .spawn(move || {
-                    let _ = child.wait();
-                });
+            spawn_daemon_reaper(child);
             return Ok(());
         }
 
@@ -380,11 +406,7 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
         }
         return Err(ClientError::DaemonNotRunning);
     }
-    let _ = std::thread::Builder::new()
-        .name("daemon-reaper".to_string())
-        .spawn(move || {
-            let _ = child.wait();
-        });
+    terminate_daemon_child(child);
     Err(ClientError::DaemonNotRunning)
 }
 

@@ -5,8 +5,10 @@ use std::collections::VecDeque;
 use std::fs;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::BufRead;
 use std::io::BufReader;
 use std::io::BufWriter;
+use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -26,13 +28,16 @@ use tracing::warn;
 
 use bytes::Bytes;
 use chrono::DateTime;
-use chrono::Local;
-use chrono::NaiveDateTime;
 use chrono::TimeZone;
 use chrono::Utc;
 use crossbeam_channel as channel;
 use serde::Deserialize;
 use serde::Serialize;
+use sysinfo::Pid;
+use sysinfo::ProcessRefreshKind;
+use sysinfo::ProcessesToUpdate;
+use sysinfo::System;
+use sysinfo::UpdateKind;
 use uuid::Uuid;
 
 use crate::common::mutex_lock_or_recover;
@@ -940,24 +945,43 @@ pub struct PersistedSession {
     pub rows: u16,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum SessionEvent {
+    Upsert { session: PersistedSession },
+    Remove { session_id: String },
+}
+
 pub struct SessionPersistence {
     path: PathBuf,
     lock_path: PathBuf,
 }
 
+const SESSION_STORE_COMPACT_THRESHOLD_BYTES: u64 = 1_048_576;
+
 impl SessionPersistence {
     pub fn new() -> Self {
         let path = Self::sessions_file_path();
-        let lock_path = path.with_extension("json.lock");
+        let lock_path = path.with_extension("lock");
         Self { path, lock_path }
     }
 
     fn sessions_file_path() -> PathBuf {
+        if let Ok(path) = std::env::var("AGENT_TUI_SESSION_STORE") {
+            let trimmed = path.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed);
+            }
+        }
         let home = std::env::var("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/tmp"));
         let dir = home.join(".agent-tui");
-        dir.join("sessions.json")
+        dir.join("sessions.jsonl")
+    }
+
+    fn legacy_sessions_file_path(&self) -> PathBuf {
+        self.path.with_extension("json")
     }
 
     fn io_to_persistence(operation: &str, e: std::io::Error) -> SessionError {
@@ -1028,40 +1052,136 @@ impl SessionPersistence {
         }
     }
 
+    fn migrate_legacy_if_needed_locked(&self) -> Result<(), SessionError> {
+        if self.path.exists() {
+            return Ok(());
+        }
+        let legacy_path = self.legacy_sessions_file_path();
+        if !legacy_path.exists() {
+            return Ok(());
+        }
+        let legacy_file = File::open(&legacy_path).map_err(|e| SessionError::Persistence {
+            operation: "open_legacy".to_string(),
+            reason: format!(
+                "Failed to open legacy sessions file '{}': {}",
+                legacy_path.display(),
+                e
+            ),
+            source: Some(Box::new(e)),
+        })?;
+        let reader = BufReader::new(legacy_file);
+        let sessions: Vec<PersistedSession> = match serde_json::from_reader(reader) {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                warn!(
+                    path = %legacy_path.display(),
+                    error = %e,
+                    "Failed to parse legacy sessions file; skipping migration"
+                );
+                return Ok(());
+            }
+        };
+
+        self.ensure_dir()?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&self.path)
+            .map_err(|e| Self::io_to_persistence("create_jsonl", e))?;
+
+        for session in sessions {
+            let event = SessionEvent::Upsert { session };
+            let line = serde_json::to_string(&event).map_err(|e| SessionError::Persistence {
+                operation: "serialize_event".to_string(),
+                reason: format!("Failed to serialize session event: {}", e),
+                source: Some(Box::new(e)),
+            })?;
+            writeln!(file, "{}", line).map_err(|e| Self::io_to_persistence("write_event", e))?;
+        }
+
+        let backup_path = legacy_path.with_extension("json.bak");
+        fs::rename(&legacy_path, &backup_path).map_err(|e| SessionError::Persistence {
+            operation: "rename_legacy".to_string(),
+            reason: format!(
+                "Failed to rename legacy sessions file '{}' to '{}': {}",
+                legacy_path.display(),
+                backup_path.display(),
+                e
+            ),
+            source: Some(Box::new(e)),
+        })?;
+        Ok(())
+    }
+
     fn load_unlocked(&self) -> Vec<PersistedSession> {
         if !self.path.exists() {
             return Vec::new();
         }
-
-        match File::open(&self.path) {
-            Ok(file) => {
-                let reader = BufReader::new(file);
-                match serde_json::from_reader(reader) {
-                    Ok(sessions) => sessions,
-                    Err(e) => {
-                        warn!(
-                            path = %self.path.display(),
-                            error = %e,
-                            "Sessions file corrupted, starting with empty session list"
-                        );
-                        Vec::new()
-                    }
-                }
-            }
+        let file = match File::open(&self.path) {
+            Ok(file) => file,
             Err(e) => {
                 warn!(
                     path = %self.path.display(),
                     error = %e,
-                    "Failed to open sessions file"
+                    "Failed to open sessions log"
                 );
-                Vec::new()
+                return Vec::new();
+            }
+        };
+
+        let mut sessions = HashMap::new();
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            let line = match line {
+                Ok(line) => line,
+                Err(e) => {
+                    warn!(error = %e, "Failed to read session log line");
+                    continue;
+                }
+            };
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let event: SessionEvent = match serde_json::from_str(trimmed) {
+                Ok(event) => event,
+                Err(e) => {
+                    warn!(error = %e, "Failed to parse session log entry");
+                    continue;
+                }
+            };
+            match event {
+                SessionEvent::Upsert { session } => {
+                    sessions.insert(session.id.clone(), session);
+                }
+                SessionEvent::Remove { session_id } => {
+                    sessions.remove(&session_id);
+                }
             }
         }
+
+        sessions.into_values().collect()
+    }
+
+    fn write_event_unlocked(&self, event: &SessionEvent) -> Result<(), SessionError> {
+        self.ensure_dir()?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)
+            .map_err(|e| Self::io_to_persistence("open_jsonl", e))?;
+        let line = serde_json::to_string(event).map_err(|e| SessionError::Persistence {
+            operation: "serialize_event".to_string(),
+            reason: format!("Failed to serialize session event: {}", e),
+            source: Some(Box::new(e)),
+        })?;
+        writeln!(file, "{}", line).map_err(|e| Self::io_to_persistence("write_event", e))?;
+        Ok(())
     }
 
     fn save_unlocked(&self, sessions: &[PersistedSession]) -> Result<(), SessionError> {
-        let temp_path = self.path.with_extension("json.tmp");
-
+        let temp_path = self.path.with_extension("jsonl.tmp");
         let file = File::create(&temp_path).map_err(|e| SessionError::Persistence {
             operation: "create_temp".to_string(),
             reason: format!(
@@ -1071,17 +1191,21 @@ impl SessionPersistence {
             ),
             source: Some(Box::new(e)),
         })?;
-        let writer = BufWriter::new(file);
-        serde_json::to_writer_pretty(writer, sessions).map_err(|e| SessionError::Persistence {
-            operation: "write_json".to_string(),
-            reason: format!(
-                "Failed to write sessions to '{}': {}",
-                temp_path.display(),
-                e
-            ),
-            source: Some(Box::new(e)),
-        })?;
-
+        let mut writer = BufWriter::new(file);
+        for session in sessions {
+            let event = SessionEvent::Upsert {
+                session: session.clone(),
+            };
+            let line = serde_json::to_string(&event).map_err(|e| SessionError::Persistence {
+                operation: "serialize_event".to_string(),
+                reason: format!("Failed to serialize session event: {}", e),
+                source: Some(Box::new(e)),
+            })?;
+            writeln!(writer, "{}", line).map_err(|e| Self::io_to_persistence("write_event", e))?;
+        }
+        writer
+            .flush()
+            .map_err(|e| Self::io_to_persistence("flush_jsonl", e))?;
         fs::rename(&temp_path, &self.path).map_err(|e| SessionError::Persistence {
             operation: "rename".to_string(),
             reason: format!(
@@ -1092,13 +1216,28 @@ impl SessionPersistence {
             ),
             source: Some(Box::new(e)),
         })?;
+        Ok(())
+    }
 
+    fn maybe_compact_unlocked(&self) -> Result<(), SessionError> {
+        let size = match fs::metadata(&self.path) {
+            Ok(meta) => meta.len(),
+            Err(_) => return Ok(()),
+        };
+        if size < SESSION_STORE_COMPACT_THRESHOLD_BYTES {
+            return Ok(());
+        }
+        let sessions = self.load_unlocked();
+        self.save_unlocked(&sessions)?;
         Ok(())
     }
 
     pub fn load(&self) -> Vec<PersistedSession> {
         match self.acquire_lock() {
-            Ok(_lock) => self.load_unlocked(),
+            Ok(_lock) => {
+                let _ = self.migrate_legacy_if_needed_locked();
+                self.load_unlocked()
+            }
             Err(e) => {
                 warn!(error = %e, "Failed to acquire lock for loading sessions");
                 self.load_unlocked()
@@ -1108,28 +1247,29 @@ impl SessionPersistence {
 
     pub fn save(&self, sessions: &[PersistedSession]) -> Result<(), SessionError> {
         let _lock = self.acquire_lock()?;
+        self.migrate_legacy_if_needed_locked()?;
         self.save_unlocked(sessions)
     }
 
     pub fn add_session(&self, session: PersistedSession) -> Result<(), SessionError> {
         let _lock = self.acquire_lock()?;
-        let mut sessions = self.load_unlocked();
-
-        sessions.retain(|s| s.id != session.id);
-        sessions.push(session);
-
-        self.save_unlocked(&sessions)
+        self.migrate_legacy_if_needed_locked()?;
+        self.write_event_unlocked(&SessionEvent::Upsert { session })?;
+        self.maybe_compact_unlocked()
     }
 
     pub fn remove_session(&self, session_id: &str) -> Result<(), SessionError> {
         let _lock = self.acquire_lock()?;
-        let mut sessions = self.load_unlocked();
-        sessions.retain(|s| s.id.as_str() != session_id);
-        self.save_unlocked(&sessions)
+        self.migrate_legacy_if_needed_locked()?;
+        self.write_event_unlocked(&SessionEvent::Remove {
+            session_id: session_id.to_string(),
+        })?;
+        self.maybe_compact_unlocked()
     }
 
     pub fn cleanup_stale_sessions(&self) -> Result<usize, SessionError> {
         let _lock = self.acquire_lock()?;
+        self.migrate_legacy_if_needed_locked()?;
         let sessions = self.load_unlocked();
         let mut cleaned = 0;
 
@@ -1398,7 +1538,7 @@ fn process_info(pid: u32) -> Option<ProcessInfo> {
         }
     }
 
-    process_info_from_ps(pid)
+    process_info_from_sysinfo(pid)
 }
 
 #[cfg(target_os = "linux")]
@@ -1439,53 +1579,37 @@ fn parse_proc_start_time(stat: &str) -> Option<u64> {
     start_time.parse().ok()
 }
 
-fn process_info_from_ps(pid: u32) -> Option<ProcessInfo> {
-    let output = std::process::Command::new("ps")
-        .arg("-o")
-        .arg("lstart=")
-        .arg("-o")
-        .arg("command=")
-        .arg("-p")
-        .arg(pid.to_string())
-        .env("LC_ALL", "C")
-        .output()
-        .ok()?;
+fn process_info_from_sysinfo(pid: u32) -> Option<ProcessInfo> {
+    let pid = Pid::from_u32(pid);
+    let refresh = ProcessRefreshKind::nothing()
+        .with_cmd(UpdateKind::Always)
+        .with_exe(UpdateKind::Always);
+    let mut system = System::new();
+    system.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, refresh);
+    let process = system.process(pid)?;
 
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let line = stdout.lines().next().unwrap_or("").trim();
-    if line.is_empty() {
-        return None;
-    }
-
-    let tokens: Vec<&str> = line.split_whitespace().collect();
-    if tokens.len() < 5 {
-        return None;
-    }
-
-    let day = if tokens[2].len() == 1 {
-        format!("0{}", tokens[2])
+    let cmd = process.cmd();
+    let cmdline = if !cmd.is_empty() {
+        let cmdline = cmd
+            .iter()
+            .map(|arg| arg.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        Some(cmdline)
     } else {
-        tokens[2].to_string()
+        process.exe().map(|path| path.to_string_lossy().to_string())
     };
-    let lstart = format!(
-        "{} {} {} {} {}",
-        tokens[0], tokens[1], day, tokens[3], tokens[4]
-    );
-    let naive = NaiveDateTime::parse_from_str(&lstart, "%a %b %d %H:%M:%S %Y").ok()?;
-    let local_dt = Local.from_local_datetime(&naive).single()?;
 
-    let cmdline = if tokens.len() > 5 {
-        Some(tokens[5..].join(" "))
+    let start_time = if process.start_time() > 0 {
+        let boot_time = System::boot_time();
+        let timestamp = boot_time.saturating_add(process.start_time());
+        Utc.timestamp_opt(timestamp as i64, 0).single()
     } else {
         None
     };
 
     Some(ProcessInfo {
-        start_time: Some(local_dt.with_timezone(&Utc)),
+        start_time,
         cmdline,
     })
 }
@@ -1618,6 +1742,47 @@ mod tests {
         }
     }
 
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: Test-only environment override.
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, prev }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: Test-only environment override.
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(prev) = self.prev.take() {
+                // SAFETY: Test-only environment restoration.
+                unsafe {
+                    std::env::set_var(self.key, prev);
+                }
+            } else {
+                // SAFETY: Test-only environment cleanup.
+                unsafe {
+                    std::env::remove_var(self.key);
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_persisted_session_serialization() {
         let session = PersistedSession {
@@ -1646,6 +1811,13 @@ mod tests {
     }
 
     #[test]
+    fn test_process_info_current_pid() {
+        let current_pid = std::process::id();
+        let info = process_info(current_pid);
+        assert!(info.is_some());
+    }
+
+    #[test]
     fn test_spawn_rejects_duplicate_session_id() {
         let temp_home = tempdir().unwrap();
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
@@ -1668,6 +1840,98 @@ mod tests {
         ));
 
         let _ = manager.kill(&session_id);
+    }
+
+    #[test]
+    fn test_persistence_migration_from_json() {
+        let temp_home = tempdir().unwrap();
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
+
+        let legacy_dir = temp_home.path().join(".agent-tui");
+        fs::create_dir_all(&legacy_dir).unwrap();
+        let legacy_path = legacy_dir.join("sessions.json");
+        let sessions = vec![PersistedSession {
+            id: "legacy".to_string(),
+            command: "sh".to_string(),
+            pid: 1234,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            cols: 80,
+            rows: 24,
+        }];
+        fs::write(&legacy_path, serde_json::to_string(&sessions).unwrap()).unwrap();
+
+        let persistence = SessionPersistence::new();
+        let loaded = persistence.load();
+        assert_eq!(loaded.len(), 1);
+
+        let jsonl_path = legacy_dir.join("sessions.jsonl");
+        let backup_path = legacy_dir.join("sessions.json.bak");
+        assert!(jsonl_path.exists());
+        assert!(backup_path.exists());
+    }
+
+    #[test]
+    fn test_jsonl_add_remove_roundtrip() {
+        let temp_home = tempdir().unwrap();
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
+
+        let persistence = SessionPersistence::new();
+        let session = PersistedSession {
+            id: "roundtrip".to_string(),
+            command: "bash".to_string(),
+            pid: 777,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            cols: 100,
+            rows: 40,
+        };
+        persistence.add_session(session.clone()).unwrap();
+        let loaded = persistence.load();
+        assert!(loaded.iter().any(|s| s.id == session.id));
+
+        persistence.remove_session(&session.id).unwrap();
+        let loaded = persistence.load();
+        assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn test_session_store_env_override() {
+        let temp_home = tempdir().unwrap();
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+        let store_path = temp_home.path().join("custom-sessions.jsonl");
+        let _store_guard = EnvGuard::set(
+            "AGENT_TUI_SESSION_STORE",
+            store_path.to_string_lossy().as_ref(),
+        );
+
+        let persistence = SessionPersistence::new();
+        persistence
+            .add_session(PersistedSession {
+                id: "custom".to_string(),
+                command: "sh".to_string(),
+                pid: 456,
+                created_at: "2024-01-01T00:00:00Z".to_string(),
+                cols: 80,
+                rows: 24,
+            })
+            .unwrap();
+
+        assert!(store_path.exists());
+        let default_path = temp_home.path().join(".agent-tui").join("sessions.jsonl");
+        assert!(!default_path.exists());
     }
 
     #[cfg(unix)]

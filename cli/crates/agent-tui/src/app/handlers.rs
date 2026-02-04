@@ -1418,6 +1418,19 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
             "AGENT_TUI_API_WS_QUEUE",
             std::env::var("AGENT_TUI_API_WS_QUEUE").ok(),
         ),
+        (
+            "AGENT_TUI_SESSION_STORE",
+            std::env::var("AGENT_TUI_SESSION_STORE").ok(),
+        ),
+        ("AGENT_TUI_LOG", std::env::var("AGENT_TUI_LOG").ok()),
+        (
+            "AGENT_TUI_LOG_FORMAT",
+            std::env::var("AGENT_TUI_LOG_FORMAT").ok(),
+        ),
+        (
+            "AGENT_TUI_LOG_STREAM",
+            std::env::var("AGENT_TUI_LOG_STREAM").ok(),
+        ),
         ("AGENT_TUI_UI_URL", std::env::var("AGENT_TUI_UI_URL").ok()),
         ("AGENT_TUI_UI_MODE", std::env::var("AGENT_TUI_UI_MODE").ok()),
         ("AGENT_TUI_UI_PORT", std::env::var("AGENT_TUI_UI_PORT").ok()),
@@ -1426,6 +1439,7 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
             "AGENT_TUI_UI_STATE",
             std::env::var("AGENT_TUI_UI_STATE").ok(),
         ),
+        ("PORT", std::env::var("PORT").ok()),
         ("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR").ok()),
         ("NO_COLOR", std::env::var("NO_COLOR").ok()),
     ];

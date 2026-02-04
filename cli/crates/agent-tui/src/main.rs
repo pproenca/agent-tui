@@ -1,8 +1,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use agent_tui::Application;
+use anyhow::Result;
 
-fn main() {
+fn main() -> Result<()> {
     let app = Application::new();
-    std::process::exit(app.run());
+    let exit_code = app.run()?;
+    std::process::exit(exit_code);
 }

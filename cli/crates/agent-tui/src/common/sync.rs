@@ -4,6 +4,7 @@ use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use std::sync::RwLockWriteGuard;
 use std::sync::atomic::{AtomicU64, Ordering};
+use tracing::error;
 
 static POISON_RECOVERY_COUNT: AtomicU64 = AtomicU64::new(0);
 
@@ -18,7 +19,7 @@ fn record_poison_recovery() {
 pub fn rwlock_read_or_recover<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
     lock.read().unwrap_or_else(|poisoned| {
         record_poison_recovery();
-        eprintln!(
+        error!(
             "ERROR: RwLock poisoned (read) - a thread panicked while holding this lock. \
              Data may be inconsistent. Attempting recovery."
         );
@@ -29,7 +30,7 @@ pub fn rwlock_read_or_recover<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
 pub fn rwlock_write_or_recover<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
     lock.write().unwrap_or_else(|poisoned| {
         record_poison_recovery();
-        eprintln!(
+        error!(
             "ERROR: RwLock poisoned (write) - a thread panicked while holding this lock. \
              Data may be inconsistent. Attempting recovery."
         );
@@ -40,7 +41,7 @@ pub fn rwlock_write_or_recover<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
 pub fn mutex_lock_or_recover<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
     lock.lock().unwrap_or_else(|poisoned| {
         record_poison_recovery();
-        eprintln!(
+        error!(
             "ERROR: Mutex poisoned - a thread panicked while holding this lock. \
              Data may be inconsistent. Attempting recovery."
         );

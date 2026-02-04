@@ -874,19 +874,17 @@ fn require_auth(
         return Ok(());
     };
     let mut candidate = query_token.map(str::to_string);
-    if candidate.is_none() {
-        if let Some(value) = headers.get("x-agent-tui-token") {
-            candidate = value.to_str().ok().map(|v| v.to_string());
-        }
+    if candidate.is_none()
+        && let Some(value) = headers.get("x-agent-tui-token")
+    {
+        candidate = value.to_str().ok().map(|v| v.to_string());
     }
-    if candidate.is_none() {
-        if let Some(value) = headers.get(axum::http::header::AUTHORIZATION) {
-            if let Ok(auth) = value.to_str() {
-                if let Some(token) = auth.strip_prefix("Bearer ") {
-                    candidate = Some(token.trim().to_string());
-                }
-            }
-        }
+    if candidate.is_none()
+        && let Some(value) = headers.get(axum::http::header::AUTHORIZATION)
+        && let Ok(auth) = value.to_str()
+        && let Some(token) = auth.strip_prefix("Bearer ")
+    {
+        candidate = Some(token.trim().to_string());
     }
 
     if candidate.as_deref() == Some(expected) {

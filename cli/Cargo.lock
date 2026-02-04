@@ -18,6 +18,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 name = "agent-tui"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "assert_cmd",
  "axum",
  "base64",

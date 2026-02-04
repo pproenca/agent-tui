@@ -1,3 +1,6 @@
+#![expect(clippy::print_stdout, reason = "CLI output is emitted here")]
+#![expect(clippy::print_stderr, reason = "CLI output is emitted here")]
+
 use std::collections::HashMap;
 use std::io;
 use std::io::IsTerminal;
@@ -6,6 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::rpc::params;
@@ -27,7 +31,7 @@ use crate::app::commands::WaitParams;
 use crate::app::error::{AttachError, CliError};
 use crate::app::rpc_client::{call_no_params, call_with_params};
 
-pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
+pub type HandlerResult = Result<()>;
 
 fn format_uptime_ms(uptime_ms: u64) -> String {
     let secs = uptime_ms / 1000;
@@ -104,7 +108,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         result: &RpcValue,
         success_msg: &str,
         failure_prefix: &str,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    ) -> Result<bool> {
         let success = result.bool_or("success", false);
 
         match self.format {
@@ -391,12 +395,12 @@ pub fn handle_session_show<C: DaemonClient>(
     let sessions = result
         .get("sessions")
         .and_then(|v| v.as_array())
-        .ok_or("Invalid sessions response")?;
+        .ok_or_else(|| anyhow::anyhow!("Invalid sessions response"))?;
 
     let session = sessions
         .iter()
         .find(|session| session.str_or("id", "") == session_id.as_str())
-        .ok_or_else(|| format!("Session not found: {}", session_id))?;
+        .ok_or_else(|| anyhow::anyhow!("Session not found: {}", session_id))?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -462,7 +466,7 @@ pub fn handle_session_show<C: DaemonClient>(
 pub fn resolve_attach_session_id<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     session_id: Option<String>,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String> {
     if let Some(id) = session_id {
         return Ok(id);
     }
@@ -476,7 +480,9 @@ pub fn resolve_attach_session_id<C: DaemonClient>(
         return Ok(active.to_string());
     }
 
-    Err("No active session to attach. Use 'agent-tui sessions list' or pass --session.".into())
+    Err(anyhow::anyhow!(
+        "No active session to attach. Use 'agent-tui sessions list' or pass --session."
+    ))
 }
 
 pub fn handle_health<C: DaemonClient>(ctx: &mut HandlerContext<C>, verbose: bool) -> HandlerResult {
@@ -616,7 +622,7 @@ pub fn handle_live_start<C: DaemonClient>(
 
 pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let ui_result = stop_ui_server();
-    let ui_error = ui_result.as_ref().err().cloned();
+    let ui_error = ui_result.as_ref().err().map(|err| err.to_string());
     match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
@@ -654,7 +660,7 @@ pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handler
                 Err(err) => UiStopPayload {
                     stopped: false,
                     reason: None,
-                    error: Some(err),
+                    error: Some(err.to_string()),
                 },
             };
 
@@ -1052,10 +1058,10 @@ fn parse_port_from_url(url: &str) -> Option<u16> {
 }
 
 fn resolve_ui_status() -> UiStatus {
-    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL") {
-        if !url.trim().is_empty() {
-            return UiStatus::External(url);
-        }
+    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL")
+        && !url.trim().is_empty()
+    {
+        return UiStatus::External(url);
     }
     match read_ui_state_running(&ui_state_path()) {
         Some(state) => UiStatus::Running(state),
@@ -1079,11 +1085,11 @@ fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
     }
 }
 
-fn stop_ui_server() -> Result<StopUiResult, String> {
-    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL") {
-        if !url.trim().is_empty() {
-            return Ok(StopUiResult::External);
-        }
+fn stop_ui_server() -> Result<StopUiResult> {
+    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL")
+        && !url.trim().is_empty()
+    {
+        return Ok(StopUiResult::External);
     }
 
     let state_path = ui_state_path();
@@ -1097,15 +1103,15 @@ fn stop_ui_server() -> Result<StopUiResult, String> {
     }
 
     let controller = UnixProcessController;
-    controller
-        .send_signal(state.pid, Signal::Term)
-        .map_err(|e| format!("Failed to stop UI server: {}", e))?;
+    controller.send_signal(state.pid, Signal::Term).map_err(|e| {
+        anyhow::anyhow!("Failed to stop UI server (pid {}): {}", state.pid, e)
+    })?;
 
     if wait_for_process_exit(state.pid, Duration::from_secs(2)) {
         let _ = std::fs::remove_file(&state_path);
         Ok(StopUiResult::Stopped)
     } else {
-        Err("UI server did not stop in time".to_string())
+        Err(anyhow::anyhow!("UI server did not stop in time"))
     }
 }
 
@@ -1131,7 +1137,7 @@ fn build_ui_url(base: &str, state: &ApiState) -> String {
     url
 }
 
-fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<(), String> {
+fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<()> {
     use std::process::Command;
 
     let browser = browser_override
@@ -1142,7 +1148,7 @@ fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<(), Stri
         let mut parts = browser.split_whitespace();
         let program = parts
             .next()
-            .ok_or_else(|| "Browser command is empty".to_string())?;
+            .ok_or_else(|| anyhow::anyhow!("Browser command is empty"))?;
         let mut cmd = Command::new(program);
         cmd.args(parts);
         cmd
@@ -1156,12 +1162,18 @@ fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<(), Stri
         Command::new("xdg-open")
     };
 
-    let status = cmd.arg(url).status().map_err(|e| e.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("Browser command exited with status {}", status))
-    }
+        let status = cmd
+            .arg(url)
+            .status()
+            .map_err(|e| anyhow::anyhow!("Failed to launch browser: {}", e))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(
+                "Browser command exited with status {}",
+                status
+            ))
+        }
 }
 
 pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -> HandlerResult {
@@ -1177,18 +1189,18 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
         for session in sessions.iter() {
             let id = session.get("id").and_then(|v| v.as_str());
             let should_cleanup = all || !session.bool_or("running", false);
-            if should_cleanup {
-                if let Some(id) = id {
-                    let params = params::SessionParams {
-                        session: Some(id.to_string()),
-                    };
-                    match call_with_params(ctx.client, "kill", params) {
-                        Ok(_) => cleaned += 1,
-                        Err(e) => failures.push(CleanupFailure {
-                            session_id: id.to_string(),
-                            error: e.to_string(),
-                        }),
-                    }
+            if should_cleanup
+                && let Some(id) = id
+            {
+                let params = params::SessionParams {
+                    session: Some(id.to_string()),
+                };
+                match call_with_params(ctx.client, "kill", params) {
+                    Ok(_) => cleaned += 1,
+                    Err(e) => failures.push(CleanupFailure {
+                        session_id: id.to_string(),
+                        error: e.to_string(),
+                    }),
                 }
             }
         }
@@ -1544,7 +1556,7 @@ pub enum StopResult {
 }
 
 /// Core daemon restart logic that doesn't require an active client connection.
-pub fn restart_daemon_core() -> Result<Vec<String>, Box<dyn std::error::Error>> {
+pub fn restart_daemon_core() -> Result<Vec<String>> {
     use crate::infra::ipc::{
         PidLookupResult, daemon_lifecycle, get_daemon_pid, start_daemon_background,
     };
@@ -1573,7 +1585,7 @@ pub fn restart_daemon_core() -> Result<Vec<String>, Box<dyn std::error::Error>> 
 
 /// Core daemon stop logic that doesn't require an active client connection.
 /// Returns `Ok(StopResult)` on success, including when daemon is already stopped (idempotent).
-pub fn stop_daemon_core(force: bool) -> Result<StopResult, Box<dyn std::error::Error>> {
+pub fn stop_daemon_core(force: bool) -> Result<StopResult> {
     use crate::infra::ipc::{PidLookupResult, UnixSocketClient, daemon_lifecycle, get_daemon_pid};
 
     let pid = match get_daemon_pid() {
@@ -1582,7 +1594,7 @@ pub fn stop_daemon_core(force: bool) -> Result<StopResult, Box<dyn std::error::E
             return Ok(StopResult::AlreadyStopped);
         }
         PidLookupResult::Error(msg) => {
-            return Err(Box::new(ClientError::SignalFailed {
+            return Err(anyhow::Error::new(ClientError::SignalFailed {
                 pid: 0,
                 message: msg,
             }));
@@ -1593,13 +1605,13 @@ pub fn stop_daemon_core(force: bool) -> Result<StopResult, Box<dyn std::error::E
 
     if !force {
         // Try graceful RPC shutdown first (needs connection but doesn't auto-start)
-        if let Ok(mut client) = UnixSocketClient::connect() {
-            if let Ok(result) = daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket) {
-                return Ok(StopResult::Stopped {
-                    pid,
-                    warnings: result.warnings,
-                });
-            }
+        if let Ok(mut client) = UnixSocketClient::connect()
+            && let Ok(result) = daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket)
+        {
+            return Ok(StopResult::Stopped {
+                pid,
+                warnings: result.warnings,
+            });
         }
     }
 

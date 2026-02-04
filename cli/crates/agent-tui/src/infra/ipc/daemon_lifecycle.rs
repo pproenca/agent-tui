@@ -124,27 +124,27 @@ where
         return stop_daemon(controller, pid, socket_path, true);
     }
 
-    if let Ok(mut client) = client_factory() {
-        if let Ok(mut result) = stop_daemon_via_rpc(&mut client, socket_path) {
-            result.pid = pid;
-            return Ok(result);
-        }
+    if let Ok(mut client) = client_factory()
+        && let Ok(mut result) = stop_daemon_via_rpc(&mut client, socket_path)
+    {
+        result.pid = pid;
+        return Ok(result);
     }
 
     stop_daemon(controller, pid, socket_path, false)
 }
 
 fn cleanup_daemon_files_with_warnings(socket: &Path, warnings: &mut Vec<String>) {
-    if let Err(e) = std::fs::remove_file(socket) {
-        if e.kind() != std::io::ErrorKind::NotFound {
-            warnings.push(format!("Failed to remove socket: {}", e));
-        }
+    if let Err(e) = std::fs::remove_file(socket)
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        warnings.push(format!("Failed to remove socket: {}", e));
     }
     let lock = socket.with_extension("lock");
-    if let Err(e) = std::fs::remove_file(&lock) {
-        if e.kind() != std::io::ErrorKind::NotFound {
-            warnings.push(format!("Failed to remove lock file: {}", e));
-        }
+    if let Err(e) = std::fs::remove_file(&lock)
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        warnings.push(format!("Failed to remove lock file: {}", e));
     }
 }
 

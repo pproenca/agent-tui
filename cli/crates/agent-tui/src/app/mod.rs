@@ -29,6 +29,7 @@ use tracing::debug;
 use crate::adapters::presenter::create_presenter;
 use crate::app::attach::AttachError;
 use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs, Shell};
+use crate::app::error::DaemonNotRunningError;
 use crate::app::handlers::HandlerContext;
 
 const PROGRAM_NAME: &str = "agent-tui";
@@ -51,19 +52,6 @@ mod exit_codes {
     pub const IOERR: i32 = 74;
     pub const TEMPFAIL: i32 = 75;
 }
-
-/// Error indicating daemon is not running (for status command).
-/// Maps to LSB exit code 3.
-#[derive(Debug)]
-struct DaemonNotRunningError;
-
-impl std::fmt::Display for DaemonNotRunningError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Daemon is not running")
-    }
-}
-
-impl std::error::Error for DaemonNotRunningError {}
 
 #[derive(Debug, PartialEq, Eq)]
 enum CompletionStatus {

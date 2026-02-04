@@ -32,7 +32,9 @@ impl SessionError {
                 "operation": terminal_err.operation(),
                 "reason": terminal_err.reason()
             }),
-            SessionError::Persistence { operation, reason } => {
+            SessionError::Persistence {
+                operation, reason, ..
+            } => {
                 json!({ "operation": operation, "reason": reason })
             }
         }
@@ -53,7 +55,7 @@ impl SessionError {
                 "Kill unused sessions with 'kill <session_id>' or increase limit with AGENT_TUI_MAX_SESSIONS env var.".to_string()
             }
             SessionError::Terminal(terminal_err) => match terminal_err {
-                TerminalError::Open(_) => {
+                TerminalError::Open { .. } => {
                     "Terminal allocation failed. Check system resource limits (ulimit -n) or try restarting."
                         .to_string()
                 }
@@ -69,15 +71,15 @@ impl SessionError {
                         "Process spawn failed. Check command syntax and permissions.".to_string()
                     }
                 },
-                TerminalError::Write(_) => {
+                TerminalError::Write { .. } => {
                     "Failed to send input to terminal. The session may have ended. Run 'sessions' to check status."
                         .to_string()
                 }
-                TerminalError::Read(_) => {
+                TerminalError::Read { .. } => {
                     "Failed to read terminal output. The session may have ended. Run 'sessions' to check status."
                         .to_string()
                 }
-                TerminalError::Resize(_) => {
+                TerminalError::Resize { .. } => {
                     "Failed to resize terminal. Try again or restart the session.".to_string()
                 }
             },
@@ -315,7 +317,9 @@ impl From<SessionError> for DomainError {
                 operation: terminal_err.operation().to_string(),
                 reason: terminal_err.reason().to_string(),
             },
-            SessionError::Persistence { operation, reason } => DomainError::Generic {
+            SessionError::Persistence {
+                operation, reason, ..
+            } => DomainError::Generic {
                 message: format!("Persistence error during {}: {}", operation, reason),
             },
         }
@@ -441,6 +445,7 @@ mod tests {
         let err = SessionError::Persistence {
             operation: "save".into(),
             reason: "disk full".into(),
+            source: None,
         };
         assert_eq!(err.code(), error_codes::PERSISTENCE_ERROR);
     }
@@ -450,6 +455,7 @@ mod tests {
         let err = SessionError::Persistence {
             operation: "write_json".into(),
             reason: "permission denied".into(),
+            source: None,
         };
         let ctx = err.context();
         assert_eq!(ctx["operation"], "write_json");
@@ -461,6 +467,7 @@ mod tests {
         let err = SessionError::Persistence {
             operation: "save".into(),
             reason: "disk full".into(),
+            source: None,
         };
         assert!(err.is_retryable());
     }
@@ -470,13 +477,17 @@ mod tests {
         let err = SessionError::Persistence {
             operation: "write".into(),
             reason: "disk full".into(),
+            source: None,
         };
         assert_eq!(err.to_string(), "Persistence error during write: disk full");
     }
 
     #[test]
     fn test_terminal_error_conversion_preserves_context() {
-        let terminal_err = TerminalError::Write("broken pipe".into());
+        let terminal_err = TerminalError::Write {
+            reason: "broken pipe".into(),
+            source: None,
+        };
         let session_err = SessionError::Terminal(terminal_err);
         let domain_err: DomainError = session_err.into();
 

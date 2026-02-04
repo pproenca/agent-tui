@@ -6,6 +6,10 @@ use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[error("Daemon is not running")]
+pub struct DaemonNotRunningError;
+
+#[derive(Error, Debug)]
 pub enum AttachError {
     #[error("Terminal error: {0}")]
     Terminal(#[from] io::Error),

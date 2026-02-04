@@ -253,7 +253,10 @@ impl StreamBuffer {
         let state = self.state.read().unwrap_or_else(|e| e.into_inner());
         if let Some(error) = state.error.clone() {
             return Err(SessionError::Terminal(
-                crate::usecases::ports::TerminalError::Read(error),
+                crate::usecases::ports::TerminalError::Read {
+                    reason: error,
+                    source: None,
+                },
             ));
         }
 
@@ -749,7 +752,7 @@ impl SessionManager {
             .unwrap_or_else(generate_session_id);
 
         let pty = PtyHandle::spawn(command, args, cwd, env, cols, rows)
-            .map_err(|e| SessionError::Terminal(e.to_port_error()))?;
+            .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
         let pid = pty.pid().unwrap_or(0);
 
         let session = Session::new(id.clone(), command.to_string(), pty, cols, rows);
@@ -939,9 +942,11 @@ impl SessionPersistence {
     }
 
     fn io_to_persistence(operation: &str, e: std::io::Error) -> SessionError {
+        let reason = e.to_string();
         SessionError::Persistence {
             operation: operation.to_string(),
-            reason: e.to_string(),
+            reason,
+            source: Some(Box::new(e)),
         }
     }
 
@@ -995,6 +1000,7 @@ impl SessionPersistence {
                 return Err(SessionError::Persistence {
                     operation: "acquire_lock".to_string(),
                     reason: "lock acquisition timed out after 5 seconds".to_string(),
+                    source: None,
                 });
             }
 
@@ -1044,6 +1050,7 @@ impl SessionPersistence {
                 temp_path.display(),
                 e
             ),
+            source: Some(Box::new(e)),
         })?;
         let writer = BufWriter::new(file);
         serde_json::to_writer_pretty(writer, sessions).map_err(|e| SessionError::Persistence {
@@ -1053,6 +1060,7 @@ impl SessionPersistence {
                 temp_path.display(),
                 e
             ),
+            source: Some(Box::new(e)),
         })?;
 
         fs::rename(&temp_path, &self.path).map_err(|e| SessionError::Persistence {
@@ -1063,6 +1071,7 @@ impl SessionPersistence {
                 self.path.display(),
                 e
             ),
+            source: Some(Box::new(e)),
         })?;
 
         Ok(())

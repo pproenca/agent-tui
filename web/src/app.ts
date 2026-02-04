@@ -23,7 +23,7 @@ if (sessionsRefreshBtn) {
 }
 
 const params = new URLSearchParams(window.location.search);
-const decoder = new TextDecoder();
+let decoder = new TextDecoder();
 
 type Encoding = "binary" | "base64";
 type ConnectionConfig = {
@@ -436,6 +436,7 @@ async function connect() {
   const state = { reason: null as DisconnectReason | null };
   socket = ws;
   socketState = state;
+  decoder = new TextDecoder();
   ws.binaryType = "arraybuffer";
 
   ws.addEventListener("open", () => {

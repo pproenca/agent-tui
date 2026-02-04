@@ -29,7 +29,18 @@ impl LockFile {
         // the fd remains valid. LOCK_EX | LOCK_NB requests an exclusive, non-blocking lock.
         let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
         if result != 0 {
-            return Err(DaemonError::AlreadyRunning);
+            let err = std::io::Error::last_os_error();
+            match err.raw_os_error() {
+                Some(code) if code == libc::EWOULDBLOCK || code == libc::EAGAIN => {
+                    return Err(DaemonError::AlreadyRunning);
+                }
+                _ => {
+                    return Err(DaemonError::LockFailed {
+                        operation: "flock lock file",
+                        source: Box::new(err),
+                    });
+                }
+            }
         }
 
         lock_file.set_len(0).map_err(|e| DaemonError::LockFailed {

@@ -1,3 +1,5 @@
+//! Session use cases.
+
 use std::sync::Arc;
 
 use crate::domain::AssertConditionType;

@@ -1,3 +1,5 @@
+//! Mock session handle for use case tests.
+
 use crate::domain::ScrollDirection;
 use crate::domain::core::CursorPosition;
 use crate::domain::core::vom::Component;

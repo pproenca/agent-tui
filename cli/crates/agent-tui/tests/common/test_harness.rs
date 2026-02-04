@@ -1,4 +1,6 @@
-#![allow(dead_code)]
+#![expect(dead_code, reason = "Test harness helpers are used selectively.")]
+
+//! Shared test harness.
 
 use super::mock_daemon::{MockDaemon, MockResponse, RecordedRequest};
 use assert_cmd::Command;

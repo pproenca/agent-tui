@@ -1,3 +1,5 @@
+//! System info implementation.
+
 use std::time::Instant;
 
 use crate::usecases::ports::SystemInfoProvider;

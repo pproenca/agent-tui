@@ -1,3 +1,5 @@
+//! Adapter use case wiring.
+
 use crate::usecases::AssertUseCaseImpl;
 use crate::usecases::AttachUseCaseImpl;
 use crate::usecases::CleanupUseCaseImpl;

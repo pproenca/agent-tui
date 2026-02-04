@@ -1,3 +1,5 @@
+//! Daemon error helpers.
+
 use crate::common::error_codes;
 use crate::common::error_codes::ErrorCategory;
 use std::error::Error as StdError;

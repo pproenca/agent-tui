@@ -1,3 +1,5 @@
+//! Daemon server runtime.
+
 use crate::adapters::attach_output_to_response;
 use crate::adapters::daemon::Router;
 use crate::adapters::daemon::UseCaseContainer;
@@ -684,13 +686,18 @@ impl DaemonServer {
                     let _ = conn.write_response(&error_response);
                     break;
                 }
-                Err(TransportError::Parse(msg)) => {
+                Err(TransportError::Parse(err)) => {
                     self.metrics.record_error();
-                    debug!(error = %msg, "Request parse error");
+                    debug!(error = %err, "Request parse error");
                     let error_response =
-                        RpcResponse::error(0, -32700, &format!("Parse error: {}", msg));
+                        RpcResponse::error(0, -32700, &format!("Parse error: {}", err));
                     let _ = conn.write_response(&error_response);
                     continue;
+                }
+                Err(TransportError::Serialize(err)) => {
+                    self.metrics.record_error();
+                    error!(error = %err, "Response serialize error");
+                    break;
                 }
                 Err(TransportError::Io(e)) => {
                     error!(error = %e, "Client connection error");

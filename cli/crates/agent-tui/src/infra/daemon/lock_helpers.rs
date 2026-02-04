@@ -1,3 +1,5 @@
+//! Daemon lock helper utilities.
+
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;

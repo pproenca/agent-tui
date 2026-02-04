@@ -1,3 +1,5 @@
+//! System info port.
+
 pub trait SystemInfoProvider: Send + Sync {
     fn pid(&self) -> u32;
     fn uptime_ms(&self) -> u64;

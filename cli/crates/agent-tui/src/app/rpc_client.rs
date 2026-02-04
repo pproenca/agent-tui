@@ -1,3 +1,5 @@
+//! RPC client helpers.
+
 use serde::Serialize;
 
 use crate::adapters::RpcValue;
@@ -8,7 +10,7 @@ use crate::infra::ipc::client::DaemonClient;
 use crate::infra::ipc::client::StreamAbortHandle;
 use crate::infra::ipc::client::StreamResponse;
 
-pub struct RpcStream {
+pub(crate) struct RpcStream {
     inner: StreamResponse,
 }
 

@@ -1,3 +1,5 @@
+//! Snapshot handler.
+
 use crate::adapters::rpc::RpcRequest;
 use crate::adapters::rpc::RpcResponse;
 

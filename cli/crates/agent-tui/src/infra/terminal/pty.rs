@@ -1,3 +1,5 @@
+//! PTY management.
+
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::io;

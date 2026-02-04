@@ -1,3 +1,5 @@
+//! String utility helpers.
+
 pub fn strip_ansi_codes(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();

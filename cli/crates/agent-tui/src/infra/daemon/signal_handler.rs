@@ -1,3 +1,5 @@
+//! Daemon signal handling.
+
 use signal_hook::consts::SIGINT;
 use signal_hook::consts::SIGTERM;
 use signal_hook::iterator::Signals;

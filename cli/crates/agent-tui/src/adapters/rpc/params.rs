@@ -1,3 +1,5 @@
+//! RPC parameter types.
+
 use serde::Deserialize;
 use serde::Serialize;
 

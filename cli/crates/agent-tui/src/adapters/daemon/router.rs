@@ -1,3 +1,5 @@
+//! RPC router for daemon adapters.
+
 use crate::adapters::rpc::RpcRequest;
 use crate::adapters::rpc::RpcResponse;
 use serde_json::json;

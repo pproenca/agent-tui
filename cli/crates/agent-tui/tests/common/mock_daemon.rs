@@ -1,5 +1,7 @@
-#![allow(dead_code)]
+#![expect(dead_code, reason = "Test harness helpers are used selectively.")]
 #![expect(clippy::print_stderr, reason = "Test diagnostics for mock daemon")]
+
+//! Mock daemon for integration tests.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

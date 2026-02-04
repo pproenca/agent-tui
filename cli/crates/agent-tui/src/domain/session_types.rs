@@ -1,18 +1,15 @@
+//! Session identifier and terminal size types.
+
 use std::fmt;
 use std::ops::Deref;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionIdError {
-    pub message: String,
-}
+use thiserror::Error;
 
-impl fmt::Display for SessionIdError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum SessionIdError {
+    #[error("Session ID cannot be empty or whitespace-only")]
+    Empty,
 }
-
-impl std::error::Error for SessionIdError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SessionId(String);
@@ -21,9 +18,7 @@ impl SessionId {
     pub fn try_new(id: impl Into<String>) -> Result<Self, SessionIdError> {
         let id = id.into();
         if id.trim().is_empty() {
-            return Err(SessionIdError {
-                message: "Session ID cannot be empty or whitespace-only".to_string(),
-            });
+            return Err(SessionIdError::Empty);
         }
         Ok(Self(id))
     }
@@ -69,18 +64,17 @@ impl From<&str> for SessionId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TerminalSizeError {
-    pub message: String,
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum TerminalSizeError {
+    #[error("Columns ({cols}) must be at least {min}")]
+    ColumnsTooSmall { cols: u16, min: u16 },
+    #[error("Columns ({cols}) must be at most {max}")]
+    ColumnsTooLarge { cols: u16, max: u16 },
+    #[error("Rows ({rows}) must be at least {min}")]
+    RowsTooSmall { rows: u16, min: u16 },
+    #[error("Rows ({rows}) must be at most {max}")]
+    RowsTooLarge { rows: u16, max: u16 },
 }
-
-impl fmt::Display for TerminalSizeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for TerminalSizeError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerminalSize {
@@ -94,25 +88,29 @@ impl TerminalSize {
     pub const MIN_ROWS: u16 = 2;
     pub const MAX_ROWS: u16 = 200;
 
-    pub fn new(cols: u16, rows: u16) -> Result<Self, TerminalSizeError> {
+    pub fn try_new(cols: u16, rows: u16) -> Result<Self, TerminalSizeError> {
         if cols < Self::MIN_COLS {
-            return Err(TerminalSizeError {
-                message: format!("Columns ({}) must be at least {}", cols, Self::MIN_COLS),
+            return Err(TerminalSizeError::ColumnsTooSmall {
+                cols,
+                min: Self::MIN_COLS,
             });
         }
         if cols > Self::MAX_COLS {
-            return Err(TerminalSizeError {
-                message: format!("Columns ({}) must be at most {}", cols, Self::MAX_COLS),
+            return Err(TerminalSizeError::ColumnsTooLarge {
+                cols,
+                max: Self::MAX_COLS,
             });
         }
         if rows < Self::MIN_ROWS {
-            return Err(TerminalSizeError {
-                message: format!("Rows ({}) must be at least {}", rows, Self::MIN_ROWS),
+            return Err(TerminalSizeError::RowsTooSmall {
+                rows,
+                min: Self::MIN_ROWS,
             });
         }
         if rows > Self::MAX_ROWS {
-            return Err(TerminalSizeError {
-                message: format!("Rows ({}) must be at most {}", rows, Self::MAX_ROWS),
+            return Err(TerminalSizeError::RowsTooLarge {
+                rows,
+                max: Self::MAX_ROWS,
             });
         }
         Ok(Self { cols, rows })
@@ -337,7 +335,7 @@ mod tests {
         #[test]
         fn test_error_has_message() {
             let err = SessionId::try_new("").unwrap_err();
-            assert!(!err.message.is_empty());
+            assert!(matches!(err, SessionIdError::Empty));
             assert!(err.to_string().contains("empty"));
         }
     }
@@ -347,70 +345,70 @@ mod tests {
 
         #[test]
         fn test_terminal_size_rejects_zero_cols() {
-            let result = TerminalSize::new(0, 24);
+            let result = TerminalSize::try_new(0, 24);
             assert!(result.is_err(), "Zero cols should be rejected");
         }
 
         #[test]
         fn test_terminal_size_rejects_zero_rows() {
-            let result = TerminalSize::new(80, 0);
+            let result = TerminalSize::try_new(80, 0);
             assert!(result.is_err(), "Zero rows should be rejected");
         }
 
         #[test]
         fn test_terminal_size_rejects_both_zero() {
-            let result = TerminalSize::new(0, 0);
+            let result = TerminalSize::try_new(0, 0);
             assert!(result.is_err(), "Both zero should be rejected");
         }
 
         #[test]
         fn test_terminal_size_accepts_valid() {
-            let size = TerminalSize::new(80, 24).expect("Valid size should be accepted");
+            let size = TerminalSize::try_new(80, 24).expect("Valid size should be accepted");
             assert_eq!(size.cols(), 80);
             assert_eq!(size.rows(), 24);
         }
 
         #[test]
         fn test_terminal_size_accepts_minimum() {
-            let size = TerminalSize::new(10, 2).expect("Minimum size should be accepted");
+            let size = TerminalSize::try_new(10, 2).expect("Minimum size should be accepted");
             assert_eq!(size.cols(), 10);
             assert_eq!(size.rows(), 2);
         }
 
         #[test]
         fn test_terminal_size_rejects_below_minimum_cols() {
-            let result = TerminalSize::new(9, 24);
+            let result = TerminalSize::try_new(9, 24);
             assert!(result.is_err(), "Below minimum cols should be rejected");
         }
 
         #[test]
         fn test_terminal_size_rejects_below_minimum_rows() {
-            let result = TerminalSize::new(80, 1);
+            let result = TerminalSize::try_new(80, 1);
             assert!(result.is_err(), "Below minimum rows should be rejected");
         }
 
         #[test]
         fn test_terminal_size_rejects_too_large_cols() {
-            let result = TerminalSize::new(501, 24);
+            let result = TerminalSize::try_new(501, 24);
             assert!(result.is_err(), "Cols > 500 should be rejected");
         }
 
         #[test]
         fn test_terminal_size_rejects_too_large_rows() {
-            let result = TerminalSize::new(80, 201);
+            let result = TerminalSize::try_new(80, 201);
             assert!(result.is_err(), "Rows > 200 should be rejected");
         }
 
         #[test]
         fn test_terminal_size_accepts_maximum() {
-            let size = TerminalSize::new(500, 200).expect("Maximum size should be accepted");
+            let size = TerminalSize::try_new(500, 200).expect("Maximum size should be accepted");
             assert_eq!(size.cols(), 500);
             assert_eq!(size.rows(), 200);
         }
 
         #[test]
         fn test_terminal_size_as_tuple() {
-            let size = TerminalSize::new(120, 40).unwrap();
+            let size = TerminalSize::try_new(120, 40).unwrap();
             assert_eq!(size.as_tuple(), (120, 40));
         }
     }

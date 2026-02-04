@@ -1,6 +1,8 @@
 #![expect(clippy::print_stdout, reason = "CLI output is emitted here")]
 #![expect(clippy::print_stderr, reason = "CLI output is emitted here")]
 
+//! CLI output presenter.
+
 use crate::adapters::RpcValue;
 use crate::common::Colors;
 use clap::ValueEnum;

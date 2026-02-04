@@ -1,5 +1,7 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
+#![expect(dead_code, reason = "Test harness helpers are used selectively.")]
+#![expect(unused_imports, reason = "Test harness re-exports vary by test.")]
+
+//! Test harness exports.
 
 pub mod mock_daemon;
 pub mod real_test_harness;

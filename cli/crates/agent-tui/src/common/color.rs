@@ -1,3 +1,5 @@
+//! Terminal color helpers.
+
 use std::io::IsTerminal;
 use std::sync::OnceLock;
 

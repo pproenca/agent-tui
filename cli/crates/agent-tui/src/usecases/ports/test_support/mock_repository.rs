@@ -1,3 +1,5 @@
+//! Mock session repository for use case tests.
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;

@@ -1,8 +1,10 @@
+//! Metrics adapter helpers.
+
 use serde_json::Value;
 
 use crate::domain::MetricsOutput;
 
-pub fn metrics_to_json(metrics: &MetricsOutput) -> Value {
+pub(crate) fn metrics_to_json(metrics: &MetricsOutput) -> Value {
     serde_json::json!({
         "requests_total": metrics.requests_total,
         "errors_total": metrics.errors_total,

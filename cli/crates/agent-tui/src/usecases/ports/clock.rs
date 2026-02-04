@@ -1,3 +1,5 @@
+//! Clock port.
+
 use std::time::Duration;
 use std::time::Instant;
 

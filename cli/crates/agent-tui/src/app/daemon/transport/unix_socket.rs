@@ -1,3 +1,5 @@
+//! Unix socket transport for daemon RPC.
+
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
@@ -81,16 +83,14 @@ impl TransportConnection for UnixSocketConnection {
                 None => return Err(TransportError::ConnectionClosed),
                 Some(line) if line.trim().is_empty() => continue,
                 Some(line) => {
-                    return serde_json::from_str(&line)
-                        .map_err(|e| TransportError::Parse(e.to_string()));
+                    return serde_json::from_str(&line).map_err(TransportError::Parse);
                 }
             }
         }
     }
 
     fn write_response(&mut self, response: &RpcResponse) -> Result<(), TransportError> {
-        let json = serde_json::to_string(response)
-            .map_err(|e| TransportError::Parse(format!("Failed to serialize response: {}", e)))?;
+        let json = serde_json::to_string(response).map_err(TransportError::Serialize)?;
         writeln!(self.writer, "{}", json)?;
         Ok(())
     }
@@ -190,7 +190,9 @@ mod tests {
         ));
         assert!(io_err.to_string().contains("I/O error"));
 
-        let parse_err = TransportError::Parse("invalid json".to_string());
+        let parse_err = TransportError::Parse(
+            serde_json::from_str::<serde_json::Value>("invalid json").unwrap_err(),
+        );
         assert!(parse_err.to_string().contains("Parse error"));
 
         let size_err = TransportError::SizeLimit { max_bytes: 1024 };

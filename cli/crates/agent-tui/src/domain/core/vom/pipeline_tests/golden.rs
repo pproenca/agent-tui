@@ -1,3 +1,5 @@
+//! Golden fixtures for VOM pipeline tests.
+
 use crate::domain::core::CursorPosition;
 use crate::domain::core::style::CellStyle;
 use crate::domain::core::test_fixtures::MockScreenBuffer;

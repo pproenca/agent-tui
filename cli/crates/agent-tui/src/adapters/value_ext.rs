@@ -1,3 +1,5 @@
+//! serde_json::Value extensions.
+
 use serde_json::Value;
 
 pub trait ValueExt {

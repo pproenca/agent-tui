@@ -1,3 +1,5 @@
+//! Domain test fixtures.
+
 use super::screen::ScreenGrid;
 use super::style::CellStyle;
 use super::style::Color;

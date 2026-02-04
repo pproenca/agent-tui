@@ -1,3 +1,5 @@
+//! Process control utilities.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
     Term,
@@ -12,15 +14,15 @@ pub enum ProcessStatus {
 }
 
 pub trait ProcessController: Send + Sync {
-    fn check_process(&self, pid: u32) -> Result<ProcessStatus, std::io::Error>;
+    fn check_process(&self, pid: u32) -> std::io::Result<ProcessStatus>;
 
-    fn send_signal(&self, pid: u32, signal: Signal) -> Result<(), std::io::Error>;
+    fn send_signal(&self, pid: u32, signal: Signal) -> std::io::Result<()>;
 }
 
 pub struct UnixProcessController;
 
 impl ProcessController for UnixProcessController {
-    fn check_process(&self, pid: u32) -> Result<ProcessStatus, std::io::Error> {
+    fn check_process(&self, pid: u32) -> std::io::Result<ProcessStatus> {
         let pid_t: libc::pid_t = pid.try_into().map_err(|_| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "PID out of range")
         })?;
@@ -40,7 +42,7 @@ impl ProcessController for UnixProcessController {
         }
     }
 
-    fn send_signal(&self, pid: u32, signal: Signal) -> Result<(), std::io::Error> {
+    fn send_signal(&self, pid: u32, signal: Signal) -> std::io::Result<()> {
         let pid_t: libc::pid_t = pid.try_into().map_err(|_| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "PID out of range")
         })?;
@@ -117,7 +119,7 @@ pub mod mock {
     }
 
     impl ProcessController for MockProcessController {
-        fn check_process(&self, pid: u32) -> Result<ProcessStatus, std::io::Error> {
+        fn check_process(&self, pid: u32) -> std::io::Result<ProcessStatus> {
             if let Some(err) = self.check_error.lock().unwrap().take() {
                 return Err(err);
             }
@@ -130,7 +132,7 @@ pub mod mock {
                 .unwrap_or(ProcessStatus::NotFound))
         }
 
-        fn send_signal(&self, pid: u32, signal: Signal) -> Result<(), std::io::Error> {
+        fn send_signal(&self, pid: u32, signal: Signal) -> std::io::Result<()> {
             if let Some(err) = self.signal_error.lock().unwrap().take() {
                 return Err(err);
             }

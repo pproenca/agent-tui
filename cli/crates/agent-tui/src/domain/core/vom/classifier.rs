@@ -1,3 +1,5 @@
+//! VOM classifier logic.
+
 use super::Cluster;
 use super::Component;
 use super::Role;

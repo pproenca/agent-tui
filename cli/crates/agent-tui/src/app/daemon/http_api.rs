@@ -1,3 +1,5 @@
+//! Daemon HTTP API.
+
 use axum::Json;
 use axum::extract::Path;
 use axum::extract::Query;
@@ -66,7 +68,7 @@ const UI_XTERM_CSS: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/web/xterm.css"));
 
 #[derive(Debug, Clone)]
-pub struct ApiConfig {
+pub(crate) struct ApiConfig {
     enabled: bool,
     listen: String,
     allow_remote: bool,
@@ -135,7 +137,7 @@ impl ApiConfig {
     }
 }
 
-pub struct ApiServerHandle {
+pub(crate) struct ApiServerHandle {
     shutdown_tx: Option<watch::Sender<bool>>,
     join: Option<thread::JoinHandle<()>>,
     state_path: PathBuf,

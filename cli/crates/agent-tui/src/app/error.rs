@@ -1,3 +1,5 @@
+//! Application error types and CLI error helpers.
+
 use std::io;
 
 use crate::app::commands::OutputFormat;
@@ -25,12 +27,13 @@ pub enum AttachError {
     EventRead,
 }
 
-#[derive(Debug)]
-pub struct CliError {
-    pub exit_code: i32,
-    pub format: OutputFormat,
-    pub message: String,
-    pub json: Option<String>,
+#[derive(Debug, Error)]
+#[error("{message}")]
+pub(crate) struct CliError {
+    pub(crate) exit_code: i32,
+    pub(crate) format: OutputFormat,
+    pub(crate) message: String,
+    pub(crate) json: Option<String>,
 }
 
 impl CliError {
@@ -48,14 +51,6 @@ impl CliError {
         }
     }
 }
-
-impl std::fmt::Display for CliError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for CliError {}
 
 impl AttachError {
     pub fn code(&self) -> i32 {

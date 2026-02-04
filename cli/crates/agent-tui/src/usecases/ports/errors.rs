@@ -1,3 +1,5 @@
+//! Use case error types.
+
 use std::error::Error as StdError;
 use thiserror::Error;
 

@@ -1,3 +1,5 @@
+//! Terminal error types.
+
 use crate::common::error_codes;
 use crate::common::error_codes::ErrorCategory;
 use crate::usecases::ports::SpawnErrorKind;

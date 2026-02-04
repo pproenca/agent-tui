@@ -1,5 +1,7 @@
 #![expect(clippy::print_stderr, reason = "CLI/TUI output after terminal restore")]
 
+//! Attach command implementation.
+
 use std::io;
 use std::io::Read;
 use std::io::Write;

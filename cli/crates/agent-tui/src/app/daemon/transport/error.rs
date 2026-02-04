@@ -1,3 +1,5 @@
+//! Transport error types for the daemon.
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -5,7 +7,9 @@ pub(crate) enum TransportError {
     #[error("I/O error: {0}")]
     Io(#[source] std::io::Error),
     #[error("Parse error: {0}")]
-    Parse(String),
+    Parse(#[source] serde_json::Error),
+    #[error("Serialize error: {0}")]
+    Serialize(#[source] serde_json::Error),
     #[error("Request size limit exceeded (max {max_bytes} bytes)")]
     SizeLimit { max_bytes: usize },
     #[error("Connection timeout")]

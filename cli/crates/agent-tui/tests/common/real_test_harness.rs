@@ -1,3 +1,5 @@
+//! Real daemon test harness.
+
 use assert_cmd::Command;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command as StdCommand, Stdio};

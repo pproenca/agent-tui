@@ -1,3 +1,5 @@
+//! Terminal engine port.
+
 use crate::domain::core::ScreenSnapshot;
 
 pub trait TerminalEngine: Send {

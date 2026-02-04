@@ -1,3 +1,5 @@
+//! Mock error types for use case tests.
+
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SpawnErrorKind;
 use crate::usecases::ports::TerminalError;

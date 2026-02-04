@@ -1,3 +1,5 @@
+//! VOM segmentation logic.
+
 use super::Cluster;
 use crate::domain::core::screen::ScreenGrid;
 

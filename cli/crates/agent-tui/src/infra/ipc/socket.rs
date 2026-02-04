@@ -1,3 +1,5 @@
+//! IPC socket path helpers.
+
 use std::path::PathBuf;
 use tracing::debug;
 

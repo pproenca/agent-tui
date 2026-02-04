@@ -1,5 +1,8 @@
+//! IPC error types and helpers.
+
 use serde_json::Value;
 use thiserror::Error;
+use tracing::debug;
 
 use crate::common::error_codes::ErrorCategory;
 
@@ -137,6 +140,9 @@ impl ClientError {
     }
 
     pub fn to_json_string(&self) -> String {
-        serde_json::to_string_pretty(&self.to_json()).unwrap_or_default()
+        serde_json::to_string_pretty(&self.to_json()).unwrap_or_else(|err| {
+            debug!(error = %err, "Failed to serialize IPC error to JSON");
+            String::new()
+        })
     }
 }

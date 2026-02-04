@@ -1,3 +1,5 @@
+//! CLI command parsing and configuration.
+
 use clap::ArgGroup;
 use clap::Args;
 use clap::Parser;

@@ -1,3 +1,5 @@
+//! Shared daemon handler helpers.
+
 use crate::adapters::rpc::RpcRequest;
 use tracing::Span;
 use tracing::debug_span;

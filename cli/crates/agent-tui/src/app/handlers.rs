@@ -477,12 +477,7 @@ pub(crate) fn handle_session_show<C: DaemonClient>(
 
 pub(crate) fn resolve_attach_session_id<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
-    session_id: Option<String>,
 ) -> Result<String> {
-    if let Some(id) = session_id {
-        return Ok(id);
-    }
-
     if let Some(id) = ctx.session.clone() {
         return Ok(id);
     }
@@ -493,8 +488,20 @@ pub(crate) fn resolve_attach_session_id<C: DaemonClient>(
     }
 
     Err(anyhow::anyhow!(
-        "No active session to attach. Use 'agent-tui sessions list' or pass --session."
+        "No active session to attach. Use 'agent-tui sessions list' then 'agent-tui sessions switch <id>' or pass --session."
     ))
+}
+
+pub(crate) fn handle_session_switch<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    session_id: String,
+) -> HandlerResult {
+    let params = params::SessionParams {
+        session: Some(session_id.clone()),
+    };
+    let result = call_with_params(ctx.client, "attach", params)?;
+    let success_message = format!("Active session set to {}", Colors::session_id(&session_id));
+    ctx.output_success_and_ok(&result, &success_message, "Switch failed")
 }
 
 pub(crate) fn handle_health<C: DaemonClient>(

@@ -44,12 +44,12 @@ lint:
 test:
     cargo test --workspace --lib --test cli_smoke --test cli_contracts
 
-# Build Rust workspace (requires web deps).
-build: web-install
+# Build Rust workspace (ensures embedded web UI is fresh).
+build: web-sync
     cargo build --workspace
 
-# Release build (requires web deps).
-build-release: web-install
+# Release build (ensures embedded web UI is fresh).
+build-release: web-sync
     cargo build --workspace --release
 
 # Install web UI dependencies.
@@ -59,6 +59,12 @@ web-install: _ensure-bun
 # Build web UI.
 web-build: _ensure-bun
     (cd ../web && bun install && bun run build)
+
+# Build web UI and sync it into the CLI embedded assets.
+web-sync: web-build
+    @rm -rf crates/agent-tui/assets/web
+    @mkdir -p crates/agent-tui/assets/web
+    cp -a ../web/public/. crates/agent-tui/assets/web/
 
 # Clean build artifacts.
 clean:

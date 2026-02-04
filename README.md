@@ -86,7 +86,8 @@ agent-tui kill
 ```bash
 agent-tui run [COMMAND] [ARGS]     # Run TUI app (--cols, --rows, --cwd)
 agent-tui sessions list            # List active sessions
-agent-tui sessions attach [ID]     # Attach to session
+agent-tui sessions switch <ID>     # Set active session
+agent-tui sessions attach          # Attach to active session (use -s <ID> to target)
 agent-tui kill                     # Kill current session
 agent-tui restart                  # Restart session
 ```

@@ -52,7 +52,8 @@ Use this file when you need complete CLI coverage and exact options.
 ### Sessions
 - `agent-tui sessions` (list)
 - `agent-tui sessions show <id>`
-- `agent-tui sessions attach [id]`
+- `agent-tui sessions switch <id>` (alias: `select`)
+- `agent-tui sessions attach` (use `-s <id>` to target)
   - `-T, --no-tty`: stream only.
   - `--detach-keys <keys>`: custom detach sequence (env: `AGENT_TUI_DETACH_KEYS`).
 - `agent-tui sessions cleanup [--all]`

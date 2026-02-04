@@ -46,9 +46,10 @@ Use this file when you need a complete, end-to-end command sequence.
 
 ## Debug/Attach Flow (existing session)
 1) List sessions: `agent-tui sessions`
-2) Attach to active session: `agent-tui sessions attach`
-3) Interact/observe, then detach (Ctrl-P Ctrl-Q).
-4) Cleanup: `agent-tui kill` or `agent-tui sessions cleanup`
+2) Switch active session if needed: `agent-tui sessions switch <id>`
+3) Attach to active session: `agent-tui sessions attach`
+4) Interact/observe, then detach (Ctrl-P Ctrl-Q).
+5) Cleanup: `agent-tui kill` or `agent-tui sessions cleanup`
 
 ## Smoke Test Example (htop)
 1) `agent-tui run htop`

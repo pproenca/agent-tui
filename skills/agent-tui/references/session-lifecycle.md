@@ -16,8 +16,9 @@ Use this file when managing multiple sessions or debugging stuck runs.
 ## Inspect and Attach
 - `sessions`: list active sessions.
 - `sessions show <id>`: show session details.
-- `sessions attach [id]`: attach in TTY mode (detach with Ctrl-P Ctrl-Q).
-- `sessions attach -T <id>`: stream output only (no TTY).
+- `sessions switch <id>`: set the active session.
+- `sessions attach`: attach in TTY mode (detach with Ctrl-P Ctrl-Q). Use `-s <id>` to target a specific session.
+- `-s <id> sessions attach -T`: stream output only (no TTY).
 
 ## Cleanup and Recovery
 - `kill`: terminate the current session.

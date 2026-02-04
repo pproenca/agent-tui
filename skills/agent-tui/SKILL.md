@@ -21,15 +21,17 @@ agent-tui --version
 If not installed, use one of:
 
 ```bash
-# Recommended: one-line install (macOS/Linux)
-curl -fsSL https://raw.githubusercontent.com/pproenca/agent-tui/master/install.sh | sh
-```
-
-```bash
-# Package manager
+# Recommended: package manager
 npm i -g agent-tui
 pnpm add -g agent-tui
 bun add -g agent-tui
+```
+
+```bash
+# Verified install script (macOS/Linux)
+# The script downloads a release binary and verifies its checksum.
+curl -fsSL https://raw.githubusercontent.com/pproenca/agent-tui/master/install.sh -o /tmp/agent-tui-install.sh
+sh /tmp/agent-tui-install.sh
 ```
 
 ```bash

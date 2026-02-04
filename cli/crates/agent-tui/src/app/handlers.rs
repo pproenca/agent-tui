@@ -15,6 +15,7 @@ use anyhow::Context;
 use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
+use tracing::warn;
 
 use crate::adapters::RpcValue;
 use crate::adapters::RpcValueRef;
@@ -1139,6 +1140,36 @@ fn stop_ui_server() -> Result<StopUiResult> {
 
 fn build_ui_url(base: &str, state: &ApiState) -> String {
     let (base, fragment) = base.split_once('#').unwrap_or((base, ""));
+    if let Ok(mut url) = url::Url::parse(base) {
+        let existing = url.query_pairs().collect::<Vec<_>>();
+        {
+            let mut pairs = url.query_pairs_mut();
+            pairs.clear();
+            for (key, value) in existing {
+                match key.as_ref() {
+                    "api" | "ws" | "token" | "session" | "encoding" | "auto" => {}
+                    _ => {
+                        pairs.append_pair(&key, &value);
+                    }
+                }
+            }
+            pairs.append_pair("api", &state.http_url);
+            pairs.append_pair("ws", &state.ws_url);
+            pairs.append_pair("session", "active");
+            pairs.append_pair("encoding", "binary");
+            pairs.append_pair("auto", "1");
+            if let Some(token) = state.token.as_deref() {
+                pairs.append_pair("token", token);
+            }
+        }
+        if !fragment.is_empty() {
+            url.set_fragment(Some(fragment));
+        }
+        return url.to_string();
+    }
+
+    warn!(base = %base, "Failed to parse UI URL; falling back to string concatenation");
+
     let separator = if base.contains('?') { "&" } else { "?" };
     let mut url = String::with_capacity(base.len() + 128);
     url.push_str(base);
@@ -1167,12 +1198,13 @@ fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<()> {
         .or_else(|| std::env::var("BROWSER").ok());
 
     let mut cmd = if let Some(browser) = browser {
-        let mut parts = browser.split_whitespace();
-        let program = parts
-            .next()
+        let parts = shell_words::split(&browser)
+            .with_context(|| format!("Failed to parse browser command: {browser}"))?;
+        let (program, args) = parts
+            .split_first()
             .ok_or_else(|| anyhow::anyhow!("Browser command is empty"))?;
         let mut cmd = Command::new(program);
-        cmd.args(parts);
+        cmd.args(args);
         cmd
     } else if cfg!(target_os = "macos") {
         Command::new("open")

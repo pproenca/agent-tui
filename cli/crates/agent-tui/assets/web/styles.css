@@ -242,6 +242,11 @@ body {
   box-shadow: 0 4px 12px rgba(31, 26, 22, 0.15);
 }
 
+.button--icon svg {
+  display: block;
+  stroke: currentColor;
+}
+
 .main {
   display: flex;
   flex-direction: column;

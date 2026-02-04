@@ -28,6 +28,8 @@ slow-tests = []
 clap.workspace = true
 clap_complete.workspace = true
 crossterm.workspace = true
+shell-words.workspace = true
+url.workspace = true
 
 # Serialization
 serde.workspace = true

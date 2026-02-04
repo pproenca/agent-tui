@@ -13,13 +13,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
+use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio::sync::{Semaphore, mpsc, watch};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info, warn};
 
 use crate::domain::session_types::SessionInfo;
-use crate::infra::daemon::SessionManager;
 use crate::usecases::ports::{SessionHandle, SessionRepository, StreamCursor};
 
 const API_VERSION: &str = "1";
@@ -116,16 +116,23 @@ impl ApiServerHandle {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ApiServerError {
+    #[error("API disabled")]
     Disabled,
-    Bind(String),
-    InvalidListen(String),
+    #[error("Invalid listen address: {message}")]
+    InvalidListen { message: String },
+    #[error("API server I/O error ({operation}): {source}")]
+    Io {
+        operation: &'static str,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 #[derive(Clone)]
 struct ApiState {
-    session_manager: Arc<SessionManager>,
+    session_repository: Arc<dyn SessionRepository>,
     token: Option<String>,
     api_version: &'static str,
     daemon_version: String,
@@ -323,7 +330,7 @@ impl From<SessionInfo> for SessionInfoPayload {
 }
 
 pub fn start_api_server(
-    session_manager: Arc<SessionManager>,
+    session_repository: Arc<dyn SessionRepository>,
     shutdown_flag: Arc<AtomicBool>,
     config: ApiConfig,
 ) -> Result<ApiServerHandle, ApiServerError> {
@@ -347,7 +354,7 @@ pub fn start_api_server(
     }
 
     let state = Arc::new(ApiState {
-        session_manager,
+        session_repository,
         token: config.token.clone(),
         api_version: API_VERSION,
         daemon_version: env!("AGENT_TUI_VERSION").to_string(),
@@ -397,7 +404,10 @@ pub fn start_api_server(
                 let _ = std::fs::remove_file(state_path);
             });
         })
-        .map_err(|e| ApiServerError::Bind(e.to_string()))?;
+        .map_err(|e| ApiServerError::Io {
+            operation: "spawn api thread",
+            source: e,
+        })?;
 
     let shutdown_watcher = shutdown_flag;
     let shutdown_tx_clone = shutdown_tx.clone();
@@ -500,7 +510,7 @@ async fn health_handler(
     if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
         return *resp;
     }
-    let session_count = state.session_manager.session_count();
+    let session_count = state.session_repository.session_count();
     let uptime_ms = state.start_time.elapsed().as_millis() as u64;
     Json(HealthResponse {
         status: "healthy",
@@ -522,8 +532,8 @@ async fn sessions_handler(
     if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
         return *resp;
     }
-    let sessions = state.session_manager.list();
-    let active = state.session_manager.active_session_id();
+    let sessions = state.session_repository.list();
+    let active = state.session_repository.active_session_id();
     let payload = SessionsResponse {
         active: active.map(|id| id.to_string()),
         sessions: sessions.into_iter().map(SessionInfoPayload::from).collect(),
@@ -545,7 +555,7 @@ async fn snapshot_handler(
     } else {
         Some(id.as_str())
     };
-    let session = match SessionRepository::resolve(state.session_manager.as_ref(), session_id) {
+    let session = match SessionRepository::resolve(state.session_repository.as_ref(), session_id) {
         Ok(session) => session,
         Err(err) => return error_response(StatusCode::NOT_FOUND, &err.to_string()),
     };
@@ -576,7 +586,8 @@ async fn ws_handler(
         Ok(encoding) => encoding,
         Err(message) => return error_response(StatusCode::BAD_REQUEST, message),
     };
-    let session = match SessionRepository::resolve(state.session_manager.as_ref(), session_param) {
+    let session = match SessionRepository::resolve(state.session_repository.as_ref(), session_param)
+    {
         Ok(session) => session,
         Err(err) => return error_response(StatusCode::NOT_FOUND, &err.to_string()),
     };
@@ -929,26 +940,34 @@ fn bind_listener(
     let mut addrs = config
         .listen
         .to_socket_addrs()
-        .map_err(|e| ApiServerError::InvalidListen(e.to_string()))?;
-    let addr = addrs
-        .next()
-        .ok_or_else(|| ApiServerError::InvalidListen("no resolved address".to_string()))?;
+        .map_err(|e| ApiServerError::InvalidListen {
+            message: e.to_string(),
+        })?;
+    let addr = addrs.next().ok_or_else(|| ApiServerError::InvalidListen {
+        message: "no resolved address".to_string(),
+    })?;
 
     if !config.allow_remote && !addr.ip().is_loopback() {
-        return Err(ApiServerError::InvalidListen(
-            "refusing to bind non-loopback address without AGENT_TUI_API_ALLOW_REMOTE=1"
+        return Err(ApiServerError::InvalidListen {
+            message: "refusing to bind non-loopback address without AGENT_TUI_API_ALLOW_REMOTE=1"
                 .to_string(),
-        ));
+        });
     }
 
-    let listener =
-        std::net::TcpListener::bind(addr).map_err(|e| ApiServerError::Bind(e.to_string()))?;
+    let listener = std::net::TcpListener::bind(addr).map_err(|e| ApiServerError::Io {
+        operation: "bind",
+        source: e,
+    })?;
     listener
         .set_nonblocking(true)
-        .map_err(|e| ApiServerError::Bind(e.to_string()))?;
-    let local_addr = listener
-        .local_addr()
-        .map_err(|e| ApiServerError::Bind(e.to_string()))?;
+        .map_err(|e| ApiServerError::Io {
+            operation: "set non-blocking",
+            source: e,
+        })?;
+    let local_addr = listener.local_addr().map_err(|e| ApiServerError::Io {
+        operation: "read local address",
+        source: e,
+    })?;
     Ok((listener, local_addr))
 }
 

@@ -219,8 +219,9 @@ impl DaemonServer {
         }
     }
 
-    fn session_manager_handle(&self) -> Arc<SessionManager> {
-        Arc::clone(&self.session_manager)
+    fn session_repository_handle(&self) -> Arc<dyn SessionRepository> {
+        let repository: Arc<dyn SessionRepository> = self.session_manager.clone();
+        repository
     }
 
     pub fn shutdown_all_sessions(&self) {
@@ -986,18 +987,22 @@ pub fn start_daemon() -> Result<(), DaemonError> {
     ));
 
     let api_handle = match start_api_server(
-        server.session_manager_handle(),
+        server.session_repository_handle(),
         Arc::clone(&shutdown),
         ApiConfig::from_env(),
     ) {
         Ok(handle) => Some(handle),
         Err(ApiServerError::Disabled) => None,
-        Err(ApiServerError::Bind(reason)) => {
-            warn!(reason = %reason, "Failed to bind API server");
+        Err(ApiServerError::Io { operation, source }) => {
+            warn!(
+                operation = %operation,
+                error = %source,
+                "Failed to start API server"
+            );
             None
         }
-        Err(ApiServerError::InvalidListen(reason)) => {
-            warn!(reason = %reason, "Invalid API listen address");
+        Err(ApiServerError::InvalidListen { message }) => {
+            warn!(reason = %message, "Invalid API listen address");
             None
         }
     };

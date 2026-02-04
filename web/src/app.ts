@@ -1,5 +1,12 @@
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
+import { createElement, Plus, X, RefreshCw, type IconNode } from "lucide";
+
+const ICON_ATTRS = { width: 16, height: 16, "stroke-width": 2 };
+
+function setButtonIcon(button: HTMLButtonElement, iconDef: IconNode): void {
+  button.replaceChildren(createElement(iconDef, ICON_ATTRS));
+}
 
 const connectBtn = document.getElementById("connectBtn") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
@@ -9,6 +16,11 @@ const sessionEmptyEl = document.getElementById("sessionEmpty") as HTMLDivElement
 const sessionsRefreshBtn = document.getElementById("sessionsRefresh") as
   | HTMLButtonElement
   | null;
+
+setButtonIcon(connectBtn, Plus);
+if (sessionsRefreshBtn) {
+  setButtonIcon(sessionsRefreshBtn, RefreshCw);
+}
 
 const params = new URLSearchParams(window.location.search);
 const decoder = new TextDecoder();
@@ -111,7 +123,7 @@ function stopPeriodicRefresh() {
 
 function finalizeDisconnect(reason: DisconnectReason) {
   stopPeriodicRefresh();
-  connectBtn.textContent = "+";
+  setButtonIcon(connectBtn, Plus);
   connectBtn.title = "Connect";
   setStatus("Disconnected", false);
   if (reason === "server") {
@@ -431,7 +443,7 @@ async function connect() {
       return;
     }
     setStatus("Connected", true);
-    connectBtn.textContent = "\u00D7";
+    setButtonIcon(connectBtn, X);
     connectBtn.title = "Disconnect";
     startPeriodicRefresh();
   });

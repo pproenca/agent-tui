@@ -1,3 +1,5 @@
+//! Domain type conversions.
+
 use crate::domain::DomainCursorPosition;
 use crate::domain::core::CursorPosition;
 

@@ -1,3 +1,5 @@
+//! Session handler.
+
 use super::common;
 use crate::adapters::rpc::RpcRequest;
 use crate::adapters::rpc::RpcResponse;

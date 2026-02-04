@@ -1,3 +1,5 @@
+//! Vterm integration.
+
 use std::io;
 use std::sync::Arc;
 

@@ -1,3 +1,5 @@
+//! Shutdown notifier port.
+
 use std::sync::Arc;
 
 pub trait ShutdownNotifier: Send + Sync {

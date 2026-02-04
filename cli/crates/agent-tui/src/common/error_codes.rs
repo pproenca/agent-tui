@@ -1,3 +1,5 @@
+//! Exit code definitions.
+
 pub const SESSION_NOT_FOUND: i32 = -32001;
 pub const NO_ACTIVE_SESSION: i32 = -32002;
 pub const SESSION_LIMIT: i32 = -32006;

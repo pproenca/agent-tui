@@ -1,3 +1,5 @@
+//! Metrics port.
+
 pub trait MetricsProvider: Send + Sync {
     fn requests(&self) -> u64;
     fn errors(&self) -> u64;

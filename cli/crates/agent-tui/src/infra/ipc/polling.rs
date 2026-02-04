@@ -1,3 +1,5 @@
+//! IPC polling configuration.
+
 use std::time::Duration;
 
 pub const MAX_STARTUP_POLLS: u32 = 50;

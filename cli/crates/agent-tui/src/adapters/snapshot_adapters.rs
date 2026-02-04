@@ -1,6 +1,8 @@
+//! Snapshot adapter helpers.
+
 use crate::domain::session_types::SessionInfo;
 
-pub fn session_info_to_json(info: &SessionInfo) -> serde_json::Value {
+pub(crate) fn session_info_to_json(info: &SessionInfo) -> serde_json::Value {
     serde_json::json!({
         "id": info.id.as_str(),
         "command": info.command,

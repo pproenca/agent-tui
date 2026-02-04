@@ -1,3 +1,5 @@
+//! System clock implementation.
+
 use std::time::Instant;
 
 use crate::usecases::ports::Clock;

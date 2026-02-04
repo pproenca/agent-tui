@@ -1,3 +1,5 @@
+//! Synchronization helpers.
+
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::RwLock;

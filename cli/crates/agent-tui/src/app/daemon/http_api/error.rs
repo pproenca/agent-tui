@@ -1,3 +1,5 @@
+//! HTTP API error types.
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]

@@ -1,3 +1,5 @@
+//! Screen styling types.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
     Default,

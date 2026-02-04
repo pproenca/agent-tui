@@ -1,3 +1,5 @@
+//! Wait condition evaluation.
+
 use std::collections::VecDeque;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;

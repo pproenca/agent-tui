@@ -1,5 +1,8 @@
+//! RPC value wrappers and helpers.
+
 use serde::Serialize;
 use serde_json::Value;
+use tracing::debug;
 
 use crate::adapters::ValueExt;
 
@@ -46,7 +49,10 @@ impl RpcValue {
     }
 
     pub fn to_pretty_json(&self) -> String {
-        serde_json::to_string_pretty(&self.0).unwrap_or_default()
+        serde_json::to_string_pretty(&self.0).unwrap_or_else(|err| {
+            debug!(error = %err, "Failed to serialize RPC value to JSON");
+            String::new()
+        })
     }
 
     pub fn str_array_join(&self, key: &str, sep: &str) -> String {

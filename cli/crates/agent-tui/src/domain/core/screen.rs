@@ -1,3 +1,5 @@
+//! Screen snapshot types.
+
 use super::CursorPosition;
 use super::style::CellStyle;
 

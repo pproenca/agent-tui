@@ -1,3 +1,5 @@
+//! Domain types and request/response DTOs.
+
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
@@ -5,27 +7,19 @@ use std::str::FromStr;
 use super::session_types::SessionId;
 use super::session_types::SessionInfo;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use thiserror::Error;
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("Invalid scroll direction '{invalid_value}'. Must be one of: up, down, left, right")]
 pub struct ScrollDirectionError {
     pub invalid_value: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("Invalid wait condition type '{invalid_value}'. Must be one of: text, stable, text_gone")]
 pub struct WaitConditionTypeError {
     pub invalid_value: String,
 }
-
-impl fmt::Display for WaitConditionTypeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Invalid wait condition type '{}'. Must be one of: text, stable, text_gone",
-            self.invalid_value
-        )
-    }
-}
-
-impl std::error::Error for WaitConditionTypeError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WaitConditionType {
@@ -76,18 +70,6 @@ impl FromStr for WaitConditionType {
         Self::parse(s)
     }
 }
-
-impl fmt::Display for ScrollDirectionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Invalid scroll direction '{}'. Must be one of: up, down, left, right",
-            self.invalid_value
-        )
-    }
-}
-
-impl std::error::Error for ScrollDirectionError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScrollDirection {

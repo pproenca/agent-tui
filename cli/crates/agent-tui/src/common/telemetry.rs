@@ -1,5 +1,7 @@
 #![expect(clippy::print_stderr, reason = "Tracing not initialized yet")]
 
+//! Telemetry and tracing setup.
+
 use std::io::IsTerminal;
 use std::path::PathBuf;
 

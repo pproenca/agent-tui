@@ -1,3 +1,5 @@
+//! Terminal state management.
+
 use crate::domain::core::Component;
 use crate::infra::terminal::CursorPosition;
 use crate::infra::terminal::ScreenBuffer;

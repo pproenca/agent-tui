@@ -1,3 +1,5 @@
+//! Mock IPC client for tests.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;

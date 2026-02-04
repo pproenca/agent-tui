@@ -1,3 +1,5 @@
+//! IPC version checks.
+
 use crate::infra::ipc::client::DaemonClient;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

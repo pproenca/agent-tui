@@ -1,3 +1,5 @@
+//! VOM pattern definitions.
+
 const BRAILLE_SPINNERS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 const CIRCLE_SPINNERS: [char; 4] = ['◐', '◑', '◒', '◓'];

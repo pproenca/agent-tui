@@ -1,3 +1,5 @@
+//! PTY session management.
+
 use crate::infra::terminal::PtyHandle;
 use crate::infra::terminal::ReadEvent;
 use crossbeam_channel::Receiver;

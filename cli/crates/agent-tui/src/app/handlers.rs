@@ -1,6 +1,8 @@
 #![expect(clippy::print_stdout, reason = "CLI output is emitted here")]
 #![expect(clippy::print_stderr, reason = "CLI output is emitted here")]
 
+//! CLI command handlers.
+
 use std::collections::HashMap;
 use std::io;
 use std::io::IsTerminal;
@@ -38,7 +40,7 @@ use crate::app::error::CliError;
 use crate::app::rpc_client::call_no_params;
 use crate::app::rpc_client::call_with_params;
 
-pub type HandlerResult = Result<()>;
+pub(crate) type HandlerResult = Result<()>;
 
 fn format_uptime_ms(uptime_ms: u64) -> String {
     let secs = uptime_ms / 1000;
@@ -76,7 +78,7 @@ macro_rules! key_handler {
     };
 }
 
-pub fn resolve_wait_condition(params: &WaitParams) -> Option<String> {
+pub(crate) fn resolve_wait_condition(params: &WaitParams) -> Option<String> {
     if params.stable {
         return Some("stable".to_string());
     }
@@ -88,7 +90,7 @@ pub fn resolve_wait_condition(params: &WaitParams) -> Option<String> {
     None
 }
 
-pub struct HandlerContext<'a, C: DaemonClient> {
+pub(crate) struct HandlerContext<'a, C: DaemonClient> {
     pub client: &'a mut C,
     pub session: Option<String>,
     pub format: OutputFormat,
@@ -185,7 +187,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
     }
 }
 
-pub fn handle_spawn<C: DaemonClient>(
+pub(crate) fn handle_spawn<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     command: String,
     args: Vec<String>,
@@ -216,7 +218,7 @@ pub fn handle_spawn<C: DaemonClient>(
     })
 }
 
-pub fn handle_snapshot<C: DaemonClient>(
+pub(crate) fn handle_snapshot<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     region: Option<String>,
     strip_ansi: bool,
@@ -267,7 +269,10 @@ key_handler!(handle_keyup, "keyup", |k: &String| format!(
     k
 ));
 
-pub fn handle_type<C: DaemonClient>(ctx: &mut HandlerContext<C>, text: String) -> HandlerResult {
+pub(crate) fn handle_type<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    text: String,
+) -> HandlerResult {
     let params = params::TypeParams {
         text,
         session: ctx.session.clone(),
@@ -276,7 +281,7 @@ pub fn handle_type<C: DaemonClient>(ctx: &mut HandlerContext<C>, text: String) -
     ctx.output_success_and_ok(&result, "Text typed", "Type failed")
 }
 
-pub fn handle_wait<C: DaemonClient>(
+pub(crate) fn handle_wait<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     wait_params: WaitParams,
 ) -> HandlerResult {
@@ -310,7 +315,7 @@ pub fn handle_wait<C: DaemonClient>(
     Ok(())
 }
 
-pub fn handle_kill<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_kill<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let params = params::SessionParams {
         session: ctx.session.clone(),
     };
@@ -321,7 +326,7 @@ pub fn handle_kill<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResul
     })
 }
 
-pub fn handle_restart<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_restart<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let params = params::SessionParams {
         session: ctx.session.clone(),
     };
@@ -337,7 +342,7 @@ pub fn handle_restart<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerRe
     })
 }
 
-pub fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let result = call_no_params(ctx.client, "sessions")?;
 
     ctx.output_json_or(&result, || {
@@ -393,7 +398,7 @@ pub fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerR
     })
 }
 
-pub fn handle_session_show<C: DaemonClient>(
+pub(crate) fn handle_session_show<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     session_id: String,
 ) -> HandlerResult {
@@ -470,7 +475,7 @@ pub fn handle_session_show<C: DaemonClient>(
     Ok(())
 }
 
-pub fn resolve_attach_session_id<C: DaemonClient>(
+pub(crate) fn resolve_attach_session_id<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     session_id: Option<String>,
 ) -> Result<String> {
@@ -492,7 +497,10 @@ pub fn resolve_attach_session_id<C: DaemonClient>(
     ))
 }
 
-pub fn handle_health<C: DaemonClient>(ctx: &mut HandlerContext<C>, verbose: bool) -> HandlerResult {
+pub(crate) fn handle_health<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    verbose: bool,
+) -> HandlerResult {
     use crate::adapters::presenter::HealthResult;
 
     let result = call_no_params(ctx.client, "health")?;
@@ -516,7 +524,7 @@ pub fn handle_health<C: DaemonClient>(ctx: &mut HandlerContext<C>, verbose: bool
     Ok(())
 }
 
-pub fn handle_live_start<C: DaemonClient>(
+pub(crate) fn handle_live_start<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     args: LiveStartArgs,
 ) -> HandlerResult {
@@ -627,7 +635,7 @@ pub fn handle_live_start<C: DaemonClient>(
     Ok(())
 }
 
-pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let ui_result = stop_ui_server();
     let ui_error = ui_result.as_ref().err().map(|err| err.to_string());
     match ctx.format {
@@ -721,7 +729,7 @@ pub fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handler
     Ok(())
 }
 
-pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let status = read_api_state_running(&api_state_path());
     let ui_status = resolve_ui_status();
 
@@ -851,7 +859,7 @@ pub fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handl
     Ok(())
 }
 
-pub fn handle_resize<C: DaemonClient>(
+pub(crate) fn handle_resize<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     cols: u16,
     rows: u16,
@@ -873,7 +881,7 @@ pub fn handle_resize<C: DaemonClient>(
     })
 }
 
-pub fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let cli_version = env!("AGENT_TUI_VERSION");
     let cli_commit = env!("AGENT_TUI_GIT_SHA");
 
@@ -1184,7 +1192,10 @@ fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<()> {
     }
 }
 
-pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -> HandlerResult {
+pub(crate) fn handle_cleanup<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    all: bool,
+) -> HandlerResult {
     use crate::adapters::presenter::CleanupFailure;
     use crate::adapters::presenter::CleanupResult;
 
@@ -1264,7 +1275,7 @@ pub fn handle_cleanup<C: DaemonClient>(ctx: &mut HandlerContext<C>, all: bool) -
     Ok(())
 }
 
-pub fn handle_scroll<C: DaemonClient>(
+pub(crate) fn handle_scroll<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     direction: ScrollDirection,
     amount: u16,
@@ -1283,7 +1294,7 @@ pub fn handle_scroll<C: DaemonClient>(
     )
 }
 
-pub fn handle_attach<C: DaemonClient>(
+pub(crate) fn handle_attach<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     session_id: String,
     interactive: bool,
@@ -1358,7 +1369,7 @@ pub fn handle_attach<C: DaemonClient>(
     Ok(())
 }
 
-pub fn handle_env(format: OutputFormat) -> HandlerResult {
+pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
     let vars = [
         (
             "AGENT_TUI_TRANSPORT",
@@ -1457,7 +1468,7 @@ pub fn handle_env(format: OutputFormat) -> HandlerResult {
     Ok(())
 }
 
-pub fn handle_assert<C: DaemonClient>(
+pub(crate) fn handle_assert<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     condition: String,
 ) -> HandlerResult {
@@ -1563,7 +1574,7 @@ pub enum StopResult {
 }
 
 /// Core daemon restart logic that doesn't require an active client connection.
-pub fn restart_daemon_core() -> Result<Vec<String>> {
+pub(crate) fn restart_daemon_core() -> Result<Vec<String>> {
     use crate::infra::ipc::PidLookupResult;
     use crate::infra::ipc::daemon_lifecycle;
     use crate::infra::ipc::get_daemon_pid;
@@ -1593,7 +1604,7 @@ pub fn restart_daemon_core() -> Result<Vec<String>> {
 
 /// Core daemon stop logic that doesn't require an active client connection.
 /// Returns `Ok(StopResult)` on success, including when daemon is already stopped (idempotent).
-pub fn stop_daemon_core(force: bool) -> Result<StopResult> {
+pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
     use crate::infra::ipc::PidLookupResult;
     use crate::infra::ipc::UnixSocketClient;
     use crate::infra::ipc::daemon_lifecycle;
@@ -1636,7 +1647,7 @@ pub fn stop_daemon_core(force: bool) -> Result<StopResult> {
     })
 }
 
-pub fn handle_daemon_stop<C: DaemonClient>(
+pub(crate) fn handle_daemon_stop<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     force: bool,
 ) -> HandlerResult {
@@ -1655,7 +1666,7 @@ pub fn handle_daemon_stop<C: DaemonClient>(
     Ok(())
 }
 
-pub fn print_daemon_status_from_result(result: &RpcValue, format: OutputFormat) {
+pub(crate) fn print_daemon_status_from_result(result: &RpcValue, format: OutputFormat) {
     let cli_version = env!("AGENT_TUI_VERSION");
     let cli_commit = env!("AGENT_TUI_GIT_SHA");
     let daemon_version = result.str_or("version", "unknown");
@@ -1792,7 +1803,7 @@ pub fn print_daemon_status_from_result(result: &RpcValue, format: OutputFormat) 
     }
 }
 
-pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
     let cli_version = env!("AGENT_TUI_VERSION");
     let cli_commit = env!("AGENT_TUI_GIT_SHA");
     match call_no_params(ctx.client, "health") {
@@ -1832,7 +1843,7 @@ pub fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Han
     Ok(())
 }
 
-pub fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
     if let OutputFormat::Text = ctx.format {
         ctx.presenter().present_info("Restarting daemon...");
     }

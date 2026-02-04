@@ -1,3 +1,5 @@
+//! Spawn error mapping.
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]

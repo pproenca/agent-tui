@@ -1,3 +1,5 @@
+//! Daemon session runtime.
+
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fs;

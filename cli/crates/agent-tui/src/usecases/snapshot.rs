@@ -1,3 +1,5 @@
+//! Snapshot use case.
+
 use std::sync::Arc;
 
 use crate::domain::SnapshotInput;

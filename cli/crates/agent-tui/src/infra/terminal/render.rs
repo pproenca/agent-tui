@@ -1,7 +1,10 @@
+//! Terminal rendering helpers.
+
 use std::io::Write;
 
 use crossterm::queue;
 use crossterm::style;
+use tracing::debug;
 
 use super::CellStyle;
 use super::Color;
@@ -25,7 +28,9 @@ pub fn render_screen(buffer: &ScreenBuffer) -> String {
             }
 
             if current_style.as_ref() != Some(&style) {
-                let _ = apply_style(&mut out, &style);
+                if let Err(err) = apply_style(&mut out, &style) {
+                    debug!(error = %err, "Failed to apply terminal style");
+                }
                 current_style = Some(style.clone());
             }
 
@@ -33,16 +38,23 @@ pub fn render_screen(buffer: &ScreenBuffer) -> String {
             for cell in &row[col..run_end] {
                 text.push(cell.char);
             }
-            let _ = queue!(out, style::Print(text));
+            if let Err(err) = queue!(out, style::Print(text)) {
+                debug!(error = %err, "Failed to write terminal text");
+            }
             col = run_end;
         }
 
-        if row_idx + 1 < buffer.cells.len() {
-            let _ = queue!(out, style::Print("\r\n"));
+        if row_idx + 1 < buffer.cells.len()
+            && let Err(err) = queue!(out, style::Print("\r\n"))
+        {
+            debug!(error = %err, "Failed to write terminal newline");
         }
     }
 
-    String::from_utf8(out).unwrap_or_default()
+    String::from_utf8(out).unwrap_or_else(|err| {
+        debug!(error = %err, "Failed to decode terminal output as UTF-8");
+        String::new()
+    })
 }
 
 fn apply_style(out: &mut impl Write, style: &CellStyle) -> std::io::Result<()> {

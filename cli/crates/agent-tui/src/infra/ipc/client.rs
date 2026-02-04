@@ -27,10 +27,10 @@ static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone)]
 pub struct DaemonClientConfig {
-    pub read_timeout: Duration,
-    pub write_timeout: Duration,
-    pub max_retries: u32,
-    pub initial_retry_delay: Duration,
+    read_timeout: Duration,
+    write_timeout: Duration,
+    max_retries: u32,
+    initial_retry_delay: Duration,
 }
 
 impl Default for DaemonClientConfig {
@@ -45,6 +45,22 @@ impl Default for DaemonClientConfig {
 }
 
 impl DaemonClientConfig {
+    pub fn read_timeout(&self) -> Duration {
+        self.read_timeout
+    }
+
+    pub fn write_timeout(&self) -> Duration {
+        self.write_timeout
+    }
+
+    pub fn max_retries(&self) -> u32 {
+        self.max_retries
+    }
+
+    pub fn initial_retry_delay(&self) -> Duration {
+        self.initial_retry_delay
+    }
+
     pub fn with_read_timeout(mut self, timeout: Duration) -> Self {
         self.read_timeout = timeout;
         self
@@ -222,14 +238,14 @@ impl DaemonClient for UnixSocketClient {
         debug!(
             request_id,
             method = %method,
-            read_timeout_ms = config.read_timeout.as_millis(),
-            write_timeout_ms = config.write_timeout.as_millis(),
+            read_timeout_ms = config.read_timeout().as_millis(),
+            write_timeout_ms = config.write_timeout().as_millis(),
             "RPC call started"
         );
         let mut stream = self.transport.connect_stream()?;
 
-        stream.set_read_timeout(Some(config.read_timeout))?;
-        stream.set_write_timeout(Some(config.write_timeout))?;
+        stream.set_read_timeout(Some(config.read_timeout()))?;
+        stream.set_write_timeout(Some(config.write_timeout()))?;
 
         let request = Request {
             jsonrpc: "2.0".to_string(),
@@ -278,8 +294,8 @@ impl DaemonClient for UnixSocketClient {
         let mut stream = self.transport.connect_stream()?;
         let config = DaemonClientConfig::default();
 
-        stream.set_read_timeout(Some(config.read_timeout))?;
-        stream.set_write_timeout(Some(config.write_timeout))?;
+        stream.set_read_timeout(Some(config.read_timeout()))?;
+        stream.set_write_timeout(Some(config.write_timeout()))?;
 
         let request = Request {
             jsonrpc: "2.0".to_string(),
@@ -438,10 +454,10 @@ mod tests {
     #[test]
     fn test_config_default_values() {
         let config = DaemonClientConfig::default();
-        assert_eq!(config.read_timeout, Duration::from_secs(60));
-        assert_eq!(config.write_timeout, Duration::from_secs(10));
-        assert_eq!(config.max_retries, 3);
-        assert_eq!(config.initial_retry_delay, Duration::from_millis(100));
+        assert_eq!(config.read_timeout(), Duration::from_secs(60));
+        assert_eq!(config.write_timeout(), Duration::from_secs(10));
+        assert_eq!(config.max_retries(), 3);
+        assert_eq!(config.initial_retry_delay(), Duration::from_millis(100));
     }
 
     #[test]
@@ -450,9 +466,9 @@ mod tests {
             .with_read_timeout(Duration::from_secs(30))
             .with_write_timeout(Duration::from_secs(5))
             .with_max_retries(5);
-        assert_eq!(config.read_timeout, Duration::from_secs(30));
-        assert_eq!(config.write_timeout, Duration::from_secs(5));
-        assert_eq!(config.max_retries, 5);
+        assert_eq!(config.read_timeout(), Duration::from_secs(30));
+        assert_eq!(config.write_timeout(), Duration::from_secs(5));
+        assert_eq!(config.max_retries(), 5);
     }
 
     static ENV_MUTEX: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();

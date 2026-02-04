@@ -12,14 +12,8 @@ pub use screen::ScreenGrid;
 pub use screen::ScreenSnapshot;
 pub use style::CellStyle;
 pub use style::Color;
-pub use vom::Cluster;
 pub use vom::Component;
-pub use vom::Rect;
-pub use vom::Role;
 pub use vom::analyze;
-pub use vom::classify;
-pub use vom::hash_cluster;
-pub use vom::segment_buffer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CursorPosition {

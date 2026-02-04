@@ -40,7 +40,7 @@ mod tests {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let usecase = ShutdownUseCaseImpl::new(
             Arc::clone(&shutdown_flag),
-            Arc::new(crate::usecases::ports::NoopShutdownNotifier),
+            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier),
         );
 
         assert!(!shutdown_flag.load(Ordering::SeqCst));
@@ -56,7 +56,7 @@ mod tests {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let usecase = ShutdownUseCaseImpl::new(
             shutdown_flag,
-            Arc::new(crate::usecases::ports::NoopShutdownNotifier),
+            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier),
         );
 
         let output = usecase.execute(ShutdownInput);
@@ -69,7 +69,7 @@ mod tests {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let usecase = ShutdownUseCaseImpl::new(
             Arc::clone(&shutdown_flag),
-            Arc::new(crate::usecases::ports::NoopShutdownNotifier),
+            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier),
         );
 
         let output1 = usecase.execute(ShutdownInput);

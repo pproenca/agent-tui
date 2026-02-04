@@ -1,21 +1,13 @@
 #![deny(clippy::all)]
+// CLI-only crate: keep internal API surfaces without dead_code noise.
+#![allow(dead_code)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-pub mod adapters;
-pub mod app;
-pub mod common;
-pub mod domain;
-pub mod infra;
-pub mod usecases;
+mod adapters;
+mod app;
+mod common;
+mod domain;
+mod infra;
+mod usecases;
 
 pub use app::Application;
-
-pub use app::error::AttachError;
-pub use app::handlers::HandlerResult;
-pub use common::Colors;
-pub use infra::daemon::Session;
-pub use infra::daemon::SessionError;
-pub use infra::daemon::SessionId;
-pub use infra::daemon::SessionManager;
-pub use infra::ipc::ClientError;
-pub use infra::ipc::DaemonClient;

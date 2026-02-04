@@ -79,9 +79,9 @@ mod tests {
     use crate::domain::core::{Component, CursorPosition};
     use crate::domain::{SessionId, SessionInfo};
     use crate::usecases::ports::{
-        Clock, LivePreviewSnapshot, MetricsProvider, NoopShutdownNotifier, SessionError,
-        SessionHandle, SessionOps, SessionRepository, StreamCursor, StreamRead, StreamWaiter,
-        StreamWaiterHandle, SystemInfoProvider,
+        Clock, LivePreviewSnapshot, MetricsProvider, SessionError, SessionHandle, SessionOps,
+        SessionRepository, StreamCursor, StreamRead, StreamWaiter, StreamWaiterHandle,
+        SystemInfoProvider,
     };
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -337,7 +337,8 @@ mod tests {
         let clock = Arc::new(TestClock);
         let active_connections = Arc::new(AtomicUsize::new(0));
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        let shutdown_notifier = Arc::new(NoopShutdownNotifier);
+        let shutdown_notifier =
+            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
         UseCaseContainer::new(
             session_repo,
             metrics,

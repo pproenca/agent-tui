@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
-use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio::sync::{Semaphore, mpsc, watch};
 use tower_http::cors::{Any, CorsLayer};
@@ -21,6 +20,9 @@ use tracing::{error, info, warn};
 
 use crate::domain::session_types::SessionInfo;
 use crate::usecases::ports::{SessionHandle, SessionRepository, StreamCursor};
+
+mod error;
+pub(crate) use error::ApiServerError;
 
 const API_VERSION: &str = "1";
 const DEFAULT_API_LISTEN: &str = "127.0.0.1:0";
@@ -44,13 +46,13 @@ const UI_XTERM_CSS: &str =
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
-    pub enabled: bool,
-    pub listen: String,
-    pub allow_remote: bool,
-    pub token: Option<String>,
-    pub state_path: PathBuf,
-    pub max_ws_connections: usize,
-    pub ws_queue_capacity: usize,
+    enabled: bool,
+    listen: String,
+    allow_remote: bool,
+    token: Option<String>,
+    state_path: PathBuf,
+    max_ws_connections: usize,
+    ws_queue_capacity: usize,
 }
 
 impl ApiConfig {
@@ -114,20 +116,6 @@ impl ApiServerHandle {
             let _ = std::fs::remove_file(&self.state_path);
         }
     }
-}
-
-#[derive(Debug, Error)]
-pub enum ApiServerError {
-    #[error("API disabled")]
-    Disabled,
-    #[error("Invalid listen address: {message}")]
-    InvalidListen { message: String },
-    #[error("API server I/O error ({operation}): {source}")]
-    Io {
-        operation: &'static str,
-        #[source]
-        source: std::io::Error,
-    },
 }
 
 #[derive(Clone)]

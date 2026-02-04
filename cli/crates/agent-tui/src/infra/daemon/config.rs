@@ -10,11 +10,11 @@ const DEFAULT_MAX_REQUEST_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Clone)]
 pub struct DaemonConfig {
-    pub max_connections: usize,
-    pub lock_timeout: Duration,
-    pub idle_timeout: Duration,
-    pub max_request_bytes: usize,
-    pub max_sessions: usize,
+    max_connections: usize,
+    lock_timeout: Duration,
+    idle_timeout: Duration,
+    max_request_bytes: usize,
+    max_sessions: usize,
 }
 
 impl Default for DaemonConfig {
@@ -24,6 +24,26 @@ impl Default for DaemonConfig {
 }
 
 impl DaemonConfig {
+    pub fn max_connections(&self) -> usize {
+        self.max_connections
+    }
+
+    pub fn lock_timeout(&self) -> Duration {
+        self.lock_timeout
+    }
+
+    pub fn idle_timeout(&self) -> Duration {
+        self.idle_timeout
+    }
+
+    pub fn max_request_bytes(&self) -> usize {
+        self.max_request_bytes
+    }
+
+    pub fn max_sessions(&self) -> usize {
+        self.max_sessions
+    }
+
     pub fn from_env() -> Self {
         Self {
             max_connections: env::var("AGENT_TUI_MAX_CONNECTIONS")
@@ -86,17 +106,17 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = DaemonConfig::default();
-        assert_eq!(config.max_connections, DEFAULT_MAX_CONNECTIONS);
+        assert_eq!(config.max_connections(), DEFAULT_MAX_CONNECTIONS);
         assert_eq!(
-            config.lock_timeout,
+            config.lock_timeout(),
             Duration::from_secs(DEFAULT_LOCK_TIMEOUT_SECS)
         );
         assert_eq!(
-            config.idle_timeout,
+            config.idle_timeout(),
             Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS)
         );
-        assert_eq!(config.max_request_bytes, DEFAULT_MAX_REQUEST_BYTES);
-        assert_eq!(config.max_sessions, DEFAULT_MAX_SESSIONS);
+        assert_eq!(config.max_request_bytes(), DEFAULT_MAX_REQUEST_BYTES);
+        assert_eq!(config.max_sessions(), DEFAULT_MAX_SESSIONS);
     }
 
     #[test]
@@ -108,10 +128,10 @@ mod tests {
             .with_max_request_bytes(2_097_152)
             .with_max_sessions(32);
 
-        assert_eq!(config.max_connections, 128);
-        assert_eq!(config.lock_timeout, Duration::from_secs(10));
-        assert_eq!(config.idle_timeout, Duration::from_secs(600));
-        assert_eq!(config.max_request_bytes, 2_097_152);
-        assert_eq!(config.max_sessions, 32);
+        assert_eq!(config.max_connections(), 128);
+        assert_eq!(config.lock_timeout(), Duration::from_secs(10));
+        assert_eq!(config.idle_timeout(), Duration::from_secs(600));
+        assert_eq!(config.max_request_bytes(), 2_097_152);
+        assert_eq!(config.max_sessions(), 32);
     }
 }

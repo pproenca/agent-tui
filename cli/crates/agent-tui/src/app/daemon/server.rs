@@ -194,7 +194,7 @@ impl DaemonServer {
         shutdown_flag: Arc<AtomicBool>,
         shutdown_notifier: crate::usecases::ports::ShutdownNotifierHandle,
     ) -> Self {
-        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions));
+        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions()));
         let metrics = Arc::new(DaemonMetrics::new());
         let metrics_provider: Arc<dyn MetricsProvider> = metrics.clone();
         let system_info = Arc::new(SystemInfo::new(Instant::now()));
@@ -630,7 +630,7 @@ impl DaemonServer {
     }
 
     fn handle_client(self: Arc<Self>, mut conn: impl TransportConnection + 'static) {
-        let idle_timeout = DaemonConfig::from_env().idle_timeout;
+        let idle_timeout = DaemonConfig::from_env().idle_timeout();
         let conn_id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
         let conn_span = tracing::info_span!("daemon_connection", conn_id);
         let _conn_guard = conn_span.enter();

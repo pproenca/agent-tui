@@ -1,8 +1,12 @@
+//! Daemon transport abstractions and implementations.
+
 pub mod unix_socket;
 
-pub use unix_socket::{UnixSocketConnection, UnixSocketListener};
+pub use unix_socket::UnixSocketConnection;
+pub use unix_socket::UnixSocketListener;
 
-use crate::adapters::rpc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::RpcRequest;
+use crate::adapters::rpc::RpcResponse;
 use std::time::Duration;
 
 mod error;

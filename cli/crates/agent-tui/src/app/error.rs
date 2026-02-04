@@ -1,7 +1,8 @@
 use std::io;
 
 use crate::app::commands::OutputFormat;
-use crate::common::error_codes::{self, ErrorCategory};
+use crate::common::error_codes;
+use crate::common::error_codes::ErrorCategory;
 use serde::Serialize;
 use thiserror::Error;
 

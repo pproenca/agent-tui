@@ -1,3 +1,5 @@
+//! Application use cases orchestrating domain and ports.
+
 mod diagnostics;
 mod input;
 mod session;
@@ -7,22 +9,45 @@ mod spawn_error;
 mod wait;
 mod wait_condition;
 
-pub use diagnostics::{
-    HealthUseCase, HealthUseCaseImpl, MetricsUseCase, MetricsUseCaseImpl, TerminalReadUseCase,
-    TerminalReadUseCaseImpl, TerminalWriteUseCase, TerminalWriteUseCaseImpl,
-};
-pub use input::{
-    KeydownUseCase, KeydownUseCaseImpl, KeystrokeUseCase, KeystrokeUseCaseImpl, KeyupUseCase,
-    KeyupUseCaseImpl, ScrollUseCase, ScrollUseCaseImpl, TypeUseCase, TypeUseCaseImpl,
-};
-pub use session::{
-    AssertUseCase, AssertUseCaseImpl, AttachUseCase, AttachUseCaseImpl, CleanupUseCase,
-    CleanupUseCaseImpl, KillUseCase, KillUseCaseImpl, ResizeUseCase, ResizeUseCaseImpl,
-    RestartUseCase, RestartUseCaseImpl, SessionsUseCase, SessionsUseCaseImpl, SpawnUseCase,
-    SpawnUseCaseImpl,
-};
-pub use shutdown::{ShutdownUseCase, ShutdownUseCaseImpl};
-pub use snapshot::{SnapshotUseCase, SnapshotUseCaseImpl};
+pub use diagnostics::HealthUseCase;
+pub use diagnostics::HealthUseCaseImpl;
+pub use diagnostics::MetricsUseCase;
+pub use diagnostics::MetricsUseCaseImpl;
+pub use diagnostics::TerminalReadUseCase;
+pub use diagnostics::TerminalReadUseCaseImpl;
+pub use diagnostics::TerminalWriteUseCase;
+pub use diagnostics::TerminalWriteUseCaseImpl;
+pub use input::KeydownUseCase;
+pub use input::KeydownUseCaseImpl;
+pub use input::KeystrokeUseCase;
+pub use input::KeystrokeUseCaseImpl;
+pub use input::KeyupUseCase;
+pub use input::KeyupUseCaseImpl;
+pub use input::ScrollUseCase;
+pub use input::ScrollUseCaseImpl;
+pub use input::TypeUseCase;
+pub use input::TypeUseCaseImpl;
+pub use session::AssertUseCase;
+pub use session::AssertUseCaseImpl;
+pub use session::AttachUseCase;
+pub use session::AttachUseCaseImpl;
+pub use session::CleanupUseCase;
+pub use session::CleanupUseCaseImpl;
+pub use session::KillUseCase;
+pub use session::KillUseCaseImpl;
+pub use session::ResizeUseCase;
+pub use session::ResizeUseCaseImpl;
+pub use session::RestartUseCase;
+pub use session::RestartUseCaseImpl;
+pub use session::SessionsUseCase;
+pub use session::SessionsUseCaseImpl;
+pub use session::SpawnUseCase;
+pub use session::SpawnUseCaseImpl;
+pub use shutdown::ShutdownUseCase;
+pub use shutdown::ShutdownUseCaseImpl;
+pub use snapshot::SnapshotUseCase;
+pub use snapshot::SnapshotUseCaseImpl;
 pub use spawn_error::SpawnError;
-pub use wait::{WaitUseCase, WaitUseCaseImpl};
+pub use wait::WaitUseCase;
+pub use wait::WaitUseCaseImpl;
 pub mod ports;

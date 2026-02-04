@@ -3,7 +3,8 @@ use std::sync::MutexGuard;
 use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use std::sync::RwLockWriteGuard;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use tracing::error;
 
 static POISON_RECOVERY_COUNT: AtomicU64 = AtomicU64::new(0);

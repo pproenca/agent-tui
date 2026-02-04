@@ -2,10 +2,14 @@ use crate::domain::ScrollDirection;
 use crate::domain::core::CursorPosition;
 use crate::domain::core::vom::Component;
 use crate::domain::session_types::SessionId;
-use crate::usecases::ports::{
-    LivePreviewSnapshot, SessionOps, StreamCursor, StreamRead, StreamWaiter, StreamWaiterHandle,
-};
-use crate::usecases::ports::{SessionError, TerminalError};
+use crate::usecases::ports::LivePreviewSnapshot;
+use crate::usecases::ports::SessionError;
+use crate::usecases::ports::SessionOps;
+use crate::usecases::ports::StreamCursor;
+use crate::usecases::ports::StreamRead;
+use crate::usecases::ports::StreamWaiter;
+use crate::usecases::ports::StreamWaiterHandle;
+use crate::usecases::ports::TerminalError;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -255,7 +259,8 @@ mod tests {
 
     #[test]
     fn test_mock_session_analyze_screen_returns_components() {
-        use crate::domain::core::vom::{Rect, Role};
+        use crate::domain::core::vom::Rect;
+        use crate::domain::core::vom::Role;
 
         let components = vec![Component::new(
             Role::Button,

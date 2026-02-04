@@ -1,4 +1,5 @@
-use crate::common::error_codes::{self, ErrorCategory};
+use crate::common::error_codes;
+use crate::common::error_codes::ErrorCategory;
 use crate::usecases::ports::SpawnErrorKind;
 use crate::usecases::ports::TerminalError as PortTerminalError;
 use std::io;

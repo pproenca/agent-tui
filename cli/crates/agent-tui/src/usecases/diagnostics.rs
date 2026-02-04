@@ -1,13 +1,19 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
-use crate::domain::{
-    HealthInput, HealthOutput, MetricsInput, MetricsOutput, TerminalReadInput, TerminalReadOutput,
-    TerminalWriteInput, TerminalWriteOutput,
-};
-use crate::usecases::ports::{
-    MetricsProvider, SessionError, SessionRepository, SystemInfoProvider,
-};
+use crate::domain::HealthInput;
+use crate::domain::HealthOutput;
+use crate::domain::MetricsInput;
+use crate::domain::MetricsOutput;
+use crate::domain::TerminalReadInput;
+use crate::domain::TerminalReadOutput;
+use crate::domain::TerminalWriteInput;
+use crate::domain::TerminalWriteOutput;
+use crate::usecases::ports::MetricsProvider;
+use crate::usecases::ports::SessionError;
+use crate::usecases::ports::SessionRepository;
+use crate::usecases::ports::SystemInfoProvider;
 
 pub trait TerminalReadUseCase: Send + Sync {
     fn execute(&self, input: TerminalReadInput) -> Result<TerminalReadOutput, SessionError>;
@@ -164,9 +170,11 @@ mod tests {
     use super::*;
 
     use crate::domain::SessionId;
-    use crate::usecases::ports::test_support::{MockError, MockSessionRepository};
+    use crate::test_support::MockError;
+    use crate::test_support::MockSessionRepository;
+    use std::sync::atomic::AtomicU64;
     use std::sync::atomic::AtomicUsize;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::Ordering;
 
     #[derive(Default)]
     struct TestMetrics {

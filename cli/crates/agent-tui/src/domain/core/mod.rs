@@ -1,5 +1,7 @@
 #![deny(clippy::all)]
 
+//! Core domain model for screen and terminal semantics.
+
 pub mod screen;
 pub mod style;
 pub mod vom;

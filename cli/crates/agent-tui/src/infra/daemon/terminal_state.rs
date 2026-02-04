@@ -1,5 +1,7 @@
 use crate::domain::core::Component;
-use crate::infra::terminal::{CursorPosition, ScreenBuffer, VirtualTerminal};
+use crate::infra::terminal::CursorPosition;
+use crate::infra::terminal::ScreenBuffer;
+use crate::infra::terminal::VirtualTerminal;
 
 pub struct TerminalState {
     terminal: VirtualTerminal,

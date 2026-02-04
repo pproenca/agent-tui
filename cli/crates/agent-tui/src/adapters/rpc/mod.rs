@@ -1,7 +1,10 @@
+//! RPC boundary types and conversions between transport and use cases.
+
 pub mod params;
 pub mod types;
 
-pub use types::{RpcRequest, RpcResponse};
+pub use types::RpcRequest;
+pub use types::RpcResponse;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -10,14 +13,38 @@ use serde_json::json;
 
 use super::snapshot_adapters::session_info_to_json;
 use crate::adapters::daemon::DomainError;
-use crate::domain::{
-    AssertInput, AssertOutput, AttachInput, AttachOutput, CleanupInput, CleanupOutput,
-    HealthOutput, KeydownInput, KeystrokeInput, KeyupInput, KillOutput, MetricsOutput, ResizeInput,
-    ResizeOutput, RestartOutput, ScrollInput, ScrollOutput, SessionId, SessionInput,
-    SessionsOutput, ShutdownOutput, SnapshotInput, SnapshotOutput, SpawnInput, SpawnOutput,
-    TerminalReadInput, TerminalReadOutput, TerminalWriteInput, TerminalWriteOutput, TypeInput,
-    WaitInput, WaitOutput,
-};
+use crate::domain::AssertInput;
+use crate::domain::AssertOutput;
+use crate::domain::AttachInput;
+use crate::domain::AttachOutput;
+use crate::domain::CleanupInput;
+use crate::domain::CleanupOutput;
+use crate::domain::HealthOutput;
+use crate::domain::KeydownInput;
+use crate::domain::KeystrokeInput;
+use crate::domain::KeyupInput;
+use crate::domain::KillOutput;
+use crate::domain::MetricsOutput;
+use crate::domain::ResizeInput;
+use crate::domain::ResizeOutput;
+use crate::domain::RestartOutput;
+use crate::domain::ScrollInput;
+use crate::domain::ScrollOutput;
+use crate::domain::SessionId;
+use crate::domain::SessionInput;
+use crate::domain::SessionsOutput;
+use crate::domain::ShutdownOutput;
+use crate::domain::SnapshotInput;
+use crate::domain::SnapshotOutput;
+use crate::domain::SpawnInput;
+use crate::domain::SpawnOutput;
+use crate::domain::TerminalReadInput;
+use crate::domain::TerminalReadOutput;
+use crate::domain::TerminalWriteInput;
+use crate::domain::TerminalWriteOutput;
+use crate::domain::TypeInput;
+use crate::domain::WaitInput;
+use crate::domain::WaitOutput;
 use crate::usecases::ports::SessionError;
 
 const MAX_TERMINAL_COLS: u16 = 500;

@@ -1,5 +1,6 @@
 use crate::adapters::rpc::RpcRequest;
-use tracing::{Span, debug_span};
+use tracing::Span;
+use tracing::debug_span;
 
 pub use crate::adapters::session_error_response;
 

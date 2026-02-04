@@ -49,7 +49,7 @@ fn value_str_or<'a>(value: &'a serde_json::Value, key: &str, default: &'a str) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::ipc::mock_client::MockClient;
+    use crate::test_support::MockClient;
     use serde_json::json;
 
     #[test]

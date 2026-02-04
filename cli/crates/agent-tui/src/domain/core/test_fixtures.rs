@@ -1,6 +1,10 @@
 use super::screen::ScreenGrid;
-use super::style::{CellStyle, Color};
-use super::vom::{Cluster, Component, Rect, Role};
+use super::style::CellStyle;
+use super::style::Color;
+use super::vom::Cluster;
+use super::vom::Component;
+use super::vom::Rect;
+use super::vom::Role;
 
 #[derive(Debug, Clone)]
 pub struct Cell {

@@ -1,4 +1,5 @@
-use crate::infra::terminal::{PtyHandle, ReadEvent};
+use crate::infra::terminal::PtyHandle;
+use crate::infra::terminal::ReadEvent;
 use crossbeam_channel::Receiver;
 
 use crate::infra::daemon::SessionError;

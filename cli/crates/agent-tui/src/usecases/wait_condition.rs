@@ -88,7 +88,7 @@ pub fn check_condition<S: SessionOps + ?Sized>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::usecases::ports::test_support::MockSession;
+    use crate::test_support::MockSession;
 
     #[test]
     fn test_check_condition_text_found() {

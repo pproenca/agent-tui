@@ -1,3 +1,5 @@
+//! Test-only mocks for use case ports.
+
 mod mock_error;
 mod mock_repository;
 mod mock_session;

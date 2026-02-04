@@ -1,4 +1,5 @@
-use crate::adapters::rpc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::RpcRequest;
+use crate::adapters::rpc::RpcResponse;
 use serde_json::json;
 
 use super::usecase_container::UseCaseContainer;
@@ -76,16 +77,26 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
 mod tests {
     use super::*;
     use crate::domain::ScrollDirection;
-    use crate::domain::core::{Component, CursorPosition};
-    use crate::domain::{SessionId, SessionInfo};
-    use crate::usecases::ports::{
-        Clock, LivePreviewSnapshot, MetricsProvider, SessionError, SessionHandle, SessionOps,
-        SessionRepository, StreamCursor, StreamRead, StreamWaiter, StreamWaiterHandle,
-        SystemInfoProvider,
-    };
+    use crate::domain::SessionId;
+    use crate::domain::SessionInfo;
+    use crate::domain::core::Component;
+    use crate::domain::core::CursorPosition;
+    use crate::usecases::ports::Clock;
+    use crate::usecases::ports::LivePreviewSnapshot;
+    use crate::usecases::ports::MetricsProvider;
+    use crate::usecases::ports::SessionError;
+    use crate::usecases::ports::SessionHandle;
+    use crate::usecases::ports::SessionOps;
+    use crate::usecases::ports::SessionRepository;
+    use crate::usecases::ports::StreamCursor;
+    use crate::usecases::ports::StreamRead;
+    use crate::usecases::ports::StreamWaiter;
+    use crate::usecases::ports::StreamWaiterHandle;
+    use crate::usecases::ports::SystemInfoProvider;
     use std::collections::HashMap;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, AtomicUsize};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::AtomicUsize;
     use std::time::Duration;
     use std::time::Instant;
 

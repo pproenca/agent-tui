@@ -1,19 +1,33 @@
 use super::common;
-use crate::adapters::rpc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::RpcRequest;
+use crate::adapters::rpc::RpcResponse;
 
+use crate::adapters::assert_output_to_response;
+use crate::adapters::attach_output_to_response;
+use crate::adapters::cleanup_output_to_response;
 use crate::adapters::daemon::DomainError;
-use crate::adapters::{
-    assert_output_to_response, attach_output_to_response, cleanup_output_to_response,
-    domain_error_response, kill_output_to_response, parse_assert_input, parse_attach_input,
-    parse_cleanup_input, parse_resize_input, parse_session_input, parse_spawn_input,
-    resize_output_to_response, restart_output_to_response, session_error_response,
-    sessions_output_to_response, spawn_output_to_response,
-};
+use crate::adapters::domain_error_response;
+use crate::adapters::kill_output_to_response;
+use crate::adapters::parse_assert_input;
+use crate::adapters::parse_attach_input;
+use crate::adapters::parse_cleanup_input;
+use crate::adapters::parse_resize_input;
+use crate::adapters::parse_session_input;
+use crate::adapters::parse_spawn_input;
+use crate::adapters::resize_output_to_response;
+use crate::adapters::restart_output_to_response;
+use crate::adapters::session_error_response;
+use crate::adapters::sessions_output_to_response;
+use crate::adapters::spawn_output_to_response;
+use crate::usecases::AssertUseCase;
+use crate::usecases::AttachUseCase;
+use crate::usecases::CleanupUseCase;
+use crate::usecases::KillUseCase;
+use crate::usecases::ResizeUseCase;
+use crate::usecases::RestartUseCase;
+use crate::usecases::SessionsUseCase;
+use crate::usecases::SpawnUseCase;
 use crate::usecases::ports::SessionError;
-use crate::usecases::{
-    AssertUseCase, AttachUseCase, CleanupUseCase, KillUseCase, ResizeUseCase, RestartUseCase,
-    SessionsUseCase, SpawnUseCase,
-};
 
 pub fn handle_spawn<U: SpawnUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "spawn").entered();

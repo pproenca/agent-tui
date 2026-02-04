@@ -9,13 +9,18 @@ use std::time::Duration;
 
 use crossbeam_channel as channel;
 use crossterm::event::KeyCode;
-use libc::{POLLERR, POLLHUP, POLLOUT, poll, pollfd};
+use libc::POLLERR;
+use libc::POLLHUP;
+use libc::POLLOUT;
+use libc::poll;
+use libc::pollfd;
 use portable_pty::Child;
 use portable_pty::CommandBuilder;
 use portable_pty::MasterPty;
 use portable_pty::PtySize;
 use portable_pty::native_pty_system;
-use tracing::{debug, warn};
+use tracing::debug;
+use tracing::warn;
 
 use crate::common::mutex_lock_or_recover;
 use crate::usecases::ports::SpawnErrorKind;

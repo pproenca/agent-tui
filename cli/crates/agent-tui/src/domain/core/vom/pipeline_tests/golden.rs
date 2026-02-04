@@ -1,7 +1,8 @@
 use crate::domain::core::CursorPosition;
 use crate::domain::core::style::CellStyle;
 use crate::domain::core::test_fixtures::MockScreenBuffer;
-use crate::domain::core::vom::{self as vom, Role};
+use crate::domain::core::vom;
+use crate::domain::core::vom::Role;
 
 fn make_screen_line(content: &str, style: CellStyle) -> Vec<(char, CellStyle)> {
     content.chars().map(|c| (c, style.clone())).collect()

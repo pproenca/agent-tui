@@ -1,9 +1,12 @@
 use serde::Serialize;
 
 use crate::adapters::RpcValue;
-use crate::adapters::rpc::{to_value, to_value_opt};
+use crate::adapters::rpc::to_value;
+use crate::adapters::rpc::to_value_opt;
 use crate::infra::ipc::ClientError;
-use crate::infra::ipc::client::{DaemonClient, StreamAbortHandle, StreamResponse};
+use crate::infra::ipc::client::DaemonClient;
+use crate::infra::ipc::client::StreamAbortHandle;
+use crate::infra::ipc::client::StreamResponse;
 
 pub struct RpcStream {
     inner: StreamResponse,

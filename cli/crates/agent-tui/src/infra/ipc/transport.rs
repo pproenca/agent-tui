@@ -11,7 +11,9 @@ use std::time::Duration;
 use crate::infra::ipc::error::ClientError;
 use crate::infra::ipc::polling;
 use crate::infra::ipc::socket::socket_path;
-use tracing::{debug, error, warn};
+use tracing::debug;
+use tracing::error;
+use tracing::warn;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportKind {

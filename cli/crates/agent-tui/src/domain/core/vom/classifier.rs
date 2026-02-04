@@ -2,11 +2,19 @@ use super::Cluster;
 use super::Component;
 use super::Role;
 use super::hash_cluster;
-use super::patterns::{
-    is_button_text, is_checkbox, is_code_block_border, is_diff_line, is_error_message,
-    is_input_field, is_link, is_menu_item, is_panel_border, is_progress_bar, is_prompt_marker,
-    is_status_indicator, is_tool_block_border,
-};
+use super::patterns::is_button_text;
+use super::patterns::is_checkbox;
+use super::patterns::is_code_block_border;
+use super::patterns::is_diff_line;
+use super::patterns::is_error_message;
+use super::patterns::is_input_field;
+use super::patterns::is_link;
+use super::patterns::is_menu_item;
+use super::patterns::is_panel_border;
+use super::patterns::is_progress_bar;
+use super::patterns::is_prompt_marker;
+use super::patterns::is_status_indicator;
+use super::patterns::is_tool_block_border;
 use crate::domain::core::CursorPosition;
 use crate::domain::core::style::Color;
 

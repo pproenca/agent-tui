@@ -1,16 +1,23 @@
-use crate::adapters::rpc::{RpcRequest, RpcResponse};
+use crate::adapters::rpc::RpcRequest;
+use crate::adapters::rpc::RpcResponse;
 
 use super::common;
 use super::common::session_error_response;
-use crate::adapters::{
-    health_output_to_response, metrics_output_to_response, parse_terminal_read_input,
-    parse_terminal_write_input, shutdown_output_to_response, terminal_read_output_to_response,
-    terminal_write_output_to_response,
-};
-use crate::domain::{HealthInput, MetricsInput, ShutdownInput};
-use crate::usecases::{
-    HealthUseCase, MetricsUseCase, ShutdownUseCase, TerminalReadUseCase, TerminalWriteUseCase,
-};
+use crate::adapters::health_output_to_response;
+use crate::adapters::metrics_output_to_response;
+use crate::adapters::parse_terminal_read_input;
+use crate::adapters::parse_terminal_write_input;
+use crate::adapters::shutdown_output_to_response;
+use crate::adapters::terminal_read_output_to_response;
+use crate::adapters::terminal_write_output_to_response;
+use crate::domain::HealthInput;
+use crate::domain::MetricsInput;
+use crate::domain::ShutdownInput;
+use crate::usecases::HealthUseCase;
+use crate::usecases::MetricsUseCase;
+use crate::usecases::ShutdownUseCase;
+use crate::usecases::TerminalReadUseCase;
+use crate::usecases::TerminalWriteUseCase;
 
 pub fn handle_health_uc<U: HealthUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "health").entered();
@@ -78,7 +85,8 @@ mod tests {
     use crate::adapters::rpc::RpcRequest;
     use crate::domain::ShutdownOutput;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
 
     struct MockShutdownUseCase {
         shutdown_flag: Arc<AtomicBool>,

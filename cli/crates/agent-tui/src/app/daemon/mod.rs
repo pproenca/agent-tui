@@ -1,3 +1,5 @@
+//! Daemon application wiring and startup logic.
+
 pub mod http_api;
 pub mod server;
 pub mod transport;

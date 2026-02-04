@@ -1,7 +1,12 @@
-use crate::common::error_codes::{self, ErrorCategory};
+use crate::common::error_codes;
+use crate::common::error_codes::ErrorCategory;
 use crate::usecases::SpawnError;
-use crate::usecases::ports::{LivePreviewError, SessionError, SpawnErrorKind, TerminalError};
-use serde_json::{Value, json};
+use crate::usecases::ports::LivePreviewError;
+use crate::usecases::ports::SessionError;
+use crate::usecases::ports::SpawnErrorKind;
+use crate::usecases::ports::TerminalError;
+use serde_json::Value;
+use serde_json::json;
 use thiserror::Error;
 
 impl SessionError {

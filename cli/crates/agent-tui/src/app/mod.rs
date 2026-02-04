@@ -1,13 +1,18 @@
 #![expect(clippy::print_stdout, reason = "CLI output is emitted here")]
 #![expect(clippy::print_stderr, reason = "CLI output is emitted here")]
 
-use anyhow::{Context, Result};
+//! CLI application layer and composition root wiring.
+
+use anyhow::Context;
+use anyhow::Result;
 use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
 use serde::Serialize;
 use std::fs;
-use std::io::{self, IsTerminal, Write};
+use std::io;
+use std::io::IsTerminal;
+use std::io::Write;
 use std::path::PathBuf;
 
 pub mod attach;
@@ -20,15 +25,24 @@ pub mod rpc_client;
 use crate::app::commands::OutputFormat;
 use crate::app::daemon::start_daemon;
 use crate::app::rpc_client::call_no_params;
+use crate::common::Colors;
 use crate::common::DaemonError;
+use crate::common::color_init;
 use crate::common::telemetry;
-use crate::common::{Colors, color_init};
-use crate::infra::ipc::{ClientError, DaemonClient, UnixSocketClient, ensure_daemon};
+use crate::infra::ipc::ClientError;
+use crate::infra::ipc::DaemonClient;
+use crate::infra::ipc::UnixSocketClient;
+use crate::infra::ipc::ensure_daemon;
 use tracing::debug;
 
 use crate::adapters::presenter::create_presenter;
 use crate::app::attach::AttachError;
-use crate::app::commands::{Cli, Commands, DaemonCommand, LiveCommand, LiveStartArgs, Shell};
+use crate::app::commands::Cli;
+use crate::app::commands::Commands;
+use crate::app::commands::DaemonCommand;
+use crate::app::commands::LiveCommand;
+use crate::app::commands::LiveStartArgs;
+use crate::app::commands::Shell;
 use crate::app::error::DaemonNotRunningError;
 use crate::app::handlers::HandlerContext;
 
@@ -901,7 +915,8 @@ impl Default for Application {
 }
 
 fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
-    use crate::infra::ipc::version::{VersionCheckResult, check_version};
+    use crate::infra::ipc::version::VersionCheckResult;
+    use crate::infra::ipc::version::check_version;
 
     match check_version(client, env!("AGENT_TUI_VERSION"), env!("AGENT_TUI_GIT_SHA")) {
         VersionCheckResult::Match => {}
@@ -964,7 +979,10 @@ mod tests {
 
     mod daemon_standalone_tests {
         use super::*;
-        use crate::app::commands::{Cli, Commands, DaemonCommand, OutputFormat};
+        use crate::app::commands::Cli;
+        use crate::app::commands::Commands;
+        use crate::app::commands::DaemonCommand;
+        use crate::app::commands::OutputFormat;
         use std::env;
         use tempfile::TempDir;
 

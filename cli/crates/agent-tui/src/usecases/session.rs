@@ -1,12 +1,26 @@
 use std::sync::Arc;
 
-use crate::domain::{
-    AssertConditionType, AssertInput, AssertOutput, AttachInput, AttachOutput, CleanupFailure,
-    CleanupInput, CleanupOutput, KillOutput, ResizeInput, ResizeOutput, RestartOutput,
-    SessionInput, SessionsOutput, SpawnInput, SpawnOutput,
-};
+use crate::domain::AssertConditionType;
+use crate::domain::AssertInput;
+use crate::domain::AssertOutput;
+use crate::domain::AttachInput;
+use crate::domain::AttachOutput;
+use crate::domain::CleanupFailure;
+use crate::domain::CleanupInput;
+use crate::domain::CleanupOutput;
+use crate::domain::KillOutput;
+use crate::domain::ResizeInput;
+use crate::domain::ResizeOutput;
+use crate::domain::RestartOutput;
+use crate::domain::SessionInput;
+use crate::domain::SessionsOutput;
+use crate::domain::SpawnInput;
+use crate::domain::SpawnOutput;
 use crate::usecases::SpawnError;
-use crate::usecases::ports::{SessionError, SessionRepository, SpawnErrorKind, TerminalError};
+use crate::usecases::ports::SessionError;
+use crate::usecases::ports::SessionRepository;
+use crate::usecases::ports::SpawnErrorKind;
+use crate::usecases::ports::TerminalError;
 
 pub trait SpawnUseCase: Send + Sync {
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SpawnError>;
@@ -296,7 +310,8 @@ mod tests {
     use super::*;
     use crate::domain::SessionId;
     use crate::domain::SessionInfo;
-    use crate::usecases::ports::test_support::{MockError, MockSessionRepository};
+    use crate::test_support::MockError;
+    use crate::test_support::MockSessionRepository;
     use std::collections::HashMap;
 
     #[test]

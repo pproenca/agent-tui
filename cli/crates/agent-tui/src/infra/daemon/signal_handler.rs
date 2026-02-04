@@ -1,8 +1,11 @@
-use signal_hook::consts::{SIGINT, SIGTERM};
+use signal_hook::consts::SIGINT;
+use signal_hook::consts::SIGTERM;
 use signal_hook::iterator::Signals;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread::{self, JoinHandle};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::thread;
+use std::thread::JoinHandle;
 use tracing::info;
 
 use crate::common::DaemonError;

@@ -3,8 +3,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::domain::ScrollDirection;
-use crate::domain::core::{Component, CursorPosition};
-use crate::domain::session_types::{SessionId, SessionInfo};
+use crate::domain::core::Component;
+use crate::domain::core::CursorPosition;
+use crate::domain::session_types::SessionId;
+use crate::domain::session_types::SessionInfo;
 
 use super::SessionError;
 

@@ -1,4 +1,5 @@
-use crate::common::error_codes::{self, ErrorCategory};
+use crate::common::error_codes;
+use crate::common::error_codes::ErrorCategory;
 use std::error::Error as StdError;
 use thiserror::Error;
 

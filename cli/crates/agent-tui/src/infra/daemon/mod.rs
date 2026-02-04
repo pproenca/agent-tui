@@ -1,4 +1,6 @@
 #![deny(clippy::all)]
+//! Daemon infrastructure: session management, persistence, and metrics.
+
 mod config;
 mod file_lock;
 mod lock_helpers;

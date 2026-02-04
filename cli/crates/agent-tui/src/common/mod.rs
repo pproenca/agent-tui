@@ -1,5 +1,7 @@
 #![deny(clippy::all)]
 
+//! Shared utilities used across layers without domain logic.
+
 mod color;
 pub mod daemon_error;
 pub mod error_codes;

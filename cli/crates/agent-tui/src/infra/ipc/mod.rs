@@ -3,6 +3,7 @@
 pub mod client;
 pub mod daemon_lifecycle;
 pub mod error;
+#[cfg(test)]
 mod mock_client;
 pub mod polling;
 pub mod process;
@@ -18,6 +19,7 @@ pub use client::ensure_daemon;
 pub use client::get_daemon_pid;
 pub use daemon_lifecycle::StopResult;
 pub use error::ClientError;
+#[cfg(test)]
 pub use mock_client::MockClient;
 pub use process::{ProcessController, ProcessStatus, Signal, UnixProcessController};
 pub use socket::socket_path;

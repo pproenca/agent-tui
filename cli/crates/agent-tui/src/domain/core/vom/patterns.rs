@@ -130,10 +130,7 @@ pub fn is_tool_block_border(text: &str) -> bool {
         return false;
     };
 
-    let last_char = text
-        .chars()
-        .last()
-        .expect("non-empty string has a last char");
+    let last_char = text.chars().last().unwrap_or(first_char);
 
     ROUNDED_CORNERS.contains(&first_char) || ROUNDED_CORNERS.contains(&last_char)
 }

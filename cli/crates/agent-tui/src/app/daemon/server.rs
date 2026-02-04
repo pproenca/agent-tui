@@ -744,11 +744,21 @@ impl DaemonServer {
             .spawn(move || {
                 let _guard = span.enter();
                 let start = Instant::now();
-                let (mut conn, request) = payload_for_thread
+                let Some((mut conn, request)) = payload_for_thread
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .take()
-                    .expect("stream payload missing");
+                else {
+                    warn!("Stream payload missing; dropping connection");
+                    let remaining = server_for_thread
+                        .active_connections
+                        .fetch_sub(1, Ordering::Relaxed)
+                        - 1;
+                    if remaining == 0 {
+                        server_for_thread.connection_cv.notify_all();
+                    }
+                    return;
+                };
                 let stream_result = match kind {
                     StreamKind::Attach => {
                         server_for_thread.handle_attach_stream(&mut conn, request)
@@ -780,11 +790,18 @@ impl DaemonServer {
             });
 
         if spawn_result.is_err() {
-            let (mut conn, request) = payload
+            let Some((mut conn, request)) = payload
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .take()
-                .expect("stream payload missing");
+            else {
+                warn!("Stream payload missing; dropping connection");
+                let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
+                if remaining == 0 {
+                    server.connection_cv.notify_all();
+                }
+                return;
+            };
             warn!("Failed to spawn stream thread, handling on worker thread");
             let _ = match kind {
                 StreamKind::Attach => server.handle_attach_stream(&mut conn, request),
@@ -902,7 +919,10 @@ fn wait_for_connections(server: &DaemonServer, timeout_secs: u64) {
             break;
         }
         let remaining = shutdown_deadline.saturating_duration_since(now);
-        let (_guard, result) = server.connection_cv.wait_timeout(guard, remaining).unwrap();
+        let (_guard, result) = server
+            .connection_cv
+            .wait_timeout(guard, remaining)
+            .unwrap_or_else(|e| e.into_inner());
         guard = _guard;
         if result.timed_out() {
             warn!("Shutdown timeout, forcing close");

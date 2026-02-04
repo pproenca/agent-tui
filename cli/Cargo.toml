@@ -6,7 +6,8 @@ resolver = "2"
 
 [workspace.package]
 version = "1.0.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/pproenca/agent-tui"
 
@@ -38,6 +39,10 @@ tattoy-wezterm-surface = "0.1.0-fork.2"
 crossbeam-channel = "0.5"
 bytes = "1.7"
 
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
 # Dev dependencies (used in [dev-dependencies] sections)
 assert_cmd = "2.1"
 predicates = "3.1"
@@ -49,7 +54,5 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
-
-
 
 

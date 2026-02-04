@@ -830,7 +830,12 @@ fn parse_detach_key_token(token: &str) -> Result<(u8, String), String> {
 
     let lower = trimmed.to_ascii_lowercase();
     if lower.starts_with("ctrl-") || lower.starts_with("control-") {
-        let split_pos = trimmed.find('-').unwrap_or(0);
+        let split_pos = match trimmed.find('-') {
+            Some(pos) => pos,
+            None => {
+                return Err("detach keys: ctrl- requires a key (e.g. ctrl-p)".to_string());
+            }
+        };
         let rest = trimmed[split_pos + 1..].trim();
         if rest.is_empty() {
             return Err("detach keys: ctrl- requires a key (e.g. ctrl-p)".to_string());
@@ -838,10 +843,12 @@ fn parse_detach_key_token(token: &str) -> Result<(u8, String), String> {
 
         let ch = if rest.eq_ignore_ascii_case("space") {
             ' '
-        } else if rest.chars().count() == 1 {
-            rest.chars().next().unwrap()
         } else {
-            return Err(format!("detach keys: unsupported ctrl key '{}'", rest));
+            let mut chars = rest.chars();
+            match (chars.next(), chars.next()) {
+                (Some(ch), None) => ch,
+                _ => return Err(format!("detach keys: unsupported ctrl key '{}'", rest)),
+            }
         };
 
         let byte = ctrl_char_to_byte(ch)
@@ -854,8 +861,8 @@ fn parse_detach_key_token(token: &str) -> Result<(u8, String), String> {
         return Ok((b' ', "Space".to_string()));
     }
 
-    if trimmed.chars().count() == 1 {
-        let ch = trimmed.chars().next().unwrap();
+    let mut chars = trimmed.chars();
+    if let (Some(ch), None) = (chars.next(), chars.next()) {
         if !ch.is_ascii() {
             return Err("detach keys must be ASCII".to_string());
         }

@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
 
+use anyhow::Context;
 use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
@@ -1111,7 +1112,7 @@ fn stop_ui_server() -> Result<StopUiResult> {
     let controller = UnixProcessController;
     controller
         .send_signal(state.pid, Signal::Term)
-        .map_err(|e| anyhow::anyhow!("Failed to stop UI server (pid {}): {}", state.pid, e))?;
+        .with_context(|| format!("Failed to stop UI server (pid {})", state.pid))?;
 
     if wait_for_process_exit(state.pid, Duration::from_secs(2)) {
         let _ = std::fs::remove_file(&state_path);
@@ -1168,10 +1169,11 @@ fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<()> {
         Command::new("xdg-open")
     };
 
+    let program = cmd.get_program().to_string_lossy().into_owned();
     let status = cmd
         .arg(url)
         .status()
-        .map_err(|e| anyhow::anyhow!("Failed to launch browser: {}", e))?;
+        .with_context(|| format!("Failed to launch browser ({program})"))?;
     if status.success() {
         Ok(())
     } else {

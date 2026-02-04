@@ -102,10 +102,26 @@ impl ApiConfig {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(DEFAULT_MAX_WS_CONNECTIONS);
-        let ws_queue_capacity = std::env::var("AGENT_TUI_API_WS_QUEUE")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(DEFAULT_WS_QUEUE_CAPACITY);
+        let ws_queue_capacity = match std::env::var("AGENT_TUI_API_WS_QUEUE") {
+            Ok(value) => match value.trim().parse::<usize>() {
+                Ok(0) => {
+                    warn!(
+                        value = %value,
+                        "AGENT_TUI_API_WS_QUEUE must be at least 1; using default"
+                    );
+                    DEFAULT_WS_QUEUE_CAPACITY
+                }
+                Ok(parsed) => parsed,
+                Err(_) => {
+                    warn!(
+                        value = %value,
+                        "Invalid AGENT_TUI_API_WS_QUEUE; using default"
+                    );
+                    DEFAULT_WS_QUEUE_CAPACITY
+                }
+            },
+            Err(_) => DEFAULT_WS_QUEUE_CAPACITY,
+        };
 
         Self {
             enabled,
@@ -652,12 +668,17 @@ async fn handle_ws(
     let stop = Arc::new(AtomicBool::new(false));
     let stop_for_thread = Arc::clone(&stop);
     let session_for_thread = Arc::clone(&session);
-    thread::Builder::new()
+    if let Err(err) = thread::Builder::new()
         .name(format!("api-stream-{session_id}"))
         .spawn(move || {
             stream_live_preview(session_for_thread, tx, stop_for_thread, output_encoding);
         })
-        .ok();
+    {
+        error!(error = %err, "Failed to spawn live preview stream thread");
+        let message = format!("Failed to start live preview stream: {err}");
+        let _ = socket.send(Message::Text(error_event(&message))).await;
+        return;
+    }
 
     loop {
         tokio::select! {

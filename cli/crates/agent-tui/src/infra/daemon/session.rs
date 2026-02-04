@@ -1288,9 +1288,13 @@ impl Default for SessionPersistence {
 
 fn is_process_running(pid: u32) -> bool {
     // SAFETY: `kill` with signal 0 performs a permission check without sending any signal.
-    // This is a standard POSIX idiom to check if a process exists. The pid is a u32 cast
-    // to i32, which is safe because valid PIDs are always positive and fit in i32.
-    unsafe { libc::kill(pid as i32, 0) == 0 }
+    // This is a standard POSIX idiom to check if a process exists. The pid is validated
+    // before converting to pid_t.
+    let pid_t: libc::pid_t = match pid.try_into() {
+        Ok(pid_t) => pid_t,
+        Err(_) => return false,
+    };
+    unsafe { libc::kill(pid_t, 0) == 0 }
 }
 
 impl From<&SessionInfo> for PersistedSession {

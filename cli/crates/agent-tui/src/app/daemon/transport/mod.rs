@@ -4,37 +4,20 @@ pub use unix_socket::{UnixSocketConnection, UnixSocketListener};
 
 use crate::adapters::rpc::{RpcRequest, RpcResponse};
 use std::time::Duration;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TransportError {
-    Io(std::io::Error),
+    #[error("I/O error: {0}")]
+    Io(#[source] std::io::Error),
+    #[error("Parse error: {0}")]
     Parse(String),
+    #[error("Request size limit exceeded (max {max_bytes} bytes)")]
     SizeLimit { max_bytes: usize },
+    #[error("Connection timeout")]
     Timeout,
+    #[error("Connection closed")]
     ConnectionClosed,
-}
-
-impl std::fmt::Display for TransportError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Io(e) => write!(f, "I/O error: {}", e),
-            Self::Parse(msg) => write!(f, "Parse error: {}", msg),
-            Self::SizeLimit { max_bytes } => {
-                write!(f, "Request size limit exceeded (max {} bytes)", max_bytes)
-            }
-            Self::Timeout => write!(f, "Connection timeout"),
-            Self::ConnectionClosed => write!(f, "Connection closed"),
-        }
-    }
-}
-
-impl std::error::Error for TransportError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Io(e) => Some(e),
-            _ => None,
-        }
-    }
 }
 
 impl From<std::io::Error> for TransportError {

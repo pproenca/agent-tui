@@ -10,7 +10,7 @@ Use this file when writing step-by-step tests.
 
 ## Step Structure
 - Step 1: `screenshot` (or `screenshot --json`)
-- Step 2: Action (`press`, `type`, `scroll`)
+- Step 2: Action (`press`, `type`)
 - Step 3: `wait --assert` for expected text or `wait --stable`
 - Step 4: Repeat until done
 - Step 5: Cleanup (`kill`)

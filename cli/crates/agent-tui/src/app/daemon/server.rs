@@ -1,19 +1,11 @@
 //! Daemon server runtime.
 
-use crate::adapters::attach_output_to_response;
-use crate::adapters::daemon::Router;
-use crate::adapters::daemon::UseCaseContainer;
-use crate::adapters::parse_attach_input;
 use crate::adapters::rpc::RpcResponse;
-use crate::adapters::session_error_response;
 use crate::common::DaemonError;
 use crate::common::telemetry;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use libc::POLLIN;
 use libc::poll;
 use libc::pollfd;
-use serde::Serialize;
 use std::collections::HashSet;
 use std::io::Read;
 use std::io::Write;
@@ -25,26 +17,23 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 
-use crate::app::daemon::http_api::ApiConfig;
-use crate::app::daemon::http_api::ApiServerError;
-use crate::app::daemon::http_api::ApiServerHandle;
-use crate::app::daemon::http_api::start_api_server;
+use crate::app::daemon::rpc_core::RpcCore;
+use crate::app::daemon::rpc_core::RpcCoreError;
+use crate::app::daemon::rpc_core::RpcResponseWriter;
+use crate::app::daemon::ws_server::WsConfig;
+use crate::app::daemon::ws_server::WsServerError;
+use crate::app::daemon::ws_server::WsServerHandle;
+use crate::app::daemon::ws_server::start_ws_server;
 use crate::app::daemon::transport::TransportConnection;
 use crate::app::daemon::transport::TransportError;
 use crate::app::daemon::transport::TransportListener;
 use crate::app::daemon::transport::UnixSocketConnection;
 use crate::app::daemon::transport::UnixSocketListener;
-use crate::domain::SessionId;
 use crate::infra::daemon::DaemonConfig;
 use crate::infra::daemon::LockFile;
-use crate::infra::daemon::SessionManager;
 use crate::infra::daemon::SignalHandler;
-use crate::infra::daemon::SystemClock;
 use crate::infra::daemon::remove_lock_file;
 use crate::infra::ipc::socket_path;
-use crate::usecases::AttachUseCase;
-use crate::usecases::ports::SessionRepository;
-use crate::usecases::ports::StreamCursor;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
@@ -57,12 +46,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 const CHANNEL_CAPACITY: usize = 128;
-const ATTACH_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
-const ATTACH_STREAM_MAX_TICK_BYTES: usize = 512 * 1024;
-const ATTACH_STREAM_HEARTBEAT: Duration = Duration::from_secs(30);
-const LIVE_PREVIEW_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
-const LIVE_PREVIEW_STREAM_MAX_TICK_BYTES: usize = 256 * 1024;
-const LIVE_PREVIEW_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
 static CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
 
 struct ShutdownWaker {
@@ -86,7 +69,7 @@ impl ShutdownWaker {
         })
     }
 
-    fn reader_fd(&self) -> std::os::unix::io::RawFd {
+    fn reader_fd(&self) -> RawFd {
         self.reader.as_raw_fd()
     }
 
@@ -115,14 +98,27 @@ impl crate::usecases::ports::ShutdownNotifier for ShutdownNotify {
     }
 }
 
+struct UnixRpcWriter<'a> {
+    conn: &'a mut UnixSocketConnection,
+}
+
+impl RpcResponseWriter for UnixRpcWriter<'_> {
+    fn write_response(&mut self, response: &RpcResponse) -> Result<(), RpcCoreError> {
+        self.conn
+            .write_response(response)
+            .map_err(|err| match err {
+                TransportError::ConnectionClosed => RpcCoreError::ConnectionClosed,
+                other => RpcCoreError::Other(other.to_string()),
+            })
+    }
+}
+
 pub struct DaemonServer {
-    session_manager: Arc<SessionManager>,
-    usecases: UseCaseContainer<SessionManager>,
+    core: Arc<RpcCore>,
     active_connections: Arc<AtomicUsize>,
     active_fds: Arc<std::sync::Mutex<HashSet<RawFd>>>,
     connection_wait_lock: Arc<std::sync::Mutex<()>>,
     connection_cv: Arc<std::sync::Condvar>,
-    shutdown_flag: Arc<AtomicBool>,
     stream_threads: std::sync::Mutex<Vec<thread::JoinHandle<()>>>,
 }
 
@@ -137,49 +133,46 @@ impl ThreadPool {
         let receiver = Arc::new(std::sync::Mutex::new(receiver));
 
         let mut workers = Vec::with_capacity(size);
-
         for id in 0..size {
             let receiver = Arc::clone(&receiver);
             let server = Arc::clone(&server);
 
-            let handle =
-                match thread::Builder::new()
-                    .name(format!("worker-{}", id))
-                    .spawn(move || {
-                        let worker_span = tracing::info_span!("daemon_worker", worker_id = id);
-                        let _worker_guard = worker_span.enter();
-                        debug!(worker_id = id, "Worker thread started");
-                        loop {
-                            let conn = {
-                                let lock = match receiver.lock() {
-                                    Ok(l) => l,
-                                    Err(e) => {
-                                        error!(worker_id = id, error = %e, "Worker receiver lock poisoned");
-                                        break;
-                                    }
-                                };
-                                match lock.recv() {
-                                    Ok(conn) => conn,
-                                    Err(mpsc::RecvError) => break,
+            let handle = match thread::Builder::new()
+                .name(format!("worker-{id}"))
+                .spawn(move || {
+                    let worker_span = tracing::info_span!("daemon_worker", worker_id = id);
+                    let _worker_guard = worker_span.enter();
+                    debug!(worker_id = id, "Worker thread started");
+                    loop {
+                        let conn = {
+                            let lock = match receiver.lock() {
+                                Ok(l) => l,
+                                Err(e) => {
+                                    error!(worker_id = id, error = %e, "Worker receiver lock poisoned");
+                                    break;
                                 }
                             };
-
-                            server.active_connections.fetch_add(1, Ordering::Relaxed);
-                            Arc::clone(&server).handle_client(conn);
-                            let remaining =
-                                server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
-                            if remaining == 0 {
-                                server.connection_cv.notify_all();
+                            match lock.recv() {
+                                Ok(conn) => conn,
+                                Err(mpsc::RecvError) => break,
                             }
+                        };
+
+                        server.active_connections.fetch_add(1, Ordering::Relaxed);
+                        Arc::clone(&server).handle_client(conn);
+                        let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
+                        if remaining == 0 {
+                            server.connection_cv.notify_all();
                         }
-                        debug!(worker_id = id, "Worker thread stopped");
-                    }) {
-                    Ok(h) => h,
-                    Err(e) => {
-                        error!(worker_id = id, error = %e, "Failed to spawn worker");
-                        continue;
                     }
-                };
+                    debug!(worker_id = id, "Worker thread stopped");
+                }) {
+                Ok(h) => h,
+                Err(e) => {
+                    error!(worker_id = id, error = %e, "Failed to spawn worker");
+                    continue;
+                }
+            };
 
             workers.push(handle);
         }
@@ -189,14 +182,10 @@ impl ThreadPool {
         }
 
         if workers.len() < size {
-            warn!(
-                spawned = workers.len(),
-                requested = size,
-                "Only spawned partial worker threads"
-            );
+            warn!(spawned = workers.len(), requested = size, "Only spawned partial worker threads");
         }
 
-        Ok(ThreadPool { workers, sender })
+        Ok(Self { workers, sender })
     }
 
     fn execute(&self, conn: UnixSocketConnection) -> Result<(), UnixSocketConnection> {
@@ -219,43 +208,23 @@ impl DaemonServer {
         shutdown_flag: Arc<AtomicBool>,
         shutdown_notifier: crate::usecases::ports::ShutdownNotifierHandle,
     ) -> Self {
-        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions()));
-        let clock = Arc::new(SystemClock::new());
-        let active_connections = Arc::new(AtomicUsize::new(0));
-        let usecases = UseCaseContainer::new(
-            Arc::clone(&session_manager),
-            clock,
-            Arc::clone(&shutdown_flag),
-            shutdown_notifier,
-        );
+        let core = Arc::new(RpcCore::with_config(config, shutdown_flag, shutdown_notifier));
         Self {
-            session_manager,
-            usecases,
-            active_connections,
+            core,
+            active_connections: Arc::new(AtomicUsize::new(0)),
             active_fds: Arc::new(std::sync::Mutex::new(HashSet::new())),
             connection_wait_lock: Arc::new(std::sync::Mutex::new(())),
             connection_cv: Arc::new(std::sync::Condvar::new()),
-            shutdown_flag: Arc::clone(&shutdown_flag),
             stream_threads: std::sync::Mutex::new(Vec::new()),
         }
     }
 
-    fn session_repository_handle(&self) -> Arc<dyn SessionRepository> {
-        let repository: Arc<dyn SessionRepository> = self.session_manager.clone();
-        repository
-    }
-
-    fn should_shutdown(&self) -> bool {
-        self.shutdown_flag.load(Ordering::Relaxed)
+    fn session_repository_handle(&self) -> Arc<dyn crate::usecases::ports::SessionRepository> {
+        self.core.session_repository_handle()
     }
 
     pub fn shutdown_all_sessions(&self) {
-        let sessions = self.session_manager.list();
-        for info in sessions {
-            if let Err(e) = self.session_manager.kill(info.id.as_str()) {
-                warn!(session_id = %info.id, error = %e, "Failed to kill session during shutdown");
-            }
-        }
+        self.core.shutdown_all_sessions();
     }
 
     fn register_connection(&self, fd: RawFd) {
@@ -282,19 +251,13 @@ impl DaemonServer {
     }
 
     fn register_stream_thread(&self, handle: thread::JoinHandle<()>) {
-        let mut guard = self
-            .stream_threads
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.stream_threads.lock().unwrap_or_else(|e| e.into_inner());
         guard.push(handle);
     }
 
     fn join_stream_threads(&self, timeout: Duration) {
         let handles = {
-            let mut guard = self
-                .stream_threads
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let mut guard = self.stream_threads.lock().unwrap_or_else(|e| e.into_inner());
             guard.drain(..).collect::<Vec<_>>()
         };
 
@@ -309,446 +272,10 @@ impl DaemonServer {
             match joiner {
                 Ok(_) => {
                     if rx.recv_timeout(timeout).is_err() {
-                        warn!(
-                            timeout_ms = timeout.as_millis(),
-                            "Timed out joining stream thread"
-                        );
+                        warn!(timeout_ms = timeout.as_millis(), "Timed out joining stream thread");
                     }
                 }
-                Err(err) => {
-                    warn!(error = %err, "Failed to spawn stream joiner thread");
-                }
-            }
-        }
-    }
-
-    fn handle_request(&self, request: crate::adapters::rpc::RpcRequest) -> RpcResponse {
-        let router = Router::new(&self.usecases);
-        router.route(request)
-    }
-
-    fn handle_attach_stream(
-        &self,
-        conn: &mut impl TransportConnection,
-        request: crate::adapters::rpc::RpcRequest,
-    ) -> Result<(), TransportError> {
-        let req_id = request.id;
-        let input = match parse_attach_input(&request) {
-            Ok(input) => input,
-            Err(response) => {
-                let _ = conn.write_response(&response);
-                return Ok(());
-            }
-        };
-
-        let session_id = input.session_id.clone();
-        match self.usecases.session.attach.execute(input) {
-            Ok(output) => {
-                let response = attach_output_to_response(req_id, output);
-                conn.write_response(&response)?;
-            }
-            Err(err) => {
-                let response = session_error_response(req_id, err);
-                let _ = conn.write_response(&response);
-                return Ok(());
-            }
-        }
-
-        let session =
-            match SessionRepository::resolve(self.session_manager.as_ref(), Some(&session_id)) {
-                Ok(session) => session,
-                Err(err) => {
-                    let response = session_error_response(req_id, err);
-                    let _ = conn.write_response(&response);
-                    return Ok(());
-                }
-            };
-
-        if let Err(err) = session.update() {
-            let response = session_error_response(req_id, err);
-            let _ = conn.write_response(&response);
-            return Ok(());
-        }
-
-        #[derive(Serialize)]
-        struct AttachReady<'a> {
-            event: &'static str,
-            session_id: &'a str,
-        }
-
-        #[derive(Serialize)]
-        struct AttachDropped {
-            event: &'static str,
-            dropped_bytes: u64,
-        }
-
-        #[derive(Serialize)]
-        struct AttachOutput<'a> {
-            event: &'static str,
-            data: &'a str,
-            bytes: usize,
-            dropped_bytes: u64,
-        }
-
-        #[derive(Serialize)]
-        struct AttachEvent {
-            event: &'static str,
-        }
-
-        let ready = RpcResponse::success_json(
-            req_id,
-            &AttachReady {
-                event: "ready",
-                session_id: session_id.as_str(),
-            },
-        );
-        conn.write_response(&ready)?;
-
-        let stream_seq = session.live_preview_snapshot().stream_seq;
-        let subscription = session.stream_subscribe();
-        let mut cursor = StreamCursor { seq: stream_seq };
-
-        loop {
-            if self.should_shutdown() {
-                let response = RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
-                let _ = conn.write_response(&response);
-                return Ok(());
-            }
-            let mut budget = ATTACH_STREAM_MAX_TICK_BYTES;
-            let mut sent_any = false;
-
-            loop {
-                if budget == 0 {
-                    break;
-                }
-
-                let max_chunk = budget.min(ATTACH_STREAM_MAX_CHUNK_BYTES);
-                let read = match session.stream_read(&mut cursor, max_chunk, 0) {
-                    Ok(read) => read,
-                    Err(err) => {
-                        let response = session_error_response(req_id, err);
-                        let _ = conn.write_response(&response);
-                        return Ok(());
-                    }
-                };
-
-                if read.dropped_bytes > 0 && read.data.is_empty() {
-                    let response = RpcResponse::success_json(
-                        req_id,
-                        &AttachDropped {
-                            event: "dropped",
-                            dropped_bytes: read.dropped_bytes,
-                        },
-                    );
-                    conn.write_response(&response)?;
-                    sent_any = true;
-                }
-
-                if !read.data.is_empty() {
-                    let data_b64 = STANDARD.encode(&read.data);
-                    let response = RpcResponse::success_json(
-                        req_id,
-                        &AttachOutput {
-                            event: "output",
-                            data: &data_b64,
-                            bytes: read.data.len(),
-                            dropped_bytes: read.dropped_bytes,
-                        },
-                    );
-                    conn.write_response(&response)?;
-                    sent_any = true;
-                    budget = budget.saturating_sub(read.data.len());
-                    if read.closed {
-                        let response =
-                            RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
-                        let _ = conn.write_response(&response);
-                        return Ok(());
-                    }
-                    continue;
-                }
-
-                if read.closed {
-                    let response =
-                        RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
-                    let _ = conn.write_response(&response);
-                    return Ok(());
-                }
-
-                break;
-            }
-
-            if sent_any && budget == 0 {
-                continue;
-            }
-
-            if !subscription.wait(Some(ATTACH_STREAM_HEARTBEAT)) {
-                if self.should_shutdown() {
-                    let response =
-                        RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
-                    let _ = conn.write_response(&response);
-                    return Ok(());
-                }
-                let response =
-                    RpcResponse::success_json(req_id, &AttachEvent { event: "heartbeat" });
-                conn.write_response(&response)?;
-            }
-        }
-    }
-
-    fn handle_live_preview_stream(
-        &self,
-        conn: &mut impl TransportConnection,
-        request: crate::adapters::rpc::RpcRequest,
-    ) -> Result<(), TransportError> {
-        let req_id = request.id;
-        let session_param = request
-            .param_str("session")
-            .filter(|s| !s.trim().is_empty())
-            .map(SessionId::new);
-
-        let session =
-            match SessionRepository::resolve(self.session_manager.as_ref(), session_param.as_ref())
-            {
-                Ok(session) => session,
-                Err(err) => {
-                    let response = session_error_response(req_id, err);
-                    let _ = conn.write_response(&response);
-                    return Ok(());
-                }
-            };
-
-        if let Err(err) = session.update() {
-            let response = session_error_response(req_id, err);
-            let _ = conn.write_response(&response);
-            return Ok(());
-        }
-
-        let snapshot = session.live_preview_snapshot();
-        let session_id = session.session_id().to_string();
-        #[derive(Serialize)]
-        struct LivePreviewReady<'a> {
-            event: &'static str,
-            session_id: &'a str,
-            cols: u16,
-            rows: u16,
-        }
-
-        #[derive(Serialize)]
-        struct LivePreviewInit<'a> {
-            event: &'static str,
-            time: f64,
-            cols: u16,
-            rows: u16,
-            init: &'a str,
-        }
-
-        #[derive(Serialize)]
-        struct LivePreviewDropped {
-            event: &'static str,
-            time: f64,
-            dropped_bytes: u64,
-        }
-
-        #[derive(Serialize)]
-        struct LivePreviewOutput<'a> {
-            event: &'static str,
-            time: f64,
-            data_b64: &'a str,
-        }
-
-        #[derive(Serialize)]
-        struct LivePreviewClosed {
-            event: &'static str,
-            time: f64,
-        }
-
-        #[derive(Serialize)]
-        struct LivePreviewResize {
-            event: &'static str,
-            time: f64,
-            cols: u16,
-            rows: u16,
-        }
-
-        #[derive(Serialize)]
-        struct LivePreviewHeartbeat {
-            event: &'static str,
-            time: f64,
-        }
-
-        let ready = RpcResponse::success_json(
-            req_id,
-            &LivePreviewReady {
-                event: "ready",
-                session_id: &session_id,
-                cols: snapshot.cols,
-                rows: snapshot.rows,
-            },
-        );
-        conn.write_response(&ready)?;
-
-        let start_time = Instant::now();
-        let init = RpcResponse::success_json(
-            req_id,
-            &LivePreviewInit {
-                event: "init",
-                time: start_time.elapsed().as_secs_f64(),
-                cols: snapshot.cols,
-                rows: snapshot.rows,
-                init: &snapshot.seq,
-            },
-        );
-        conn.write_response(&init)?;
-
-        let subscription = session.stream_subscribe();
-        let mut cursor = StreamCursor::default();
-        let mut last_size = (snapshot.cols, snapshot.rows);
-
-        loop {
-            if self.should_shutdown() {
-                let response = RpcResponse::success_json(
-                    req_id,
-                    &LivePreviewClosed {
-                        event: "closed",
-                        time: start_time.elapsed().as_secs_f64(),
-                    },
-                );
-                let _ = conn.write_response(&response);
-                return Ok(());
-            }
-            let mut budget = LIVE_PREVIEW_STREAM_MAX_TICK_BYTES;
-            let mut sent_any = false;
-
-            loop {
-                if budget == 0 {
-                    break;
-                }
-
-                let max_chunk = budget.min(LIVE_PREVIEW_STREAM_MAX_CHUNK_BYTES);
-                let read = match session.stream_read(&mut cursor, max_chunk, 0) {
-                    Ok(read) => read,
-                    Err(err) => {
-                        let response = session_error_response(req_id, err);
-                        let _ = conn.write_response(&response);
-                        return Ok(());
-                    }
-                };
-
-                if read.dropped_bytes > 0 {
-                    let dropped = RpcResponse::success_json(
-                        req_id,
-                        &LivePreviewDropped {
-                            event: "dropped",
-                            time: start_time.elapsed().as_secs_f64(),
-                            dropped_bytes: read.dropped_bytes,
-                        },
-                    );
-                    conn.write_response(&dropped)?;
-                    if let Err(err) = session.update() {
-                        let response = session_error_response(req_id, err);
-                        let _ = conn.write_response(&response);
-                        return Ok(());
-                    }
-                    let snapshot = session.live_preview_snapshot();
-                    let init = RpcResponse::success_json(
-                        req_id,
-                        &LivePreviewInit {
-                            event: "init",
-                            time: start_time.elapsed().as_secs_f64(),
-                            cols: snapshot.cols,
-                            rows: snapshot.rows,
-                            init: &snapshot.seq,
-                        },
-                    );
-                    conn.write_response(&init)?;
-                    last_size = (snapshot.cols, snapshot.rows);
-                    cursor.seq = read.latest_cursor.seq;
-                    sent_any = true;
-                    break;
-                }
-
-                if !read.data.is_empty() {
-                    let data_b64 = STANDARD.encode(&read.data);
-                    let response = RpcResponse::success_json(
-                        req_id,
-                        &LivePreviewOutput {
-                            event: "output",
-                            time: start_time.elapsed().as_secs_f64(),
-                            data_b64: &data_b64,
-                        },
-                    );
-                    conn.write_response(&response)?;
-                    sent_any = true;
-                    budget = budget.saturating_sub(read.data.len());
-                    if read.closed {
-                        let response = RpcResponse::success_json(
-                            req_id,
-                            &LivePreviewClosed {
-                                event: "closed",
-                                time: start_time.elapsed().as_secs_f64(),
-                            },
-                        );
-                        let _ = conn.write_response(&response);
-                        return Ok(());
-                    }
-                    continue;
-                }
-
-                if read.closed {
-                    let response = RpcResponse::success_json(
-                        req_id,
-                        &LivePreviewClosed {
-                            event: "closed",
-                            time: start_time.elapsed().as_secs_f64(),
-                        },
-                    );
-                    let _ = conn.write_response(&response);
-                    return Ok(());
-                }
-
-                break;
-            }
-
-            let size = session.size();
-            if size != last_size {
-                let resize = RpcResponse::success_json(
-                    req_id,
-                    &LivePreviewResize {
-                        event: "resize",
-                        time: start_time.elapsed().as_secs_f64(),
-                        cols: size.0,
-                        rows: size.1,
-                    },
-                );
-                conn.write_response(&resize)?;
-                last_size = size;
-                sent_any = true;
-            }
-
-            if sent_any && budget == 0 {
-                continue;
-            }
-
-            if !subscription.wait(Some(LIVE_PREVIEW_STREAM_HEARTBEAT)) {
-                if self.should_shutdown() {
-                    let response = RpcResponse::success_json(
-                        req_id,
-                        &LivePreviewClosed {
-                            event: "closed",
-                            time: start_time.elapsed().as_secs_f64(),
-                        },
-                    );
-                    let _ = conn.write_response(&response);
-                    return Ok(());
-                }
-                let response = RpcResponse::success_json(
-                    req_id,
-                    &LivePreviewHeartbeat {
-                        event: "heartbeat",
-                        time: start_time.elapsed().as_secs_f64(),
-                    },
-                );
-                conn.write_response(&response)?;
+                Err(err) => warn!(error = %err, "Failed to spawn stream joiner thread"),
             }
         }
     }
@@ -762,12 +289,11 @@ impl DaemonServer {
         let _conn_guard = conn_span.enter();
         debug!(conn_id, "Client connected");
 
-        if let Err(e) = conn.set_read_timeout(Some(idle_timeout)) {
-            warn!(error = %e, "Failed to set read timeout");
+        if let Err(err) = conn.set_read_timeout(Some(idle_timeout)) {
+            warn!(error = %err, "Failed to set read timeout");
         }
-
-        if let Err(e) = conn.set_write_timeout(Some(Duration::from_secs(30))) {
-            warn!(error = %e, "Failed to set write timeout");
+        if let Err(err) = conn.set_write_timeout(Some(Duration::from_secs(30))) {
+            warn!(error = %err, "Failed to set write timeout");
         }
 
         loop {
@@ -790,7 +316,7 @@ impl DaemonServer {
                 Err(TransportError::Parse(err)) => {
                     debug!(error = %err, "Request parse error");
                     let error_response =
-                        RpcResponse::error(0, -32700, &format!("Parse error: {}", err));
+                        RpcResponse::error(0, -32700, &format!("Parse error: {err}"));
                     let _ = conn.write_response(&error_response);
                     continue;
                 }
@@ -798,8 +324,8 @@ impl DaemonServer {
                     error!(error = %err, "Response serialize error");
                     break;
                 }
-                Err(TransportError::Io(e)) => {
-                    error!(error = %e, "Client connection error");
+                Err(TransportError::Io(err)) => {
+                    error!(error = %err, "Client connection error");
                     break;
                 }
             };
@@ -817,17 +343,12 @@ impl DaemonServer {
             let _request_guard = request_span.enter();
             let start = Instant::now();
 
-            if method == "attach_stream" {
-                self.spawn_stream_thread(conn, request, StreamKind::Attach, conn_id, conn_fd);
+            if let Some(kind) = RpcCore::stream_kind_for_method(&method) {
+                self.spawn_stream_thread(conn, request, kind, conn_id, conn_fd);
                 return;
             }
 
-            if method == "live_preview_stream" {
-                self.spawn_stream_thread(conn, request, StreamKind::LivePreview, conn_id, conn_fd);
-                return;
-            }
-
-            let response = self.handle_request(request);
+            let response = self.core.route(request);
             debug!(
                 request_id,
                 method = %method,
@@ -835,16 +356,17 @@ impl DaemonServer {
                 "RPC request handled"
             );
 
-            if let Err(e) = conn.write_response(&response) {
-                match e {
+            if let Err(err) = conn.write_response(&response) {
+                match err {
                     TransportError::ConnectionClosed => break,
                     _ => {
-                        error!(error = %e, "Client write error");
+                        error!(error = %err, "Client write error");
                         break;
                     }
                 }
             }
         }
+
         self.unregister_connection(conn_fd);
         debug!(conn_id, "Client disconnected");
     }
@@ -853,14 +375,14 @@ impl DaemonServer {
         self: &Arc<Self>,
         conn: UnixSocketConnection,
         request: crate::adapters::rpc::RpcRequest,
-        kind: StreamKind,
+        kind: crate::app::daemon::rpc_core::StreamKind,
         conn_id: u64,
         conn_fd: RawFd,
     ) {
         let server = Arc::clone(self);
         let method = match kind {
-            StreamKind::Attach => "attach_stream",
-            StreamKind::LivePreview => "live_preview_stream",
+            crate::app::daemon::rpc_core::StreamKind::Attach => "attach_stream",
+            crate::app::daemon::rpc_core::StreamKind::LivePreview => "live_preview_stream",
         };
 
         server.active_connections.fetch_add(1, Ordering::Relaxed);
@@ -869,47 +391,45 @@ impl DaemonServer {
         let server_for_thread = Arc::clone(&server);
         let span = tracing::info_span!("daemon_stream", conn_id, method = %method);
         let spawn_result = thread::Builder::new()
-            .name(format!("stream-{}-{}", method, conn_id))
+            .name(format!("stream-{method}-{conn_id}"))
             .spawn(move || {
                 let _guard = span.enter();
                 let start = Instant::now();
+
                 let Some((mut conn, request)) = payload_for_thread
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .take()
                 else {
                     warn!("Stream payload missing; dropping connection");
-                    let remaining = server_for_thread
-                        .active_connections
-                        .fetch_sub(1, Ordering::Relaxed)
-                        - 1;
+                    let remaining =
+                        server_for_thread.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
                     if remaining == 0 {
                         server_for_thread.connection_cv.notify_all();
                     }
                     server_for_thread.unregister_connection(conn_fd);
                     return;
                 };
-                let stream_result = match kind {
-                    StreamKind::Attach => {
-                        server_for_thread.handle_attach_stream(&mut conn, request)
-                    }
-                    StreamKind::LivePreview => {
-                        server_for_thread.handle_live_preview_stream(&mut conn, request)
-                    }
+
+                let stream_result = {
+                    let mut writer = UnixRpcWriter { conn: &mut conn };
+                    server_for_thread.core.handle_stream(&mut writer, request, kind)
                 };
+
                 debug!(
                     conn_id,
                     method = %method,
                     elapsed_ms = start.elapsed().as_millis(),
                     "RPC stream handled"
                 );
-                if let Err(e) = stream_result {
-                    match e {
-                        TransportError::ConnectionClosed => {}
-                        _ => error!(error = %e, "RPC stream error"),
+                if let Err(err) = stream_result {
+                    match err {
+                        RpcCoreError::ConnectionClosed => {}
+                        other => error!(error = %other, "RPC stream error"),
                     }
                 }
                 debug!(conn_id, method = %method, "Stream connection closed");
+
                 let remaining = server_for_thread
                     .active_connections
                     .fetch_sub(1, Ordering::Relaxed)
@@ -919,14 +439,11 @@ impl DaemonServer {
                 }
                 server_for_thread.unregister_connection(conn_fd);
             });
+
         match spawn_result {
-            Ok(handle) => {
-                server.register_stream_thread(handle);
-            }
+            Ok(handle) => server.register_stream_thread(handle),
             Err(_) => {
-                let Some((mut conn, request)) =
-                    payload.lock().unwrap_or_else(|e| e.into_inner()).take()
-                else {
+                let Some((mut conn, request)) = payload.lock().unwrap_or_else(|e| e.into_inner()).take() else {
                     warn!("Stream payload missing; dropping connection");
                     let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
                     if remaining == 0 {
@@ -934,13 +451,11 @@ impl DaemonServer {
                     }
                     return;
                 };
+
                 warn!("Failed to spawn stream thread, handling on worker thread");
-                let _ = match kind {
-                    StreamKind::Attach => server.handle_attach_stream(&mut conn, request),
-                    StreamKind::LivePreview => {
-                        server.handle_live_preview_stream(&mut conn, request)
-                    }
-                };
+                let mut writer = UnixRpcWriter { conn: &mut conn };
+                let _ = server.core.handle_stream(&mut writer, request, kind);
+
                 let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
                 if remaining == 0 {
                     server.connection_cv.notify_all();
@@ -949,12 +464,6 @@ impl DaemonServer {
             }
         }
     }
-}
-
-#[derive(Clone, Copy)]
-enum StreamKind {
-    Attach,
-    LivePreview,
 }
 
 fn init_logging() -> telemetry::TelemetryGuard {
@@ -1010,8 +519,7 @@ fn run_accept_loop(
     ];
 
     while !shutdown.load(Ordering::Relaxed) {
-        // SAFETY: `fds` is a stack-allocated array that outlives the call, and the length
-        // matches the number of elements passed to `poll`.
+        // SAFETY: `fds` is stack-allocated and length matches call argument.
         let poll_result = unsafe { poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, -1) };
         if poll_result < 0 {
             let err = std::io::Error::last_os_error();
@@ -1039,9 +547,9 @@ fn run_accept_loop(
                         }
                     }
                     Err(TransportError::Timeout) => break,
-                    Err(e) => {
+                    Err(err) => {
                         if !shutdown.load(Ordering::Relaxed) {
-                            error!(error = %e, "Error accepting connection");
+                            error!(error = %err, "Error accepting connection");
                         }
                         break;
                     }
@@ -1085,9 +593,9 @@ fn cleanup(
     lock_path: &std::path::Path,
     server: &DaemonServer,
     pool: ThreadPool,
-    api_handle: Option<ApiServerHandle>,
+    ws_handle: Option<WsServerHandle>,
 ) {
-    if let Some(handle) = api_handle {
+    if let Some(handle) = ws_handle {
         handle.shutdown();
     }
 
@@ -1121,32 +629,30 @@ pub fn start_daemon() -> Result<(), DaemonError> {
     info!(socket = %socket_path.display(), pid = std::process::id(), "Daemon started");
 
     let shutdown = Arc::new(AtomicBool::new(false));
-    let waker = ShutdownWaker::new()
-        .map_err(|e| DaemonError::SignalSetup(format!("failed to create shutdown waker: {}", e)))?;
+    let waker = ShutdownWaker::new().map_err(|e| {
+        DaemonError::SignalSetup(format!("failed to create shutdown waker: {e}"))
+    })?;
     let shutdown_notifier = waker.notifier();
+
     let server = Arc::new(DaemonServer::with_config(
         config,
         Arc::clone(&shutdown),
         Arc::clone(&shutdown_notifier),
     ));
 
-    let api_handle = match start_api_server(
-        server.session_repository_handle(),
+    let ws_handle = match start_ws_server(
+        Arc::clone(&server.core),
         Arc::clone(&shutdown),
-        ApiConfig::from_env(),
+        WsConfig::from_env(),
     ) {
         Ok(handle) => Some(handle),
-        Err(ApiServerError::Disabled) => None,
-        Err(ApiServerError::Io { operation, source }) => {
-            warn!(
-                operation = %operation,
-                error = %source,
-                "Failed to start API server"
-            );
+        Err(WsServerError::Disabled) => None,
+        Err(WsServerError::Io { operation, source }) => {
+            warn!(operation = %operation, error = %source, "Failed to start WS server");
             None
         }
-        Err(ApiServerError::InvalidListen { message }) => {
-            warn!(reason = %message, "Invalid API listen address");
+        Err(WsServerError::InvalidListen { message }) => {
+            warn!(reason = %message, "Invalid WS listen address");
             None
         }
     };
@@ -1163,7 +669,7 @@ pub fn start_daemon() -> Result<(), DaemonError> {
     server.shutdown_connections();
     wait_for_connections(&server, 5);
     server.join_stream_threads(Duration::from_secs(2));
-    cleanup(&socket_path, &lock_path, &server, pool, api_handle);
+    cleanup(&socket_path, &lock_path, &server, pool, ws_handle);
 
     Ok(())
 }
@@ -1183,8 +689,7 @@ mod tests {
     #[test]
     fn shutdown_connections_closes_idle_client() {
         let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(NoopShutdownNotifier);
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle = Arc::new(NoopShutdownNotifier);
         let server = Arc::new(DaemonServer::with_config(
             DaemonConfig::default(),
             Arc::clone(&shutdown),
@@ -1225,8 +730,7 @@ mod tests {
     #[test]
     fn join_stream_threads_drains_handles() {
         let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(NoopShutdownNotifier);
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle = Arc::new(NoopShutdownNotifier);
         let server = Arc::new(DaemonServer::with_config(
             DaemonConfig::default(),
             Arc::clone(&shutdown),

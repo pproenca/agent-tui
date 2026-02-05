@@ -54,6 +54,13 @@ impl RealTestHarness {
         self.cli_command().args(args).assert()
     }
 
+    pub fn env_vars(&self) -> Vec<(String, String)> {
+        vec![(
+            "AGENT_TUI_SOCKET".to_string(),
+            self.socket_path.to_string_lossy().into_owned(),
+        )]
+    }
+
     pub fn stop(&mut self) {
         self.stop_daemon_inner();
     }

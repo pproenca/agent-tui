@@ -6,12 +6,20 @@ on:
     paths:
       - 'cli/**'
       - 'web/**'
+      - 'docs/**'
+      - 'skills/**'
+      - 'scripts/**'
+      - 'justfile'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main, master]
     paths:
       - 'cli/**'
       - 'web/**'
+      - 'docs/**'
+      - 'skills/**'
+      - 'scripts/**'
+      - 'justfile'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -180,7 +188,7 @@ jobs:
         working-directory: cli
         run: |
           # Run lib + bins + fast CLI smoke/contract tests
-          cargo test --release -p agent-tui --lib --bins --test cli_smoke --test cli_contracts
+          cargo test --release -p agent-tui --lib --bins --test cli_smoke --test cli_contracts --test cli_command_contracts
 
       - name: Stage CLI artifact
         run: cp cli/target/release/agent-tui agent-tui
@@ -192,70 +200,78 @@ jobs:
           path: agent-tui
           if-no-files-found: error
 
-  integration:
-    name: Integration Tests (${{ matrix.os }})
-    needs: [build]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+  docs-sync:
+    name: Docs Sync Checks
+    needs: [version-check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify generated CLI docs are up to date
+        working-directory: cli
+        run: |
+          cargo run -p agent-tui --bin agent-tui-cli-docs
+          git diff --exit-code -- ../docs/cli/agent-tui.md
+
+      - name: Verify skill docs command references
+        run: ./scripts/check-skill-docs-sync.sh
+
+  command-fast:
+    name: Command Contracts (Linux, 60s)
+    needs: [version-check]
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download CLI artifact
-        uses: actions/download-artifact@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
         with:
-          name: agent-tui-${{ matrix.os }}
-          path: ./bin
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-command-fast-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-command-fast-
 
-      - name: Make CLI executable
-        run: chmod +x ./bin/agent-tui
-
-      - name: Add CLI to PATH
-        run: echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
-
-      - name: Start native daemon
+      - name: Run fast command verification
+        working-directory: cli
         run: |
-          ./bin/agent-tui daemon start
-          # Wait for daemon to be ready with command polling
-          for i in $(seq 1 30); do
-            if ./bin/agent-tui sessions >/dev/null 2>&1 && ./bin/agent-tui version >/dev/null 2>&1; then
-              echo "Daemon ready after $i attempts"
-              break
-            fi
-            if [ $i -eq 30 ]; then
-              echo "::error::Daemon failed to start within 15 seconds"
-              exit 1
-            fi
-            sleep 0.5
-          done
+          timeout 60s cargo test -p agent-tui --test cli_smoke --test cli_contracts --test cli_command_contracts
 
-      - name: Test daemon connectivity
+  command-core-e2e:
+    name: Command Core E2E (Linux, 60s)
+    needs: [command-fast]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-command-core-e2e-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-command-core-e2e-
+
+      - name: Run core runtime command E2E suite
+        working-directory: cli
         run: |
-          agent-tui sessions
-          agent-tui version
-
-      - name: Test run and kill
-        run: |
-          agent-tui run bash
-          sleep 1
-          agent-tui sessions
-          agent-tui kill
-
-      - name: Test basic workflow
-        run: |
-          agent-tui run bash
-          agent-tui type "echo 'test'"
-          agent-tui press Enter
-          agent-tui wait "test"
-          agent-tui screenshot
-          agent-tui kill
-
-      - name: Cleanup daemon
-        if: always()
-        run: agent-tui daemon stop || true
+          timeout 60s cargo test -p agent-tui --features slow-tests --test system_e2e
 
   publish-check:
     name: Publish Dry-Run

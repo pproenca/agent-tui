@@ -14,7 +14,6 @@ Use this file when you need a quick command choice based on intent.
 ## Action Strategy
 - Navigate/confirm: `press` (keys or sequences).
 - Enter text: `type "text"`.
-- Move viewport: `scroll <dir> [amount]`.
 
 ## Reliability
 - Re-snapshot after any action that could change the UI.

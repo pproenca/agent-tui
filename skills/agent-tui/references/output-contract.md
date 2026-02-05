@@ -25,12 +25,6 @@ Use this file when parsing `--format json` output.
   { "found": true, "elapsed_ms": 1200 }
   ```
 
-## Scroll
-- `agent-tui scroll ...` returns:
-  ```json
-  { "success": true }
-  ```
-
 ## Resize
 - `agent-tui resize ...` returns:
   ```json

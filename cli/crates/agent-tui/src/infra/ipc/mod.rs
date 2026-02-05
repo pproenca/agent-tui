@@ -27,5 +27,3 @@ pub use process::Signal;
 pub use process::UnixProcessController;
 pub use socket::socket_path;
 pub use transport::start_daemon_background;
-
-pub type Result<T> = std::result::Result<T, ClientError>;

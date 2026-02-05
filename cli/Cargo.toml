@@ -13,7 +13,6 @@ repository = "https://github.com/pproenca/agent-tui"
 
 [workspace.dependencies]
 # External (pinned)
-async-trait = "0.1"
 anyhow = "1"
 thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"] }

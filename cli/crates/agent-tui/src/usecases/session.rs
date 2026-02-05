@@ -119,10 +119,10 @@ impl<R: SessionRepository> KillUseCaseImpl<R> {
 
 impl<R: SessionRepository> KillUseCase for KillUseCaseImpl<R> {
     fn execute(&self, input: SessionInput) -> Result<KillOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session = self.repository.resolve(input.session_id.as_ref())?;
         let session_id = session.session_id();
 
-        self.repository.kill(session_id.as_str())?;
+        self.repository.kill(&session_id)?;
 
         Ok(KillOutput {
             session_id,
@@ -147,12 +147,12 @@ impl<R: SessionRepository> RestartUseCaseImpl<R> {
 
 impl<R: SessionRepository> RestartUseCase for RestartUseCaseImpl<R> {
     fn execute(&self, input: SessionInput) -> Result<RestartOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session = self.repository.resolve(input.session_id.as_ref())?;
         let old_session_id = session.session_id();
         let command = session.command();
         let (cols, rows) = session.size();
 
-        self.repository.kill(old_session_id.as_str())?;
+        self.repository.kill(&old_session_id)?;
 
         let args: Vec<String> = Vec::new();
         let (new_session_id, pid) = self
@@ -184,17 +184,16 @@ impl<R: SessionRepository> AttachUseCaseImpl<R> {
 
 impl<R: SessionRepository> AttachUseCase for AttachUseCaseImpl<R> {
     fn execute(&self, input: AttachInput) -> Result<AttachOutput, SessionError> {
-        let session_id_str = input.session_id.to_string();
-        let session = self.repository.resolve(Some(&session_id_str))?;
+        let session = self.repository.resolve(Some(&input.session_id))?;
 
         if !session.is_running() {
             return Err(SessionError::NotFound(format!(
                 "{} (session not running)",
-                session_id_str
+                input.session_id
             )));
         }
 
-        self.repository.set_active(&session_id_str)?;
+        self.repository.set_active(&input.session_id)?;
 
         Ok(AttachOutput {
             session_id: input.session_id,
@@ -219,7 +218,7 @@ impl<R: SessionRepository> ResizeUseCaseImpl<R> {
 
 impl<R: SessionRepository> ResizeUseCase for ResizeUseCaseImpl<R> {
     fn execute(&self, input: ResizeInput) -> Result<ResizeOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session = self.repository.resolve(input.session_id.as_ref())?;
         session.resize(input.cols, input.rows)?;
 
         Ok(ResizeOutput {
@@ -257,7 +256,7 @@ impl<R: SessionRepository> CleanupUseCase for CleanupUseCaseImpl<R> {
                 continue;
             }
 
-            match self.repository.kill(session.id.as_str()) {
+            match self.repository.kill(&session.id) {
                 Ok(()) => cleaned += 1,
                 Err(err) => failures.push(CleanupFailure {
                     session_id: session.id,
@@ -290,7 +289,7 @@ impl<R: SessionRepository> AssertUseCase for AssertUseCaseImpl<R> {
 
         let passed = match input.condition_type {
             AssertConditionType::Text => {
-                let session = self.repository.resolve(input.session_id.as_deref())?;
+                let session = self.repository.resolve(input.session_id.as_ref())?;
                 session.update()?;
                 let screen = session.screen_text();
                 screen.contains(&input.value)
@@ -312,6 +311,7 @@ mod tests {
     use super::*;
     use crate::domain::SessionId;
     use crate::domain::SessionInfo;
+    use crate::domain::TerminalSize;
     use crate::test_support::MockError;
     use crate::test_support::MockSessionRepository;
     use std::collections::HashMap;
@@ -592,7 +592,7 @@ mod tests {
                 pid: 1001,
                 running: true,
                 created_at: "2024-01-01T00:00:00Z".to_string(),
-                size: (80, 24),
+                size: TerminalSize::default(),
             },
             SessionInfo {
                 id: SessionId::new("session2"),
@@ -600,7 +600,7 @@ mod tests {
                 pid: 1002,
                 running: true,
                 created_at: "2024-01-01T01:00:00Z".to_string(),
-                size: (120, 40),
+                size: TerminalSize::try_new(120, 40).unwrap(),
             },
         ];
 
@@ -629,7 +629,7 @@ mod tests {
             pid: 999,
             running: true,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: (80, 24),
+            size: TerminalSize::default(),
         }];
 
         let repo = Arc::new(

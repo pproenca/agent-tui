@@ -118,7 +118,7 @@ impl SessionRepository for MockSessionRepository {
         Err(SessionError::LimitReached(0))
     }
 
-    fn get(&self, session_id: &str) -> Result<SessionHandle, SessionError> {
+    fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError> {
         self.get_calls.fetch_add(1, Ordering::SeqCst);
 
         if let Some(ref err) = self.get_error {
@@ -127,7 +127,7 @@ impl SessionRepository for MockSessionRepository {
 
         self.session_handle
             .clone()
-            .ok_or_else(|| SessionError::NotFound(session_id.to_string()))
+            .ok_or_else(|| SessionError::NotFound(session_id.as_str().to_string()))
     }
 
     fn active(&self) -> Result<SessionHandle, SessionError> {
@@ -139,7 +139,7 @@ impl SessionRepository for MockSessionRepository {
             .ok_or(SessionError::NoActiveSession)
     }
 
-    fn resolve(&self, session_id: Option<&str>) -> Result<SessionHandle, SessionError> {
+    fn resolve(&self, session_id: Option<&SessionId>) -> Result<SessionHandle, SessionError> {
         self.resolve_calls.fetch_add(1, Ordering::SeqCst);
 
         if let Some(ref err) = self.resolve_error {
@@ -150,17 +150,17 @@ impl SessionRepository for MockSessionRepository {
             Some(id) => self
                 .session_handle
                 .clone()
-                .ok_or_else(|| SessionError::NotFound(id.to_string())),
+                .ok_or_else(|| SessionError::NotFound(id.as_str().to_string())),
             None => Err(SessionError::NoActiveSession),
         }
     }
 
-    fn set_active(&self, session_id: &str) -> Result<(), SessionError> {
+    fn set_active(&self, session_id: &SessionId) -> Result<(), SessionError> {
         self.set_active_calls.fetch_add(1, Ordering::SeqCst);
         self.activated_sessions
             .lock()
             .unwrap()
-            .push(session_id.to_string());
+            .push(session_id.as_str().to_string());
 
         if let Some(ref err) = self.set_active_error {
             return Err(err.to_session_error());
@@ -173,12 +173,12 @@ impl SessionRepository for MockSessionRepository {
         self.sessions_list.clone()
     }
 
-    fn kill(&self, session_id: &str) -> Result<(), SessionError> {
+    fn kill(&self, session_id: &SessionId) -> Result<(), SessionError> {
         self.kill_calls.fetch_add(1, Ordering::SeqCst);
         self.killed_sessions
             .lock()
             .unwrap()
-            .push(session_id.to_string());
+            .push(session_id.as_str().to_string());
 
         if let Some(ref err) = self.kill_error {
             return Err(err.to_session_error());
@@ -260,7 +260,8 @@ mod tests {
             .with_resolve_error(MockError::NotFound("custom".to_string()))
             .build();
 
-        let result = repo.resolve(Some("session1"));
+        let session1 = SessionId::new("session1");
+        let result = repo.resolve(Some(&session1));
 
         assert!(matches!(result, Err(SessionError::NotFound(id)) if id == "custom"));
     }
@@ -311,8 +312,10 @@ mod tests {
     fn test_mock_repository_kill_tracks_sessions() {
         let repo = MockSessionRepository::new();
 
-        let _ = repo.kill("session1");
-        let _ = repo.kill("session2");
+        let s1 = SessionId::new("session1");
+        let s2 = SessionId::new("session2");
+        let _ = repo.kill(&s1);
+        let _ = repo.kill(&s2);
 
         assert_eq!(repo.kill_call_count(), 2);
         assert_eq!(repo.killed_sessions(), vec!["session1", "session2"]);
@@ -322,8 +325,10 @@ mod tests {
     fn test_mock_repository_set_active_tracks_sessions() {
         let repo = MockSessionRepository::new();
 
-        let _ = repo.set_active("session1");
-        let _ = repo.set_active("session2");
+        let s1 = SessionId::new("session1");
+        let s2 = SessionId::new("session2");
+        let _ = repo.set_active(&s1);
+        let _ = repo.set_active(&s2);
 
         assert_eq!(repo.set_active_call_count(), 2);
         assert_eq!(repo.activated_sessions(), vec!["session1", "session2"]);
@@ -331,13 +336,14 @@ mod tests {
 
     #[test]
     fn test_builder_with_sessions_list() {
+        use crate::domain::TerminalSize;
         let sessions = vec![SessionInfo {
             id: SessionId::new("sess1"),
             command: "bash".to_string(),
             pid: 1234,
             running: true,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: (80, 24),
+            size: TerminalSize::default(),
         }];
 
         let repo = MockSessionRepository::builder()

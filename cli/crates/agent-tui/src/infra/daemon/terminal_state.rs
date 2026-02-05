@@ -38,8 +38,4 @@ impl TerminalState {
     pub fn resize(&mut self, cols: u16, rows: u16) {
         self.terminal.resize(cols, rows);
     }
-
-    pub fn clear(&mut self) {
-        self.terminal.clear();
-    }
 }

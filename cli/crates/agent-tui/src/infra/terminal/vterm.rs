@@ -179,10 +179,6 @@ impl VirtualTerminal {
     pub fn size(&self) -> (u16, u16) {
         (self.cols, self.rows)
     }
-
-    pub fn clear(&mut self) {
-        self.terminal.erase_scrollback_and_viewport();
-    }
 }
 
 impl TerminalEngine for VirtualTerminal {

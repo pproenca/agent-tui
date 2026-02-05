@@ -41,10 +41,12 @@ use crate::domain::WaitInput;
 use crate::domain::WaitOutput;
 use crate::usecases::ports::SessionError;
 
-const MAX_TERMINAL_COLS: u16 = 500;
-const MAX_TERMINAL_ROWS: u16 = 200;
-const MIN_TERMINAL_COLS: u16 = 10;
-const MIN_TERMINAL_ROWS: u16 = 5;
+use crate::domain::session_types::TerminalSize;
+
+const MAX_TERMINAL_COLS: u16 = TerminalSize::MAX_COLS;
+const MAX_TERMINAL_ROWS: u16 = TerminalSize::MAX_ROWS;
+const MIN_TERMINAL_COLS: u16 = TerminalSize::MIN_COLS;
+const MIN_TERMINAL_ROWS: u16 = TerminalSize::MIN_ROWS;
 
 pub fn to_value<T: Serialize>(value: T) -> Result<serde_json::Value, serde_json::Error> {
     serde_json::to_value(value)

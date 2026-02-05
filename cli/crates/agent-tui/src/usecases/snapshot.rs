@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use crate::domain::SnapshotInput;
 use crate::domain::SnapshotOutput;
-use crate::domain::core_cursor_to_domain;
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionRepository;
 
@@ -24,7 +23,7 @@ impl<R: SessionRepository> SnapshotUseCaseImpl<R> {
 
 impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
     fn execute(&self, input: SnapshotInput) -> Result<SnapshotOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session = self.repository.resolve(input.session_id.as_ref())?;
 
         session.update()?;
 
@@ -32,7 +31,7 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
         let session_id = session.session_id();
 
         let cursor = if input.include_cursor {
-            Some(core_cursor_to_domain(&session.cursor()))
+            Some(session.cursor())
         } else {
             None
         };

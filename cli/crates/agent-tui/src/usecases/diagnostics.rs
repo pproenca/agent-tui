@@ -23,7 +23,7 @@ impl<R: SessionRepository> TerminalWriteUseCaseImpl<R> {
 
 impl<R: SessionRepository> TerminalWriteUseCase for TerminalWriteUseCaseImpl<R> {
     fn execute(&self, input: TerminalWriteInput) -> Result<TerminalWriteOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session = self.repository.resolve(input.session_id.as_ref())?;
         let bytes_len = input.data.len();
         session.terminal_write(&input.data)?;
         Ok(TerminalWriteOutput {

@@ -1404,7 +1404,7 @@ mod pump_tests {
     #[test]
     fn session_pump_streams_output_into_buffer() {
         let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
-        let pty = PtyHandle::spawn("sh", &args, None, None, 80, 24).unwrap();
+        let pty = PtyHandle::spawn("/bin/sh", &args, None, None, 80, 24).unwrap();
         let session = Session::new("test-session".into(), "sh".to_string(), pty, 80, 24);
         let session = Arc::new(Mutex::new(session));
 
@@ -1693,17 +1693,8 @@ impl From<&SessionInfo> for PersistedSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
+    use crate::test_support::env_lock;
     use tempfile::tempdir;
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-    fn env_lock() -> MutexGuard<'static, ()> {
-        ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("env lock poisoned")
-    }
 
     struct HomeGuard(Option<String>);
 

@@ -462,15 +462,14 @@ impl Application {
             return Ok(());
         }
 
-        let mut client: UnixSocketClient = match &cli.command {
-            Commands::Run { .. } | Commands::Live { .. } => self
-                .connect_to_daemon_autostart()
+        let mut client: UnixSocketClient = if Self::requires_daemon_autostart(&cli.command) {
+            self.connect_to_daemon_autostart()
                 .map_err(|e| self.wrap_error(e, format))
-                .context("failed to connect to daemon with autostart")?,
-            _ => self
-                .connect_to_daemon_no_autostart()
+                .context("failed to connect to daemon with autostart")?
+        } else {
+            self.connect_to_daemon_no_autostart()
                 .map_err(|e| self.wrap_error(e, format))
-                .context("failed to connect to daemon")?,
+                .context("failed to connect to daemon")?
         };
 
         let mut ctx = HandlerContext::new(&mut client, cli.session, format);
@@ -507,6 +506,18 @@ impl Application {
                 self.handle_daemon_restart_without_autostart(cli)?;
                 Ok(true)
             }
+            Commands::Live {
+                command: Some(LiveCommand::Stop),
+            } => {
+                handlers::handle_live_stop_standalone(cli.effective_format())?;
+                Ok(true)
+            }
+            Commands::Live {
+                command: Some(LiveCommand::Status),
+            } => {
+                handlers::handle_live_status_standalone(cli.effective_format())?;
+                Ok(true)
+            }
             Commands::Completions {
                 shell,
                 print,
@@ -525,6 +536,16 @@ impl Application {
                 Ok(true)
             }
             _ => Ok(false),
+        }
+    }
+
+    fn requires_daemon_autostart(command: &Commands) -> bool {
+        match command {
+            Commands::Run { .. } => true,
+            Commands::Live { command } => {
+                matches!(command, None | Some(LiveCommand::Start(_)))
+            }
+            _ => false,
         }
     }
 
@@ -866,28 +887,65 @@ mod tests {
         use crate::app::commands::Cli;
         use crate::app::commands::Commands;
         use crate::app::commands::DaemonCommand;
+        use crate::app::commands::LiveCommand;
         use crate::app::commands::OutputFormat;
+        use crate::test_support::env_lock;
         use std::env;
+        use std::path::Path;
         use tempfile::TempDir;
 
-        #[test]
-        fn handle_standalone_commands_routes_daemon_stop() {
-            // Isolate from any real daemon by pointing socket to a temp path.
-            let tmp = TempDir::new().expect("temp dir");
-            let socket_path = tmp.path().join("agent-tui-test.sock");
-            // SAFETY: Test-only environment override to isolate the daemon socket.
-            unsafe {
-                env::set_var("AGENT_TUI_SOCKET", &socket_path);
-            }
+        struct EnvVarGuard {
+            key: &'static str,
+            prev: Option<String>,
+        }
 
-            let app = Application::new();
-            let cli = Cli {
-                command: Commands::Daemon(DaemonCommand::Stop { force: false }),
+        impl EnvVarGuard {
+            fn set_path(key: &'static str, value: &Path) -> Self {
+                let prev = env::var(key).ok();
+                // SAFETY: Test-only environment override.
+                unsafe {
+                    env::set_var(key, value);
+                }
+                Self { key, prev }
+            }
+        }
+
+        impl Drop for EnvVarGuard {
+            fn drop(&mut self) {
+                if let Some(prev) = self.prev.take() {
+                    // SAFETY: Test-only environment restoration.
+                    unsafe {
+                        env::set_var(self.key, prev);
+                    }
+                } else {
+                    // SAFETY: Test-only environment cleanup.
+                    unsafe {
+                        env::remove_var(self.key);
+                    }
+                }
+            }
+        }
+
+        fn make_cli(command: Commands) -> Cli {
+            Cli {
+                command,
                 session: None,
                 format: OutputFormat::Text,
                 json: false,
                 no_color: true,
-            };
+            }
+        }
+
+        #[test]
+        fn handle_standalone_commands_routes_daemon_stop() {
+            let _env_lock = env_lock();
+            // Isolate from any real daemon by pointing socket to a temp path.
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
+
+            let app = Application::new();
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop { force: false }));
 
             // When daemon is not running, should succeed (idempotent semantics)
             // The result should be Ok(true), indicating the command was handled
@@ -904,26 +962,18 @@ mod tests {
 
         #[test]
         fn handle_standalone_commands_routes_daemon_start() {
+            let _env_lock = env_lock();
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
-            // SAFETY: Test-only environment override to isolate the daemon socket.
-            unsafe {
-                env::set_var("AGENT_TUI_SOCKET", &socket_path);
-            }
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
 
             // Use stub to prevent spawning a real daemon process.
             crate::infra::ipc::transport::USE_DAEMON_START_STUB
                 .store(true, std::sync::atomic::Ordering::SeqCst);
 
             let app = Application::new();
-            let cli = Cli {
-                command: Commands::Daemon(DaemonCommand::Start {}),
-                session: None,
-                format: OutputFormat::Text,
-                json: false,
-                no_color: true,
-            };
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Start {}));
 
             let result = app.handle_standalone_commands(&cli);
             // Error is acceptable (daemon may fail to start), but it was handled
@@ -939,26 +989,18 @@ mod tests {
 
         #[test]
         fn handle_standalone_commands_routes_daemon_restart() {
+            let _env_lock = env_lock();
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
-            // SAFETY: Test-only environment override to isolate the daemon socket.
-            unsafe {
-                env::set_var("AGENT_TUI_SOCKET", &socket_path);
-            }
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
 
             // Use stub to prevent spawning a real daemon process.
             crate::infra::ipc::transport::USE_DAEMON_START_STUB
                 .store(true, std::sync::atomic::Ordering::SeqCst);
 
             let app = Application::new();
-            let cli = Cli {
-                command: Commands::Daemon(DaemonCommand::Restart),
-                session: None,
-                format: OutputFormat::Text,
-                json: false,
-                no_color: true,
-            };
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Restart));
 
             // Restart should be handled as standalone (may error if start fails)
             let result = app.handle_standalone_commands(&cli);
@@ -970,6 +1012,122 @@ mod tests {
             crate::infra::ipc::transport::USE_DAEMON_START_STUB
                 .store(false, std::sync::atomic::Ordering::SeqCst);
             crate::infra::ipc::transport::clear_test_listener();
+        }
+
+        #[test]
+        fn handle_standalone_commands_routes_live_status_without_autostart() {
+            let _env_lock = env_lock();
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            let api_state = tmp.path().join("api.json");
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
+            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_API_STATE", &api_state);
+
+            let app = Application::new();
+            let cli = make_cli(Commands::Live {
+                command: Some(LiveCommand::Status),
+            });
+
+            let result = app.handle_standalone_commands(&cli);
+            assert!(result.is_ok(), "live status should be handled");
+            assert!(result.unwrap(), "live status should be standalone");
+            assert!(
+                !socket_path.exists(),
+                "live status must not autostart daemon or create socket"
+            );
+        }
+
+        #[test]
+        fn handle_standalone_commands_routes_live_stop_without_autostart() {
+            let _env_lock = env_lock();
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            let api_state = tmp.path().join("api.json");
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
+            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_API_STATE", &api_state);
+
+            let app = Application::new();
+            let cli = make_cli(Commands::Live {
+                command: Some(LiveCommand::Stop),
+            });
+
+            let result = app.handle_standalone_commands(&cli);
+            assert!(result.is_ok(), "live stop should be handled");
+            assert!(result.unwrap(), "live stop should be standalone");
+            assert!(
+                !socket_path.exists(),
+                "live stop must not autostart daemon or create socket"
+            );
+        }
+
+        #[test]
+        fn handle_standalone_commands_daemon_stop_stale_lock_is_idempotent() {
+            let _env_lock = env_lock();
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            let lock_path = socket_path.with_extension("lock");
+            std::fs::write(&lock_path, "999999").expect("write stale lock");
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
+
+            let app = Application::new();
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop { force: false }));
+
+            let result = app.handle_standalone_commands(&cli);
+            assert!(
+                result.is_ok() && result.unwrap(),
+                "daemon stop should be idempotent with stale lock"
+            );
+            assert!(
+                !lock_path.exists(),
+                "stale lock file should be cleaned after stop"
+            );
+        }
+
+        #[test]
+        fn handle_standalone_commands_daemon_force_stop_stale_lock_is_idempotent() {
+            let _env_lock = env_lock();
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            let lock_path = socket_path.with_extension("lock");
+            std::fs::write(&lock_path, "999999").expect("write stale lock");
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
+
+            let app = Application::new();
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop { force: true }));
+
+            let result = app.handle_standalone_commands(&cli);
+            assert!(
+                result.is_ok() && result.unwrap(),
+                "daemon stop --force should be idempotent with stale lock"
+            );
+            assert!(
+                !lock_path.exists(),
+                "stale lock file should be cleaned after forced stop"
+            );
+        }
+
+        #[test]
+        fn handle_standalone_commands_daemon_stop_removes_stale_api_state() {
+            let _env_lock = env_lock();
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            let api_state = tmp.path().join("api.json");
+            std::fs::write(&api_state, r#"{"pid":1}"#).expect("write api state");
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
+            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_API_STATE", &api_state);
+
+            let app = Application::new();
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop { force: true }));
+
+            let result = app.handle_standalone_commands(&cli);
+            assert!(
+                result.is_ok() && result.unwrap(),
+                "daemon stop should succeed when daemon is already stopped"
+            );
+            assert!(
+                !api_state.exists(),
+                "API state file should be cleaned on successful stop path"
+            );
         }
     }
 }

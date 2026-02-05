@@ -218,12 +218,10 @@ jobs:
 
       - name: Start native daemon
         run: |
-          ./bin/agent-tui daemon start &
-          DAEMON_PID=$!
-          echo "DAEMON_PID=$DAEMON_PID" >> $GITHUB_ENV
-          # Wait for daemon to be ready with health check polling
+          ./bin/agent-tui daemon start
+          # Wait for daemon to be ready with command polling
           for i in $(seq 1 30); do
-            if ./bin/agent-tui daemon status 2>/dev/null; then
+            if ./bin/agent-tui sessions >/dev/null 2>&1 && ./bin/agent-tui version >/dev/null 2>&1; then
               echo "Daemon ready after $i attempts"
               break
             fi
@@ -234,8 +232,10 @@ jobs:
             sleep 0.5
           done
 
-      - name: Test status command
-        run: agent-tui daemon status
+      - name: Test daemon connectivity
+        run: |
+          agent-tui sessions
+          agent-tui version
 
       - name: Test run and kill
         run: |

@@ -603,9 +603,13 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
 }
 
 pub(crate) fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+    handle_live_stop_standalone(ctx.format)
+}
+
+pub(crate) fn handle_live_stop_standalone(format: OutputFormat) -> HandlerResult {
     let ui_result = stop_ui_server();
     let ui_error = ui_result.as_ref().err().map(|err| err.to_string());
-    match ctx.format {
+    match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             struct UiStopPayload {
@@ -653,7 +657,7 @@ pub(crate) fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> 
             };
             if let Some(err) = ui_error {
                 return Err(CliError::new(
-                    ctx.format,
+                    format,
                     format!("Failed to stop UI server: {}", err),
                     Some(serde_json::to_string_pretty(&output)?),
                     super::exit_codes::GENERAL_ERROR,
@@ -686,7 +690,7 @@ pub(crate) fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> 
     }
     if let Some(err) = ui_error {
         return Err(CliError::new(
-            ctx.format,
+            format,
             format!("Failed to stop UI server: {}", err),
             None,
             super::exit_codes::GENERAL_ERROR,
@@ -697,10 +701,14 @@ pub(crate) fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> 
 }
 
 pub(crate) fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+    handle_live_status_standalone(ctx.format)
+}
+
+pub(crate) fn handle_live_status_standalone(format: OutputFormat) -> HandlerResult {
     let status = read_api_state_running(&api_state_path());
     let ui_status = resolve_ui_status();
 
-    match ctx.format {
+    match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             struct UiStatusPayload {
@@ -1056,6 +1064,19 @@ fn resolve_ui_status() -> UiStatus {
     match read_ui_state_running(&ui_state_path()) {
         Some(state) => UiStatus::Running(state),
         None => UiStatus::NotRunning,
+    }
+}
+
+fn remove_api_state_file() {
+    let state_path = api_state_path();
+    if let Err(err) = std::fs::remove_file(&state_path)
+        && err.kind() != std::io::ErrorKind::NotFound
+    {
+        warn!(
+            path = %state_path.display(),
+            error = %err,
+            "Failed to remove API state file"
+        );
     }
 }
 
@@ -1621,6 +1642,7 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
     let pid = match get_daemon_pid() {
         PidLookupResult::Found(pid) => pid,
         PidLookupResult::NotRunning => {
+            remove_api_state_file();
             return Ok(StopResult::AlreadyStopped);
         }
         PidLookupResult::Error(msg) => {
@@ -1639,6 +1661,7 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
         if let Ok(mut client) = UnixSocketClient::connect()
             && let Ok(result) = daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket)
         {
+            remove_api_state_file();
             return Ok(StopResult::Stopped {
                 pid,
                 warnings: result.warnings,
@@ -1648,11 +1671,17 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
 
     // Fall back to signal-based stop
     let controller = UnixProcessController;
-    let result = daemon_lifecycle::stop_daemon(&controller, pid, &socket, force)?;
-    Ok(StopResult::Stopped {
-        pid,
-        warnings: result.warnings,
-    })
+    let stop_result = match daemon_lifecycle::stop_daemon(&controller, pid, &socket, force) {
+        Ok(result) => StopResult::Stopped {
+            pid,
+            warnings: result.warnings,
+        },
+        Err(ClientError::DaemonNotRunning) => StopResult::AlreadyStopped,
+        Err(err) => return Err(err.into()),
+    };
+
+    remove_api_state_file();
+    Ok(stop_result)
 }
 
 pub(crate) fn handle_daemon_stop<C: DaemonClient>(

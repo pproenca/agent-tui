@@ -58,7 +58,6 @@ Use this file when you need complete CLI coverage and exact options.
   - `-T, --no-tty`: stream only.
   - `--detach-keys <keys>`: custom detach sequence (env: `AGENT_TUI_DETACH_KEYS`).
 - `agent-tui sessions cleanup [--all]`
-- `agent-tui sessions status`
 
 ### Live Preview
 - `agent-tui live start [--open] [--browser <cmd>]`
@@ -71,13 +70,11 @@ Use this file when you need complete CLI coverage and exact options.
   - `--listen`, `--allow-remote`, `--max-viewers` (use env vars and restart the daemon).
 
 ### Daemon
-- `agent-tui daemon start [--foreground]`
+- `agent-tui daemon start`
 - `agent-tui daemon stop [--force]`
-- `agent-tui daemon status`
 - `agent-tui daemon restart`
 
-### Debugging
-- `agent-tui health`
+### Utilities
 - `agent-tui env`
 - `agent-tui version`
 - `agent-tui help`

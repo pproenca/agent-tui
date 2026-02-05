@@ -1,0 +1,14 @@
+{
+  "name": "version-basic",
+  "method": "version",
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "daemon_version": "1.0.0",
+      "daemon_commit": "abc123"
+    }
+  },
+  "expected_stdout": ["CLI version:", "Daemon version:"],
+  "expected_exit": 0
+}

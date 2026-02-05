@@ -11,7 +11,6 @@ pub mod polling;
 pub mod process;
 pub mod socket;
 pub mod transport;
-pub mod version;
 
 pub use client::DaemonClient;
 pub use client::DaemonClientConfig;

@@ -1,7 +1,6 @@
 //! Interface adapters that translate external formats into use-case inputs.
 
 pub mod daemon;
-mod metrics_adapters;
 pub mod presenter;
 pub mod rpc;
 mod rpc_value;

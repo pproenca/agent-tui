@@ -25,7 +25,6 @@ Commands:
   live         Live preview API for the current session
   daemon       Manage the background daemon
   version      Show version information
-  health       Show daemon health status
   env          Show environment diagnostics
   completions  Generate or install shell completions
   help         Print this message or the help of the given subcommand(s)
@@ -56,10 +55,6 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 WORKFLOW:
     1. Run a TUI application
     2. View the screenshot
@@ -70,6 +65,28 @@ WORKFLOW:
 OUTPUT:
     --format json  Machine-readable JSON (recommended for automation)
     --format text  Human-readable text (default)
+
+CONFIGURATION:
+    AGENT_TUI_TRANSPORT         IPC transport (unix or tcp; default: unix)
+    AGENT_TUI_TCP_PORT          TCP port when transport is tcp
+    AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-Q)
+    AGENT_TUI_DAEMON_FOREGROUND Run daemon start in foreground (internal)
+    AGENT_TUI_API_LISTEN        API bind address (default: 127.0.0.1:0)
+    AGENT_TUI_API_ALLOW_REMOTE  Allow non-loopback bind (default: false)
+    AGENT_TUI_API_TOKEN         Override token (or 'none' to disable)
+    AGENT_TUI_API_STATE         State file path (default: ~/.agent-tui/api.json)
+    AGENT_TUI_API_DISABLED      Disable API server (default: false)
+    AGENT_TUI_API_MAX_CONNECTIONS  Max WebSocket connections (default: 32)
+    AGENT_TUI_API_WS_QUEUE      API websocket queue size (default: 128)
+    AGENT_TUI_SESSION_STORE     Session metadata log path (default: ~/.agent-tui/sessions.jsonl)
+    AGENT_TUI_LOG               Log file path (optional)
+    AGENT_TUI_LOG_FORMAT        Log format (text or json; default: text)
+    AGENT_TUI_LOG_STREAM        Log output stream (stderr or stdout; default: stderr)
+    AGENT_TUI_UI_URL            External UI URL (optional)
+    AGENT_TUI_UI_MODE           UI mode override (optional)
+    AGENT_TUI_UI_PORT           UI port override (optional)
+    AGENT_TUI_UI_ROOT           UI root path override (optional)
+    AGENT_TUI_UI_STATE          UI state file path (optional)
 
 EXAMPLES:
     # Start and interact with a TUI app
@@ -84,9 +101,6 @@ EXAMPLES:
     agent-tui run htop
     agent-tui press F10
     agent-tui press ArrowDown ArrowDown Enter
-
-    # Check daemon status
-    agent-tui daemon status
 ```
 
 ## `agent-tui run`
@@ -147,10 +161,6 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 EXAMPLES:
     agent-tui run bash
     agent-tui run htop
@@ -204,10 +214,6 @@ Session Options:
   -s, --session <ID>
           Session ID to use (defaults to the most recent session)
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 EXAMPLES:
     agent-tui screenshot              # Just the screenshot
     agent-tui screenshot --strip-ansi # Plain text without colors
@@ -252,10 +258,6 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 EXAMPLES:
     agent-tui resize --cols 120 --rows 40
 ```
@@ -292,10 +294,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 
 EXAMPLES:
     agent-tui restart
@@ -346,10 +344,6 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 NOTES:
     --hold/--release require a single modifier key (Ctrl, Alt, Shift, Meta)
 
@@ -397,10 +391,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 
 EXAMPLES:
     agent-tui type "hello world"
@@ -473,10 +463,6 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 EXAMPLES:
     agent-tui wait "Continue"           # Wait for text
     agent-tui wait --stable             # Wait for screenshot stability
@@ -517,10 +503,6 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 EXAMPLES:
     agent-tui kill
     agent-tui --session abc123 kill
@@ -529,7 +511,7 @@ EXAMPLES:
 ## `agent-tui sessions`
 
 ```text
-Manage sessions - list, show details, attach, switch active, cleanup, or status.
+Manage sessions - list, show details, attach, switch active, or cleanup.
 
 By default, lists all active sessions.
 
@@ -539,7 +521,6 @@ MODES:
     attach            Attach with TTY (defaults to --session or active)
     switch <id>       Set the active session
     cleanup [--all]   Remove dead/orphaned sessions
-    status            Show daemon health
 
 Usage: sessions [OPTIONS] [COMMAND]
 
@@ -549,7 +530,6 @@ Commands:
   attach   Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-Q or --detach-keys)
   switch   Set the active session without attaching
   cleanup  Remove dead/orphaned sessions
-  status   Show daemon health status
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -578,10 +558,6 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 EXAMPLES:
     agent-tui sessions                    # List sessions
     agent-tui sessions list               # List sessions (explicit)
@@ -593,7 +569,6 @@ EXAMPLES:
     agent-tui sessions attach --detach-keys 'ctrl-]'  # Custom detach sequence
     agent-tui sessions cleanup            # Remove dead sessions
     agent-tui sessions cleanup --all      # Remove all sessions
-    agent-tui sessions status             # Show daemon health
 ```
 
 ## `agent-tui sessions list`
@@ -628,10 +603,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui sessions show`
@@ -670,10 +641,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui sessions attach`
@@ -716,10 +683,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui sessions switch`
@@ -758,10 +721,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui sessions cleanup`
@@ -799,48 +758,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-```
-
-## `agent-tui sessions status`
-
-```text
-Show daemon health status
-
-Usage: status [OPTIONS]
-
-Options:
-  -h, --help
-          Print help
-
-  -V, --version
-          Print version
-
-Session Options:
-  -s, --session <ID>
-          Session ID to use (defaults to the most recent session)
-
-Output Options:
-  -f, --format <FORMAT>
-          Output format (text or json)
-          
-          [default: text]
-          [possible values: text, json]
-
-      --json
-          Shorthand for --format json (overrides --format if both are set)
-
-      --no-color
-          Disable colored output (also respects NO_COLOR)
-          
-          [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui sessions help`
@@ -870,7 +787,6 @@ CONFIGURATION:
     AGENT_TUI_API_TOKEN          Override token (or 'none' to disable)
     AGENT_TUI_API_STATE          State file path (default: ~/.agent-tui/api.json)
     AGENT_TUI_UI_URL             External UI URL to open with --open (CLI appends api/ws/token/session)
-    PORT                         Fallback port for API listen when AGENT_TUI_API_LISTEN is unset
 
 SECURITY:
     API is token-protected by default. Use --allow-remote only when needed.
@@ -908,10 +824,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 
 EXAMPLES:
     agent-tui live start
@@ -969,10 +881,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui live stop`
@@ -1007,10 +915,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui live status`
@@ -1045,10 +949,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui live help`
@@ -1073,7 +973,6 @@ Usage: daemon [OPTIONS] <COMMAND>
 Commands:
   start    Start the daemon process
   stop     Stop the running daemon
-  status   Show daemon status and version
   restart  Restart the daemon
   help     Print this message or the help of the given subcommand(s)
 
@@ -1102,10 +1001,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui daemon start`
@@ -1113,15 +1008,11 @@ Debug Options:
 ```text
 Start the daemon process.
 
-By default, starts the daemon in the background. Use --foreground to run
-in the current terminal (useful for debugging).
+Starts the daemon in the background.
 
 Usage: start [OPTIONS]
 
 Options:
-      --foreground
-          Run in the foreground (debugging)
-
   -h, --help
           Print help (see a summary with '-h')
 
@@ -1147,13 +1038,8 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 EXAMPLES:
     agent-tui daemon start              # Start in background
-    agent-tui daemon start --foreground # Run in foreground
 ```
 
 ## `agent-tui daemon stop`
@@ -1196,58 +1082,9 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 EXAMPLES:
     agent-tui daemon stop          # Graceful stop
     agent-tui daemon stop --force  # Force kill
-```
-
-## `agent-tui daemon status`
-
-```text
-Show daemon status and version information.
-
-Displays whether the daemon is running, its PID, uptime, and version.
-Also checks for version mismatch between CLI and daemon.
-
-EXIT CODES (following LSB init script conventions):
-    0 - Daemon is running and healthy
-    3 - Daemon is not running
-
-Usage: status [OPTIONS]
-
-Options:
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-
-Session Options:
-  -s, --session <ID>
-          Session ID to use (defaults to the most recent session)
-
-Output Options:
-  -f, --format <FORMAT>
-          Output format (text or json)
-          
-          [default: text]
-          [possible values: text, json]
-
-      --json
-          Shorthand for --format json (overrides --format if both are set)
-
-      --no-color
-          Disable colored output (also respects NO_COLOR)
-          
-          [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui daemon restart`
@@ -1287,10 +1124,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 ```
 
 ## `agent-tui daemon help`
@@ -1311,7 +1144,7 @@ Arguments:
 Show detailed version information.
 
 Shows version info for both the CLI binary and the running daemon.
-Useful for debugging and ensuring CLI/daemon compatibility.
+Useful for verifying CLI/daemon compatibility.
 
 Usage: version [OPTIONS]
 
@@ -1341,57 +1174,9 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 EXAMPLES:
     agent-tui version
     agent-tui --format json version
-```
-
-## `agent-tui health`
-
-```text
-Show daemon health status and version information.
-
-Alias for `agent-tui daemon status`.
-
-Usage: health [OPTIONS]
-
-Options:
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-
-Session Options:
-  -s, --session <ID>
-          Session ID to use (defaults to the most recent session)
-
-Output Options:
-  -f, --format <FORMAT>
-          Output format (text or json)
-          
-          [default: text]
-          [possible values: text, json]
-
-      --json
-          Shorthand for --format json (overrides --format if both are set)
-
-      --no-color
-          Disable colored output (also respects NO_COLOR)
-          
-          [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
-EXAMPLES:
-    agent-tui health
-    agent-tui --format json health
 ```
 
 ## `agent-tui env`
@@ -1400,14 +1185,7 @@ EXAMPLES:
 Show environment diagnostics.
 
 Displays all environment variables and configuration that affect
-agent-tui behavior. Useful for debugging connection issues.
-
-CONFIGURATION:
-    AGENT_TUI_SESSION_STORE      Session metadata log path (default: ~/.agent-tui/sessions.jsonl)
-    AGENT_TUI_LOG                Log file path (optional)
-    AGENT_TUI_LOG_FORMAT         Log format (text or json; default: text)
-    AGENT_TUI_LOG_STREAM         Log output stream (stderr or stdout; default: stderr)
-    PORT                         Fallback port for API listen when AGENT_TUI_API_LISTEN is unset
+agent-tui behavior. Useful for troubleshooting connection issues.
 
 Usage: env [OPTIONS]
 
@@ -1436,10 +1214,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
 
 EXAMPLES:
     agent-tui env
@@ -1496,10 +1270,6 @@ Output Options:
           
           [env: NO_COLOR=1]
 
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
 EXAMPLES:
     agent-tui completions
     agent-tui completions zsh
@@ -1531,3 +1301,4 @@ Arguments:
   [COMMAND]...
           Print help for the subcommand(s)
 ```
+

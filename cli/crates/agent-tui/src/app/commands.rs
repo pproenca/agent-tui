@@ -31,6 +31,28 @@ OUTPUT:
     --format json  Machine-readable JSON (recommended for automation)
     --format text  Human-readable text (default)
 
+CONFIGURATION:
+    AGENT_TUI_TRANSPORT         IPC transport (unix or tcp; default: unix)
+    AGENT_TUI_TCP_PORT          TCP port when transport is tcp
+    AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-Q)
+    AGENT_TUI_DAEMON_FOREGROUND Run daemon start in foreground (internal)
+    AGENT_TUI_API_LISTEN        API bind address (default: 127.0.0.1:0)
+    AGENT_TUI_API_ALLOW_REMOTE  Allow non-loopback bind (default: false)
+    AGENT_TUI_API_TOKEN         Override token (or 'none' to disable)
+    AGENT_TUI_API_STATE         State file path (default: ~/.agent-tui/api.json)
+    AGENT_TUI_API_DISABLED      Disable API server (default: false)
+    AGENT_TUI_API_MAX_CONNECTIONS  Max WebSocket connections (default: 32)
+    AGENT_TUI_API_WS_QUEUE      API websocket queue size (default: 128)
+    AGENT_TUI_SESSION_STORE     Session metadata log path (default: ~/.agent-tui/sessions.jsonl)
+    AGENT_TUI_LOG               Log file path (optional)
+    AGENT_TUI_LOG_FORMAT        Log format (text or json; default: text)
+    AGENT_TUI_LOG_STREAM        Log output stream (stderr or stdout; default: stderr)
+    AGENT_TUI_UI_URL            External UI URL (optional)
+    AGENT_TUI_UI_MODE           UI mode override (optional)
+    AGENT_TUI_UI_PORT           UI port override (optional)
+    AGENT_TUI_UI_ROOT           UI root path override (optional)
+    AGENT_TUI_UI_STATE          UI state file path (optional)
+
 EXAMPLES:
     # Start and interact with a TUI app
     agent-tui run "npx create-next-app"
@@ -45,8 +67,7 @@ EXAMPLES:
     agent-tui press F10
     agent-tui press ArrowDown ArrowDown Enter
 
-    # Check daemon status
-    agent-tui daemon status"#;
+    "#;
 
 #[derive(Parser)]
 #[command(name = "agent-tui")]
@@ -95,10 +116,6 @@ pub struct Cli {
         help_heading = "Output Options"
     )]
     pub no_color: bool,
-
-    /// Enable verbose output (shows request timing)
-    #[arg(short, long, global = true, help_heading = "Debug Options")]
-    pub verbose: bool,
 }
 
 impl Cli {
@@ -276,7 +293,7 @@ EXAMPLES:
 
     /// List and manage sessions
     #[command(long_about = "\
-Manage sessions - list, show details, attach, switch active, cleanup, or status.
+Manage sessions - list, show details, attach, switch active, or cleanup.
 
 By default, lists all active sessions.
 
@@ -285,8 +302,7 @@ MODES:
     show <id>         Show details for a session
     attach            Attach with TTY (defaults to --session or active)
     switch <id>       Set the active session
-    cleanup [--all]   Remove dead/orphaned sessions
-    status            Show daemon health")]
+    cleanup [--all]   Remove dead/orphaned sessions")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui sessions                    # List sessions
@@ -298,8 +314,7 @@ EXAMPLES:
     agent-tui -s abc123 sessions attach -T # Attach without TTY (stream output only)
     agent-tui sessions attach --detach-keys 'ctrl-]'  # Custom detach sequence
     agent-tui sessions cleanup            # Remove dead sessions
-    agent-tui sessions cleanup --all      # Remove all sessions
-    agent-tui sessions status             # Show daemon health")]
+    agent-tui sessions cleanup --all      # Remove all sessions")]
     #[command(after_help = "Default action: list (same as `sessions list`).")]
     Sessions {
         #[command(subcommand)]
@@ -342,30 +357,19 @@ EXAMPLES:
 Show detailed version information.
 
 Shows version info for both the CLI binary and the running daemon.
-Useful for debugging and ensuring CLI/daemon compatibility.")]
+Useful for verifying CLI/daemon compatibility.")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui version
     agent-tui --format json version")]
     Version,
 
-    /// Show daemon health status
-    #[command(long_about = "\
-Show daemon health status and version information.
-
-Alias for `agent-tui daemon status`.")]
-    #[command(after_long_help = "\
-EXAMPLES:
-    agent-tui health
-    agent-tui --format json health")]
-    Health,
-
     /// Show environment diagnostics
     #[command(long_about = "\
 Show environment diagnostics.
 
 Displays all environment variables and configuration that affect
-agent-tui behavior. Useful for debugging connection issues.")]
+agent-tui behavior. Useful for troubleshooting connection issues.")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui env
@@ -451,9 +455,6 @@ pub enum SessionsCommand {
         #[arg(long)]
         all: bool,
     },
-
-    /// Show daemon health status
-    Status,
 }
 
 #[derive(Debug, Subcommand)]
@@ -511,17 +512,11 @@ pub enum DaemonCommand {
     #[command(long_about = "\
 Start the daemon process.
 
-By default, starts the daemon in the background. Use --foreground to run
-in the current terminal (useful for debugging).")]
+Starts the daemon in the background.")]
     #[command(after_long_help = "\
 EXAMPLES:
-    agent-tui daemon start              # Start in background
-    agent-tui daemon start --foreground # Run in foreground")]
-    Start {
-        /// Run in the foreground (debugging)
-        #[arg(long)]
-        foreground: bool,
-    },
+    agent-tui daemon start              # Start in background")]
+    Start {},
 
     /// Stop the running daemon
     #[command(long_about = "\
@@ -539,18 +534,6 @@ EXAMPLES:
         #[arg(long)]
         force: bool,
     },
-
-    /// Show daemon status and version
-    #[command(long_about = "\
-Show daemon status and version information.
-
-Displays whether the daemon is running, its PID, uptime, and version.
-Also checks for version mismatch between CLI and daemon.
-
-EXIT CODES (following LSB init script conventions):
-    0 - Daemon is running and healthy
-    3 - Daemon is not running")]
-    Status,
 
     /// Restart the daemon
     #[command(long_about = "\
@@ -616,7 +599,6 @@ mod tests {
         assert!(cli.session.is_none());
         assert_eq!(cli.format, OutputFormat::Text);
         assert!(!cli.no_color);
-        assert!(!cli.verbose);
     }
 
     #[test]
@@ -628,13 +610,11 @@ mod tests {
             "--format",
             "json",
             "--no-color",
-            "--verbose",
             "sessions",
         ]);
         assert_eq!(cli.session, Some("my-session".to_string()));
         assert_eq!(cli.format, OutputFormat::Json);
         assert!(cli.no_color);
-        assert!(cli.verbose);
     }
 
     #[test]
@@ -920,15 +900,6 @@ mod tests {
     }
 
     #[test]
-    fn test_sessions_status() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "status"]);
-        let Commands::Sessions { command } = cli.command else {
-            panic!("Expected Sessions command, got {:?}", cli.command);
-        };
-        assert!(matches!(command, Some(SessionsCommand::Status)));
-    }
-
-    #[test]
     fn test_sessions_show_with_id() {
         let cli = Cli::parse_from(["agent-tui", "sessions", "show", "abc123"]);
         let Commands::Sessions { command } = cli.command else {
@@ -956,12 +927,6 @@ mod tests {
     fn test_version_command() {
         let cli = Cli::parse_from(["agent-tui", "version"]);
         assert!(matches!(cli.command, Commands::Version));
-    }
-
-    #[test]
-    fn test_health_command() {
-        let cli = Cli::parse_from(["agent-tui", "health"]);
-        assert!(matches!(cli.command, Commands::Health));
     }
 
     #[test]
@@ -1024,19 +989,9 @@ mod tests {
     #[test]
     fn test_daemon_start_default() {
         let cli = Cli::parse_from(["agent-tui", "daemon", "start"]);
-        let Commands::Daemon(DaemonCommand::Start { foreground }) = cli.command else {
+        let Commands::Daemon(DaemonCommand::Start {}) = cli.command else {
             panic!("Expected Daemon Start command, got {:?}", cli.command);
         };
-        assert!(!foreground, "Default should be background mode");
-    }
-
-    #[test]
-    fn test_daemon_start_foreground() {
-        let cli = Cli::parse_from(["agent-tui", "daemon", "start", "--foreground"]);
-        let Commands::Daemon(DaemonCommand::Start { foreground }) = cli.command else {
-            panic!("Expected Daemon Start command, got {:?}", cli.command);
-        };
-        assert!(foreground, "Should be foreground mode");
     }
 
     #[test]
@@ -1055,15 +1010,6 @@ mod tests {
             panic!("Expected Daemon Stop command, got {:?}", cli.command);
         };
         assert!(force, "Should be force stop");
-    }
-
-    #[test]
-    fn test_daemon_status() {
-        let cli = Cli::parse_from(["agent-tui", "daemon", "status"]);
-        assert!(matches!(
-            cli.command,
-            Commands::Daemon(DaemonCommand::Status)
-        ));
     }
 
     #[test]

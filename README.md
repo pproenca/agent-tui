@@ -179,7 +179,6 @@ just doc             # Build and open docs
 
 ```bash
 just dev             # Run daemon in dev mode
-just health          # Check CLI health
 ```
 
 ## License

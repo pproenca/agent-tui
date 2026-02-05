@@ -9,12 +9,6 @@ mod spawn_error;
 mod wait;
 mod wait_condition;
 
-pub use diagnostics::HealthUseCase;
-pub use diagnostics::HealthUseCaseImpl;
-pub use diagnostics::MetricsUseCase;
-pub use diagnostics::MetricsUseCaseImpl;
-pub use diagnostics::TerminalReadUseCase;
-pub use diagnostics::TerminalReadUseCaseImpl;
 pub use diagnostics::TerminalWriteUseCase;
 pub use diagnostics::TerminalWriteUseCaseImpl;
 pub use input::KeydownUseCase;

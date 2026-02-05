@@ -3,19 +3,16 @@
 use crate::usecases::AssertUseCaseImpl;
 use crate::usecases::AttachUseCaseImpl;
 use crate::usecases::CleanupUseCaseImpl;
-use crate::usecases::HealthUseCaseImpl;
 use crate::usecases::KeydownUseCaseImpl;
 use crate::usecases::KeystrokeUseCaseImpl;
 use crate::usecases::KeyupUseCaseImpl;
 use crate::usecases::KillUseCaseImpl;
-use crate::usecases::MetricsUseCaseImpl;
 use crate::usecases::ResizeUseCaseImpl;
 use crate::usecases::RestartUseCaseImpl;
 use crate::usecases::SessionsUseCaseImpl;
 use crate::usecases::ShutdownUseCaseImpl;
 use crate::usecases::SnapshotUseCaseImpl;
 use crate::usecases::SpawnUseCaseImpl;
-use crate::usecases::TerminalReadUseCaseImpl;
 use crate::usecases::TerminalWriteUseCaseImpl;
 use crate::usecases::TypeUseCaseImpl;
 use crate::usecases::WaitUseCaseImpl;
@@ -52,9 +49,6 @@ pub struct InputUseCases<R: SessionRepository + 'static> {
 }
 
 pub struct DiagnosticsUseCases<R: SessionRepository + 'static> {
-    pub terminal_read: TerminalReadUseCaseImpl<R>,
     pub terminal_write: TerminalWriteUseCaseImpl<R>,
-    pub health: HealthUseCaseImpl<R>,
-    pub metrics: MetricsUseCaseImpl<R>,
     pub shutdown: ShutdownUseCaseImpl,
 }

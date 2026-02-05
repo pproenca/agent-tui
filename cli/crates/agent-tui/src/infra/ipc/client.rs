@@ -388,13 +388,13 @@ mod tests {
         let request = Request {
             jsonrpc: "2.0".to_string(),
             id: 1,
-            method: "health".to_string(),
+            method: "version".to_string(),
             params: None,
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"jsonrpc\":\"2.0\""));
         assert!(json.contains("\"id\":1"));
-        assert!(json.contains("\"method\":\"health\""));
+        assert!(json.contains("\"method\":\"version\""));
         assert!(!json.contains("\"params\""));
     }
 
@@ -546,7 +546,7 @@ mod tests {
         ));
 
         let mut client = UnixSocketClient::connect_with_transport(transport).unwrap();
-        let result = client.call("health", None).unwrap();
+        let result = client.call("version", None).unwrap();
         assert_eq!(result["ok"], true);
     }
 }

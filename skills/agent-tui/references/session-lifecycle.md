@@ -29,6 +29,6 @@ Use this file when managing multiple sessions or debugging stuck runs.
 - `restart`: restart the current session command.
 - `daemon restart`: restarts daemon and terminates all sessions.
 
-## Health and Diagnostics
-- `sessions status`: daemon health status.
-- `daemon status`: daemon PID, uptime, version (exit code 0/3).
+## Utilities
+- `env`: show environment configuration affecting the CLI.
+- `version`: show CLI + daemon version info.

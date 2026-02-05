@@ -351,7 +351,8 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
     } else {
         let exe = std::env::current_exe()?;
         let mut cmd = Command::new(exe);
-        cmd.args(["daemon", "start", "--foreground"]);
+        cmd.args(["daemon", "start"]);
+        cmd.env("AGENT_TUI_DAEMON_FOREGROUND", "1");
         cmd
     };
 

@@ -119,18 +119,6 @@ pub struct LivePreviewStartParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PtyReadParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-    #[serde(default = "default_max_bytes")]
-    pub max_bytes: usize,
-}
-
-fn default_max_bytes() -> usize {
-    4096
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PtyWriteParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,

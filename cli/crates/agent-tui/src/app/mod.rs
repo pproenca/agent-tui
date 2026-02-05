@@ -23,8 +23,6 @@ pub mod handlers;
 pub mod rpc_client;
 
 use crate::app::commands::OutputFormat;
-use crate::app::daemon::start_daemon;
-use crate::app::rpc_client::call_no_params;
 use crate::common::Colors;
 use crate::common::DaemonError;
 use crate::common::color_init;
@@ -43,23 +41,14 @@ use crate::app::commands::DaemonCommand;
 use crate::app::commands::LiveCommand;
 use crate::app::commands::LiveStartArgs;
 use crate::app::commands::Shell;
-use crate::app::error::DaemonNotRunningError;
 use crate::app::handlers::HandlerContext;
 
 const PROGRAM_NAME: &str = "agent-tui";
 
-/// Exit codes following sysexits.h and LSB init script conventions.
-///
-/// LSB init script exit codes for daemon status:
-/// - 0: Program is running and OK
-/// - 1: Program is dead but pid file exists
-/// - 3: Program is not running
-/// - 4: Program status is unknown
+/// Exit codes following sysexits.h conventions.
 mod exit_codes {
     pub const SUCCESS: i32 = 0;
     pub const GENERAL_ERROR: i32 = 1;
-    /// LSB: program is not running (for `daemon status`)
-    pub const NOT_RUNNING: i32 = 3;
     pub const USAGE: i32 = 64;
     pub const UNAVAILABLE: i32 = 69;
     pub const CANTCREAT: i32 = 73;
@@ -455,7 +444,7 @@ impl Application {
 
     fn execute(&self) -> Result<()> {
         let cli = Cli::parse();
-        let _telemetry = telemetry::init_tracing(if cli.verbose { "debug" } else { "warn" });
+        let _telemetry = telemetry::init_tracing("warn");
         color_init(cli.no_color);
         let format = cli.effective_format();
         debug!(
@@ -484,36 +473,30 @@ impl Application {
                 .context("failed to connect to daemon")?,
         };
 
-        if !matches!(
-            cli.command,
-            Commands::Daemon(_) | Commands::Version | Commands::Health
-        ) {
-            check_version_mismatch(&mut client);
-        }
-
         let mut ctx = HandlerContext::new(&mut client, cli.session, format);
-        self.dispatch_command(&mut ctx, &cli.command, cli.verbose)
+        self.dispatch_command(&mut ctx, &cli.command)
             .map_err(|e| self.wrap_error(e, format))
             .with_context(|| format!("failed to execute command {:?}", cli.command))
     }
 
     fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool> {
         match &cli.command {
-            Commands::Daemon(DaemonCommand::Start { foreground: true }) => {
-                start_daemon()?;
-                Ok(true)
-            }
-            Commands::Daemon(DaemonCommand::Start { foreground: false }) => {
-                crate::infra::ipc::start_daemon_background()?;
-                println!("Daemon started in background");
-                Ok(true)
-            }
-            Commands::Daemon(DaemonCommand::Status) => {
-                self.handle_daemon_status_without_autostart(cli)?;
-                Ok(true)
-            }
-            Commands::Health => {
-                self.handle_daemon_status_without_autostart(cli)?;
+            Commands::Daemon(DaemonCommand::Start {}) => {
+                let run_foreground = std::env::var("AGENT_TUI_DAEMON_FOREGROUND")
+                    .ok()
+                    .map(|value| {
+                        matches!(
+                            value.trim().to_ascii_lowercase().as_str(),
+                            "1" | "true" | "yes" | "on"
+                        )
+                    })
+                    .unwrap_or(false);
+                if run_foreground {
+                    crate::app::daemon::start_daemon()?;
+                } else {
+                    crate::infra::ipc::start_daemon_background()?;
+                    println!("Daemon started in background");
+                }
                 Ok(true)
             }
             Commands::Daemon(DaemonCommand::Stop { force }) => {
@@ -533,65 +516,15 @@ impl Application {
                 handle_completions_command(*shell, *print, *install, *yes)?;
                 Ok(true)
             }
+            Commands::Version => {
+                handlers::handle_version_standalone(cli.effective_format())?;
+                Ok(true)
+            }
             Commands::Env => {
                 handlers::handle_env(cli.effective_format())?;
                 Ok(true)
             }
             _ => Ok(false),
-        }
-    }
-
-    fn handle_daemon_status_without_autostart(&self, cli: &Cli) -> Result<()> {
-        match UnixSocketClient::connect() {
-            Ok(mut client) => {
-                // Verify daemon is actually responding before showing status
-                match call_no_params(&mut client, "health") {
-                    Ok(result) => {
-                        let format = cli.effective_format();
-                        handlers::print_daemon_status_from_result(&result, format);
-                        Ok(())
-                    }
-                    Err(_) => {
-                        // Connected but daemon not responding - treat as not running
-                        self.print_daemon_not_running_status(cli);
-                        Err(anyhow::Error::new(DaemonNotRunningError))
-                    }
-                }
-            }
-            Err(ClientError::DaemonNotRunning) => {
-                self.print_daemon_not_running_status(cli);
-                Err(anyhow::Error::new(DaemonNotRunningError))
-            }
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    fn print_daemon_not_running_status(&self, cli: &Cli) {
-        let cli_version = env!("AGENT_TUI_VERSION");
-        let cli_commit = env!("AGENT_TUI_GIT_SHA");
-        match cli.effective_format() {
-            OutputFormat::Json => {
-                #[derive(Serialize)]
-                struct DaemonNotRunningOutput {
-                    running: bool,
-                    cli_version: &'static str,
-                    cli_commit: &'static str,
-                }
-                let output = DaemonNotRunningOutput {
-                    running: false,
-                    cli_version,
-                    cli_commit,
-                };
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&output).unwrap_or_default()
-                );
-            }
-            _ => {
-                println!("Daemon is not running");
-                println!("  CLI version: {}", cli_version);
-                println!("  CLI commit: {}", cli_commit);
-            }
         }
     }
 
@@ -642,13 +575,11 @@ impl Application {
         &self,
         ctx: &mut HandlerContext<C>,
         command: &Commands,
-        verbose: bool,
     ) -> Result<()> {
         match command {
             Commands::Daemon(daemon_cmd) => match daemon_cmd {
                 DaemonCommand::Start { .. } => unreachable!("Handled in standalone"),
                 DaemonCommand::Stop { .. } => unreachable!("Handled in standalone"),
-                DaemonCommand::Status => unreachable!("Handled in standalone"),
                 DaemonCommand::Restart => unreachable!("Handled in standalone"),
             },
             Commands::Completions { .. } => unreachable!("Handled in standalone"),
@@ -739,7 +670,6 @@ impl Application {
                         handlers::handle_session_switch(ctx, session_id.clone())?
                     }
                     Some(SessionsCommand::Cleanup { all }) => handlers::handle_cleanup(ctx, *all)?,
-                    Some(SessionsCommand::Status) => handlers::handle_health(ctx, verbose)?,
                 }
             }
 
@@ -750,20 +680,13 @@ impl Application {
                 Some(LiveCommand::Status) => handlers::handle_live_status(ctx)?,
             },
 
-            Commands::Version => handlers::handle_version(ctx)?,
-            Commands::Health => handlers::handle_health(ctx, verbose)?,
+            Commands::Version => unreachable!("Handled in standalone"),
             Commands::Env => handlers::handle_env(ctx.format)?,
         }
         Ok(())
     }
 
     fn handle_error(&self, e: anyhow::Error) -> i32 {
-        // Handle DaemonNotRunningError specially - no error message printed,
-        // output was already shown by the handler, just return LSB exit code 3
-        if find_error::<DaemonNotRunningError>(&e).is_some() {
-            return exit_codes::NOT_RUNNING;
-        }
-
         if let Some(cli_error) = find_error::<crate::app::error::CliError>(&e) {
             print_cli_error(cli_error);
             return cli_error.exit_code;
@@ -833,9 +756,6 @@ impl Application {
 
 impl Application {
     fn wrap_error(&self, error: anyhow::Error, format: OutputFormat) -> anyhow::Error {
-        if find_error::<DaemonNotRunningError>(&error).is_some() {
-            return error;
-        }
         if find_error::<crate::app::error::CliError>(&error).is_some() {
             return error;
         }
@@ -919,47 +839,6 @@ impl Default for Application {
     }
 }
 
-fn check_version_mismatch<C: DaemonClient>(client: &mut C) {
-    use crate::infra::ipc::version::VersionCheckResult;
-    use crate::infra::ipc::version::check_version;
-
-    match check_version(client, env!("AGENT_TUI_VERSION"), env!("AGENT_TUI_GIT_SHA")) {
-        VersionCheckResult::Match => {}
-        VersionCheckResult::Mismatch(mismatch) => {
-            if mismatch.cli_version == mismatch.daemon_version
-                && mismatch.cli_commit != mismatch.daemon_commit
-            {
-                eprintln!(
-                    "{} CLI commit ({}) differs from daemon commit ({})",
-                    Colors::warning("Warning:"),
-                    mismatch.cli_commit,
-                    mismatch.daemon_commit
-                );
-            } else {
-                eprintln!(
-                    "{} CLI version ({}) differs from daemon version ({})",
-                    Colors::warning("Warning:"),
-                    mismatch.cli_version,
-                    mismatch.daemon_version
-                );
-            }
-            eprintln!(
-                "{} Run '{}' to update the daemon.",
-                Colors::dim("Hint:"),
-                Colors::info("agent-tui daemon restart")
-            );
-            eprintln!();
-        }
-        VersionCheckResult::CheckFailed(err) => {
-            eprintln!(
-                "{} Could not check daemon version: {}",
-                Colors::dim("Note:"),
-                err
-            );
-        }
-    }
-}
-
 fn exit_code_for_client_error(error: &ClientError) -> i32 {
     use crate::common::error_codes::ErrorCategory;
 
@@ -992,34 +871,6 @@ mod tests {
         use tempfile::TempDir;
 
         #[test]
-        fn handle_standalone_commands_routes_daemon_status() {
-            // Isolate from any real daemon by pointing socket to a temp path.
-            let tmp = TempDir::new().expect("temp dir");
-            let socket_path = tmp.path().join("agent-tui-test.sock");
-            // SAFETY: Test-only environment override to isolate the daemon socket.
-            unsafe {
-                env::set_var("AGENT_TUI_SOCKET", &socket_path);
-            }
-
-            let app = Application::new();
-            let cli = Cli {
-                command: Commands::Daemon(DaemonCommand::Status),
-                session: None,
-                format: OutputFormat::Text,
-                json: false,
-                no_color: true,
-                verbose: false,
-            };
-
-            // When daemon is not running, should return DaemonNotRunningError
-            let result = app.handle_standalone_commands(&cli);
-            assert!(result.is_err());
-            let err = result.unwrap_err();
-            // Verify it's DaemonNotRunningError (can be converted to exit code 3)
-            assert!(err.downcast_ref::<DaemonNotRunningError>().is_some());
-        }
-
-        #[test]
         fn handle_standalone_commands_routes_daemon_stop() {
             // Isolate from any real daemon by pointing socket to a temp path.
             let tmp = TempDir::new().expect("temp dir");
@@ -1036,7 +887,6 @@ mod tests {
                 format: OutputFormat::Text,
                 json: false,
                 no_color: true,
-                verbose: false,
             };
 
             // When daemon is not running, should succeed (idempotent semantics)
@@ -1064,12 +914,11 @@ mod tests {
 
             let app = Application::new();
             let cli = Cli {
-                command: Commands::Daemon(DaemonCommand::Start { foreground: false }),
+                command: Commands::Daemon(DaemonCommand::Start {}),
                 session: None,
                 format: OutputFormat::Text,
                 json: false,
                 no_color: true,
-                verbose: false,
             };
 
             // Verify daemon start IS handled as standalone (returns Ok(true) or error)
@@ -1099,7 +948,6 @@ mod tests {
                 format: OutputFormat::Text,
                 json: false,
                 no_color: true,
-                verbose: false,
             };
 
             // Restart should be handled as standalone (may error if start fails)
@@ -1107,14 +955,6 @@ mod tests {
             if let Ok(handled) = result {
                 assert!(handled, "daemon restart should be handled as standalone");
             }
-        }
-
-        #[test]
-        fn handle_error_returns_not_running_exit_code() {
-            let app = Application::new();
-            let err = anyhow::Error::new(DaemonNotRunningError);
-            let exit_code = app.handle_error(err);
-            assert_eq!(exit_code, exit_codes::NOT_RUNNING);
         }
     }
 }

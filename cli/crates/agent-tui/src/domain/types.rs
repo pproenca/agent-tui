@@ -206,20 +206,6 @@ pub struct GetTitleOutput {
 }
 
 #[derive(Debug, Clone)]
-pub struct TerminalReadInput {
-    pub session_id: Option<SessionId>,
-    pub max_bytes: usize,
-    pub timeout_ms: u64,
-}
-
-#[derive(Debug, Clone)]
-pub struct TerminalReadOutput {
-    pub session_id: SessionId,
-    pub data: Vec<u8>,
-    pub bytes_read: usize,
-}
-
-#[derive(Debug, Clone)]
 pub struct TerminalWriteInput {
     pub session_id: Option<SessionId>,
     pub data: Vec<u8>,
@@ -272,36 +258,6 @@ pub struct LivePreviewStatusOutput {
     pub running: bool,
     pub session_id: Option<SessionId>,
     pub listen_addr: Option<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct HealthInput;
-
-#[derive(Debug, Clone)]
-pub struct HealthOutput {
-    pub status: String,
-    pub pid: u32,
-    pub uptime_ms: u64,
-    pub session_count: usize,
-    pub version: String,
-    pub commit: String,
-    pub active_connections: usize,
-    pub total_requests: u64,
-    pub error_count: u64,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct MetricsInput;
-
-#[derive(Debug, Clone)]
-pub struct MetricsOutput {
-    pub requests_total: u64,
-    pub errors_total: u64,
-    pub lock_timeouts: u64,
-    pub poison_recoveries: u64,
-    pub uptime_ms: u64,
-    pub active_connections: usize,
-    pub session_count: usize,
 }
 
 #[derive(Debug, Clone)]

@@ -16,9 +16,6 @@ use assert_cmd::Command;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-/// LSB exit code 3: program is not running
-const EXIT_NOT_RUNNING: i32 = 3;
-
 struct NoDaemonTestEnv {
     _temp_dir: TempDir,
     socket_path: PathBuf,
@@ -53,36 +50,39 @@ impl NoDaemonTestEnv {
 }
 
 #[test]
-fn smoke_daemon_status_text() {
+fn smoke_version_text() {
     let harness = TestHarness::new();
 
     harness
-        .run(&["daemon", "status"])
+        .run(&["version"])
         .success()
-        .stdout(predicate::str::contains("Daemon status:"))
-        .stdout(predicate::str::contains("healthy"));
+        .stdout(predicate::str::contains("CLI version"))
+        .stdout(predicate::str::contains("Daemon version"));
 }
 
 #[test]
-fn smoke_daemon_status_json() {
+fn smoke_version_json() {
     let harness = TestHarness::new();
 
-    let output = harness.run(&["-f", "json", "daemon", "status"]).success();
+    let output = harness.run(&["-f", "json", "version"]).success();
     let stdout = String::from_utf8_lossy(&output.get_output().stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON output");
 
-    assert_eq!(json["running"], true);
-    assert_eq!(json["status"], "healthy");
     assert!(json["cli_version"].is_string());
+    assert!(json["cli_commit"].is_string());
+    assert!(json["daemon_version"].is_string());
+    assert!(json["daemon_commit"].is_string());
+    assert_eq!(json["mode"], "daemon");
 }
 
 #[test]
-fn smoke_no_autostart_daemon_status() {
+fn smoke_version_without_daemon() {
     let env = NoDaemonTestEnv::new();
 
-    env.run(&["daemon", "status"])
-        .code(EXIT_NOT_RUNNING)
-        .stdout(predicate::str::contains("Daemon is not running"));
+    env.run(&["version"])
+        .success()
+        .stdout(predicate::str::contains("Daemon version"))
+        .stdout(predicate::str::contains("unavailable"));
 }
 
 #[test]

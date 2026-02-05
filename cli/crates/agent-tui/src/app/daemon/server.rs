@@ -40,11 +40,9 @@ use crate::infra::daemon::LockFile;
 use crate::infra::daemon::SessionManager;
 use crate::infra::daemon::SignalHandler;
 use crate::infra::daemon::SystemClock;
-use crate::infra::daemon::SystemInfo;
 use crate::infra::daemon::remove_lock_file;
 use crate::infra::ipc::socket_path;
 use crate::usecases::AttachUseCase;
-use crate::usecases::ports::MetricsProvider;
 use crate::usecases::ports::SessionRepository;
 use crate::usecases::ports::StreamCursor;
 use std::sync::Arc;
@@ -224,16 +222,11 @@ impl DaemonServer {
     ) -> Self {
         let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions()));
         let metrics = Arc::new(DaemonMetrics::new());
-        let metrics_provider: Arc<dyn MetricsProvider> = metrics.clone();
-        let system_info = Arc::new(SystemInfo::new(Instant::now()));
         let clock = Arc::new(SystemClock::new());
         let active_connections = Arc::new(AtomicUsize::new(0));
         let usecases = UseCaseContainer::new(
             Arc::clone(&session_manager),
-            metrics_provider,
-            system_info,
             clock,
-            Arc::clone(&active_connections),
             Arc::clone(&shutdown_flag),
             shutdown_notifier,
         );

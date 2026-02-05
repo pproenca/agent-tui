@@ -27,7 +27,8 @@ impl RealTestHarness {
         let mut daemon_cmd = StdCommand::new(assert_cmd::cargo::cargo_bin!("agent-tui"));
         daemon_cmd
             .env("AGENT_TUI_SOCKET", &socket_path)
-            .args(["daemon", "start", "--foreground"])
+            .env("AGENT_TUI_DAEMON_FOREGROUND", "1")
+            .args(["daemon", "start"])
             .stdout(Stdio::null())
             .stderr(Stdio::null());
 

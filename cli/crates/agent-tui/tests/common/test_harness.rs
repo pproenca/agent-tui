@@ -180,12 +180,12 @@ mod tests {
     fn test_harness_records_requests() {
         let harness = TestHarness::new();
 
-        let _ = harness.run(&["sessions", "status"]);
+        let _ = harness.run(&["version"]);
 
         let requests = harness.get_requests();
         assert!(
-            requests.iter().any(|r| r.method == "health"),
-            "health method should have been called"
+            requests.iter().any(|r| r.method == "version"),
+            "version method should have been called"
         );
     }
 
@@ -194,19 +194,16 @@ mod tests {
         let harness = TestHarness::new();
 
         harness.set_success_response(
-            "health",
+            "version",
             serde_json::json!({
-                "status": "degraded",
-                "pid": 99999,
-                "uptime_ms": 1000,
-                "session_count": 5,
-                "version": "2.0.0-custom"
+                "daemon_version": "2.0.0-custom",
+                "daemon_commit": "feedface"
             }),
         );
 
         harness
-            .run(&["sessions", "status"])
+            .run(&["version"])
             .success()
-            .stdout(predicate::str::contains("degraded"));
+            .stdout(predicate::str::contains("2.0.0-custom"));
     }
 }

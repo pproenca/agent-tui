@@ -233,24 +233,6 @@ impl OutputEncoding {
 }
 
 #[derive(Serialize)]
-struct VersionResponse {
-    api_version: &'static str,
-    daemon_version: String,
-    daemon_commit: String,
-}
-
-#[derive(Serialize)]
-struct HealthResponse {
-    status: &'static str,
-    pid: u32,
-    uptime_ms: u64,
-    session_count: usize,
-    api_version: &'static str,
-    daemon_version: String,
-    daemon_commit: String,
-}
-
-#[derive(Serialize)]
 struct SessionsResponse {
     active: Option<String>,
     sessions: Vec<SessionInfoPayload>,
@@ -516,29 +498,11 @@ fn build_router(state: Arc<ApiState>) -> axum::Router {
         .route("/app.js", get(ui_app_js_handler))
         .route("/styles.css", get(ui_styles_handler))
         .route("/xterm.css", get(ui_xterm_handler))
-        .route("/api/v1/version", get(version_handler))
-        .route("/api/v1/health", get(health_handler))
         .route("/api/v1/sessions", get(sessions_handler))
         .route("/api/v1/sessions/:id/snapshot", get(snapshot_handler))
         .route("/api/v1/stream", get(ws_handler))
         .layer(cors)
         .with_state(state)
-}
-
-async fn version_handler(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Query(query): Query<TokenQuery>,
-) -> Response {
-    if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
-        return *resp;
-    }
-    Json(VersionResponse {
-        api_version: state.api_version,
-        daemon_version: state.daemon_version.clone(),
-        daemon_commit: state.daemon_commit.clone(),
-    })
-    .into_response()
 }
 
 async fn ui_root_handler() -> Response {
@@ -579,28 +543,6 @@ async fn ui_styles_handler() -> Response {
 
 async fn ui_xterm_handler() -> Response {
     ([("content-type", "text/css; charset=utf-8")], UI_XTERM_CSS).into_response()
-}
-
-async fn health_handler(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Query(query): Query<TokenQuery>,
-) -> Response {
-    if let Err(resp) = require_auth(&state, &headers, query.token.as_deref()) {
-        return *resp;
-    }
-    let session_count = state.session_repository.session_count();
-    let uptime_ms = state.start_time.elapsed().as_millis() as u64;
-    Json(HealthResponse {
-        status: "healthy",
-        pid: std::process::id(),
-        uptime_ms,
-        session_count,
-        api_version: state.api_version,
-        daemon_version: state.daemon_version.clone(),
-        daemon_commit: state.daemon_commit.clone(),
-    })
-    .into_response()
 }
 
 async fn sessions_handler(

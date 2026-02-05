@@ -19,12 +19,10 @@ use crate::domain::AttachInput;
 use crate::domain::AttachOutput;
 use crate::domain::CleanupInput;
 use crate::domain::CleanupOutput;
-use crate::domain::HealthOutput;
 use crate::domain::KeydownInput;
 use crate::domain::KeystrokeInput;
 use crate::domain::KeyupInput;
 use crate::domain::KillOutput;
-use crate::domain::MetricsOutput;
 use crate::domain::ResizeInput;
 use crate::domain::ResizeOutput;
 use crate::domain::RestartOutput;
@@ -36,8 +34,6 @@ use crate::domain::SnapshotInput;
 use crate::domain::SnapshotOutput;
 use crate::domain::SpawnInput;
 use crate::domain::SpawnOutput;
-use crate::domain::TerminalReadInput;
-use crate::domain::TerminalReadOutput;
 use crate::domain::TerminalWriteInput;
 use crate::domain::TerminalWriteOutput;
 use crate::domain::TypeInput;
@@ -395,49 +391,8 @@ pub fn assert_output_to_response(id: u64, output: AssertOutput) -> RpcResponse {
     )
 }
 
-pub fn health_output_to_response(id: u64, output: HealthOutput) -> RpcResponse {
-    RpcResponse::success(
-        id,
-        json!({
-            "status": output.status,
-            "pid": output.pid,
-            "uptime_ms": output.uptime_ms,
-            "session_count": output.session_count,
-            "version": output.version,
-            "commit": output.commit,
-            "active_connections": output.active_connections,
-            "total_requests": output.total_requests,
-            "error_count": output.error_count
-        }),
-    )
-}
-
-pub fn metrics_output_to_response(id: u64, output: MetricsOutput) -> RpcResponse {
-    RpcResponse::success(
-        id,
-        json!({
-            "requests_total": output.requests_total,
-            "errors_total": output.errors_total,
-            "lock_timeouts": output.lock_timeouts,
-            "poison_recoveries": output.poison_recoveries,
-            "uptime_ms": output.uptime_ms
-        }),
-    )
-}
-
 pub fn shutdown_output_to_response(id: u64, output: ShutdownOutput) -> RpcResponse {
     RpcResponse::success(id, json!({ "acknowledged": output.acknowledged }))
-}
-
-pub fn terminal_read_output_to_response(id: u64, output: TerminalReadOutput) -> RpcResponse {
-    RpcResponse::success(
-        id,
-        json!({
-            "session_id": output.session_id.as_str(),
-            "data": STANDARD.encode(&output.data),
-            "bytes_read": output.bytes_read
-        }),
-    )
 }
 
 pub fn terminal_write_output_to_response(id: u64, output: TerminalWriteOutput) -> RpcResponse {
@@ -449,23 +404,6 @@ pub fn terminal_write_output_to_response(id: u64, output: TerminalWriteOutput) -
             "success": output.success
         }),
     )
-}
-
-pub fn parse_terminal_read_input(request: &RpcRequest) -> TerminalReadInput {
-    let rpc_params: params::PtyReadParams = request
-        .params
-        .as_ref()
-        .and_then(|p| serde_json::from_value(p.clone()).ok())
-        .unwrap_or(params::PtyReadParams {
-            session: None,
-            max_bytes: 4096,
-        });
-
-    TerminalReadInput {
-        session_id: parse_session_id(rpc_params.session),
-        max_bytes: rpc_params.max_bytes,
-        timeout_ms: request.param_u64("timeout_ms", 1000),
-    }
 }
 
 #[allow(clippy::result_large_err)]
@@ -554,49 +492,10 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_terminal_read_input_defaults() {
-        let request = make_request(1, "pty_read", Some(json!({})));
-        let input = parse_terminal_read_input(&request);
-        assert_eq!(input.max_bytes, 4096);
-    }
-
-    #[test]
     fn test_parse_terminal_write_input() {
         let data = STANDARD.encode(b"hello");
         let request = make_request(1, "pty_write", Some(json!({"data": data})));
         let input = parse_terminal_write_input(&request).unwrap();
         assert_eq!(input.data, b"hello");
-    }
-
-    #[test]
-    fn test_health_output_to_response() {
-        let output = HealthOutput {
-            status: "ok".to_string(),
-            pid: 123,
-            uptime_ms: 1000,
-            session_count: 1,
-            version: "1.0.0".to_string(),
-            commit: "abc".to_string(),
-            active_connections: 0,
-            total_requests: 10,
-            error_count: 0,
-        };
-        let response = health_output_to_response(1, output);
-        assert!(response.is_success());
-    }
-
-    #[test]
-    fn test_metrics_output_to_response() {
-        let output = MetricsOutput {
-            requests_total: 1,
-            errors_total: 0,
-            lock_timeouts: 0,
-            poison_recoveries: 0,
-            uptime_ms: 1000,
-            active_connections: 0,
-            session_count: 0,
-        };
-        let response = metrics_output_to_response(1, output);
-        assert!(response.is_success());
     }
 }

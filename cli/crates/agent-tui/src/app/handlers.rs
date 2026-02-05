@@ -42,19 +42,6 @@ use crate::app::rpc_client::call_with_params;
 
 pub(crate) type HandlerResult = Result<()>;
 
-fn format_uptime_ms(uptime_ms: u64) -> String {
-    let secs = uptime_ms / 1000;
-    let mins = secs / 60;
-    let hours = mins / 60;
-    if hours > 0 {
-        format!("{}h {}m {}s", hours, mins % 60, secs % 60)
-    } else if mins > 0 {
-        format!("{}m {}s", mins, secs % 60)
-    } else {
-        format!("{}s", secs)
-    }
-}
-
 fn client_error_view(error: &ClientError) -> ClientErrorView {
     ClientErrorView {
         message: error.to_string(),
@@ -504,33 +491,6 @@ pub(crate) fn handle_session_switch<C: DaemonClient>(
     ctx.output_success_and_ok(&result, &success_message, "Switch failed")
 }
 
-pub(crate) fn handle_health<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    verbose: bool,
-) -> HandlerResult {
-    use crate::adapters::presenter::HealthResult;
-
-    let result = call_no_params(ctx.client, "health")?;
-
-    match ctx.format {
-        OutputFormat::Json => ctx.presenter().present_value(&result),
-        OutputFormat::Text => {
-            let health = if verbose {
-                let socket = socket_path();
-                let pid_file = socket.with_extension("pid");
-                HealthResult::from_json(&result).with_paths(
-                    Some(socket.display().to_string()),
-                    Some(pid_file.display().to_string()),
-                )
-            } else {
-                HealthResult::from_json(&result)
-            };
-            ctx.presenter().present_health(&health);
-        }
-    }
-    Ok(())
-}
-
 pub(crate) fn handle_live_start<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     args: LiveStartArgs,
@@ -888,32 +848,40 @@ pub(crate) fn handle_resize<C: DaemonClient>(
     })
 }
 
-pub(crate) fn handle_version<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
     let cli_version = env!("AGENT_TUI_VERSION");
     let cli_commit = env!("AGENT_TUI_GIT_SHA");
 
-    let (daemon_version, daemon_commit, daemon_error) = match call_no_params(ctx.client, "health") {
-        Ok(result) => (
-            result
-                .get("version")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            result
-                .get("commit")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            None,
-        ),
-        Err(e) => (
-            "unavailable".to_string(),
-            "unknown".to_string(),
-            Some(e.to_string()),
-        ),
-    };
+    let (daemon_version, daemon_commit, daemon_error) =
+        match crate::infra::ipc::UnixSocketClient::connect() {
+            Ok(mut client) => match call_no_params(&mut client, "version") {
+                Ok(result) => (
+                    result
+                        .get("daemon_version")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    result
+                        .get("daemon_commit")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    None,
+                ),
+                Err(e) => (
+                    "unavailable".to_string(),
+                    "unknown".to_string(),
+                    Some(e.to_string()),
+                ),
+            },
+            Err(e) => (
+                "unavailable".to_string(),
+                "unknown".to_string(),
+                Some(e.to_string()),
+            ),
+        };
 
-    match ctx.format {
+    match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             struct VersionOutput {
@@ -1406,6 +1374,10 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
             std::env::var("AGENT_TUI_DETACH_KEYS").ok(),
         ),
         (
+            "AGENT_TUI_DAEMON_FOREGROUND",
+            std::env::var("AGENT_TUI_DAEMON_FOREGROUND").ok(),
+        ),
+        (
             "AGENT_TUI_API_LISTEN",
             std::env::var("AGENT_TUI_API_LISTEN").ok(),
         ),
@@ -1702,183 +1674,6 @@ pub(crate) fn handle_daemon_stop<C: DaemonClient>(
     Ok(())
 }
 
-pub(crate) fn print_daemon_status_from_result(result: &RpcValue, format: OutputFormat) {
-    let cli_version = env!("AGENT_TUI_VERSION");
-    let cli_commit = env!("AGENT_TUI_GIT_SHA");
-    let daemon_version = result.str_or("version", "unknown");
-    let daemon_commit = result.str_or("commit", "unknown");
-    let status = result.str_or("status", "unknown");
-    let pid = result.u64_or("pid", 0);
-    let uptime_ms = result.u64_or("uptime_ms", 0);
-    let session_count = result.u64_or("session_count", 0);
-
-    let version_mismatch = cli_version != daemon_version;
-    let commit_mismatch =
-        cli_commit != "unknown" && daemon_commit != "unknown" && cli_commit != daemon_commit;
-    let api_state = read_api_state_running(&api_state_path());
-
-    match format {
-        OutputFormat::Json => {
-            #[derive(Serialize)]
-            struct ApiStatus {
-                running: bool,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                pid: Option<u32>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                listen: Option<String>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                http_url: Option<String>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                ws_url: Option<String>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                token: Option<String>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                api_version: Option<String>,
-            }
-
-            #[derive(Serialize)]
-            struct DaemonStatus {
-                running: bool,
-                status: String,
-                pid: u64,
-                uptime_ms: u64,
-                session_count: u64,
-                daemon_version: String,
-                daemon_commit: String,
-                cli_version: String,
-                cli_commit: String,
-                version_mismatch: bool,
-                commit_mismatch: bool,
-                api: ApiStatus,
-            }
-
-            let api_json = match api_state {
-                Some(state) => ApiStatus {
-                    running: true,
-                    pid: Some(state.pid),
-                    listen: Some(state.listen),
-                    http_url: Some(state.http_url),
-                    ws_url: Some(state.ws_url),
-                    token: state.token,
-                    api_version: state.api_version,
-                },
-                None => ApiStatus {
-                    running: false,
-                    pid: None,
-                    listen: None,
-                    http_url: None,
-                    ws_url: None,
-                    token: None,
-                    api_version: None,
-                },
-            };
-
-            let output = DaemonStatus {
-                running: true,
-                status: status.to_string(),
-                pid,
-                uptime_ms,
-                session_count,
-                daemon_version: daemon_version.to_string(),
-                daemon_commit: daemon_commit.to_string(),
-                cli_version: cli_version.to_string(),
-                cli_commit: cli_commit.to_string(),
-                version_mismatch,
-                commit_mismatch,
-                api: api_json,
-            };
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&output).unwrap_or_default()
-            );
-        }
-        OutputFormat::Text => {
-            println!(
-                "{} {}",
-                Colors::bold("Daemon status:"),
-                Colors::success(status)
-            );
-            println!("  PID: {}", pid);
-            println!("  Uptime: {}", format_uptime_ms(uptime_ms));
-            println!("  Sessions: {}", session_count);
-            println!("  Daemon version: {}", daemon_version);
-            println!("  Daemon commit: {}", daemon_commit);
-            println!("  CLI version: {}", cli_version);
-            println!("  CLI commit: {}", cli_commit);
-            if let Some(state) = api_state {
-                println!("  API: {}", state.http_url);
-                println!("  WS: {}", state.ws_url);
-                if let Some(token) = state.token.as_deref() {
-                    println!("  API token: {}", token);
-                } else {
-                    println!("  API token: (disabled)");
-                }
-            } else {
-                println!("  API: not running");
-            }
-
-            if version_mismatch {
-                eprintln!();
-                eprintln!("{} Version mismatch detected!", Colors::warning("⚠"));
-                eprintln!(
-                    "  Run '{}' to update the daemon.",
-                    Colors::info("agent-tui daemon restart")
-                );
-            } else if commit_mismatch {
-                eprintln!();
-                eprintln!(
-                    "{} Build mismatch detected (commit differs).",
-                    Colors::warning("⚠")
-                );
-                eprintln!(
-                    "  Run '{}' to update the daemon.",
-                    Colors::info("agent-tui daemon restart")
-                );
-            }
-        }
-    }
-}
-
-pub(crate) fn handle_daemon_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
-    let cli_version = env!("AGENT_TUI_VERSION");
-    let cli_commit = env!("AGENT_TUI_GIT_SHA");
-    match call_no_params(ctx.client, "health") {
-        Ok(result) => print_daemon_status_from_result(&result, ctx.format),
-        Err(e) => match ctx.format {
-            OutputFormat::Json => {
-                #[derive(Serialize)]
-                struct DaemonStatusError {
-                    running: bool,
-                    cli_version: &'static str,
-                    cli_commit: &'static str,
-                    error: String,
-                }
-                let output = DaemonStatusError {
-                    running: false,
-                    cli_version,
-                    cli_commit,
-                    error: e.to_string(),
-                };
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&output).unwrap_or_default()
-                );
-            }
-            OutputFormat::Text => {
-                println!(
-                    "{} {} ({})",
-                    Colors::bold("Daemon status:"),
-                    Colors::error("not running"),
-                    Colors::dim(&e.to_string())
-                );
-                println!("  CLI version: {}", cli_version);
-                println!("  CLI commit: {}", cli_commit);
-            }
-        },
-    }
-    Ok(())
-}
-
 pub(crate) fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
     if let OutputFormat::Text = ctx.format {
         ctx.presenter().present_info("Restarting daemon...");
@@ -1988,13 +1783,6 @@ mod tests {
             self.output.borrow_mut().push(format!(
                 "assert: passed={}, condition={}",
                 result.passed, result.condition
-            ));
-        }
-
-        fn present_health(&self, health: &crate::adapters::presenter::HealthResult) {
-            self.output.borrow_mut().push(format!(
-                "health: status={}, pid={}, sessions={}",
-                health.status, health.pid, health.session_count
             ));
         }
 

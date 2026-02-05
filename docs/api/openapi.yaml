@@ -12,44 +12,6 @@ servers:
       port:
         default: "PORT"
 paths:
-  /api/v1/version:
-    get:
-      summary: Version information
-      description: Returns daemon and API version info.
-      security:
-        - bearerAuth: []
-        - tokenHeader: []
-        - tokenQuery: []
-      parameters:
-        - $ref: '#/components/parameters/token'
-      responses:
-        '200':
-          description: Version payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VersionResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /api/v1/health:
-    get:
-      summary: Health status
-      description: Returns daemon health and uptime.
-      security:
-        - bearerAuth: []
-        - tokenHeader: []
-        - tokenQuery: []
-      parameters:
-        - $ref: '#/components/parameters/token'
-      responses:
-        '200':
-          description: Health payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
   /api/v1/sessions:
     get:
       summary: List sessions
@@ -182,41 +144,6 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
-    VersionResponse:
-      type: object
-      required: [api_version, daemon_version, daemon_commit]
-      properties:
-        api_version:
-          type: string
-          example: "1"
-        daemon_version:
-          type: string
-          example: "0.8.0"
-        daemon_commit:
-          type: string
-          example: "abcdef1"
-    HealthResponse:
-      type: object
-      required: [status, pid, uptime_ms, session_count, api_version, daemon_version, daemon_commit]
-      properties:
-        status:
-          type: string
-          example: healthy
-        pid:
-          type: integer
-          format: int64
-        uptime_ms:
-          type: integer
-          format: int64
-        session_count:
-          type: integer
-          format: int64
-        api_version:
-          type: string
-        daemon_version:
-          type: string
-        daemon_commit:
-          type: string
     SessionsResponse:
       type: object
       required: [active, sessions]

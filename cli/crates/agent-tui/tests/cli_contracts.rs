@@ -45,7 +45,7 @@ fn run_fixture(file: &str) {
         MockResponse::Success(fixture.response["result"].clone()),
     );
 
-    let assert = harness.run(&["daemon", "status"]);
+    let assert = harness.run(&["version"]);
 
     if fixture.expected_exit == 0 {
         let mut ok = assert.success();
@@ -61,6 +61,6 @@ fn run_fixture(file: &str) {
 }
 
 #[test]
-fn contracts_health_fixture() {
-    run_fixture("health.json");
+fn contracts_version_fixture() {
+    run_fixture("version.json");
 }

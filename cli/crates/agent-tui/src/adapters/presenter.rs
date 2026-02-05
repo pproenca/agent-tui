@@ -42,8 +42,6 @@ pub trait Presenter {
 
     fn present_assert_result(&self, result: &AssertResult);
 
-    fn present_health(&self, health: &HealthResult);
-
     fn present_cleanup(&self, result: &CleanupResult);
 }
 
@@ -72,42 +70,6 @@ impl WaitResult {
 pub struct AssertResult {
     pub passed: bool,
     pub condition: String,
-}
-
-pub struct HealthResult {
-    pub status: String,
-    pub pid: u64,
-    pub uptime_ms: u64,
-    pub session_count: u64,
-    pub version: String,
-    pub commit: String,
-    pub socket_path: Option<String>,
-    pub pid_file_path: Option<String>,
-}
-
-impl HealthResult {
-    pub fn from_json(value: &RpcValue) -> Self {
-        Self {
-            status: value.str_or("status", "unknown").to_string(),
-            pid: value.u64_or("pid", 0),
-            uptime_ms: value.u64_or("uptime_ms", 0),
-            session_count: value.u64_or("session_count", 0),
-            version: value.str_or("version", "?").to_string(),
-            commit: value.str_or("commit", "unknown").to_string(),
-            socket_path: None,
-            pid_file_path: None,
-        }
-    }
-
-    pub fn with_paths(
-        mut self,
-        socket_path: Option<String>,
-        pid_file_path: Option<String>,
-    ) -> Self {
-        self.socket_path = socket_path;
-        self.pid_file_path = pid_file_path;
-        self
-    }
 }
 
 pub struct CleanupResult {
@@ -223,26 +185,6 @@ impl Presenter for TextPresenter {
         }
     }
 
-    fn present_health(&self, health: &HealthResult) {
-        println!(
-            "{} {}",
-            Colors::bold("Daemon status:"),
-            Colors::success(&health.status)
-        );
-        println!("  PID: {}", health.pid);
-        println!("  Uptime: {}", format_uptime_ms(health.uptime_ms));
-        println!("  Sessions: {}", health.session_count);
-        println!("  Version: {}", Colors::dim(&health.version));
-        println!("  Commit: {}", Colors::dim(&health.commit));
-
-        if let (Some(socket), Some(pid_file)) = (&health.socket_path, &health.pid_file_path) {
-            println!();
-            println!("{}", Colors::bold("Connection:"));
-            println!("  Socket: {}", socket);
-            println!("  PID file: {}", pid_file);
-        }
-    }
-
     fn present_cleanup(&self, result: &CleanupResult) {
         if result.cleaned > 0 {
             println!(
@@ -270,19 +212,6 @@ impl Presenter for TextPresenter {
                 );
             }
         }
-    }
-}
-
-fn format_uptime_ms(uptime_ms: u64) -> String {
-    let secs = uptime_ms / 1000;
-    let mins = secs / 60;
-    let hours = mins / 60;
-    if hours > 0 {
-        format!("{}h {}m {}s", hours, mins % 60, secs % 60)
-    } else if mins > 0 {
-        format!("{}m {}s", mins, secs % 60)
-    } else {
-        format!("{}s", secs)
     }
 }
 
@@ -398,27 +327,6 @@ impl Presenter for JsonPresenter {
             "condition": result.condition,
             "passed": result.passed
         });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
-    }
-
-    fn present_health(&self, health: &HealthResult) {
-        let mut output = serde_json::json!({
-            "status": health.status,
-            "pid": health.pid,
-            "uptime_ms": health.uptime_ms,
-            "session_count": health.session_count,
-            "version": health.version,
-            "commit": health.commit
-        });
-        if let Some(socket) = &health.socket_path {
-            output["socket_path"] = serde_json::json!(socket);
-        }
-        if let Some(pid_file) = &health.pid_file_path {
-            output["pid_file_path"] = serde_json::json!(pid_file);
-        }
         println!(
             "{}",
             serde_json::to_string_pretty(&output).unwrap_or_default()
@@ -586,22 +494,6 @@ mod tests {
     }
 
     #[test]
-    fn test_health_result_struct() {
-        let result = HealthResult {
-            status: "healthy".to_string(),
-            pid: 1234,
-            uptime_ms: 60000,
-            session_count: 5,
-            version: "0.3.0".to_string(),
-            commit: "abc1234".to_string(),
-            socket_path: Some("/tmp/agent-tui.sock".to_string()),
-            pid_file_path: None,
-        };
-        assert_eq!(result.status, "healthy");
-        assert_eq!(result.session_count, 5);
-    }
-
-    #[test]
     fn test_cleanup_result_struct() {
         let result = CleanupResult {
             cleaned: 3,
@@ -637,23 +529,6 @@ mod tests {
     }
 
     #[test]
-    fn test_json_presenter_health() {
-        let presenter = JsonPresenter;
-        let health = HealthResult {
-            status: "healthy".to_string(),
-            pid: 1234,
-            uptime_ms: 60000,
-            session_count: 2,
-            version: "0.3.0".to_string(),
-            commit: "abc1234".to_string(),
-            socket_path: None,
-            pid_file_path: None,
-        };
-
-        presenter.present_health(&health);
-    }
-
-    #[test]
     fn test_json_presenter_cleanup() {
         let presenter = JsonPresenter;
         let result = CleanupResult {
@@ -662,25 +537,5 @@ mod tests {
         };
 
         presenter.present_cleanup(&result);
-    }
-
-    #[test]
-    fn test_format_uptime_ms_seconds() {
-        assert_eq!(format_uptime_ms(5000), "5s");
-        assert_eq!(format_uptime_ms(45000), "45s");
-    }
-
-    #[test]
-    fn test_format_uptime_ms_minutes() {
-        assert_eq!(format_uptime_ms(60000), "1m 0s");
-        assert_eq!(format_uptime_ms(90000), "1m 30s");
-        assert_eq!(format_uptime_ms(300000), "5m 0s");
-    }
-
-    #[test]
-    fn test_format_uptime_ms_hours() {
-        assert_eq!(format_uptime_ms(3600000), "1h 0m 0s");
-        assert_eq!(format_uptime_ms(5400000), "1h 30m 0s");
-        assert_eq!(format_uptime_ms(7265000), "2h 1m 5s");
     }
 }

@@ -4,8 +4,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use crate::usecases::ports::MetricsProvider;
-
 pub struct DaemonMetrics {
     pub requests_total: AtomicU64,
     pub errors_total: AtomicU64,
@@ -65,24 +63,6 @@ impl DaemonMetrics {
 
     pub fn uptime_ms(&self) -> u64 {
         self.start_time.elapsed().as_millis() as u64
-    }
-}
-
-impl MetricsProvider for DaemonMetrics {
-    fn requests(&self) -> u64 {
-        self.requests()
-    }
-
-    fn errors(&self) -> u64 {
-        self.errors()
-    }
-
-    fn lock_timeouts(&self) -> u64 {
-        self.lock_timeouts()
-    }
-
-    fn poison_recoveries(&self) -> u64 {
-        self.poison_recoveries()
     }
 }
 

@@ -212,13 +212,10 @@ impl MockDaemon {
                 })),
             );
             h.insert(
-                "health".to_string(),
+                "version".to_string(),
                 MockResponse::Success(serde_json::json!({
-                    "status": "healthy",
-                    "pid": super::TEST_PID,
-                    "uptime_ms": 60000,
-                    "session_count": 0,
-                    "version": "1.0.0-test"
+                    "daemon_version": "1.0.0-test",
+                    "daemon_commit": "abc123"
                 })),
             );
             h.insert(
@@ -312,14 +309,6 @@ impl MockDaemon {
                 MockResponse::Success(serde_json::json!({
                     "title": "bash",
                     "session_id": super::TEST_SESSION_ID
-                })),
-            );
-            h.insert(
-                "pty_read".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "session_id": super::TEST_SESSION_ID,
-                    "data": "",
-                    "bytes_read": 0
                 })),
             );
             h.insert(

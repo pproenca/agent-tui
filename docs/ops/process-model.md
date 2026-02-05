@@ -9,7 +9,7 @@ agent-tui is local-first but can be supervised like a service. These are the mai
 ## Procfile (example)
 
 ```
-agent-tui-daemon: agent-tui daemon start --foreground
+agent-tui-daemon: AGENT_TUI_DAEMON_FOREGROUND=1 agent-tui daemon start
 agent-tui-web: bun server.ts
 ```
 
@@ -22,8 +22,9 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/agent-tui daemon start --foreground
+ExecStart=/usr/local/bin/agent-tui daemon start
 Restart=on-failure
+Environment=AGENT_TUI_DAEMON_FOREGROUND=1
 Environment=AGENT_TUI_API_ALLOW_REMOTE=1
 Environment=AGENT_TUI_LOG_STREAM=stdout
 Environment=AGENT_TUI_LOG_FORMAT=json

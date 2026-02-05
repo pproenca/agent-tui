@@ -21,13 +21,12 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
         match request.method.as_str() {
             "ping" => RpcResponse::success(request.id, json!({ "pong": true })),
 
-            "health" => {
-                handlers::diagnostics::handle_health_uc(&self.usecases.diagnostics.health, request)
-            }
-
-            "metrics" => handlers::diagnostics::handle_metrics_uc(
-                &self.usecases.diagnostics.metrics,
-                request,
+            "version" => RpcResponse::success(
+                request.id,
+                json!({
+                    "daemon_version": env!("AGENT_TUI_VERSION"),
+                    "daemon_commit": env!("AGENT_TUI_GIT_SHA")
+                }),
             ),
 
             "spawn" => handlers::session::handle_spawn(&self.usecases.session.spawn, request),
@@ -51,10 +50,6 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
             "type" => handlers::input::handle_type_uc(&self.usecases.input.type_text, request),
             "wait" => handlers::wait::handle_wait_uc(&self.usecases.wait, request),
 
-            "pty_read" => handlers::diagnostics::handle_terminal_read_uc(
-                &self.usecases.diagnostics.terminal_read,
-                request,
-            ),
             "pty_write" => handlers::diagnostics::handle_terminal_write_uc(
                 &self.usecases.diagnostics.terminal_write,
                 request,
@@ -81,7 +76,6 @@ mod tests {
     use crate::domain::core::CursorPosition;
     use crate::usecases::ports::Clock;
     use crate::usecases::ports::LivePreviewSnapshot;
-    use crate::usecases::ports::MetricsProvider;
     use crate::usecases::ports::SessionError;
     use crate::usecases::ports::SessionHandle;
     use crate::usecases::ports::SessionOps;
@@ -90,34 +84,11 @@ mod tests {
     use crate::usecases::ports::StreamRead;
     use crate::usecases::ports::StreamWaiter;
     use crate::usecases::ports::StreamWaiterHandle;
-    use crate::usecases::ports::SystemInfoProvider;
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::AtomicUsize;
     use std::time::Duration;
     use std::time::Instant;
-
-    #[derive(Default)]
-    struct TestMetrics;
-
-    impl MetricsProvider for TestMetrics {
-        fn requests(&self) -> u64 {
-            0
-        }
-
-        fn errors(&self) -> u64 {
-            0
-        }
-
-        fn lock_timeouts(&self) -> u64 {
-            0
-        }
-
-        fn poison_recoveries(&self) -> u64 {
-            0
-        }
-    }
 
     #[derive(Default)]
     struct TestClock;
@@ -125,34 +96,6 @@ mod tests {
     impl Clock for TestClock {
         fn now(&self) -> Instant {
             Instant::now()
-        }
-    }
-
-    struct TestSystemInfo {
-        start_time: Instant,
-    }
-
-    impl TestSystemInfo {
-        fn new(start_time: Instant) -> Self {
-            Self { start_time }
-        }
-    }
-
-    impl SystemInfoProvider for TestSystemInfo {
-        fn pid(&self) -> u32 {
-            0
-        }
-
-        fn uptime_ms(&self) -> u64 {
-            self.start_time.elapsed().as_millis() as u64
-        }
-
-        fn version(&self) -> String {
-            "test-version".to_string()
-        }
-
-        fn commit(&self) -> String {
-            "test-commit".to_string()
         }
     }
 
@@ -332,23 +275,11 @@ mod tests {
 
     fn create_test_usecases() -> UseCaseContainer<TestRepository> {
         let session_repo = Arc::new(TestRepository::default());
-        let metrics = Arc::new(TestMetrics);
-        let start_time = Instant::now();
-        let system_info = Arc::new(TestSystemInfo::new(start_time));
         let clock = Arc::new(TestClock);
-        let active_connections = Arc::new(AtomicUsize::new(0));
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let shutdown_notifier =
             Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
-        UseCaseContainer::new(
-            session_repo,
-            metrics,
-            system_info,
-            clock,
-            active_connections,
-            shutdown_flag,
-            shutdown_notifier,
-        )
+        UseCaseContainer::new(session_repo, clock, shutdown_flag, shutdown_notifier)
     }
 
     #[test]
@@ -388,11 +319,11 @@ mod tests {
     }
 
     #[test]
-    fn test_router_health_returns_success() {
+    fn test_router_version_returns_success() {
         let usecases = create_test_usecases();
         let router = Router::new(&usecases);
 
-        let request = RpcRequest::new(1, "health".to_string(), None);
+        let request = RpcRequest::new(1, "version".to_string(), None);
         let response = router.route(request);
 
         let json_str = serde_json::to_string(&response).unwrap();
@@ -400,7 +331,7 @@ mod tests {
 
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert!(parsed.get("result").is_some());
-        assert_eq!(parsed["result"]["status"], "healthy");
+        assert!(parsed["result"]["daemon_version"].is_string());
     }
 
     #[test]

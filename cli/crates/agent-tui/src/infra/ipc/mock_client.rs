@@ -145,9 +145,9 @@ mod tests {
     #[test]
     fn test_mock_client_returns_configured_response() {
         let mut mock = MockClient::new();
-        mock.set_response("health", json!({ "status": "ok" }));
+        mock.set_response("version", json!({ "status": "ok" }));
 
-        let result = mock.call("health", None).unwrap();
+        let result = mock.call("version", None).unwrap();
         assert_eq!(result, json!({ "status": "ok" }));
     }
 

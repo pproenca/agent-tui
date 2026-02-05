@@ -14,10 +14,6 @@ default:
 dev:
     cargo run -p agent-tui -- daemon
 
-# Run CLI health check.
-health:
-    cargo run -p agent-tui -- health
-
 # Run CI checks (format, clippy, architecture, tests, version).
 ready: _ensure-bun
     bun scripts/xtask.ts ci

@@ -1799,9 +1799,11 @@ mod tests {
 
         let manager = SessionManager::with_max_sessions(2);
         let session_id = "dup-session".to_string();
-        let _ = manager
-            .spawn("sh", &[], None, None, Some(session_id.clone()), 80, 24)
-            .unwrap();
+        match manager.spawn("sh", &[], None, None, Some(session_id.clone()), 80, 24) {
+            Ok(_) => {}
+            Err(SessionError::Terminal(_)) => return, // PTY unavailable, skip
+            Err(e) => panic!("unexpected error from first spawn: {e}"),
+        }
 
         let result = manager.spawn("sh", &[], None, None, Some(session_id.clone()), 80, 24);
 

@@ -7,9 +7,7 @@ CLI tool for AI agents to interact with TUI (Terminal User Interface) applicatio
 ## Features
 
 - **Virtual Terminal Emulation** - Run TUI apps in isolated PTY sessions with full terminal emulation
-- **Visual Object Model (VOM)** - Structured view of the screen derived from visual layout
 - **Keyboard & Text Input** - Press keys, type text, or send unified input
-- **Scrolling** - Scroll the viewport programmatically
 - **Wait Conditions** - Wait for text or screen stability
 - **Output Formats** - Human-readable text or JSON for automation pipelines
 - **Live Preview API** - HTTP + WebSocket endpoints for real-time UI monitoring
@@ -70,7 +68,6 @@ agent-tui screenshot
 # Send keyboard input
 agent-tui press Enter
 agent-tui type "hello world"
-agent-tui scroll down 5
 
 # Wait for conditions
 agent-tui wait "Loading complete"
@@ -141,7 +138,7 @@ agent-tui/
 │   └── crates/agent-tui/   # Main binary
 │       ├── app/            # Application layer (CLI, handlers)
 │       ├── adapters/       # Infrastructure adapters (IPC, RPC)
-│       ├── domain/         # Domain models (screen, snapshot, VOM)
+│       ├── domain/         # Domain models (screen, snapshot, style)
 │       ├── usecases/       # Business logic (snapshot, input, wait)
 │       └── infra/          # Infrastructure (daemon, terminal)
 ├── web/                    # Bun-based web UI
@@ -150,7 +147,7 @@ agent-tui/
 ```
 
 The tool follows Clean Architecture principles:
-- **Domain** - Core models (Screen, Snapshot, Style) and VOM detection
+- **Domain** - Core models (Screen, Snapshot, Style)
 - **Use Cases** - Business logic (screenshot, input, wait conditions)
 - **Adapters** - External interfaces (CLI, RPC, HTTP API)
 - **Infrastructure** - Terminal emulation, daemon runtime

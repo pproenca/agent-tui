@@ -49,8 +49,6 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
             "keydown" => handlers::input::handle_keydown_uc(&self.usecases.input.keydown, request),
             "keyup" => handlers::input::handle_keyup_uc(&self.usecases.input.keyup, request),
             "type" => handlers::input::handle_type_uc(&self.usecases.input.type_text, request),
-            "scroll" => handlers::input::handle_scroll_uc(&self.usecases.input.scroll, request),
-
             "wait" => handlers::wait::handle_wait_uc(&self.usecases.wait, request),
 
             "pty_read" => handlers::diagnostics::handle_terminal_read_uc(
@@ -78,10 +76,8 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::ScrollDirection;
     use crate::domain::SessionId;
     use crate::domain::SessionInfo;
-    use crate::domain::core::Component;
     use crate::domain::core::CursorPosition;
     use crate::usecases::ports::Clock;
     use crate::usecases::ports::LivePreviewSnapshot;
@@ -217,10 +213,6 @@ mod tests {
             Arc::new(TestStreamWaiter)
         }
 
-        fn analyze_screen(&self) -> Vec<Component> {
-            Vec::new()
-        }
-
         fn keystroke(&self, _key: &str) -> Result<(), SessionError> {
             Ok(())
         }
@@ -234,10 +226,6 @@ mod tests {
         }
 
         fn keyup(&self, _key: &str) -> Result<(), SessionError> {
-            Ok(())
-        }
-
-        fn scroll(&self, _direction: ScrollDirection, _amount: u16) -> Result<(), SessionError> {
             Ok(())
         }
 

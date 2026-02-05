@@ -7,7 +7,7 @@ Generated from clap. Run `just cli-docs` to update.
 ```text
 Drive TUI (text UI) applications programmatically or interactively.
 
-Common flow: run -> screenshot -> press/type/scroll -> wait -> kill.
+Common flow: run -> screenshot -> press/type -> wait -> kill.
 Use --format json for automation-friendly output.
 
 Usage: agent-tui [OPTIONS] <COMMAND>
@@ -19,7 +19,6 @@ Commands:
   restart      Restart the current session
   press        Send key press(es) to the terminal (supports modifier hold/release)
   type         Type literal text character by character
-  scroll       Scroll the viewport
   wait         Wait for text or screenshot stability
   kill         Kill the current session
   sessions     List and manage sessions
@@ -64,7 +63,7 @@ Debug Options:
 WORKFLOW:
     1. Run a TUI application
     2. View the screenshot
-    3. Interact with keys/text or scroll
+    3. Interact with keys/text
     4. Wait for UI changes
     5. Kill the session when done
 
@@ -85,9 +84,6 @@ EXAMPLES:
     agent-tui run htop
     agent-tui press F10
     agent-tui press ArrowDown ArrowDown Enter
-
-    # Scroll viewport
-    agent-tui scroll down 5
 
     # Check daemon status
     agent-tui daemon status
@@ -409,59 +405,6 @@ Debug Options:
 EXAMPLES:
     agent-tui type "hello world"
     agent-tui type "user@example.com"
-```
-
-## `agent-tui scroll`
-
-```text
-Scroll the viewport
-
-Usage: scroll [OPTIONS] <DIRECTION> [AMOUNT]
-
-Arguments:
-  <DIRECTION>
-          Direction to scroll
-          
-          [possible values: up, down, left, right]
-
-  [AMOUNT]
-          Number of lines/rows to scroll
-          
-          [default: 1]
-
-Options:
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-
-Session Options:
-  -s, --session <ID>
-          Session ID to use (defaults to the most recent session)
-
-Output Options:
-  -f, --format <FORMAT>
-          Output format (text or json)
-          
-          [default: text]
-          [possible values: text, json]
-
-      --json
-          Shorthand for --format json (overrides --format if both are set)
-
-      --no-color
-          Disable colored output (also respects NO_COLOR)
-          
-          [env: NO_COLOR=1]
-
-Debug Options:
-  -v, --verbose
-          Enable verbose output (shows request timing)
-
-EXAMPLES:
-    agent-tui scroll down
-    agent-tui scroll up 10
 ```
 
 ## `agent-tui wait`

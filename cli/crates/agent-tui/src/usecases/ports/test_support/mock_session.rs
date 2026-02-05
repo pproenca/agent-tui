@@ -1,8 +1,6 @@
 //! Mock session handle for use case tests.
 
-use crate::domain::ScrollDirection;
 use crate::domain::core::CursorPosition;
-use crate::domain::core::vom::Component;
 use crate::domain::session_types::SessionId;
 use crate::usecases::ports::LivePreviewSnapshot;
 use crate::usecases::ports::SessionError;
@@ -31,7 +29,6 @@ pub struct MockSession {
     rows: u16,
     cursor: CursorPosition,
     screen_text: String,
-    components: Vec<Component>,
     update_error: Option<SessionError>,
     terminal_write_error: Option<SessionError>,
     written_data: Mutex<Vec<Vec<u8>>>,
@@ -50,7 +47,6 @@ impl MockSession {
                 visible: false,
             },
             screen_text: String::new(),
-            components: Vec::new(),
             update_error: None,
             terminal_write_error: None,
             written_data: Mutex::new(Vec::new()),
@@ -121,10 +117,6 @@ impl SessionOps for MockSession {
         Arc::new(MockStreamWaiter)
     }
 
-    fn analyze_screen(&self) -> Vec<Component> {
-        self.components.clone()
-    }
-
     fn keystroke(&self, _key: &str) -> Result<(), SessionError> {
         Ok(())
     }
@@ -138,10 +130,6 @@ impl SessionOps for MockSession {
     }
 
     fn keyup(&self, _key: &str) -> Result<(), SessionError> {
-        Ok(())
-    }
-
-    fn scroll(&self, _direction: ScrollDirection, _amount: u16) -> Result<(), SessionError> {
         Ok(())
     }
 
@@ -193,11 +181,6 @@ impl MockSessionBuilder {
 
     pub fn with_screen_text(mut self, text: impl Into<String>) -> Self {
         self.session.screen_text = text.into();
-        self
-    }
-
-    pub fn with_components(mut self, components: Vec<Component>) -> Self {
-        self.session.components = components;
         self
     }
 
@@ -257,27 +240,6 @@ mod tests {
         assert_eq!(written.len(), 2);
         assert_eq!(written[0], b"hello");
         assert_eq!(written[1], b"world");
-    }
-
-    #[test]
-    fn test_mock_session_analyze_screen_returns_components() {
-        use crate::domain::core::vom::Rect;
-        use crate::domain::core::vom::Role;
-
-        let components = vec![Component::new(
-            Role::Button,
-            Rect::new(0, 0, 10, 1),
-            "OK".to_string(),
-            12345,
-        )];
-
-        let session = MockSession::builder("test")
-            .with_components(components)
-            .build();
-
-        let analyzed = session.analyze_screen();
-        assert_eq!(analyzed.len(), 1);
-        assert_eq!(analyzed[0].text_content, "OK");
     }
 
     #[test]

@@ -717,10 +717,6 @@ impl Application {
 
             Commands::Type { text } => handlers::handle_type(ctx, text.to_string())?,
 
-            Commands::Scroll { direction, amount } => {
-                handlers::handle_scroll(ctx, *direction, *amount)?
-            }
-
             Commands::Wait { params } => handlers::handle_wait(ctx, params.clone())?,
             Commands::Kill => handlers::handle_kill(ctx)?,
 

@@ -20,7 +20,6 @@ use crate::usecases::KillUseCaseImpl;
 use crate::usecases::MetricsUseCaseImpl;
 use crate::usecases::ResizeUseCaseImpl;
 use crate::usecases::RestartUseCaseImpl;
-use crate::usecases::ScrollUseCaseImpl;
 use crate::usecases::SessionsUseCaseImpl;
 use crate::usecases::ShutdownUseCaseImpl;
 use crate::usecases::SnapshotUseCaseImpl;
@@ -64,7 +63,6 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 type_text: TypeUseCaseImpl::new(Arc::clone(&repository)),
                 keydown: KeydownUseCaseImpl::new(Arc::clone(&repository)),
                 keyup: KeyupUseCaseImpl::new(Arc::clone(&repository)),
-                scroll: ScrollUseCaseImpl::new(Arc::clone(&repository)),
             },
             diagnostics: DiagnosticsUseCases {
                 terminal_read: TerminalReadUseCaseImpl::new(Arc::clone(&repository)),

@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::domain::ScrollDirection;
-use crate::domain::core::Component;
 use crate::domain::core::CursorPosition;
 use crate::domain::session_types::SessionId;
 use crate::domain::session_types::SessionInfo;
@@ -53,12 +51,10 @@ pub trait SessionOps: Send + Sync {
         timeout_ms: i32,
     ) -> Result<StreamRead, SessionError>;
     fn stream_subscribe(&self) -> StreamWaiterHandle;
-    fn analyze_screen(&self) -> Vec<Component>;
     fn keystroke(&self, key: &str) -> Result<(), SessionError>;
     fn type_text(&self, text: &str) -> Result<(), SessionError>;
     fn keydown(&self, key: &str) -> Result<(), SessionError>;
     fn keyup(&self, key: &str) -> Result<(), SessionError>;
-    fn scroll(&self, direction: ScrollDirection, amount: u16) -> Result<(), SessionError>;
     fn is_running(&self) -> bool;
     fn resize(&self, cols: u16, rows: u16) -> Result<(), SessionError>;
     fn cursor(&self) -> CursorPosition;

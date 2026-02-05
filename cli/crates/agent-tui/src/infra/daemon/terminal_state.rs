@@ -1,6 +1,5 @@
 //! Terminal state management.
 
-use crate::domain::core::Component;
 use crate::infra::terminal::CursorPosition;
 use crate::infra::terminal::ScreenBuffer;
 use crate::infra::terminal::VirtualTerminal;
@@ -42,10 +41,5 @@ impl TerminalState {
 
     pub fn clear(&mut self) {
         self.terminal.clear();
-    }
-
-    pub fn analyze_screen(&self, cursor: &CursorPosition) -> Vec<Component> {
-        let buffer = self.terminal.screen_buffer();
-        crate::domain::core::analyze(&buffer, cursor)
     }
 }

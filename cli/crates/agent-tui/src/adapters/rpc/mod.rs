@@ -28,8 +28,6 @@ use crate::domain::MetricsOutput;
 use crate::domain::ResizeInput;
 use crate::domain::ResizeOutput;
 use crate::domain::RestartOutput;
-use crate::domain::ScrollInput;
-use crate::domain::ScrollOutput;
 use crate::domain::SessionId;
 use crate::domain::SessionInput;
 use crate::domain::SessionsOutput;
@@ -269,24 +267,6 @@ pub fn wait_output_to_response(id: u64, output: WaitOutput) -> RpcResponse {
             "elapsed_ms": output.elapsed_ms
         }),
     )
-}
-
-#[allow(clippy::result_large_err)]
-pub fn parse_scroll_input(request: &RpcRequest) -> Result<ScrollInput, RpcResponse> {
-    let direction = crate::domain::ScrollDirection::parse(request.require_str("direction")?)
-        .map_err(|e| {
-            RpcResponse::error(request.id, -32602, &format!("Invalid direction: {}", e))
-        })?;
-
-    Ok(ScrollInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
-        direction,
-        amount: request.param_u16("amount", 1),
-    })
-}
-
-pub fn scroll_output_to_response(id: u64, output: ScrollOutput) -> RpcResponse {
-    RpcResponse::success(id, json!({ "success": output.success }))
 }
 
 pub fn kill_output_to_response(id: u64, output: KillOutput) -> RpcResponse {

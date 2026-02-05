@@ -23,8 +23,6 @@ pub use input::KeystrokeUseCase;
 pub use input::KeystrokeUseCaseImpl;
 pub use input::KeyupUseCase;
 pub use input::KeyupUseCaseImpl;
-pub use input::ScrollUseCase;
-pub use input::ScrollUseCaseImpl;
 pub use input::TypeUseCase;
 pub use input::TypeUseCaseImpl;
 pub use session::AssertUseCase;

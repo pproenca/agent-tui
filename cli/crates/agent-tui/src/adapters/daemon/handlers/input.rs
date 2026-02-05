@@ -8,13 +8,10 @@ use super::common::session_error_response;
 use crate::adapters::parse_keydown_input;
 use crate::adapters::parse_keystroke_input;
 use crate::adapters::parse_keyup_input;
-use crate::adapters::parse_scroll_input;
 use crate::adapters::parse_type_input;
-use crate::adapters::scroll_output_to_response;
 use crate::usecases::KeydownUseCase;
 use crate::usecases::KeystrokeUseCase;
 use crate::usecases::KeyupUseCase;
-use crate::usecases::ScrollUseCase;
 use crate::usecases::TypeUseCase;
 
 pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
@@ -69,20 +66,6 @@ pub fn handle_keyup_uc<U: KeyupUseCase>(usecase: &U, request: RpcRequest) -> Rpc
 
     match usecase.execute(input) {
         Ok(_) => RpcResponse::action_success(req_id),
-        Err(e) => session_error_response(req_id, e),
-    }
-}
-
-pub fn handle_scroll_uc<U: ScrollUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
-    let _span = common::handler_span(&request, "scroll").entered();
-    let req_id = request.id;
-    let input = match parse_scroll_input(&request) {
-        Ok(i) => i,
-        Err(resp) => return resp,
-    };
-
-    match usecase.execute(input) {
-        Ok(output) => scroll_output_to_response(req_id, output),
         Err(e) => session_error_response(req_id, e),
     }
 }

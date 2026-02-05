@@ -8,7 +8,7 @@
 
 mod common;
 
-use common::{MockResponse, TEST_SESSION_ID, TestHarness};
+use common::{TEST_SESSION_ID, TestHarness};
 use predicates::prelude::*;
 use serde_json::json;
 
@@ -120,28 +120,6 @@ fn smoke_screenshot_text() {
         .run(&["screenshot"])
         .success()
         .stdout(predicate::str::contains("Test screen"));
-}
-
-#[test]
-fn smoke_scroll_success_and_error() {
-    let harness = TestHarness::new();
-
-    harness.set_success_response("scroll", json!({"success": true}));
-
-    harness
-        .run(&["scroll", "down", "2"])
-        .success()
-        .stdout(predicate::str::contains("Scrolled down 2 times"));
-
-    harness.set_response(
-        "scroll",
-        MockResponse::Success(json!({"success": false, "message": "Scroll blocked"})),
-    );
-
-    harness
-        .run(&["scroll", "down"])
-        .failure()
-        .stderr(predicate::str::contains("Scroll failed"));
 }
 
 #[test]

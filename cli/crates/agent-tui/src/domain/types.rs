@@ -10,12 +10,6 @@ use super::session_types::SessionInfo;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("Invalid scroll direction '{invalid_value}'. Must be one of: up, down, left, right")]
-pub struct ScrollDirectionError {
-    pub invalid_value: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error("Invalid wait condition type '{invalid_value}'. Must be one of: text, stable, text_gone")]
 pub struct WaitConditionTypeError {
     pub invalid_value: String,
@@ -65,51 +59,6 @@ impl fmt::Display for WaitConditionType {
 
 impl FromStr for WaitConditionType {
     type Err = WaitConditionTypeError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse(s)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ScrollDirection {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-impl ScrollDirection {
-    pub fn parse(s: &str) -> Result<Self, ScrollDirectionError> {
-        match s.to_lowercase().as_str() {
-            "up" => Ok(Self::Up),
-            "down" => Ok(Self::Down),
-            "left" => Ok(Self::Left),
-            "right" => Ok(Self::Right),
-            _ => Err(ScrollDirectionError {
-                invalid_value: s.to_string(),
-            }),
-        }
-    }
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Up => "up",
-            Self::Down => "down",
-            Self::Left => "left",
-            Self::Right => "right",
-        }
-    }
-}
-
-impl fmt::Display for ScrollDirection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-impl FromStr for ScrollDirection {
-    type Err = ScrollDirectionError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
@@ -221,18 +170,6 @@ pub struct WaitInput {
 pub struct WaitOutput {
     pub found: bool,
     pub elapsed_ms: u64,
-}
-
-#[derive(Debug, Clone)]
-pub struct ScrollInput {
-    pub session_id: Option<SessionId>,
-    pub direction: ScrollDirection,
-    pub amount: u16,
-}
-
-#[derive(Debug, Clone)]
-pub struct ScrollOutput {
-    pub success: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -434,77 +371,6 @@ pub struct ShutdownOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    mod scroll_direction_tests {
-        use super::*;
-
-        #[test]
-        fn test_scroll_direction_from_str_up() {
-            let dir = ScrollDirection::parse("up").expect("Should parse 'up'");
-            assert_eq!(dir, ScrollDirection::Up);
-        }
-
-        #[test]
-        fn test_scroll_direction_from_str_down() {
-            let dir = ScrollDirection::parse("down").expect("Should parse 'down'");
-            assert_eq!(dir, ScrollDirection::Down);
-        }
-
-        #[test]
-        fn test_scroll_direction_from_str_left() {
-            let dir = ScrollDirection::parse("left").expect("Should parse 'left'");
-            assert_eq!(dir, ScrollDirection::Left);
-        }
-
-        #[test]
-        fn test_scroll_direction_from_str_right() {
-            let dir = ScrollDirection::parse("right").expect("Should parse 'right'");
-            assert_eq!(dir, ScrollDirection::Right);
-        }
-
-        #[test]
-        fn test_scroll_direction_from_str_invalid() {
-            let result = ScrollDirection::parse("diagonal");
-            assert!(result.is_err(), "Invalid direction should be rejected");
-        }
-
-        #[test]
-        fn test_scroll_direction_from_str_empty() {
-            let result = ScrollDirection::parse("");
-            assert!(result.is_err(), "Empty string should be rejected");
-        }
-
-        #[test]
-        fn test_scroll_direction_case_insensitive() {
-            assert_eq!(ScrollDirection::parse("UP").unwrap(), ScrollDirection::Up);
-            assert_eq!(
-                ScrollDirection::parse("Down").unwrap(),
-                ScrollDirection::Down
-            );
-            assert_eq!(
-                ScrollDirection::parse("LEFT").unwrap(),
-                ScrollDirection::Left
-            );
-            assert_eq!(
-                ScrollDirection::parse("RIGHT").unwrap(),
-                ScrollDirection::Right
-            );
-        }
-
-        #[test]
-        fn test_scroll_direction_as_str() {
-            assert_eq!(ScrollDirection::Up.as_str(), "up");
-            assert_eq!(ScrollDirection::Down.as_str(), "down");
-            assert_eq!(ScrollDirection::Left.as_str(), "left");
-            assert_eq!(ScrollDirection::Right.as_str(), "right");
-        }
-
-        #[test]
-        fn test_scroll_direction_display() {
-            assert_eq!(format!("{}", ScrollDirection::Up), "up");
-            assert_eq!(format!("{}", ScrollDirection::Down), "down");
-        }
-    }
 
     mod wait_condition_type_tests {
         use super::*;

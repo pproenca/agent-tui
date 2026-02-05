@@ -35,7 +35,7 @@ impl RealTestHarness {
         let mut daemon = daemon_cmd.spawn().expect("Failed to start daemon");
         let start_timeout =
             timeout_from_env("AGENT_TUI_E2E_START_TIMEOUT_MS", Duration::from_secs(5));
-        wait_for_socket(&socket_path, &mut daemon, start_timeout);
+        wait_for_daemon_ready(&socket_path, &mut daemon, start_timeout);
 
         Self {
             _temp_dir: temp_dir,
@@ -110,10 +110,10 @@ impl Drop for RealTestHarness {
     }
 }
 
-fn wait_for_socket(socket_path: &Path, daemon: &mut Child, timeout: Duration) {
+fn wait_for_daemon_ready(socket_path: &Path, daemon: &mut Child, timeout: Duration) {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if socket_path.exists() {
+        if socket_path.exists() && daemon_accepts_requests(socket_path) {
             return;
         }
         if let Ok(Some(status)) = daemon.try_wait() {
@@ -122,9 +122,20 @@ fn wait_for_socket(socket_path: &Path, daemon: &mut Child, timeout: Duration) {
         thread::sleep(Duration::from_millis(50));
     }
     panic!(
-        "Timed out waiting for daemon socket to appear at {}",
+        "Timed out waiting for daemon readiness at {}",
         socket_path.display()
     );
+}
+
+fn daemon_accepts_requests(socket_path: &Path) -> bool {
+    StdCommand::new(assert_cmd::cargo::cargo_bin!("agent-tui"))
+        .env("AGENT_TUI_SOCKET", socket_path)
+        .args(["--no-color", "sessions"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 fn timeout_from_env(var: &str, default: Duration) -> Duration {

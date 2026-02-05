@@ -1129,6 +1129,7 @@ fn generate_token() -> String {
 #[cfg(test)]
 mod tests {
     use super::ApiConfig;
+    use crate::test_support::env_lock;
 
     struct EnvGuard {
         key: &'static str,
@@ -1173,6 +1174,7 @@ mod tests {
 
     #[test]
     fn test_api_config_port_fallback() {
+        let _env_lock = env_lock();
         let _listen = EnvGuard::remove("AGENT_TUI_API_LISTEN");
         let _port = EnvGuard::set("PORT", "5555");
         let _allow = EnvGuard::remove("AGENT_TUI_API_ALLOW_REMOTE");
@@ -1182,6 +1184,7 @@ mod tests {
 
     #[test]
     fn test_api_config_listen_precedence() {
+        let _env_lock = env_lock();
         let _listen = EnvGuard::set("AGENT_TUI_API_LISTEN", "127.0.0.1:9999");
         let _port = EnvGuard::set("PORT", "5555");
         let config = ApiConfig::from_env();

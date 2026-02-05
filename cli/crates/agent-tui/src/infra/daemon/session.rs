@@ -1693,7 +1693,17 @@ impl From<&SessionInfo> for PersistedSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
     use tempfile::tempdir;
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn env_lock() -> MutexGuard<'static, ()> {
+        ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock poisoned")
+    }
 
     struct HomeGuard(Option<String>);
 
@@ -1790,6 +1800,7 @@ mod tests {
 
     #[test]
     fn test_spawn_rejects_duplicate_session_id() {
+        let _env_lock = env_lock();
         let temp_home = tempdir().unwrap();
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
@@ -1817,6 +1828,7 @@ mod tests {
 
     #[test]
     fn test_persistence_migration_from_json() {
+        let _env_lock = env_lock();
         let temp_home = tempdir().unwrap();
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
@@ -1850,6 +1862,7 @@ mod tests {
 
     #[test]
     fn test_jsonl_add_remove_roundtrip() {
+        let _env_lock = env_lock();
         let temp_home = tempdir().unwrap();
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
@@ -1878,6 +1891,7 @@ mod tests {
 
     #[test]
     fn test_session_store_env_override() {
+        let _env_lock = env_lock();
         let temp_home = tempdir().unwrap();
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
@@ -1910,6 +1924,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn test_startup_cleanup_kills_persisted_session_process_group() {
+        let _env_lock = env_lock();
         use std::os::unix::process::CommandExt;
         use std::process::Command;
 

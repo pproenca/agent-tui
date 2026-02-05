@@ -221,8 +221,11 @@ mod tests {
         fn assert_generic_bound<S: SessionOps + ?Sized>(_session: &S) {}
 
         let manager = SessionManager::new();
+        let cwd = std::env::current_dir()
+            .ok()
+            .map(|path| path.to_string_lossy().into_owned());
         let session_handle = manager
-            .spawn("bash", &[], None, None, None, 80, 24)
+            .spawn("/bin/sh", &[], cwd.as_deref(), None, None, 80, 24)
             .and_then(|(id, _)| SessionRepository::get(&manager, id.as_str()))
             .unwrap();
         assert_generic_bound(session_handle.as_ref());

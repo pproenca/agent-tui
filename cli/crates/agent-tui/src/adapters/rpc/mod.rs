@@ -68,8 +68,19 @@ pub fn parse_session_id(session: Option<String>) -> Option<SessionId> {
     })
 }
 
+pub fn parse_session_selector(session: Option<String>) -> Option<SessionId> {
+    session.and_then(|s| {
+        let trimmed = s.trim();
+        if trimmed.is_empty() || trimmed == "active" {
+            None
+        } else {
+            Some(SessionId::new(trimmed))
+        }
+    })
+}
+
 pub fn parse_session_input(request: &RpcRequest) -> SessionInput {
-    let session_id = parse_session_id(request.param_str("session").map(String::from));
+    let session_id = parse_session_selector(request.param_str("session").map(String::from));
     SessionInput { session_id }
 }
 
@@ -142,7 +153,7 @@ pub fn parse_snapshot_input(request: &RpcRequest) -> SnapshotInput {
         .unwrap_or_default();
 
     SnapshotInput {
-        session_id: parse_session_id(rpc_params.session),
+        session_id: parse_session_selector(rpc_params.session),
         region: rpc_params.region,
         strip_ansi: rpc_params.strip_ansi,
         include_cursor: rpc_params.include_cursor,
@@ -188,7 +199,7 @@ pub fn parse_keystroke_input(request: &RpcRequest) -> Result<KeystrokeInput, Rpc
     let key = request.require_str("key")?.to_string();
 
     Ok(KeystrokeInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
+        session_id: parse_session_selector(request.param_str("session").map(String::from)),
         key,
     })
 }
@@ -198,7 +209,7 @@ pub fn parse_type_input(request: &RpcRequest) -> Result<TypeInput, RpcResponse> 
     let text = request.require_str("text")?.to_string();
 
     Ok(TypeInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
+        session_id: parse_session_selector(request.param_str("session").map(String::from)),
         text,
     })
 }
@@ -208,7 +219,7 @@ pub fn parse_keydown_input(request: &RpcRequest) -> Result<KeydownInput, RpcResp
     let key = request.require_str("key")?.to_string();
 
     Ok(KeydownInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
+        session_id: parse_session_selector(request.param_str("session").map(String::from)),
         key,
     })
 }
@@ -218,7 +229,7 @@ pub fn parse_keyup_input(request: &RpcRequest) -> Result<KeyupInput, RpcResponse
     let key = request.require_str("key")?.to_string();
 
     Ok(KeyupInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
+        session_id: parse_session_selector(request.param_str("session").map(String::from)),
         key,
     })
 }
@@ -250,7 +261,7 @@ pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> 
     }
 
     Ok(WaitInput {
-        session_id: parse_session_id(rpc_params.session),
+        session_id: parse_session_selector(rpc_params.session),
         text: rpc_params.text,
         timeout_ms: rpc_params.timeout_ms,
         condition,
@@ -299,7 +310,7 @@ pub fn parse_resize_input(request: &RpcRequest) -> ResizeInput {
         });
 
     ResizeInput {
-        session_id: parse_session_id(rpc_params.session),
+        session_id: parse_session_selector(rpc_params.session),
         cols: rpc_params.cols,
         rows: rpc_params.rows,
     }
@@ -377,7 +388,7 @@ pub fn parse_assert_input(request: &RpcRequest) -> Result<AssertInput, RpcRespon
         .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid type: {}", e)))?;
 
     Ok(AssertInput {
-        session_id: parse_session_id(request.param_str("session").map(String::from)),
+        session_id: parse_session_selector(request.param_str("session").map(String::from)),
         condition_type,
         value,
     })
@@ -425,7 +436,7 @@ pub fn parse_terminal_write_input(request: &RpcRequest) -> Result<TerminalWriteI
         .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid base64: {}", e)))?;
 
     Ok(TerminalWriteInput {
-        session_id: parse_session_id(rpc_params.session),
+        session_id: parse_session_selector(rpc_params.session),
         data,
     })
 }
@@ -457,6 +468,36 @@ mod tests {
         let input = parse_snapshot_input(&request);
         assert!(input.strip_ansi);
         assert!(input.include_cursor);
+    }
+
+    #[test]
+    fn test_parse_session_selector_defaults_to_active() {
+        assert_eq!(parse_session_selector(None), None);
+        assert_eq!(parse_session_selector(Some(String::new())), None);
+        assert_eq!(parse_session_selector(Some("   ".to_string())), None);
+        assert_eq!(parse_session_selector(Some("active".to_string())), None);
+        assert_eq!(parse_session_selector(Some("  active  ".to_string())), None);
+    }
+
+    #[test]
+    fn test_parse_session_selector_keeps_explicit_id() {
+        let parsed = parse_session_selector(Some("sess-1".to_string())).expect("session id");
+        assert_eq!(parsed.as_str(), "sess-1");
+    }
+
+    #[test]
+    fn test_parse_spawn_input_keeps_active_as_explicit_id() {
+        let request = make_request(
+            1,
+            "spawn",
+            Some(json!({
+                "session": "active",
+                "command": "bash",
+            })),
+        );
+        let input = parse_spawn_input(&request).expect("spawn input");
+        let session_id = input.session_id.expect("spawn session id");
+        assert_eq!(session_id.as_str(), "active");
     }
 
     #[test]

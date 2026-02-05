@@ -63,6 +63,7 @@ pub use crate::infra::daemon::SessionError;
 
 const STREAM_MAX_BUFFER_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const PUMP_FLUSH_TIMEOUT: Duration = Duration::from_millis(50);
+const SESSION_QUERY_LOCK_TIMEOUT: Duration = Duration::from_millis(100);
 const STARTUP_TERMINATE_TIMEOUT: Duration = Duration::from_millis(500);
 const STARTUP_KILL_TIMEOUT: Duration = Duration::from_millis(500);
 const STARTUP_KILL_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -808,7 +809,24 @@ impl SessionManager {
     pub fn resolve(&self, session_id: Option<&str>) -> Result<Arc<Mutex<Session>>, SessionError> {
         match session_id {
             Some(id) => self.get(id),
-            None => self.active(),
+            None => {
+                if let Ok(active_session) = self.active() {
+                    match self.session_running_state(&active_session) {
+                        Some(true) | None => return Ok(active_session),
+                        Some(false) => {}
+                    }
+                }
+
+                if let Some((fallback_id, fallback_session)) = self.most_recent_running_session() {
+                    let mut active = rwlock_write_or_recover(&self.active_session);
+                    *active = Some(fallback_id);
+                    return Ok(fallback_session);
+                }
+
+                let mut active = rwlock_write_or_recover(&self.active_session);
+                *active = None;
+                Err(SessionError::NoActiveSession)
+            }
         }
     }
 
@@ -865,7 +883,7 @@ impl SessionManager {
     pub fn kill(&self, session_id: &str) -> Result<(), SessionError> {
         let id = SessionId::new(session_id);
 
-        let session = {
+        let (session, was_active) = {
             let mut sessions = rwlock_write_or_recover(&self.sessions);
             let mut active = rwlock_write_or_recover(&self.active_session);
 
@@ -873,11 +891,12 @@ impl SessionManager {
                 .remove(&id)
                 .ok_or_else(|| SessionError::NotFound(session_id.to_string()))?;
 
-            if active.as_ref() == Some(&id) {
+            let was_active = active.as_ref() == Some(&id);
+            if was_active {
                 *active = None;
             }
 
-            session
+            (session, was_active)
         };
 
         {
@@ -894,6 +913,13 @@ impl SessionManager {
             warn!(session_id = session_id, error = %e, "Failed to remove session from persistence");
         }
 
+        if was_active
+            && let Some((fallback_id, _fallback_session)) = self.most_recent_running_session()
+        {
+            let mut active = rwlock_write_or_recover(&self.active_session);
+            *active = Some(fallback_id);
+        }
+
         Ok(())
     }
 
@@ -903,6 +929,58 @@ impl SessionManager {
 
     pub fn active_session_id(&self) -> Option<SessionId> {
         rwlock_read_or_recover(&self.active_session).clone()
+    }
+
+    fn session_running_state(&self, session: &Arc<Mutex<Session>>) -> Option<bool> {
+        use super::lock_helpers::acquire_session_lock;
+
+        acquire_session_lock(session, SESSION_QUERY_LOCK_TIMEOUT).map(|mut sess| sess.is_running())
+    }
+
+    fn most_recent_running_session(&self) -> Option<(SessionId, Arc<Mutex<Session>>)> {
+        use super::lock_helpers::acquire_session_lock;
+
+        let session_refs: Vec<(SessionId, Arc<Mutex<Session>>)> = {
+            let sessions = rwlock_read_or_recover(&self.sessions);
+            sessions
+                .iter()
+                .map(|(id, session)| (id.clone(), Arc::clone(session)))
+                .collect()
+        };
+
+        let mut selected: Option<(i64, SessionId, Arc<Mutex<Session>>)> = None;
+
+        for (id, session) in session_refs {
+            let created_at = {
+                let Some(mut sess) = acquire_session_lock(&session, SESSION_QUERY_LOCK_TIMEOUT)
+                else {
+                    continue;
+                };
+
+                if !sess.is_running() {
+                    None
+                } else {
+                    Some(sess.created_at.timestamp_micros())
+                }
+            };
+
+            let Some(created_at) = created_at else {
+                continue;
+            };
+            let replace = match selected.as_ref() {
+                Some((best_created, best_id, _)) => {
+                    created_at > *best_created
+                        || (created_at == *best_created && id.as_str() > best_id.as_str())
+                }
+                None => true,
+            };
+
+            if replace {
+                selected = Some((created_at, id, session));
+            }
+        }
+
+        selected.map(|(_, id, session)| (id, session))
     }
 }
 
@@ -1755,6 +1833,42 @@ mod tests {
         }
     }
 
+    struct SessionCleanup<'a> {
+        manager: &'a SessionManager,
+        session_ids: Vec<SessionId>,
+    }
+
+    impl<'a> SessionCleanup<'a> {
+        fn new(manager: &'a SessionManager) -> Self {
+            Self {
+                manager,
+                session_ids: Vec::new(),
+            }
+        }
+
+        fn track(&mut self, session_id: SessionId) -> SessionId {
+            self.session_ids.push(session_id.clone());
+            session_id
+        }
+    }
+
+    impl Drop for SessionCleanup<'_> {
+        fn drop(&mut self) {
+            for session_id in self.session_ids.drain(..) {
+                let _ = self.manager.kill(session_id.as_str());
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    fn spawn_session_or_skip(manager: &SessionManager, session_id: &str) -> Option<SessionId> {
+        match manager.spawn("sh", &[], None, None, Some(session_id.to_string()), 80, 24) {
+            Ok((id, _)) => Some(id),
+            Err(SessionError::Terminal(_)) => None,
+            Err(e) => panic!("unexpected spawn error: {e}"),
+        }
+    }
+
     #[test]
     fn test_persisted_session_serialization() {
         let session = PersistedSession {
@@ -1815,6 +1929,176 @@ mod tests {
         ));
 
         let _ = manager.kill(&session_id);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_resolve_without_active_falls_back_to_most_recent_running_session() {
+        let _env_lock = env_lock();
+        let temp_home = tempdir().unwrap();
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
+
+        let manager = SessionManager::with_max_sessions(4);
+        let mut cleanup = SessionCleanup::new(&manager);
+
+        let older = match spawn_session_or_skip(&manager, "older-running") {
+            Some(id) => cleanup.track(id),
+            None => return,
+        };
+        std::thread::sleep(Duration::from_millis(5));
+        let newer = match spawn_session_or_skip(&manager, "newer-running") {
+            Some(id) => cleanup.track(id),
+            None => return,
+        };
+
+        {
+            let mut active = rwlock_write_or_recover(&manager.active_session);
+            *active = None;
+        }
+
+        let resolved = manager
+            .resolve(None)
+            .expect("resolve should return fallback session");
+        let resolved_id = mutex_lock_or_recover(&resolved).id.clone();
+
+        assert_eq!(resolved_id, newer);
+        assert_ne!(resolved_id, older);
+        assert_eq!(manager.active_session_id(), Some(newer));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_resolve_repairs_stale_active_session_with_running_fallback() {
+        let _env_lock = env_lock();
+        let temp_home = tempdir().unwrap();
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
+
+        let manager = SessionManager::with_max_sessions(4);
+        let mut cleanup = SessionCleanup::new(&manager);
+
+        let fallback = match spawn_session_or_skip(&manager, "fallback-running") {
+            Some(id) => cleanup.track(id),
+            None => return,
+        };
+
+        {
+            let mut active = rwlock_write_or_recover(&manager.active_session);
+            *active = Some(SessionId::new("stale-active-id"));
+        }
+
+        let resolved = manager
+            .resolve(None)
+            .expect("resolve should repair stale active");
+        let resolved_id = mutex_lock_or_recover(&resolved).id.clone();
+
+        assert_eq!(resolved_id, fallback);
+        assert_eq!(manager.active_session_id(), Some(fallback));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_kill_promotes_most_recent_remaining_running_session_to_active() {
+        let _env_lock = env_lock();
+        let temp_home = tempdir().unwrap();
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
+
+        let manager = SessionManager::with_max_sessions(4);
+        let mut cleanup = SessionCleanup::new(&manager);
+
+        let older = match spawn_session_or_skip(&manager, "older-remaining") {
+            Some(id) => cleanup.track(id),
+            None => return,
+        };
+        std::thread::sleep(Duration::from_millis(5));
+        let active = match spawn_session_or_skip(&manager, "active-to-kill") {
+            Some(id) => cleanup.track(id),
+            None => return,
+        };
+
+        assert_eq!(manager.active_session_id(), Some(active.clone()));
+
+        manager
+            .kill(active.as_str())
+            .expect("kill should succeed for active session");
+
+        assert_eq!(manager.active_session_id(), Some(older.clone()));
+        let resolved = manager
+            .resolve(None)
+            .expect("resolve should use promoted active");
+        assert_eq!(mutex_lock_or_recover(&resolved).id, older);
+    }
+
+    #[test]
+    fn test_resolve_without_running_sessions_returns_no_active_session() {
+        let _env_lock = env_lock();
+        let temp_home = tempdir().unwrap();
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
+
+        let manager = SessionManager::with_max_sessions(1);
+        {
+            let mut active = rwlock_write_or_recover(&manager.active_session);
+            *active = Some(SessionId::new("stale-active-id"));
+        }
+
+        let result = manager.resolve(None);
+        assert!(matches!(result, Err(SessionError::NoActiveSession)));
+        assert!(manager.active_session_id().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_resolve_with_explicit_session_id_does_not_reroute() {
+        let _env_lock = env_lock();
+        let temp_home = tempdir().unwrap();
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
+
+        let manager = SessionManager::with_max_sessions(4);
+        let mut cleanup = SessionCleanup::new(&manager);
+
+        let requested = match spawn_session_or_skip(&manager, "explicit-target") {
+            Some(id) => cleanup.track(id),
+            None => return,
+        };
+        let _other = match spawn_session_or_skip(&manager, "other-running") {
+            Some(id) => cleanup.track(id),
+            None => return,
+        };
+
+        {
+            let mut active = rwlock_write_or_recover(&manager.active_session);
+            *active = None;
+        }
+
+        let resolved = manager
+            .resolve(Some(requested.as_str()))
+            .expect("explicit session resolution should succeed");
+        assert_eq!(mutex_lock_or_recover(&resolved).id, requested);
+        assert!(manager.active_session_id().is_none());
     }
 
     #[test]

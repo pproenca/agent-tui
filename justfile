@@ -38,7 +38,20 @@ lint:
 
 # Run test suite.
 test:
-    cargo test --workspace --lib --test cli_smoke --test cli_contracts
+    cargo test --workspace --lib --test cli_smoke --test cli_contracts --test cli_command_contracts
+
+# Run slow, core-runtime command E2E coverage.
+test-core-e2e:
+    cargo test -p agent-tui --features slow-tests --test system_e2e
+
+# Verify generated CLI docs are up-to-date.
+check-cli-docs-sync:
+    cargo run -p agent-tui --bin agent-tui-cli-docs
+    git diff --exit-code -- ../docs/cli/agent-tui.md
+
+# Verify skill docs do not reference unsupported CLI commands/flags.
+check-skill-docs-sync:
+    ../scripts/check-skill-docs-sync.sh
 
 # Build Rust workspace (ensures embedded web UI is fresh).
 build: web-sync

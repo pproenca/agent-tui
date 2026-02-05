@@ -16,7 +16,7 @@ description: >
 - If you used the install script, ensure `~/.local/bin` is on your PATH.
 - Start a session: `agent-tui run --format json <command> -- <args...>`
 - Observe: `agent-tui screenshot --format json`
-- Act: `agent-tui press Enter` or `agent-tui type "text"` or `agent-tui scroll down 5`
+- Act: `agent-tui press Enter` or `agent-tui type "text"`
 - Wait or verify: `agent-tui wait "Expected text" --assert` or `agent-tui wait --stable`
 - Cleanup: `agent-tui kill`
 
@@ -24,7 +24,7 @@ description: >
 1. Run the app with `agent-tui run` and capture `session_id` from JSON output.
 2. Take a fresh snapshot with `agent-tui screenshot` or `agent-tui screenshot --format json`.
 3. Decide the next action based on the latest snapshot.
-4. Act with `press`, `type`, or `scroll`.
+4. Act with `press` or `type`.
 5. Synchronize with `wait --assert` or `wait --stable`.
 6. Repeat from step 2 until the task finishes.
 7. Clean up with `agent-tui kill`.

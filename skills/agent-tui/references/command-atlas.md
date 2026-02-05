@@ -7,7 +7,6 @@ Use this file when you need complete CLI coverage and exact options.
 - `--format <text|json>`: output format.
 - `--json`: shorthand for `--format json`.
 - `--no-color`: disable color (also respects `NO_COLOR`).
-- `--verbose`: print request timing.
 
 ## Core Commands
 
@@ -24,9 +23,6 @@ Use this file when you need complete CLI coverage and exact options.
   - `--region <name>`: limit capture to region (if supported).
   - `--strip-ansi`: remove ANSI color codes.
   - `--include-cursor`: include cursor position.
-
-### Scroll
-- `agent-tui scroll <up|down|left|right> [amount]`
 
 ### Resize / Restart
 - `agent-tui resize --cols <n> --rows <n>`

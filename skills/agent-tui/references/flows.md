@@ -11,7 +11,6 @@ Use this file when you need a complete, end-to-end command sequence.
 4) Act based on the latest screen:
    - `agent-tui --session <id> type "value"`
    - `agent-tui --session <id> press Enter`
-   - `agent-tui --session <id> scroll down 5`
 5) Wait for expected state:
    - `agent-tui --session <id> wait "Expected text" --assert`
 6) Repeat steps 3-5 until the flow finishes.

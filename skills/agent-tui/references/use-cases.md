@@ -3,7 +3,7 @@
 Use this file when selecting a minimal command set for a task.
 
 ## Basic Automation Loop
-- Commands: `run` -> `screenshot` -> `press/type/scroll` -> `wait --assert` -> `kill`.
+- Commands: `run` -> `screenshot` -> `press/type` -> `wait --assert` -> `kill`.
 - Re-snapshot after each action.
 
 ## Form Entry

@@ -912,6 +912,10 @@ mod tests {
                 env::set_var("AGENT_TUI_SOCKET", &socket_path);
             }
 
+            // Use stub to prevent spawning a real daemon process.
+            crate::infra::ipc::transport::USE_DAEMON_START_STUB
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+
             let app = Application::new();
             let cli = Cli {
                 command: Commands::Daemon(DaemonCommand::Start {}),
@@ -921,14 +925,16 @@ mod tests {
                 no_color: true,
             };
 
-            // Verify daemon start IS handled as standalone (returns Ok(true) or error)
-            // This test runs without a daemon, so start will either succeed or fail,
-            // but importantly it returns Ok(true) indicating "handled" (not Ok(false))
             let result = app.handle_standalone_commands(&cli);
             // Error is acceptable (daemon may fail to start), but it was handled
             if let Ok(handled) = result {
                 assert!(handled, "daemon start should be handled as standalone");
             }
+
+            // Clean up stub state.
+            crate::infra::ipc::transport::USE_DAEMON_START_STUB
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            crate::infra::ipc::transport::clear_test_listener();
         }
 
         #[test]
@@ -940,6 +946,10 @@ mod tests {
             unsafe {
                 env::set_var("AGENT_TUI_SOCKET", &socket_path);
             }
+
+            // Use stub to prevent spawning a real daemon process.
+            crate::infra::ipc::transport::USE_DAEMON_START_STUB
+                .store(true, std::sync::atomic::Ordering::SeqCst);
 
             let app = Application::new();
             let cli = Cli {
@@ -955,6 +965,11 @@ mod tests {
             if let Ok(handled) = result {
                 assert!(handled, "daemon restart should be handled as standalone");
             }
+
+            // Clean up stub state.
+            crate::infra::ipc::transport::USE_DAEMON_START_STUB
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            crate::infra::ipc::transport::clear_test_listener();
         }
     }
 }

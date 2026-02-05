@@ -108,6 +108,14 @@ function normalizedSessionValue(value: string): string {
   return trimmed.length === 0 ? "active" : trimmed;
 }
 
+function livePreviewStreamParams(): Record<string, string> | undefined {
+  const session = normalizedSessionValue(config.session);
+  if (session === "active") {
+    return undefined;
+  }
+  return { session };
+}
+
 function showTerminationNotice() {
   if (!closedNoticeSent) {
     closedNoticeSent = true;
@@ -417,14 +425,16 @@ async function connect() {
       return;
     }
 
-    ws.send(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: socketState.streamId,
-        method: "live_preview_stream",
-        params: { session: normalizedSessionValue(config.session) },
-      }),
-    );
+    const payload: Record<string, unknown> = {
+      jsonrpc: "2.0",
+      id: socketState.streamId,
+      method: "live_preview_stream",
+    };
+    const params = livePreviewStreamParams();
+    if (params) {
+      payload.params = params;
+    }
+    ws.send(JSON.stringify(payload));
 
     setStatus("Connected", true);
     setButtonIcon(connectBtn, X);

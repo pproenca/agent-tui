@@ -4,6 +4,7 @@ use crate::adapters::attach_output_to_response;
 use crate::adapters::daemon::Router;
 use crate::adapters::daemon::UseCaseContainer;
 use crate::adapters::parse_attach_input;
+use crate::adapters::parse_session_selector;
 use crate::adapters::rpc::RpcRequest;
 use crate::adapters::rpc::RpcResponse;
 use crate::adapters::session_error_response;
@@ -17,7 +18,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
-use crate::domain::SessionId;
 use crate::infra::daemon::DaemonConfig;
 use crate::infra::daemon::SessionManager;
 use crate::infra::daemon::SystemClock;
@@ -304,10 +304,7 @@ impl RpcCore {
         request: RpcRequest,
     ) -> Result<(), RpcCoreError> {
         let req_id = request.id;
-        let session_param = request
-            .param_str("session")
-            .filter(|s| !s.trim().is_empty())
-            .map(SessionId::new);
+        let session_param = parse_live_preview_session_selector(&request);
 
         let session =
             match SessionRepository::resolve(self.session_manager.as_ref(), session_param.as_ref())
@@ -554,5 +551,40 @@ impl RpcCore {
                 writer.write_response(&response)?;
             }
         }
+    }
+}
+
+fn parse_live_preview_session_selector(request: &RpcRequest) -> Option<crate::domain::SessionId> {
+    parse_session_selector(request.param_str("session").map(String::from))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn make_request(params: Option<serde_json::Value>) -> RpcRequest {
+        RpcRequest::new(1, "live_preview_stream".to_string(), params)
+    }
+
+    #[test]
+    fn live_preview_selector_maps_active_to_none() {
+        let request = make_request(Some(json!({ "session": "active" })));
+        let parsed = parse_live_preview_session_selector(&request);
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn live_preview_selector_defaults_to_none_when_omitted() {
+        let request = make_request(None);
+        let parsed = parse_live_preview_session_selector(&request);
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn live_preview_selector_keeps_explicit_session_id() {
+        let request = make_request(Some(json!({ "session": "sess-1" })));
+        let parsed = parse_live_preview_session_selector(&request).expect("session id");
+        assert_eq!(parsed.as_str(), "sess-1");
     }
 }

@@ -1021,7 +1021,7 @@ mod tests {
             let socket_path = tmp.path().join("agent-tui-test.sock");
             let api_state = tmp.path().join("api.json");
             let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
-            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_API_STATE", &api_state);
+            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &api_state);
 
             let app = Application::new();
             let cli = make_cli(Commands::Live {
@@ -1044,7 +1044,7 @@ mod tests {
             let socket_path = tmp.path().join("agent-tui-test.sock");
             let api_state = tmp.path().join("api.json");
             let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
-            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_API_STATE", &api_state);
+            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &api_state);
 
             let app = Application::new();
             let cli = make_cli(Commands::Live {
@@ -1114,7 +1114,7 @@ mod tests {
             let api_state = tmp.path().join("api.json");
             std::fs::write(&api_state, r#"{"pid":1}"#).expect("write api state");
             let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
-            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_API_STATE", &api_state);
+            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &api_state);
 
             let app = Application::new();
             let cli = make_cli(Commands::Daemon(DaemonCommand::Stop { force: true }));

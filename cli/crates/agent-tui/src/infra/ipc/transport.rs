@@ -2,118 +2,297 @@
 
 use std::io::BufRead;
 use std::io::BufReader;
-use std::io::Read;
 use std::io::Write;
 use std::net::Shutdown;
-use std::net::SocketAddr;
 use std::net::TcpStream;
+use std::net::ToSocketAddrs;
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
 use crate::infra::ipc::error::ClientError;
 use crate::infra::ipc::polling;
 use crate::infra::ipc::socket::socket_path;
+use serde::Deserialize;
 use tracing::debug;
 use tracing::error;
 use tracing::warn;
+use tungstenite::Message;
+use tungstenite::WebSocket;
+use tungstenite::client::IntoClientRequest;
+use url::Url;
+
+const DEFAULT_TRANSPORT: &str = "unix";
+const DEFAULT_WS_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportKind {
     Unix,
-    Tcp,
+    Ws,
 }
 
 fn transport_kind() -> TransportKind {
-    let kind = match std::env::var("AGENT_TUI_TRANSPORT")
-        .unwrap_or_else(|_| "unix".to_string())
-        .to_lowercase()
-        .as_str()
-    {
-        "tcp" => TransportKind::Tcp,
-        _ => TransportKind::Unix,
+    let raw = std::env::var("AGENT_TUI_TRANSPORT")
+        .unwrap_or_else(|_| DEFAULT_TRANSPORT.to_string())
+        .to_ascii_lowercase();
+    let kind = match raw.as_str() {
+        "unix" => TransportKind::Unix,
+        "ws" | "websocket" => TransportKind::Ws,
+        other => {
+            warn!(
+                transport = %other,
+                "Unknown AGENT_TUI_TRANSPORT value; defaulting to unix"
+            );
+            TransportKind::Unix
+        }
     };
     debug!(transport = ?kind, "IPC transport selected");
     kind
 }
 
-fn tcp_addr_from_env() -> Option<SocketAddr> {
-    std::env::var("AGENT_TUI_TCP_ADDR")
+#[derive(Debug, Deserialize)]
+struct WsStateFile {
+    ws_url: String,
+}
+
+fn ws_state_path_from_env() -> std::path::PathBuf {
+    if let Ok(path) = std::env::var("AGENT_TUI_WS_STATE") {
+        return std::path::PathBuf::from(path);
+    }
+    if let Ok(path) = std::env::var("AGENT_TUI_API_STATE") {
+        return std::path::PathBuf::from(path);
+    }
+    let home = std::env::var("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+    home.join(".agent-tui").join("api.json")
+}
+
+fn ws_addr_from_state() -> Option<Url> {
+    let path = ws_state_path_from_env();
+    let contents = std::fs::read_to_string(path).ok()?;
+    let state: WsStateFile = serde_json::from_str(&contents).ok()?;
+    Url::parse(state.ws_url.trim()).ok()
+}
+
+fn ws_addr_from_env() -> Option<Url> {
+    std::env::var("AGENT_TUI_WS_ADDR")
         .ok()
-        .and_then(|addr| addr.parse::<SocketAddr>().ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .and_then(|value| Url::parse(&value).ok())
 }
 
 pub fn default_transport() -> std::sync::Arc<dyn IpcTransport> {
     match transport_kind() {
         TransportKind::Unix => std::sync::Arc::new(UnixSocketTransport),
-        TransportKind::Tcp => std::sync::Arc::new(TcpSocketTransport::from_env()),
+        TransportKind::Ws => std::sync::Arc::new(WsSocketTransport::from_env()),
     }
 }
 
-pub enum ClientStream {
-    Unix(UnixStream),
-    Tcp(TcpStream),
+pub(crate) struct UnixMessageConnection {
+    reader: BufReader<UnixStream>,
+    writer: UnixStream,
 }
 
-impl ClientStream {
-    pub fn try_clone(&self) -> Result<Self, ClientError> {
-        match self {
-            Self::Unix(stream) => Ok(Self::Unix(stream.try_clone()?)),
-            Self::Tcp(stream) => Ok(Self::Tcp(stream.try_clone()?)),
-        }
+impl UnixMessageConnection {
+    fn new(stream: UnixStream) -> Result<Self, ClientError> {
+        let reader_stream = stream.try_clone()?;
+        Ok(Self {
+            reader: BufReader::new(reader_stream),
+            writer: stream,
+        })
+    }
+}
+
+pub(crate) struct WsMessageConnection {
+    socket: WebSocket<TcpStream>,
+}
+
+fn ws_error_to_client(err: tungstenite::Error) -> ClientError {
+    match err {
+        tungstenite::Error::Io(io_err) => ClientError::ConnectionFailed(io_err),
+        other => ClientError::UnexpectedResponse {
+            message: format!("websocket error: {other}"),
+        },
+    }
+}
+
+fn set_ws_timeouts(
+    stream: &mut TcpStream,
+    read_timeout: Option<Duration>,
+    write_timeout: Option<Duration>,
+) -> Result<(), ClientError> {
+    stream.set_read_timeout(read_timeout)?;
+    stream.set_write_timeout(write_timeout)?;
+    Ok(())
+}
+
+fn shutdown_ws_stream(stream: &mut TcpStream) -> Result<(), ClientError> {
+    stream.shutdown(Shutdown::Both)?;
+    Ok(())
+}
+
+fn connect_ws_socket(url: &Url) -> Result<WebSocket<TcpStream>, ClientError> {
+    if url.scheme() != "ws" {
+        return Err(ClientError::UnexpectedResponse {
+            message: format!(
+                "unsupported websocket scheme '{}'; only ws:// is supported",
+                url.scheme()
+            ),
+        });
     }
 
-    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> Result<(), ClientError> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| ClientError::UnexpectedResponse {
+            message: "websocket URL is missing a host".to_string(),
+        })?;
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| ClientError::UnexpectedResponse {
+            message: "websocket URL is missing a port".to_string(),
+        })?;
+    let mut addrs = (host, port)
+        .to_socket_addrs()
+        .map_err(ClientError::ConnectionFailed)?;
+    let addr = addrs
+        .next()
+        .ok_or_else(|| ClientError::UnexpectedResponse {
+            message: format!("failed to resolve websocket host '{host}:{port}'"),
+        })?;
+
+    let stream = TcpStream::connect_timeout(&addr, DEFAULT_WS_CONNECT_TIMEOUT)?;
+    stream.set_nodelay(true)?;
+
+    let request =
+        url.as_str()
+            .into_client_request()
+            .map_err(|err| ClientError::UnexpectedResponse {
+                message: format!("invalid websocket URL: {err}"),
+            })?;
+
+    let (mut socket, _response) =
+        tungstenite::client::client(request, stream).map_err(|err| match err {
+            tungstenite::HandshakeError::Failure(ws_err) => ws_error_to_client(ws_err),
+            tungstenite::HandshakeError::Interrupted(_) => ClientError::UnexpectedResponse {
+                message: "websocket handshake interrupted".to_string(),
+            },
+        })?;
+    set_ws_timeouts(
+        socket.get_mut(),
+        Some(DEFAULT_READ_TIMEOUT),
+        Some(DEFAULT_WRITE_TIMEOUT),
+    )?;
+    Ok(socket)
+}
+
+pub enum ClientConnection {
+    Unix(UnixMessageConnection),
+    Ws(WsMessageConnection),
+}
+
+impl ClientConnection {
+    pub fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<(), ClientError> {
         match self {
-            Self::Unix(stream) => stream.set_read_timeout(timeout)?,
-            Self::Tcp(stream) => stream.set_read_timeout(timeout)?,
+            Self::Unix(conn) => conn.writer.set_read_timeout(timeout)?,
+            Self::Ws(conn) => {
+                let write_timeout = conn
+                    .socket
+                    .get_mut()
+                    .write_timeout()
+                    .map_err(ClientError::ConnectionFailed)?;
+                set_ws_timeouts(conn.socket.get_mut(), timeout, write_timeout)?;
+            }
         }
         Ok(())
     }
 
-    pub fn set_write_timeout(&self, timeout: Option<Duration>) -> Result<(), ClientError> {
+    pub fn set_write_timeout(&mut self, timeout: Option<Duration>) -> Result<(), ClientError> {
         match self {
-            Self::Unix(stream) => stream.set_write_timeout(timeout)?,
-            Self::Tcp(stream) => stream.set_write_timeout(timeout)?,
+            Self::Unix(conn) => conn.writer.set_write_timeout(timeout)?,
+            Self::Ws(conn) => {
+                let read_timeout = conn
+                    .socket
+                    .get_mut()
+                    .read_timeout()
+                    .map_err(ClientError::ConnectionFailed)?;
+                set_ws_timeouts(conn.socket.get_mut(), read_timeout, timeout)?;
+            }
         }
         Ok(())
     }
 
-    pub fn shutdown(&self) -> Result<(), ClientError> {
+    pub fn send_message(&mut self, message: &str) -> Result<(), ClientError> {
         match self {
-            Self::Unix(stream) => stream.shutdown(Shutdown::Both)?,
-            Self::Tcp(stream) => stream.shutdown(Shutdown::Both)?,
+            Self::Unix(conn) => {
+                writeln!(conn.writer, "{message}")?;
+                conn.writer.flush()?;
+            }
+            Self::Ws(conn) => {
+                conn.socket
+                    .send(Message::Text(message.to_string().into()))
+                    .map_err(ws_error_to_client)?;
+            }
         }
         Ok(())
     }
-}
 
-impl Read for ClientStream {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    pub fn read_message(&mut self) -> Result<Option<String>, ClientError> {
         match self {
-            Self::Unix(stream) => stream.read(buf),
-            Self::Tcp(stream) => stream.read(buf),
+            Self::Unix(conn) => {
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    let bytes = conn.reader.read_line(&mut line)?;
+                    if bytes == 0 {
+                        return Ok(None);
+                    }
+                    let trimmed = line.trim_end_matches(['\r', '\n']);
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    return Ok(Some(trimmed.to_string()));
+                }
+            }
+            Self::Ws(conn) => loop {
+                match conn.socket.read() {
+                    Ok(Message::Text(text)) => return Ok(Some(text.to_string())),
+                    Ok(Message::Binary(_)) => {
+                        return Err(ClientError::UnexpectedResponse {
+                            message: "received binary websocket frame; expected text JSON-RPC"
+                                .to_string(),
+                        });
+                    }
+                    Ok(Message::Close(_)) => return Ok(None),
+                    Ok(Message::Ping(payload)) => {
+                        conn.socket
+                            .send(Message::Pong(payload))
+                            .map_err(ws_error_to_client)?;
+                    }
+                    Ok(Message::Pong(_)) => {}
+                    Ok(_) => {}
+                    Err(err) => return Err(ws_error_to_client(err)),
+                }
+            },
         }
     }
-}
 
-impl Write for ClientStream {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    pub fn shutdown(&mut self) -> Result<(), ClientError> {
         match self {
-            Self::Unix(stream) => stream.write(buf),
-            Self::Tcp(stream) => stream.write(buf),
+            Self::Unix(conn) => conn.writer.shutdown(Shutdown::Both)?,
+            Self::Ws(conn) => {
+                let _ = conn.socket.close(None);
+                shutdown_ws_stream(conn.socket.get_mut())?;
+            }
         }
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        match self {
-            Self::Unix(stream) => stream.flush(),
-            Self::Tcp(stream) => stream.flush(),
-        }
+        Ok(())
     }
 }
 
 pub trait IpcTransport: Send + Sync {
-    fn connect_stream(&self) -> Result<ClientStream, ClientError>;
+    fn connect_connection(&self) -> Result<ClientConnection, ClientError>;
     fn is_daemon_running(&self) -> bool;
 
     fn supports_autostart(&self) -> bool {
@@ -128,14 +307,15 @@ pub trait IpcTransport: Send + Sync {
 pub struct UnixSocketTransport;
 
 impl IpcTransport for UnixSocketTransport {
-    fn connect_stream(&self) -> Result<ClientStream, ClientError> {
+    fn connect_connection(&self) -> Result<ClientConnection, ClientError> {
         let path = socket_path();
         if !path.exists() {
             debug!(socket = %path.display(), "Daemon socket missing");
             return Err(ClientError::DaemonNotRunning);
         }
         debug!(socket = %path.display(), "Connecting to daemon socket");
-        Ok(ClientStream::Unix(UnixStream::connect(&path)?))
+        let stream = UnixStream::connect(&path)?;
+        Ok(ClientConnection::Unix(UnixMessageConnection::new(stream)?))
     }
 
     fn is_daemon_running(&self) -> bool {
@@ -155,37 +335,38 @@ impl IpcTransport for UnixSocketTransport {
     }
 }
 
-pub struct TcpSocketTransport {
-    addr: Option<SocketAddr>,
+pub struct WsSocketTransport {
+    addr: Option<Url>,
 }
 
-impl TcpSocketTransport {
-    pub fn new(addr: SocketAddr) -> Self {
+impl WsSocketTransport {
+    pub fn new(addr: Url) -> Self {
         Self { addr: Some(addr) }
     }
 
     fn from_env() -> Self {
         Self {
-            addr: tcp_addr_from_env(),
+            addr: ws_addr_from_env().or_else(ws_addr_from_state),
         }
     }
 }
 
-impl IpcTransport for TcpSocketTransport {
-    fn connect_stream(&self) -> Result<ClientStream, ClientError> {
-        let Some(addr) = self.addr else {
-            debug!("TCP transport configured without address");
+impl IpcTransport for WsSocketTransport {
+    fn connect_connection(&self) -> Result<ClientConnection, ClientError> {
+        let Some(addr) = self.addr.as_ref() else {
+            debug!("WS transport configured without AGENT_TUI_WS_ADDR and no state file");
             return Err(ClientError::DaemonNotRunning);
         };
-        debug!(addr = %addr, "Connecting to daemon TCP socket");
-        Ok(ClientStream::Tcp(TcpStream::connect(addr)?))
+        debug!(addr = %addr, "Connecting to daemon websocket");
+        let socket = connect_ws_socket(addr)?;
+        Ok(ClientConnection::Ws(WsMessageConnection { socket }))
     }
 
     fn is_daemon_running(&self) -> bool {
-        let Some(addr) = self.addr else {
+        let Some(addr) = self.addr.as_ref() else {
             return false;
         };
-        TcpStream::connect(addr).is_ok()
+        connect_ws_socket(addr).is_ok()
     }
 }
 
@@ -205,7 +386,7 @@ impl InMemoryTransport {
 }
 
 impl IpcTransport for InMemoryTransport {
-    fn connect_stream(&self) -> Result<ClientStream, ClientError> {
+    fn connect_connection(&self) -> Result<ClientConnection, ClientError> {
         let (client, mut server) = UnixStream::pair()?;
         let handler = self.handler.clone();
 
@@ -242,7 +423,7 @@ impl IpcTransport for InMemoryTransport {
             })
             .map_err(|err| ClientError::ConnectionFailed(std::io::Error::other(err.to_string())))?;
 
-        Ok(ClientStream::Unix(client))
+        Ok(ClientConnection::Unix(UnixMessageConnection::new(client)?))
     }
 
     fn is_daemon_running(&self) -> bool {

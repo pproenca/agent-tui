@@ -310,7 +310,8 @@ impl RpcCore {
             .map(SessionId::new);
 
         let session =
-            match SessionRepository::resolve(self.session_manager.as_ref(), session_param.as_ref()) {
+            match SessionRepository::resolve(self.session_manager.as_ref(), session_param.as_ref())
+            {
                 Ok(session) => session,
                 Err(err) => {
                     let response = session_error_response(req_id, err);

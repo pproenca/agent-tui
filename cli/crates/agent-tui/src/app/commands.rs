@@ -32,17 +32,18 @@ OUTPUT:
     --format text  Human-readable text (default)
 
 CONFIGURATION:
-    AGENT_TUI_TRANSPORT         IPC transport (unix or tcp; default: unix)
-    AGENT_TUI_TCP_PORT          TCP port when transport is tcp
+    AGENT_TUI_TRANSPORT         IPC transport (unix or ws; default: unix)
+    AGENT_TUI_WS_ADDR           Remote WS-RPC target when transport is ws (e.g. ws://host:port/ws)
     AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-Q)
     AGENT_TUI_DAEMON_FOREGROUND Run daemon start in foreground (internal)
-    AGENT_TUI_API_LISTEN        API bind address (default: 127.0.0.1:0)
-    AGENT_TUI_API_ALLOW_REMOTE  Allow non-loopback bind (default: false)
-    AGENT_TUI_API_TOKEN         Override token (or 'none' to disable)
-    AGENT_TUI_API_STATE         State file path (default: ~/.agent-tui/api.json)
-    AGENT_TUI_API_DISABLED      Disable API server (default: false)
-    AGENT_TUI_API_MAX_CONNECTIONS  Max WebSocket connections (default: 32)
-    AGENT_TUI_API_WS_QUEUE      API websocket queue size (default: 128)
+    AGENT_TUI_WS_LISTEN         Daemon WS bind address (default: 127.0.0.1:0)
+    AGENT_TUI_WS_ALLOW_REMOTE   Allow non-loopback WS bind (default: false)
+    AGENT_TUI_WS_STATE          Daemon WS state file path (default: ~/.agent-tui/api.json)
+    AGENT_TUI_WS_DISABLED       Disable daemon WS server (default: false)
+    AGENT_TUI_WS_MAX_CONNECTIONS  Max WebSocket connections (default: 32)
+    AGENT_TUI_WS_QUEUE          WS outbound queue size (default: 128)
+    AGENT_TUI_API_LISTEN / AGENT_TUI_API_ALLOW_REMOTE / AGENT_TUI_API_STATE
+                              Deprecated aliases for WS settings
     AGENT_TUI_SESSION_STORE     Session metadata log path (default: ~/.agent-tui/sessions.jsonl)
     AGENT_TUI_LOG               Log file path (optional)
     AGENT_TUI_LOG_FORMAT        Log format (text or json; default: text)
@@ -323,21 +324,19 @@ EXAMPLES:
 
     /// Live preview API for the current session
     #[command(long_about = "\
-Show the daemon's live preview API endpoints.
+Show the daemon's live preview WebSocket endpoints.
 
-The daemon exposes HTTP + WebSocket endpoints for live preview by default.
-The daemon also serves a built-in web UI at /ui.
-Use this command to print the URLs and token so external frontends can connect.
+The daemon serves a built-in web UI at /ui and exposes JSON-RPC over WebSocket at /ws.
+Use this command to print WS/UI URLs so external frontends can connect.
 
 CONFIGURATION:
-    AGENT_TUI_API_LISTEN         Bind address (default: 127.0.0.1:0)
-    AGENT_TUI_API_ALLOW_REMOTE   Allow non-loopback bind (default: false)
-    AGENT_TUI_API_TOKEN          Override token (or 'none' to disable)
-    AGENT_TUI_API_STATE          State file path (default: ~/.agent-tui/api.json)
-    AGENT_TUI_UI_URL             External UI URL to open with --open (CLI appends api/ws/token/session)
+    AGENT_TUI_WS_LISTEN          Bind address (default: 127.0.0.1:0)
+    AGENT_TUI_WS_ALLOW_REMOTE    Allow non-loopback bind (default: false)
+    AGENT_TUI_WS_STATE           State file path (default: ~/.agent-tui/api.json)
+    AGENT_TUI_UI_URL             External UI URL to open with --open (CLI appends ws/session/auto)
 
 SECURITY:
-    API is token-protected by default. Use --allow-remote only when needed.")]
+    Remote exposure is opt-in. Set AGENT_TUI_WS_ALLOW_REMOTE=1 for non-loopback binds.")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui live start
@@ -472,7 +471,7 @@ pub enum LiveCommand {
 
 #[derive(Debug, Clone, Default, Args)]
 pub struct LiveStartArgs {
-    /// Deprecated (use AGENT_TUI_API_LISTEN and restart the daemon)
+    /// Deprecated (use AGENT_TUI_WS_LISTEN and restart the daemon)
     #[arg(
         short = 'l',
         long,
@@ -483,7 +482,7 @@ pub struct LiveStartArgs {
     )]
     pub listen: Option<String>,
 
-    /// Deprecated (use AGENT_TUI_API_ALLOW_REMOTE and restart the daemon)
+    /// Deprecated (use AGENT_TUI_WS_ALLOW_REMOTE and restart the daemon)
     #[arg(long, help_heading = "Deprecated")]
     pub allow_remote: bool,
 
@@ -495,11 +494,11 @@ pub struct LiveStartArgs {
     #[arg(long, value_name = "CMD", value_hint = ValueHint::CommandName)]
     pub browser: Option<String>,
 
-    /// Deprecated (use AGENT_TUI_API_MAX_CONNECTIONS and restart the daemon)
+    /// Deprecated (use AGENT_TUI_WS_MAX_CONNECTIONS and restart the daemon)
     #[arg(
         long,
         value_name = "COUNT",
-        env = "AGENT_TUI_API_MAX_CONNECTIONS",
+        env = "AGENT_TUI_WS_MAX_CONNECTIONS",
         help_heading = "Deprecated"
     )]
     pub max_viewers: Option<u16>,

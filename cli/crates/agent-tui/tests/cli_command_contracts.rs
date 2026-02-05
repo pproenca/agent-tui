@@ -76,7 +76,7 @@ fn setup_mixed_sessions(harness: &TestHarness) {
 struct StandaloneEnv {
     _temp_dir: TempDir,
     socket_path: PathBuf,
-    api_state_path: PathBuf,
+    ws_state_path: PathBuf,
     session_store_path: PathBuf,
     ui_state_path: PathBuf,
 }
@@ -92,7 +92,7 @@ impl StandaloneEnv {
         }
         Self {
             socket_path: temp_dir.path().join("daemon.sock"),
-            api_state_path: temp_dir.path().join("api.json"),
+            ws_state_path: temp_dir.path().join("api.json"),
             session_store_path: temp_dir.path().join("sessions.jsonl"),
             ui_state_path: temp_dir.path().join("ui.json"),
             _temp_dir: temp_dir,
@@ -102,7 +102,7 @@ impl StandaloneEnv {
     fn cli_command(&self) -> Command {
         let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("agent-tui"));
         cmd.env("AGENT_TUI_SOCKET", &self.socket_path)
-            .env("AGENT_TUI_API_STATE", &self.api_state_path)
+            .env("AGENT_TUI_WS_STATE", &self.ws_state_path)
             .env("AGENT_TUI_SESSION_STORE", &self.session_store_path)
             .env("AGENT_TUI_UI_STATE", &self.ui_state_path)
             .env("NO_COLOR", "1");
@@ -116,14 +116,13 @@ impl StandaloneEnv {
     fn write_api_state(&self) {
         let data = json!({
             "pid": std::process::id(),
-            "http_url": "http://127.0.0.1:43210/",
             "ws_url": "ws://127.0.0.1:43210/ws",
+            "ui_url": "http://127.0.0.1:43210/ui",
             "listen": "127.0.0.1:43210",
-            "token": "test-token",
-            "api_version": "1"
+            "started_at": 1735689600
         });
         fs::write(
-            &self.api_state_path,
+            &self.ws_state_path,
             serde_json::to_string_pretty(&data).expect("serialize api state"),
         )
         .expect("write api state");
@@ -132,7 +131,7 @@ impl StandaloneEnv {
     fn stop_daemon_best_effort(&self) {
         let _ = StdCommand::new(assert_cmd::cargo::cargo_bin!("agent-tui"))
             .env("AGENT_TUI_SOCKET", &self.socket_path)
-            .env("AGENT_TUI_API_STATE", &self.api_state_path)
+            .env("AGENT_TUI_WS_STATE", &self.ws_state_path)
             .args(["daemon", "stop", "--force"])
             .output();
     }
@@ -396,7 +395,7 @@ fn live_start_alias_and_deprecated_flags_contract() {
 
     harness
         .cli_command()
-        .env("AGENT_TUI_API_STATE", &env.api_state_path)
+        .env("AGENT_TUI_WS_STATE", &env.ws_state_path)
         .args([
             "--format",
             "json",
@@ -411,13 +410,13 @@ fn live_start_alias_and_deprecated_flags_contract() {
         .assert()
         .success()
         .stderr(predicate::str::contains(
-            "Live preview is now served by the daemon API",
+            "Live preview is now served by the daemon WebSocket server",
         ))
         .stdout(predicate::str::contains("\"running\": true"));
 
     harness
         .cli_command()
-        .env("AGENT_TUI_API_STATE", &env.api_state_path)
+        .env("AGENT_TUI_WS_STATE", &env.ws_state_path)
         .args(["--format", "json", "live", "info"])
         .assert()
         .success()

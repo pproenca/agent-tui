@@ -3,7 +3,7 @@
 pub mod rpc_core;
 pub mod server;
 pub mod transport;
-pub mod ws_server;
 mod usecase_container;
+pub mod ws_server;
 
 pub use server::start_daemon;

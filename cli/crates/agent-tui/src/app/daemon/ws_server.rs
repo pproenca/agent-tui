@@ -4,6 +4,7 @@ use axum::extract::State;
 use axum::extract::ws::Message;
 use axum::extract::ws::WebSocket;
 use axum::extract::ws::WebSocketUpgrade;
+use axum::extract::ws::close_code;
 use axum::response::Html;
 use axum::response::IntoResponse;
 use axum::response::Redirect;
@@ -38,6 +39,9 @@ const DEFAULT_WS_LISTEN: &str = "127.0.0.1:0";
 const DEFAULT_MAX_CONNECTIONS: usize = 32;
 const DEFAULT_WS_QUEUE_CAPACITY: usize = 128;
 const WS_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
+const WS_RECV_TIMEOUT: Duration = Duration::from_secs(60);
+const WS_SEND_TIMEOUT: Duration = Duration::from_secs(15);
+const WS_MAX_PARSE_ERRORS: u8 = 3;
 const UI_INDEX_HTML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/web/index.html"
@@ -122,15 +126,17 @@ impl WsConfig {
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .or_else(|| {
-                std::env::var("AGENT_TUI_API_WS_QUEUE")
-                    .ok()
-                    .and_then(|v| {
-                        warn!("AGENT_TUI_API_WS_QUEUE is deprecated; use AGENT_TUI_WS_QUEUE");
-                        v.parse::<usize>().ok()
-                    })
+                std::env::var("AGENT_TUI_API_WS_QUEUE").ok().and_then(|v| {
+                    warn!("AGENT_TUI_API_WS_QUEUE is deprecated; use AGENT_TUI_WS_QUEUE");
+                    v.parse::<usize>().ok()
+                })
             })
             .filter(|v| *v > 0)
             .unwrap_or(DEFAULT_WS_QUEUE_CAPACITY);
+
+        if std::env::var("AGENT_TUI_API_TOKEN").is_ok() {
+            warn!("AGENT_TUI_API_TOKEN is deprecated and ignored");
+        }
 
         Self {
             enabled,
@@ -342,17 +348,15 @@ async fn ui_xterm_handler() -> Response {
     ([("content-type", "text/css; charset=utf-8")], UI_XTERM_CSS).into_response()
 }
 
-async fn ws_handler(
-    State(state): State<Arc<WsState>>,
-    ws: WebSocketUpgrade,
-) -> Response {
+async fn ws_handler(State(state): State<Arc<WsState>>, ws: WebSocketUpgrade) -> Response {
     let permit = match state.ws_limits.clone().try_acquire_owned() {
         Ok(permit) => permit,
         Err(_) => {
             let response = RpcResponse::error(0, -32000, "too many websocket connections");
             return (
                 axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                serde_json::to_string(&response).unwrap_or_else(|_| "{\"error\":\"busy\"}".to_string()),
+                serde_json::to_string(&response)
+                    .unwrap_or_else(|_| "{\"error\":\"busy\"}".to_string()),
             )
                 .into_response();
         }
@@ -395,6 +399,7 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
     } = ctx;
 
     let mut shutdown_rx = state.shutdown_rx.clone();
+    let mut parse_errors = 0u8;
 
     loop {
         tokio::select! {
@@ -405,8 +410,14 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                 let _ = socket.send(Message::Close(None)).await;
                 break;
             }
-            msg = socket.recv() => {
-                let Some(msg) = msg else {
+            msg = tokio::time::timeout(WS_RECV_TIMEOUT, socket.recv()) => {
+                let Some(msg) = (match msg {
+                    Ok(value) => value,
+                    Err(_) => {
+                        let _ = socket.send(Message::Close(None)).await;
+                        break;
+                    }
+                }) else {
                     break;
                 };
                 let msg = match msg {
@@ -423,9 +434,18 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                                 if send_rpc_response(&mut socket, &response).await.is_err() {
                                     break;
                                 }
+                                parse_errors = parse_errors.saturating_add(1);
+                                if parse_errors >= WS_MAX_PARSE_ERRORS {
+                                    let _ = socket.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                                        code: close_code::POLICY,
+                                        reason: "too many parse errors".into(),
+                                    }))).await;
+                                    break;
+                                }
                                 continue;
                             }
                         };
+                        parse_errors = 0;
 
                         if let Some(kind) = RpcCore::stream_kind_for_method(&request.method) {
                             if run_stream_connection(&state, &mut socket, request, kind).await.is_err() {
@@ -440,7 +460,10 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                         }
                     }
                     Message::Binary(_) => {
-                        let _ = socket.send(Message::Close(None)).await;
+                        let _ = socket.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                            code: close_code::PROTOCOL,
+                            reason: "binary frames are not supported".into(),
+                        }))).await;
                         break;
                     }
                     Message::Close(_) => break,
@@ -471,7 +494,8 @@ async fn run_stream_connection(
     });
 
     while let Some(payload) = rx.recv().await {
-        if socket.send(Message::Text(payload)).await.is_err() {
+        let send = tokio::time::timeout(WS_SEND_TIMEOUT, socket.send(Message::Text(payload))).await;
+        if send.is_err() || send.ok().is_some_and(|result| result.is_err()) {
             return Err(());
         }
     }
@@ -481,7 +505,11 @@ async fn run_stream_connection(
 
 async fn send_rpc_response(socket: &mut WebSocket, response: &RpcResponse) -> Result<(), ()> {
     let payload = serde_json::to_string(response).map_err(|_| ())?;
-    socket.send(Message::Text(payload)).await.map_err(|_| ())
+    let send = tokio::time::timeout(WS_SEND_TIMEOUT, socket.send(Message::Text(payload))).await;
+    match send {
+        Ok(result) => result.map_err(|_| ()),
+        Err(_) => Err(()),
+    }
 }
 
 fn parse_bool(value: &str) -> Option<bool> {
@@ -676,5 +704,21 @@ mod tests {
 
         let config = WsConfig::from_env();
         assert_eq!(config.listen, "127.0.0.1:9999");
+    }
+
+    #[test]
+    fn bind_listener_rejects_non_loopback_without_allow_remote() {
+        let config = WsConfig {
+            enabled: true,
+            listen: "0.0.0.0:0".to_string(),
+            allow_remote: false,
+            state_path: std::path::PathBuf::from("/tmp/agent-tui-ws-test-state.json"),
+            max_connections: 1,
+            ws_queue_capacity: 1,
+        };
+
+        let err = super::bind_listener(&config).expect_err("expected non-loopback bind rejection");
+        let message = err.to_string();
+        assert!(message.contains("AGENT_TUI_WS_ALLOW_REMOTE=1"), "{message}");
     }
 }

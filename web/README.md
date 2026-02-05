@@ -1,6 +1,6 @@
 # agent-tui web UI (Bun)
 
-This is the Bun-powered frontend for the daemon live preview API.
+This is the Bun-powered frontend for the daemon live preview WebSocket RPC.
 In normal usage, the daemon serves the built UI directly at `/ui`.
 
 ## Run (dev)
@@ -11,8 +11,6 @@ bun run dev
 ```
 
 The server defaults to `http://127.0.0.1:4173`.
-When running the bundled server, the UI attempts to load the local daemon state
-from `~/.agent-tui/api.json` (or `AGENT_TUI_API_STATE`) if no URL params are set.
 
 ## Run (prod-like)
 
@@ -31,13 +29,10 @@ export AGENT_TUI_UI_URL=http://127.0.0.1:4173
 agent-tui live start --open
 ```
 
-The CLI appends `api`, `ws`, `token`, `session`, `encoding`, and `auto=1` query params so the UI auto-connects.
+The CLI appends `ws`, `session`, and `auto=1` query params so the UI auto-connects.
 
 ## Manual URL params
 
-- `api` (HTTP API base URL)
 - `ws` (WebSocket stream URL)
-- `token` (auth token)
 - `session` (`active` or a session id)
-- `encoding` (`binary` or `base64`)
 - `auto=1` (auto-connect on load)

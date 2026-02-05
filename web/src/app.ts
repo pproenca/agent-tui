@@ -3,6 +3,8 @@ import { FitAddon } from "xterm-addon-fit";
 import { createElement, Plus, X, RefreshCw, type IconNode } from "lucide";
 
 const ICON_ATTRS = { width: 16, height: 16, "stroke-width": 2 };
+const RPC_TIMEOUT_MS = 5000;
+const REFRESH_INTERVAL_MS = 5000;
 
 function setButtonIcon(button: HTMLButtonElement, iconDef: IconNode): void {
   button.replaceChildren(createElement(iconDef, ICON_ATTRS));
@@ -24,22 +26,22 @@ if (sessionsRefreshBtn) {
 
 const params = new URLSearchParams(window.location.search);
 let decoder = new TextDecoder();
+let requestId = 1;
 
-type Encoding = "binary" | "base64";
+function nextRequestId(): number {
+  const id = requestId;
+  requestId += 1;
+  return id;
+}
+
 type ConnectionConfig = {
-  apiUrl: string;
   wsUrl: string;
-  token: string;
   session: string;
-  encoding: Encoding;
 };
 
 const config: ConnectionConfig = {
-  apiUrl: params.get("api") ?? "",
   wsUrl: params.get("ws") ?? "",
-  token: params.get("token") ?? "",
   session: params.get("session") ?? "active",
-  encoding: params.get("encoding") === "base64" ? "base64" : "binary",
 };
 
 if (!config.session.trim()) {
@@ -64,12 +66,12 @@ fitAddon.fit();
 window.addEventListener("resize", () => fitAddon.fit());
 
 let socket: WebSocket | null = null;
-let socketState: { reason: DisconnectReason | null } | null = null;
+let socketState: { reason: DisconnectReason | null; streamId: number | null } | null =
+  null;
 let closedNoticeSent = false;
 let latestSessions: SessionsResponse | null = null;
 let sessionsLoading = false;
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
-const REFRESH_INTERVAL_MS = 5000;
 
 type DisconnectReason = "manual" | "reconnect" | "server" | "error";
 type SessionsResponse = {
@@ -84,6 +86,12 @@ type SessionInfo = {
   running: boolean;
   created_at: string;
   size: { cols: number; rows: number };
+};
+
+type RpcResponse = {
+  id?: number;
+  result?: any;
+  error?: { code?: number; message?: string };
 };
 
 function setStatus(text: string, connected: boolean) {
@@ -142,102 +150,88 @@ function disconnect(reason: DisconnectReason = "manual") {
   socket.close();
 }
 
-async function hydrateLocalState(): Promise<boolean> {
-  try {
-    const resp = await fetch("/api-state");
-    if (!resp.ok) {
-      return false;
-    }
-    const payload = (await resp.json()) as {
-      http_url?: string;
-      ws_url?: string;
-      token?: string;
-    };
-    let updated = false;
-    if (!config.apiUrl && payload.http_url) {
-      config.apiUrl = payload.http_url;
-      updated = true;
-    }
-    if (!config.wsUrl && payload.ws_url) {
-      config.wsUrl = payload.ws_url;
-      updated = true;
-    }
-    if (!config.token && payload.token) {
-      config.token = payload.token;
-      updated = true;
-    }
-    return updated;
-  } catch {
-    return false;
-  }
-}
-
-function resolveWsBase(): string | null {
+function buildWsEndpoint(): string | null {
   const wsValue = config.wsUrl.trim();
   if (wsValue) {
-    return wsValue;
-  }
-  const apiValue = config.apiUrl.trim();
-  if (!apiValue) {
-    return null;
-  }
-  try {
-    const api = new URL(apiValue);
-    const wsProtocol = api.protocol === "https:" ? "wss:" : "ws:";
-    return `${wsProtocol}//${api.host}/api/v1/stream`;
-  } catch {
-    return null;
-  }
-}
-
-function resolveApiBase(): URL | null {
-  const apiValue = config.apiUrl.trim();
-  if (apiValue) {
     try {
-      return new URL(apiValue);
+      return new URL(wsValue).toString();
     } catch {
       return null;
     }
   }
-  const wsValue = config.wsUrl.trim();
-  if (!wsValue) {
-    return null;
-  }
-  try {
-    const wsUrl = new URL(wsValue);
-    const protocol = wsUrl.protocol === "wss:" ? "https:" : "http:";
-    return new URL(`${protocol}//${wsUrl.host}`);
-  } catch {
-    return null;
-  }
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/ws`;
 }
 
-function buildApiUrl(path: string): string | null {
-  const base = resolveApiBase();
-  if (!base) {
-    return null;
+async function rpcCall(method: string, params?: Record<string, unknown>): Promise<any> {
+  const endpoint = buildWsEndpoint();
+  if (!endpoint) {
+    throw new Error("missing websocket endpoint");
   }
-  const url = new URL(path, base);
-  const token = config.token.trim();
-  if (token) {
-    url.searchParams.set("token", token);
-  }
-  return url.toString();
-}
 
-function buildWsUrl(): string | null {
-  const base = resolveWsBase();
-  if (!base) {
-    return null;
-  }
-  const url = new URL(base);
-  url.searchParams.set("session", normalizedSessionValue(config.session));
-  url.searchParams.set("encoding", config.encoding || "binary");
-  const token = config.token.trim();
-  if (token) {
-    url.searchParams.set("token", token);
-  }
-  return url.toString();
+  const id = nextRequestId();
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(endpoint);
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      ws.close();
+      reject(new Error("rpc timeout"));
+    }, RPC_TIMEOUT_MS);
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      ws.close();
+      fn();
+    };
+
+    ws.addEventListener("open", () => {
+      const payload: any = {
+        jsonrpc: "2.0",
+        id,
+        method,
+      };
+      if (params && Object.keys(params).length > 0) {
+        payload.params = params;
+      }
+      ws.send(JSON.stringify(payload));
+    });
+
+    ws.addEventListener("message", (event) => {
+      if (typeof event.data !== "string") {
+        return;
+      }
+      let response: RpcResponse;
+      try {
+        response = JSON.parse(event.data) as RpcResponse;
+      } catch {
+        return;
+      }
+      if (response.id !== id) {
+        return;
+      }
+      if (response.error) {
+        finish(() => reject(new Error(response.error?.message ?? "rpc error")));
+        return;
+      }
+      finish(() => resolve(response.result ?? null));
+    });
+
+    ws.addEventListener("error", () => {
+      finish(() => reject(new Error("websocket error")));
+    });
+
+    ws.addEventListener("close", () => {
+      if (!settled) {
+        finish(() => reject(new Error("websocket closed before rpc response")));
+      }
+    });
+  });
 }
 
 function setSessionsNotice(message: string) {
@@ -287,14 +281,12 @@ function renderSessions(payload: SessionsResponse) {
       button.setAttribute("aria-current", "true");
     }
 
-    // Status dot
     const dot = document.createElement("span");
     dot.className = "session-item__dot";
     if (session.running) {
       dot.classList.add("session-item__dot--running");
     }
 
-    // Session ID
     const id = document.createElement("span");
     id.className = "session-item__id";
     id.textContent = session.id;
@@ -302,7 +294,6 @@ function renderSessions(payload: SessionsResponse) {
     button.appendChild(dot);
     button.appendChild(id);
 
-    // Keyboard shortcut hint (1-9)
     if (index < 9) {
       const shortcut = document.createElement("span");
       shortcut.className = "session-item__shortcut";
@@ -319,24 +310,27 @@ async function refreshSessions() {
   if (sessionsLoading) {
     return;
   }
-  const url = buildApiUrl("/api/v1/sessions");
-  if (!url) {
+  const endpoint = buildWsEndpoint();
+  if (!endpoint) {
     setSessionsNotice("Waiting for daemon...");
     return;
   }
+
   sessionsLoading = true;
   sessionListEl.setAttribute("aria-busy", "true");
   if (sessionsRefreshBtn) {
     sessionsRefreshBtn.disabled = true;
   }
+
   try {
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      setSessionsNotice(`Error (${resp.status})`);
-      return;
-    }
-    const payload = (await resp.json()) as SessionsResponse;
-    renderSessions(payload);
+    const result = (await rpcCall("sessions")) as {
+      sessions?: SessionInfo[];
+      active_session?: string | null;
+    };
+    renderSessions({
+      sessions: Array.isArray(result.sessions) ? result.sessions : [],
+      active: result.active_session ?? null,
+    });
   } catch {
     setSessionsNotice("Failed to load");
   } finally {
@@ -357,17 +351,12 @@ function decodeBase64(data: string): string {
   return decoder.decode(bytes, { stream: true });
 }
 
-function handleTextEvent(text: string) {
-  let payload: any;
-  try {
-    payload = JSON.parse(text);
-  } catch {
+function handleStreamPayload(payload: any) {
+  if (!payload || typeof payload !== "object") {
     return;
   }
 
   switch (payload.event) {
-    case "hello":
-      break;
     case "ready":
       if (payload.cols && payload.rows) {
         term.resize(payload.cols, payload.rows);
@@ -392,57 +381,51 @@ function handleTextEvent(text: string) {
         term.resize(payload.cols, payload.rows);
       }
       break;
-    case "dropped":
-      break;
-    case "error":
-      break;
     case "closed":
       showTerminationNotice();
-      refreshSessions();
+      void refreshSessions();
       break;
     default:
       break;
   }
 }
 
-function handleBinaryEvent(buffer: ArrayBuffer) {
-  const bytes = new Uint8Array(buffer);
-  if (bytes.length === 0) {
-    return;
-  }
-  if (bytes[0] !== 0x01) {
-    return;
-  }
-  const chunk = bytes.slice(1);
-  term.write(decoder.decode(chunk, { stream: true }));
-}
-
 async function connect() {
-  const hydrated = await hydrateLocalState();
-  if (hydrated) {
-    // State loaded
-  }
   void refreshSessions();
-  const wsUrl = buildWsUrl();
-  if (!wsUrl) {
+  const endpoint = buildWsEndpoint();
+  if (!endpoint) {
     setStatus("No daemon", false);
     return;
   }
+
   disconnect("reconnect");
   closedNoticeSent = false;
   setStatus("Connecting...", false);
 
-  const ws = new WebSocket(wsUrl);
-  const state = { reason: null as DisconnectReason | null };
+  const ws = new WebSocket(endpoint);
+  const streamId = nextRequestId();
+  const state = {
+    reason: null as DisconnectReason | null,
+    streamId,
+  };
   socket = ws;
   socketState = state;
   decoder = new TextDecoder();
-  ws.binaryType = "arraybuffer";
 
   ws.addEventListener("open", () => {
-    if (socket !== ws) {
+    if (socket !== ws || !socketState) {
       return;
     }
+
+    ws.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: socketState.streamId,
+        method: "live_preview_stream",
+        params: { session: normalizedSessionValue(config.session) },
+      }),
+    );
+
     setStatus("Connected", true);
     setButtonIcon(connectBtn, X);
     connectBtn.title = "Disconnect";
@@ -450,16 +433,28 @@ async function connect() {
   });
 
   ws.addEventListener("message", (event) => {
-    if (socket !== ws) {
+    if (socket !== ws || typeof event.data !== "string" || !socketState) {
       return;
     }
-    if (typeof event.data === "string") {
-      handleTextEvent(event.data);
+
+    let response: RpcResponse;
+    try {
+      response = JSON.parse(event.data) as RpcResponse;
+    } catch {
       return;
     }
-    if (event.data instanceof ArrayBuffer) {
-      handleBinaryEvent(event.data);
+
+    if (response.id !== socketState.streamId) {
+      return;
     }
+
+    if (response.error) {
+      setStatus(`Error: ${response.error.message ?? "rpc error"}`, false);
+      disconnect("error");
+      return;
+    }
+
+    handleStreamPayload(response.result);
   });
 
   ws.addEventListener("close", () => {
@@ -492,7 +487,6 @@ sessionsRefreshBtn?.addEventListener("click", () => {
   void refreshSessions();
 });
 
-// Keyboard shortcuts: Cmd/Ctrl + 1-9 to switch sessions
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key >= "1" && e.key <= "9") {
     const index = parseInt(e.key, 10) - 1;
@@ -505,14 +499,10 @@ document.addEventListener("keydown", (e) => {
 });
 
 async function init() {
-  const hydrated = await hydrateLocalState();
   const auto = params.get("auto");
   if (auto === "1" || auto === "true") {
     void connect();
     return;
-  }
-  if (hydrated) {
-    // State loaded
   }
   void refreshSessions();
 }

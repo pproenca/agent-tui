@@ -20,15 +20,15 @@ use tracing::warn;
 use crate::app::daemon::rpc_core::RpcCore;
 use crate::app::daemon::rpc_core::RpcCoreError;
 use crate::app::daemon::rpc_core::RpcResponseWriter;
-use crate::app::daemon::ws_server::WsConfig;
-use crate::app::daemon::ws_server::WsServerError;
-use crate::app::daemon::ws_server::WsServerHandle;
-use crate::app::daemon::ws_server::start_ws_server;
 use crate::app::daemon::transport::TransportConnection;
 use crate::app::daemon::transport::TransportError;
 use crate::app::daemon::transport::TransportListener;
 use crate::app::daemon::transport::UnixSocketConnection;
 use crate::app::daemon::transport::UnixSocketListener;
+use crate::app::daemon::ws_server::WsConfig;
+use crate::app::daemon::ws_server::WsServerError;
+use crate::app::daemon::ws_server::WsServerHandle;
+use crate::app::daemon::ws_server::start_ws_server;
 use crate::infra::daemon::DaemonConfig;
 use crate::infra::daemon::LockFile;
 use crate::infra::daemon::SignalHandler;
@@ -104,12 +104,10 @@ struct UnixRpcWriter<'a> {
 
 impl RpcResponseWriter for UnixRpcWriter<'_> {
     fn write_response(&mut self, response: &RpcResponse) -> Result<(), RpcCoreError> {
-        self.conn
-            .write_response(response)
-            .map_err(|err| match err {
-                TransportError::ConnectionClosed => RpcCoreError::ConnectionClosed,
-                other => RpcCoreError::Other(other.to_string()),
-            })
+        self.conn.write_response(response).map_err(|err| match err {
+            TransportError::ConnectionClosed => RpcCoreError::ConnectionClosed,
+            other => RpcCoreError::Other(other.to_string()),
+        })
     }
 }
 
@@ -182,7 +180,11 @@ impl ThreadPool {
         }
 
         if workers.len() < size {
-            warn!(spawned = workers.len(), requested = size, "Only spawned partial worker threads");
+            warn!(
+                spawned = workers.len(),
+                requested = size,
+                "Only spawned partial worker threads"
+            );
         }
 
         Ok(Self { workers, sender })
@@ -208,7 +210,11 @@ impl DaemonServer {
         shutdown_flag: Arc<AtomicBool>,
         shutdown_notifier: crate::usecases::ports::ShutdownNotifierHandle,
     ) -> Self {
-        let core = Arc::new(RpcCore::with_config(config, shutdown_flag, shutdown_notifier));
+        let core = Arc::new(RpcCore::with_config(
+            config,
+            shutdown_flag,
+            shutdown_notifier,
+        ));
         Self {
             core,
             active_connections: Arc::new(AtomicUsize::new(0)),
@@ -251,13 +257,19 @@ impl DaemonServer {
     }
 
     fn register_stream_thread(&self, handle: thread::JoinHandle<()>) {
-        let mut guard = self.stream_threads.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self
+            .stream_threads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         guard.push(handle);
     }
 
     fn join_stream_threads(&self, timeout: Duration) {
         let handles = {
-            let mut guard = self.stream_threads.lock().unwrap_or_else(|e| e.into_inner());
+            let mut guard = self
+                .stream_threads
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             guard.drain(..).collect::<Vec<_>>()
         };
 
@@ -272,7 +284,10 @@ impl DaemonServer {
             match joiner {
                 Ok(_) => {
                     if rx.recv_timeout(timeout).is_err() {
-                        warn!(timeout_ms = timeout.as_millis(), "Timed out joining stream thread");
+                        warn!(
+                            timeout_ms = timeout.as_millis(),
+                            "Timed out joining stream thread"
+                        );
                     }
                 }
                 Err(err) => warn!(error = %err, "Failed to spawn stream joiner thread"),
@@ -402,8 +417,10 @@ impl DaemonServer {
                     .take()
                 else {
                     warn!("Stream payload missing; dropping connection");
-                    let remaining =
-                        server_for_thread.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
+                    let remaining = server_for_thread
+                        .active_connections
+                        .fetch_sub(1, Ordering::Relaxed)
+                        - 1;
                     if remaining == 0 {
                         server_for_thread.connection_cv.notify_all();
                     }
@@ -413,7 +430,9 @@ impl DaemonServer {
 
                 let stream_result = {
                     let mut writer = UnixRpcWriter { conn: &mut conn };
-                    server_for_thread.core.handle_stream(&mut writer, request, kind)
+                    server_for_thread
+                        .core
+                        .handle_stream(&mut writer, request, kind)
                 };
 
                 debug!(
@@ -443,7 +462,9 @@ impl DaemonServer {
         match spawn_result {
             Ok(handle) => server.register_stream_thread(handle),
             Err(_) => {
-                let Some((mut conn, request)) = payload.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+                let Some((mut conn, request)) =
+                    payload.lock().unwrap_or_else(|e| e.into_inner()).take()
+                else {
                     warn!("Stream payload missing; dropping connection");
                     let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
                     if remaining == 0 {
@@ -629,9 +650,8 @@ pub fn start_daemon() -> Result<(), DaemonError> {
     info!(socket = %socket_path.display(), pid = std::process::id(), "Daemon started");
 
     let shutdown = Arc::new(AtomicBool::new(false));
-    let waker = ShutdownWaker::new().map_err(|e| {
-        DaemonError::SignalSetup(format!("failed to create shutdown waker: {e}"))
-    })?;
+    let waker = ShutdownWaker::new()
+        .map_err(|e| DaemonError::SignalSetup(format!("failed to create shutdown waker: {e}")))?;
     let shutdown_notifier = waker.notifier();
 
     let server = Arc::new(DaemonServer::with_config(
@@ -689,7 +709,8 @@ mod tests {
     #[test]
     fn shutdown_connections_closes_idle_client() {
         let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle = Arc::new(NoopShutdownNotifier);
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
+            Arc::new(NoopShutdownNotifier);
         let server = Arc::new(DaemonServer::with_config(
             DaemonConfig::default(),
             Arc::clone(&shutdown),
@@ -730,7 +751,8 @@ mod tests {
     #[test]
     fn join_stream_threads_drains_handles() {
         let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle = Arc::new(NoopShutdownNotifier);
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
+            Arc::new(NoopShutdownNotifier);
         let server = Arc::new(DaemonServer::with_config(
             DaemonConfig::default(),
             Arc::clone(&shutdown),

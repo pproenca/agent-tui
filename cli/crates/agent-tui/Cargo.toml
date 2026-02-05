@@ -30,6 +30,7 @@ clap_complete.workspace = true
 crossterm.workspace = true
 shell-words.workspace = true
 url.workspace = true
+tungstenite.workspace = true
 
 # Serialization
 serde.workspace = true

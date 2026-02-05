@@ -10,7 +10,7 @@ CLI tool for AI agents to interact with TUI (Terminal User Interface) applicatio
 - **Keyboard & Text Input** - Press keys, type text, or send unified input
 - **Wait Conditions** - Wait for text or screen stability
 - **Output Formats** - Human-readable text or JSON for automation pipelines
-- **Live Preview API** - HTTP + WebSocket endpoints for real-time UI monitoring
+- **Live Preview WebSocket** - JSON-RPC over WebSocket for real-time UI monitoring
 - **Session Management** - Background daemon manages multiple concurrent TUI sessions
 
 ## Installation
@@ -117,10 +117,16 @@ agent-tui screenshot --json
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AGENT_TUI_SOCKET` | IPC socket path | `~/.agent-tui/daemon.sock` |
-| `AGENT_TUI_API_LISTEN` | API bind address | `127.0.0.1:0` |
-| `AGENT_TUI_API_ALLOW_REMOTE` | Allow remote API connections | `false` |
-| `AGENT_TUI_API_TOKEN` | API authentication token | Auto-generated |
-| `AGENT_TUI_API_STATE` | API state file path | `~/.agent-tui/api.json` |
+| `AGENT_TUI_TRANSPORT` | CLI transport (`unix` or `ws`) | `unix` |
+| `AGENT_TUI_WS_ADDR` | Remote WS-RPC URL when transport is `ws` | - |
+| `AGENT_TUI_WS_LISTEN` | Daemon WS bind address | `127.0.0.1:0` |
+| `AGENT_TUI_WS_ALLOW_REMOTE` | Allow non-loopback WS bind | `false` |
+| `AGENT_TUI_WS_STATE` | WS state file path | `~/.agent-tui/api.json` |
+| `AGENT_TUI_WS_DISABLED` | Disable daemon WS server | `false` |
+| `AGENT_TUI_WS_MAX_CONNECTIONS` | Max WS connections | `32` |
+| `AGENT_TUI_WS_QUEUE` | WS outbound queue size | `128` |
+| `AGENT_TUI_API_LISTEN` / `AGENT_TUI_API_ALLOW_REMOTE` / `AGENT_TUI_API_STATE` | Deprecated aliases for WS settings | - |
+| `AGENT_TUI_API_TOKEN` | Deprecated and ignored | - |
 | `AGENT_TUI_SESSION_STORE` | Session metadata log path | `~/.agent-tui/sessions.jsonl` |
 | `AGENT_TUI_UI_URL` | External UI URL | - |
 | `AGENT_TUI_DETACH_KEYS` | Attach detach key sequence | `Ctrl+]` |
@@ -149,7 +155,7 @@ agent-tui/
 The tool follows Clean Architecture principles:
 - **Domain** - Core models (Screen, Snapshot, Style)
 - **Use Cases** - Business logic (screenshot, input, wait conditions)
-- **Adapters** - External interfaces (CLI, RPC, HTTP API)
+- **Adapters** - External interfaces (CLI, RPC, WebSocket)
 - **Infrastructure** - Terminal emulation, daemon runtime
 
 See `docs/ops/process-model.md` for process types and deployment guidance.

@@ -12,7 +12,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::oneshot;
 
 #[derive(Debug, Deserialize)]
@@ -169,7 +169,7 @@ impl RequestCounter {
 
 pub struct MockDaemon {
     _temp_dir: TempDir,
-    tcp_addr: std::net::SocketAddr,
+    socket_path: PathBuf,
     pid_path: PathBuf,
     shutdown_tx: Option<oneshot::Sender<()>>,
     requests: Arc<Mutex<Vec<RecordedRequest>>>,
@@ -322,10 +322,9 @@ impl MockDaemon {
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("Failed to bind TCP listener");
-        let tcp_addr = listener.local_addr().expect("Failed to get TCP addr");
+        let socket_path = temp_dir.path().join("mock-daemon.sock");
+        let _ = fs::remove_file(&socket_path).await;
+        let listener = UnixListener::bind(&socket_path).expect("Failed to bind unix listener");
         let requests_clone = requests.clone();
         let request_counter_clone = request_counter.clone();
         let delay_controller_clone = delay_controller.clone();
@@ -347,7 +346,7 @@ impl MockDaemon {
 
         Self {
             _temp_dir: temp_dir,
-            tcp_addr,
+            socket_path,
             pid_path,
             shutdown_tx: Some(shutdown_tx),
             requests,
@@ -356,10 +355,6 @@ impl MockDaemon {
             handlers,
             sequence_counters,
         }
-    }
-
-    pub fn tcp_addr(&self) -> std::net::SocketAddr {
-        self.tcp_addr
     }
 
     pub fn set_response(&self, method: &str, response: MockResponse) {
@@ -429,8 +424,11 @@ impl MockDaemon {
 
     pub fn env_vars(&self) -> Vec<(&'static str, String)> {
         vec![
-            ("AGENT_TUI_TRANSPORT", "tcp".to_string()),
-            ("AGENT_TUI_TCP_ADDR", self.tcp_addr.to_string()),
+            ("AGENT_TUI_TRANSPORT", "unix".to_string()),
+            (
+                "AGENT_TUI_SOCKET",
+                self.socket_path.to_string_lossy().into_owned(),
+            ),
             (
                 "TMPDIR",
                 self._temp_dir.path().to_string_lossy().into_owned(),
@@ -439,7 +437,7 @@ impl MockDaemon {
     }
 
     async fn run_server(
-        listener: TcpListener,
+        listener: UnixListener,
         requests: Arc<Mutex<Vec<RecordedRequest>>>,
         request_counter: Arc<RequestCounter>,
         delay_controller: Arc<DelayController>,
@@ -483,7 +481,7 @@ impl MockDaemon {
     }
 
     async fn handle_connection(
-        stream: TcpStream,
+        stream: UnixStream,
         requests: Arc<Mutex<Vec<RecordedRequest>>>,
         request_counter: Arc<RequestCounter>,
         delay_controller: Arc<DelayController>,

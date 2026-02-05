@@ -5,9 +5,8 @@
 
 //! IPC client implementation.
 
-use std::io::BufRead;
-use std::io::BufReader;
-use std::io::Write;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -23,11 +22,12 @@ use crate::common::Colors;
 use crate::common::error_codes;
 use crate::infra::ipc::error::ClientError;
 use crate::infra::ipc::socket::socket_path;
-use crate::infra::ipc::transport::ClientStream;
+use crate::infra::ipc::transport::ClientConnection;
 use crate::infra::ipc::transport::IpcTransport;
 use crate::infra::ipc::transport::default_transport;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+const STREAM_POLL_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone)]
 pub struct DaemonClientConfig {
@@ -141,8 +141,8 @@ impl UnixSocketClient {
     pub fn connect_with_transport(
         transport: std::sync::Arc<dyn IpcTransport>,
     ) -> Result<Self, ClientError> {
-        let stream = transport.connect_stream()?;
-        drop(stream);
+        let connection = transport.connect_connection()?;
+        drop(connection);
 
         Ok(Self { transport })
     }
@@ -153,36 +153,60 @@ impl UnixSocketClient {
 }
 
 pub struct StreamAbortHandle {
-    stream: ClientStream,
+    aborted: Arc<AtomicBool>,
 }
 
 impl StreamAbortHandle {
     pub fn abort(&self) {
-        let _ = self.stream.shutdown();
+        self.aborted.store(true, Ordering::Relaxed);
     }
 }
 
 pub struct StreamResponse {
-    reader: BufReader<ClientStream>,
+    connection: ClientConnection,
+    aborted: Arc<AtomicBool>,
 }
 
 impl StreamResponse {
     pub fn next_result(&mut self) -> Result<Option<Value>, ClientError> {
-        let mut response_line = String::new();
-        let bytes = self.reader.read_line(&mut response_line)?;
-        if bytes == 0 {
-            return Ok(None);
+        loop {
+            if self.aborted.load(Ordering::Relaxed) {
+                let _ = self.connection.shutdown();
+                return Ok(None);
+            }
+
+            let response_line = match self.connection.read_message() {
+                Ok(Some(line)) => line,
+                Ok(None) => return Ok(None),
+                Err(err) if is_timeout_error(&err) => continue,
+                Err(err) => return Err(err),
+            };
+
+            let response: Response = serde_json::from_str(&response_line)?;
+            return response_to_result(response).map(Some);
         }
-        let response: Response = serde_json::from_str(&response_line)?;
-        response_to_result(response).map(Some)
     }
 
     pub fn abort_handle(&self) -> Option<StreamAbortHandle> {
-        self.reader
-            .get_ref()
-            .try_clone()
-            .ok()
-            .map(|stream| StreamAbortHandle { stream })
+        Some(StreamAbortHandle {
+            aborted: Arc::clone(&self.aborted),
+        })
+    }
+}
+
+impl Drop for StreamResponse {
+    fn drop(&mut self) {
+        let _ = self.connection.shutdown();
+    }
+}
+
+fn is_timeout_error(error: &ClientError) -> bool {
+    match error {
+        ClientError::ConnectionFailed(io_err) => matches!(
+            io_err.kind(),
+            std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+        ),
+        _ => false,
     }
 }
 
@@ -246,10 +270,9 @@ impl DaemonClient for UnixSocketClient {
             write_timeout_ms = config.write_timeout().as_millis(),
             "RPC call started"
         );
-        let mut stream = self.transport.connect_stream()?;
-
-        stream.set_read_timeout(Some(config.read_timeout()))?;
-        stream.set_write_timeout(Some(config.write_timeout()))?;
+        let mut connection = self.transport.connect_connection()?;
+        connection.set_read_timeout(Some(config.read_timeout()))?;
+        connection.set_write_timeout(Some(config.write_timeout()))?;
 
         let request = Request {
             jsonrpc: "2.0".to_string(),
@@ -265,13 +288,10 @@ impl DaemonClient for UnixSocketClient {
             "RPC request serialized"
         );
 
-        writeln!(stream, "{}", request_json)?;
-        stream.flush()?;
-
-        let reader_stream = stream.try_clone()?;
-        let mut reader = BufReader::new(reader_stream);
-        let mut response_line = String::new();
-        reader.read_line(&mut response_line)?;
+        connection.send_message(&request_json)?;
+        let response_line = connection
+            .read_message()?
+            .ok_or(ClientError::InvalidResponse)?;
         trace!(
             request_id,
             bytes = response_line.len(),
@@ -295,11 +315,11 @@ impl DaemonClient for UnixSocketClient {
         params: Option<Value>,
     ) -> Result<StreamResponse, ClientError> {
         let request_id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
-        let mut stream = self.transport.connect_stream()?;
+        let mut connection = self.transport.connect_connection()?;
         let config = DaemonClientConfig::default();
 
-        stream.set_read_timeout(Some(config.read_timeout()))?;
-        stream.set_write_timeout(Some(config.write_timeout()))?;
+        connection.set_read_timeout(Some(config.read_timeout()))?;
+        connection.set_write_timeout(Some(config.write_timeout()))?;
 
         let request = Request {
             jsonrpc: "2.0".to_string(),
@@ -309,19 +329,19 @@ impl DaemonClient for UnixSocketClient {
         };
 
         let request_json = serde_json::to_string(&request)?;
-        writeln!(stream, "{}", request_json)?;
-        stream.flush()?;
-
-        let reader_stream = stream.try_clone()?;
-        let mut reader = BufReader::new(reader_stream);
-        let mut response_line = String::new();
-        reader.read_line(&mut response_line)?;
+        connection.send_message(&request_json)?;
+        let response_line = connection
+            .read_message()?
+            .ok_or(ClientError::InvalidResponse)?;
         let response: Response = serde_json::from_str(&response_line)?;
         let _ = response_to_result(response)?;
 
-        stream.set_read_timeout(None)?;
+        connection.set_read_timeout(Some(STREAM_POLL_TIMEOUT))?;
 
-        Ok(StreamResponse { reader })
+        Ok(StreamResponse {
+            connection,
+            aborted: Arc::new(AtomicBool::new(false)),
+        })
     }
 }
 

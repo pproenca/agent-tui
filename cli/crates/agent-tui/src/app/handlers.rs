@@ -497,52 +497,30 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
 ) -> HandlerResult {
     if args.listen.is_some() || args.allow_remote || args.max_viewers.is_some() {
         eprintln!(
-            "{} Live preview is now served by the daemon API. Configure it via:",
+            "{} Live preview is now served by the daemon WebSocket server. Configure it via:",
             Colors::info("Note:")
         );
         eprintln!(
-            "  AGENT_TUI_API_LISTEN / AGENT_TUI_API_ALLOW_REMOTE / AGENT_TUI_API_MAX_CONNECTIONS"
+            "  AGENT_TUI_WS_LISTEN / AGENT_TUI_WS_ALLOW_REMOTE / AGENT_TUI_WS_MAX_CONNECTIONS"
         );
     }
 
-    let state_path = api_state_path();
+    let state_path = ws_state_path();
     let state = wait_for_api_state(&state_path, Duration::from_secs(3)).ok_or_else(|| {
         CliError::new(
             ctx.format,
-            "API server is not available. Restart the daemon and try again.".to_string(),
+            "WebSocket live preview is not available. Restart the daemon and try again."
+                .to_string(),
             None,
             super::exit_codes::GENERAL_ERROR,
         )
     })?;
-
-    #[derive(Serialize, Clone)]
-    struct UiPayload {
-        url: String,
-        managed: bool,
-        source: &'static str,
-    }
-
-    let (ui_base_url, ui_payload) = match std::env::var("AGENT_TUI_UI_URL") {
-        Ok(url) if !url.trim().is_empty() => (
-            Some(url.clone()),
-            Some(UiPayload {
-                url,
-                managed: false,
-                source: "external",
-            }),
-        ),
-        _ => {
-            let url = format!("{}ui", state.http_url);
-            (
-                Some(url.clone()),
-                Some(UiPayload {
-                    url,
-                    managed: true,
-                    source: "daemon",
-                }),
-            )
-        }
-    };
+    let daemon_ui_url = state.resolved_ui_url();
+    let open_base_url = std::env::var("AGENT_TUI_UI_URL")
+        .ok()
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+        .unwrap_or_else(|| daemon_ui_url.clone());
 
     match ctx.format {
         OutputFormat::Json => {
@@ -551,49 +529,30 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
                 running: bool,
                 pid: u32,
                 listen: String,
-                http_url: String,
                 ws_url: String,
-                token: Option<String>,
-                api_version: Option<String>,
-                ui: Option<UiPayload>,
+                ui_url: String,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                started_at: Option<u64>,
             }
 
             let output = LiveStartOutput {
                 running: true,
                 pid: state.pid,
                 listen: state.listen.clone(),
-                http_url: state.http_url.clone(),
                 ws_url: state.ws_url.clone(),
-                token: state.token.clone(),
-                api_version: state.api_version.clone(),
-                ui: ui_payload.clone(),
+                ui_url: daemon_ui_url.clone(),
+                started_at: state.started_at,
             };
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
-            println!("API: {}", state.http_url);
             println!("WS: {}", state.ws_url);
-            if let Some(ui_base) = ui_base_url.as_deref() {
-                println!("UI: {}", ui_base);
-            } else {
-                println!("UI: (not available)");
-            }
-            if let Some(api_version) = state.api_version.as_deref() {
-                println!("API version: {}", api_version);
-            }
-            if let Some(token) = state.token.as_deref() {
-                println!("Token: {}", token);
-            } else {
-                println!("Token: (disabled)");
-            }
+            println!("UI: {}", daemon_ui_url);
         }
     }
 
     if args.open {
-        let target = ui_base_url
-            .as_deref()
-            .map(|base| build_ui_url(base, &state))
-            .unwrap_or_else(|| state.http_url.clone());
+        let target = build_ui_url(&open_base_url, &state);
         if let Err(err) = open_in_browser(&target, args.browser.as_deref()) {
             eprintln!("Warning: failed to open browser: {}", err);
         }
@@ -705,7 +664,7 @@ pub(crate) fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -
 }
 
 pub(crate) fn handle_live_status_standalone(format: OutputFormat) -> HandlerResult {
-    let status = read_api_state_running(&api_state_path());
+    let status = read_api_state_running(&ws_state_path());
     let ui_status = resolve_ui_status();
 
     match format {
@@ -732,57 +691,59 @@ pub(crate) fn handle_live_status_standalone(format: OutputFormat) -> HandlerResu
                 #[serde(skip_serializing_if = "Option::is_none")]
                 listen: Option<String>,
                 #[serde(skip_serializing_if = "Option::is_none")]
-                http_url: Option<String>,
-                #[serde(skip_serializing_if = "Option::is_none")]
                 ws_url: Option<String>,
                 #[serde(skip_serializing_if = "Option::is_none")]
-                token: Option<String>,
+                ui_url: Option<String>,
                 #[serde(skip_serializing_if = "Option::is_none")]
-                api_version: Option<String>,
+                started_at: Option<u64>,
                 ui: UiStatusPayload,
             }
 
             let output = match status {
-                Some(state) => LiveStatusOutput {
-                    running: true,
-                    pid: Some(state.pid),
-                    listen: Some(state.listen),
-                    http_url: Some(state.http_url),
-                    ws_url: Some(state.ws_url),
-                    token: state.token,
-                    api_version: state.api_version,
-                    ui: match ui_status {
+                Some(state) => {
+                    let daemon_ui_url = state.resolved_ui_url();
+                    let daemon_ui_port = parse_port_from_url(&daemon_ui_url);
+                    let ui = match ui_status {
                         UiStatus::External(url) => UiStatusPayload {
-                            running: None,
+                            running: Some(true),
                             url: Some(url),
                             managed: Some(false),
                             pid: None,
                             port: None,
                         },
                         UiStatus::Running(state) => UiStatusPayload {
-                            running: None,
+                            running: Some(true),
                             url: Some(state.url),
                             managed: Some(true),
                             pid: Some(state.pid),
                             port: Some(state.port),
                         },
                         UiStatus::NotRunning => UiStatusPayload {
-                            running: Some(false),
-                            url: None,
-                            managed: None,
-                            pid: None,
-                            port: None,
+                            running: Some(true),
+                            url: Some(daemon_ui_url.clone()),
+                            managed: Some(true),
+                            pid: Some(state.pid),
+                            port: daemon_ui_port,
                         },
-                    },
-                },
+                    };
+
+                    LiveStatusOutput {
+                        ui_url: Some(daemon_ui_url),
+                        running: true,
+                        pid: Some(state.pid),
+                        listen: Some(state.listen),
+                        ws_url: Some(state.ws_url),
+                        started_at: state.started_at,
+                        ui,
+                    }
+                }
                 None => LiveStatusOutput {
                     running: false,
                     pid: None,
                     listen: None,
-                    http_url: None,
                     ws_url: None,
-                    token: None,
-                    api_version: None,
+                    ui_url: None,
+                    started_at: None,
                     ui: match ui_status {
                         UiStatus::External(url) => UiStatusPayload {
                             running: None,
@@ -813,19 +774,23 @@ pub(crate) fn handle_live_status_standalone(format: OutputFormat) -> HandlerResu
         }
         OutputFormat::Text => {
             if let Some(state) = status {
-                println!("Live preview API: {}", state.http_url);
+                println!("Live preview WS: {}", state.ws_url);
+                println!("Live preview UI: {}", state.resolved_ui_url());
+                if let UiStatus::External(url) = ui_status {
+                    println!("UI override: {} (external)", url);
+                }
             } else {
                 println!("Live preview: not running");
-            }
-            match ui_status {
-                UiStatus::External(url) => {
-                    println!("UI: {} (external)", url);
-                }
-                UiStatus::Running(state) => {
-                    println!("UI: {}", state.url);
-                }
-                UiStatus::NotRunning => {
-                    println!("UI: not running");
+                match ui_status {
+                    UiStatus::External(url) => {
+                        println!("UI: {} (external)", url);
+                    }
+                    UiStatus::Running(state) => {
+                        println!("UI: {}", state.url);
+                    }
+                    UiStatus::NotRunning => {
+                        println!("UI: not running");
+                    }
                 }
             }
         }
@@ -934,11 +899,46 @@ pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
 #[derive(Debug, Clone, Deserialize)]
 struct ApiState {
     pid: u32,
-    http_url: String,
     ws_url: String,
+    #[serde(default)]
+    ui_url: Option<String>,
     listen: String,
-    token: Option<String>,
-    api_version: Option<String>,
+    #[serde(default)]
+    started_at: Option<u64>,
+    #[serde(default)]
+    http_url: Option<String>,
+}
+
+impl ApiState {
+    fn resolved_ui_url(&self) -> String {
+        if let Some(url) = self.ui_url.as_ref()
+            && !url.trim().is_empty()
+        {
+            return url.trim().to_string();
+        }
+        if let Some(http_url) = self.http_url.as_ref()
+            && !http_url.trim().is_empty()
+        {
+            if http_url.ends_with('/') {
+                return format!("{http_url}ui");
+            }
+            return format!("{http_url}/ui");
+        }
+        if let Ok(ws_url) = url::Url::parse(&self.ws_url) {
+            let scheme = if ws_url.scheme() == "wss" {
+                "https"
+            } else {
+                "http"
+            };
+            if let Some(host) = ws_url.host_str() {
+                if let Some(port) = ws_url.port() {
+                    return format!("{scheme}://{host}:{port}/ui");
+                }
+                return format!("{scheme}://{host}/ui");
+            }
+        }
+        "/ui".to_string()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -970,7 +970,10 @@ enum StopUiResult {
     External,
 }
 
-fn api_state_path() -> PathBuf {
+fn ws_state_path() -> PathBuf {
+    if let Ok(path) = std::env::var("AGENT_TUI_WS_STATE") {
+        return PathBuf::from(path);
+    }
     if let Ok(path) = std::env::var("AGENT_TUI_API_STATE") {
         return PathBuf::from(path);
     }
@@ -1068,14 +1071,14 @@ fn resolve_ui_status() -> UiStatus {
 }
 
 fn remove_api_state_file() {
-    let state_path = api_state_path();
+    let state_path = ws_state_path();
     if let Err(err) = std::fs::remove_file(&state_path)
         && err.kind() != std::io::ErrorKind::NotFound
     {
         warn!(
             path = %state_path.display(),
             error = %err,
-            "Failed to remove API state file"
+            "Failed to remove WS state file"
         );
     }
 }
@@ -1138,20 +1141,15 @@ fn build_ui_url(base: &str, state: &ApiState) -> String {
             pairs.clear();
             for (key, value) in existing {
                 match key.as_ref() {
-                    "api" | "ws" | "token" | "session" | "encoding" | "auto" => {}
+                    "ws" | "session" | "auto" => {}
                     _ => {
                         pairs.append_pair(&key, &value);
                     }
                 }
             }
-            pairs.append_pair("api", &state.http_url);
             pairs.append_pair("ws", &state.ws_url);
             pairs.append_pair("session", "active");
-            pairs.append_pair("encoding", "binary");
             pairs.append_pair("auto", "1");
-            if let Some(token) = state.token.as_deref() {
-                pairs.append_pair("token", token);
-            }
         }
         if !fragment.is_empty() {
             url.set_fragment(Some(fragment));
@@ -1162,18 +1160,12 @@ fn build_ui_url(base: &str, state: &ApiState) -> String {
     warn!(base = %base, "Failed to parse UI URL; falling back to string concatenation");
 
     let separator = if base.contains('?') { "&" } else { "?" };
-    let mut url = String::with_capacity(base.len() + 128);
+    let mut url = String::with_capacity(base.len() + 96);
     url.push_str(base);
     url.push_str(separator);
-    url.push_str("api=");
-    url.push_str(&state.http_url);
-    url.push_str("&ws=");
+    url.push_str("ws=");
     url.push_str(&state.ws_url);
-    url.push_str("&session=active&encoding=binary&auto=1");
-    if let Some(token) = state.token.as_deref() {
-        url.push_str("&token=");
-        url.push_str(token);
-    }
+    url.push_str("&session=active&auto=1");
     if !fragment.is_empty() {
         url.push('#');
         url.push_str(fragment);
@@ -1386,10 +1378,7 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
             "AGENT_TUI_TRANSPORT",
             std::env::var("AGENT_TUI_TRANSPORT").ok(),
         ),
-        (
-            "AGENT_TUI_TCP_PORT",
-            std::env::var("AGENT_TUI_TCP_PORT").ok(),
-        ),
+        ("AGENT_TUI_WS_ADDR", std::env::var("AGENT_TUI_WS_ADDR").ok()),
         (
             "AGENT_TUI_DETACH_KEYS",
             std::env::var("AGENT_TUI_DETACH_KEYS").ok(),
@@ -1399,6 +1388,31 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
             std::env::var("AGENT_TUI_DAEMON_FOREGROUND").ok(),
         ),
         (
+            "AGENT_TUI_WS_LISTEN",
+            std::env::var("AGENT_TUI_WS_LISTEN").ok(),
+        ),
+        (
+            "AGENT_TUI_WS_ALLOW_REMOTE",
+            std::env::var("AGENT_TUI_WS_ALLOW_REMOTE").ok(),
+        ),
+        (
+            "AGENT_TUI_WS_STATE",
+            std::env::var("AGENT_TUI_WS_STATE").ok(),
+        ),
+        (
+            "AGENT_TUI_WS_DISABLED",
+            std::env::var("AGENT_TUI_WS_DISABLED").ok(),
+        ),
+        (
+            "AGENT_TUI_WS_MAX_CONNECTIONS",
+            std::env::var("AGENT_TUI_WS_MAX_CONNECTIONS").ok(),
+        ),
+        (
+            "AGENT_TUI_WS_QUEUE",
+            std::env::var("AGENT_TUI_WS_QUEUE").ok(),
+        ),
+        // Deprecated aliases (kept for compatibility).
+        (
             "AGENT_TUI_API_LISTEN",
             std::env::var("AGENT_TUI_API_LISTEN").ok(),
         ),
@@ -1407,12 +1421,12 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
             std::env::var("AGENT_TUI_API_ALLOW_REMOTE").ok(),
         ),
         (
-            "AGENT_TUI_API_TOKEN",
-            std::env::var("AGENT_TUI_API_TOKEN").ok(),
-        ),
-        (
             "AGENT_TUI_API_STATE",
             std::env::var("AGENT_TUI_API_STATE").ok(),
+        ),
+        (
+            "AGENT_TUI_API_TOKEN",
+            std::env::var("AGENT_TUI_API_TOKEN").ok(),
         ),
         (
             "AGENT_TUI_API_DISABLED",

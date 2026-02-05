@@ -401,7 +401,7 @@ impl RpcCore {
         writer.write_response(&init)?;
 
         let subscription = session.stream_subscribe();
-        let mut cursor = StreamCursor::default();
+        let mut cursor = live_preview_initial_cursor(&snapshot);
         let mut last_size = (snapshot.cols, snapshot.rows);
 
         loop {
@@ -558,6 +558,14 @@ fn parse_live_preview_session_selector(request: &RpcRequest) -> Option<crate::do
     parse_session_selector(request.param_str("session").map(String::from))
 }
 
+fn live_preview_initial_cursor(
+    snapshot: &crate::usecases::ports::LivePreviewSnapshot,
+) -> StreamCursor {
+    StreamCursor {
+        seq: snapshot.stream_seq,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -586,5 +594,17 @@ mod tests {
         let request = make_request(Some(json!({ "session": "sess-1" })));
         let parsed = parse_live_preview_session_selector(&request).expect("session id");
         assert_eq!(parsed.as_str(), "sess-1");
+    }
+
+    #[test]
+    fn live_preview_initial_cursor_uses_snapshot_stream_seq() {
+        let snapshot = crate::usecases::ports::LivePreviewSnapshot {
+            cols: 80,
+            rows: 24,
+            seq: String::new(),
+            stream_seq: 123,
+        };
+        let cursor = live_preview_initial_cursor(&snapshot);
+        assert_eq!(cursor.seq, 123);
     }
 }

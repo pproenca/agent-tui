@@ -119,19 +119,6 @@ pub struct LivePreviewStartParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScrollParams {
-    pub direction: String,
-    #[serde(default = "default_scroll_amount")]
-    pub amount: u16,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-}
-
-fn default_scroll_amount() -> u16 {
-    1
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PtyReadParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,

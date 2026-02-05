@@ -56,8 +56,6 @@ portable-pty.workspace = true
 tattoy-wezterm-term.workspace = true
 tattoy-wezterm-surface.workspace = true
 
-# VOM analysis
-
 # Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true

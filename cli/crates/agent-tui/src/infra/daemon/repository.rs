@@ -5,8 +5,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::common::mutex_lock_or_recover;
-use crate::domain::ScrollDirection;
-use crate::domain::core::Component;
 use crate::domain::core::CursorPosition;
 use crate::usecases::ports::LivePreviewSnapshot;
 use crate::usecases::ports::SessionError;
@@ -95,11 +93,6 @@ impl SessionOps for SessionHandleImpl {
         self.stream.subscribe()
     }
 
-    fn analyze_screen(&self) -> Vec<Component> {
-        let session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.analyze_screen()
-    }
-
     fn keystroke(&self, key: &str) -> Result<(), SessionError> {
         let session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.keystroke(key)
@@ -118,11 +111,6 @@ impl SessionOps for SessionHandleImpl {
     fn keyup(&self, key: &str) -> Result<(), SessionError> {
         let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.keyup(key)
-    }
-
-    fn scroll(&self, direction: ScrollDirection, amount: u16) -> Result<(), SessionError> {
-        let session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.scroll(direction, amount)
     }
 
     fn is_running(&self) -> bool {

@@ -34,7 +34,6 @@ use crate::adapters::presenter::create_presenter;
 use crate::app::attach::DetachKeys;
 use crate::app::commands::LiveStartArgs;
 use crate::app::commands::OutputFormat;
-use crate::app::commands::ScrollDirection;
 use crate::app::commands::WaitParams;
 use crate::app::error::AttachError;
 use crate::app::error::CliError;
@@ -1315,25 +1314,6 @@ pub(crate) fn handle_cleanup<C: DaemonClient>(
         .into());
     }
     Ok(())
-}
-
-pub(crate) fn handle_scroll<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    direction: ScrollDirection,
-    amount: u16,
-) -> HandlerResult {
-    let dir_str = direction.as_str();
-    let params = params::ScrollParams {
-        direction: dir_str.to_string(),
-        amount,
-        session: ctx.session.clone(),
-    };
-    let result = call_with_params(ctx.client, "scroll", params)?;
-    ctx.output_success_and_ok(
-        &result,
-        &format!("Scrolled {} {} times", dir_str, amount),
-        "Scroll failed",
-    )
 }
 
 pub(crate) fn handle_attach<C: DaemonClient>(

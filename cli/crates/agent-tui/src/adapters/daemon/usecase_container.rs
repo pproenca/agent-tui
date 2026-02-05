@@ -11,7 +11,6 @@ use crate::usecases::KillUseCaseImpl;
 use crate::usecases::MetricsUseCaseImpl;
 use crate::usecases::ResizeUseCaseImpl;
 use crate::usecases::RestartUseCaseImpl;
-use crate::usecases::ScrollUseCaseImpl;
 use crate::usecases::SessionsUseCaseImpl;
 use crate::usecases::ShutdownUseCaseImpl;
 use crate::usecases::SnapshotUseCaseImpl;
@@ -50,7 +49,6 @@ pub struct InputUseCases<R: SessionRepository + 'static> {
     pub type_text: TypeUseCaseImpl<R>,
     pub keydown: KeydownUseCaseImpl<R>,
     pub keyup: KeyupUseCaseImpl<R>,
-    pub scroll: ScrollUseCaseImpl<R>,
 }
 
 pub struct DiagnosticsUseCases<R: SessionRepository + 'static> {

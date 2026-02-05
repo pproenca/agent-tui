@@ -4,7 +4,6 @@ use clap::ArgGroup;
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
-use clap::ValueEnum;
 use clap::ValueHint;
 pub use clap_complete::Shell;
 use std::path::PathBuf;
@@ -18,13 +17,13 @@ const AFTER_HELP: &str =
 const LONG_ABOUT: &str = "\
 Drive TUI (text UI) applications programmatically or interactively.\n\
 \n\
-Common flow: run -> screenshot -> press/type/scroll -> wait -> kill.\n\
+Common flow: run -> screenshot -> press/type -> wait -> kill.\n\
 Use --format json for automation-friendly output.";
 
 const AFTER_LONG_HELP: &str = r#"WORKFLOW:
     1. Run a TUI application
     2. View the screenshot
-    3. Interact with keys/text or scroll
+    3. Interact with keys/text
     4. Wait for UI changes
     5. Kill the session when done
 
@@ -45,9 +44,6 @@ EXAMPLES:
     agent-tui run htop
     agent-tui press F10
     agent-tui press ArrowDown ArrowDown Enter
-
-    # Scroll viewport
-    agent-tui scroll down 5
 
     # Check daemon status
     agent-tui daemon status"#;
@@ -243,21 +239,6 @@ EXAMPLES:
         /// Text to type
         #[arg(value_name = "TEXT", allow_hyphen_values = true)]
         text: String,
-    },
-
-    /// Scroll the viewport
-    #[command(after_long_help = "\
-EXAMPLES:
-    agent-tui scroll down
-    agent-tui scroll up 10")]
-    Scroll {
-        /// Direction to scroll
-        #[arg(value_enum, value_name = "DIRECTION")]
-        direction: ScrollDirection,
-
-        /// Number of lines/rows to scroll
-        #[arg(default_value_t = 1, value_name = "AMOUNT")]
-        amount: u16,
     },
 
     /// Wait for text or screenshot stability
@@ -582,25 +563,6 @@ All active sessions will be terminated during restart.")]
     Restart,
 }
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
-pub enum ScrollDirection {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-impl ScrollDirection {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ScrollDirection::Up => "up",
-            ScrollDirection::Down => "down",
-            ScrollDirection::Left => "left",
-            ScrollDirection::Right => "right",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default, Args)]
 #[command(
     group = ArgGroup::new("wait_condition")
@@ -752,26 +714,6 @@ mod tests {
         assert_eq!(region, Some("modal".to_string()));
         assert!(strip_ansi);
         assert!(include_cursor);
-    }
-
-    #[test]
-    fn test_scroll_command_defaults() {
-        let cli = Cli::parse_from(["agent-tui", "scroll", "down"]);
-        let Commands::Scroll { direction, amount } = cli.command else {
-            panic!("Expected Scroll command, got {:?}", cli.command);
-        };
-        assert!(matches!(direction, ScrollDirection::Down));
-        assert_eq!(amount, 1);
-    }
-
-    #[test]
-    fn test_scroll_command_with_amount() {
-        let cli = Cli::parse_from(["agent-tui", "scroll", "up", "10"]);
-        let Commands::Scroll { direction, amount } = cli.command else {
-            panic!("Expected Scroll command, got {:?}", cli.command);
-        };
-        assert!(matches!(direction, ScrollDirection::Up));
-        assert_eq!(amount, 10);
     }
 
     #[test]

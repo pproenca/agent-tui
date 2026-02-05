@@ -20,7 +20,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crossterm::cursor;
-use crossterm::event::KeyCode;
 use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
@@ -43,12 +42,10 @@ use uuid::Uuid;
 use crate::common::mutex_lock_or_recover;
 use crate::common::rwlock_read_or_recover;
 use crate::common::rwlock_write_or_recover;
-use crate::domain::ScrollDirection;
 use crate::infra::terminal::CursorPosition;
 use crate::infra::terminal::PtyHandle;
 use crate::infra::terminal::ReadEvent;
 use crate::infra::terminal::key_to_escape_sequence;
-use crate::infra::terminal::keycode_to_escape_sequence;
 use crate::infra::terminal::render_screen;
 use crate::usecases::ports::LivePreviewSnapshot;
 use crate::usecases::ports::StreamCursor;
@@ -578,23 +575,6 @@ impl Session {
         Ok(())
     }
 
-    pub fn scroll(&self, direction: ScrollDirection, amount: u16) -> Result<(), SessionError> {
-        let key_code = match direction {
-            ScrollDirection::Up => KeyCode::Up,
-            ScrollDirection::Down => KeyCode::Down,
-            ScrollDirection::Left => KeyCode::Left,
-            ScrollDirection::Right => KeyCode::Right,
-        };
-        let seq = keycode_to_escape_sequence(key_code)
-            .ok_or_else(|| SessionError::InvalidKey(direction.as_str().to_string()))?;
-
-        for _ in 0..amount {
-            self.pty.write(&seq)?;
-        }
-
-        Ok(())
-    }
-
     pub fn type_text(&self, text: &str) -> Result<(), SessionError> {
         self.pty.write_str(text)?;
         Ok(())
@@ -703,11 +683,6 @@ impl Session {
             seq,
             stream_seq,
         }
-    }
-
-    pub fn analyze_screen(&self) -> Vec<crate::domain::core::Component> {
-        let cursor = self.terminal.cursor();
-        self.terminal.analyze_screen(&cursor)
     }
 }
 

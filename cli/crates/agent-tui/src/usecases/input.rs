@@ -8,8 +8,6 @@ use crate::domain::KeystrokeInput;
 use crate::domain::KeystrokeOutput;
 use crate::domain::KeyupInput;
 use crate::domain::KeyupOutput;
-use crate::domain::ScrollInput;
-use crate::domain::ScrollOutput;
 use crate::domain::TypeInput;
 use crate::domain::TypeOutput;
 use crate::usecases::ports::SessionError;
@@ -104,29 +102,6 @@ impl<R: SessionRepository> KeyupUseCase for KeyupUseCaseImpl<R> {
         session.keyup(&input.key)?;
 
         Ok(KeyupOutput { success: true })
-    }
-}
-
-pub trait ScrollUseCase: Send + Sync {
-    fn execute(&self, input: ScrollInput) -> Result<ScrollOutput, SessionError>;
-}
-
-pub struct ScrollUseCaseImpl<R: SessionRepository> {
-    repository: Arc<R>,
-}
-
-impl<R: SessionRepository> ScrollUseCaseImpl<R> {
-    pub fn new(repository: Arc<R>) -> Self {
-        Self { repository }
-    }
-}
-
-impl<R: SessionRepository> ScrollUseCase for ScrollUseCaseImpl<R> {
-    fn execute(&self, input: ScrollInput) -> Result<ScrollOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
-        session.scroll(input.direction, input.amount)?;
-
-        Ok(ScrollOutput { success: true })
     }
 }
 

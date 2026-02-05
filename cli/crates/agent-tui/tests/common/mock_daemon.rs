@@ -270,12 +270,6 @@ impl MockDaemon {
                 })),
             );
             h.insert(
-                "scroll".to_string(),
-                MockResponse::Success(serde_json::json!({
-                    "success": true
-                })),
-            );
-            h.insert(
                 "resize".to_string(),
                 MockResponse::Success(serde_json::json!({
                     "success": true,

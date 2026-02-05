@@ -231,9 +231,9 @@ mod tests {
             Ok((SessionId::new(id), 42))
         }
 
-        fn get(&self, session_id: &str) -> Result<SessionHandle, SessionError> {
+        fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError> {
             Ok(Arc::new(TestSession {
-                id: SessionId::new(session_id),
+                id: session_id.clone(),
             }))
         }
 
@@ -245,14 +245,14 @@ mod tests {
             Ok(Arc::new(TestSession { id }))
         }
 
-        fn resolve(&self, session_id: Option<&str>) -> Result<SessionHandle, SessionError> {
-            let id = session_id.unwrap_or("active");
-            Ok(Arc::new(TestSession {
-                id: SessionId::new(id),
-            }))
+        fn resolve(&self, session_id: Option<&SessionId>) -> Result<SessionHandle, SessionError> {
+            let id = session_id
+                .cloned()
+                .unwrap_or_else(|| SessionId::new("active"));
+            Ok(Arc::new(TestSession { id }))
         }
 
-        fn set_active(&self, _session_id: &str) -> Result<(), SessionError> {
+        fn set_active(&self, _session_id: &SessionId) -> Result<(), SessionError> {
             Ok(())
         }
 
@@ -260,7 +260,7 @@ mod tests {
             self.sessions.clone()
         }
 
-        fn kill(&self, _session_id: &str) -> Result<(), SessionError> {
+        fn kill(&self, _session_id: &SessionId) -> Result<(), SessionError> {
             Ok(())
         }
 

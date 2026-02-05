@@ -164,8 +164,8 @@ impl SessionRepository for SessionManager {
         SessionManager::spawn(self, command, args, cwd, env, session_id, cols, rows)
     }
 
-    fn get(&self, session_id: &str) -> Result<SessionHandle, SessionError> {
-        let session = SessionManager::get(self, session_id)?;
+    fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError> {
+        let session = SessionManager::get(self, session_id.as_str())?;
         Ok(SessionHandleImpl::new_handle(session))
     }
 
@@ -174,21 +174,21 @@ impl SessionRepository for SessionManager {
         Ok(SessionHandleImpl::new_handle(session))
     }
 
-    fn resolve(&self, session_id: Option<&str>) -> Result<SessionHandle, SessionError> {
-        let session = SessionManager::resolve(self, session_id)?;
+    fn resolve(&self, session_id: Option<&SessionId>) -> Result<SessionHandle, SessionError> {
+        let session = SessionManager::resolve(self, session_id.map(|id| id.as_str()))?;
         Ok(SessionHandleImpl::new_handle(session))
     }
 
-    fn set_active(&self, session_id: &str) -> Result<(), SessionError> {
-        SessionManager::set_active(self, session_id)
+    fn set_active(&self, session_id: &SessionId) -> Result<(), SessionError> {
+        SessionManager::set_active(self, session_id.as_str())
     }
 
     fn list(&self) -> Vec<SessionInfo> {
         SessionManager::list(self)
     }
 
-    fn kill(&self, session_id: &str) -> Result<(), SessionError> {
-        SessionManager::kill(self, session_id)
+    fn kill(&self, session_id: &SessionId) -> Result<(), SessionError> {
+        SessionManager::kill(self, session_id.as_str())
     }
 
     fn session_count(&self) -> usize {
@@ -226,7 +226,7 @@ mod tests {
             .map(|path| path.to_string_lossy().into_owned());
         let session_handle = manager
             .spawn("/bin/sh", &[], cwd.as_deref(), None, None, 80, 24)
-            .and_then(|(id, _)| SessionRepository::get(&manager, id.as_str()))
+            .and_then(|(id, _)| SessionRepository::get(&manager, &id))
             .unwrap();
         assert_generic_bound(session_handle.as_ref());
     }

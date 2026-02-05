@@ -20,20 +20,12 @@ impl RpcValue {
         Self(value)
     }
 
-    pub fn into_inner(self) -> Value {
-        self.0
-    }
-
     pub fn as_ref(&self) -> RpcValueRef<'_> {
         RpcValueRef(&self.0)
     }
 
     pub fn get(&self, key: &str) -> Option<RpcValueRef<'_>> {
         self.0.get(key).map(RpcValueRef)
-    }
-
-    pub fn as_array(&self) -> Option<RpcArrayRef<'_>> {
-        self.0.as_array().map(|arr| RpcArrayRef(arr))
     }
 
     pub fn str_or<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
@@ -53,19 +45,6 @@ impl RpcValue {
             debug!(error = %err, "Failed to serialize RPC value to JSON");
             String::new()
         })
-    }
-
-    pub fn str_array_join(&self, key: &str, sep: &str) -> String {
-        self.0
-            .get(key)
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-                    .join(sep)
-            })
-            .unwrap_or_default()
     }
 }
 
@@ -119,19 +98,6 @@ impl<'a> RpcValueRef<'a> {
     pub fn bool_or(&self, key: &str, default: bool) -> bool {
         self.0.bool_or(key, default)
     }
-
-    pub fn str_array_join(&self, key: &str, sep: &str) -> String {
-        self.0
-            .get(key)
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-                    .join(sep)
-            })
-            .unwrap_or_default()
-    }
 }
 
 impl<'a> RpcArrayRef<'a> {
@@ -141,9 +107,5 @@ impl<'a> RpcArrayRef<'a> {
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
-    }
-
-    pub fn first(self) -> Option<RpcValueRef<'a>> {
-        self.0.first().map(RpcValueRef)
     }
 }

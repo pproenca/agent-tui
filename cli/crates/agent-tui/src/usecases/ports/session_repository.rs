@@ -79,12 +79,12 @@ pub trait SessionRepository: Send + Sync {
         rows: u16,
     ) -> Result<(SessionId, u32), SessionError>;
 
-    fn get(&self, session_id: &str) -> Result<SessionHandle, SessionError>;
+    fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError>;
     fn active(&self) -> Result<SessionHandle, SessionError>;
-    fn resolve(&self, session_id: Option<&str>) -> Result<SessionHandle, SessionError>;
-    fn set_active(&self, session_id: &str) -> Result<(), SessionError>;
+    fn resolve(&self, session_id: Option<&SessionId>) -> Result<SessionHandle, SessionError>;
+    fn set_active(&self, session_id: &SessionId) -> Result<(), SessionError>;
     fn list(&self) -> Vec<SessionInfo>;
-    fn kill(&self, session_id: &str) -> Result<(), SessionError>;
+    fn kill(&self, session_id: &SessionId) -> Result<(), SessionError>;
     fn session_count(&self) -> usize;
     fn active_session_id(&self) -> Option<SessionId>;
 }

@@ -34,8 +34,8 @@ use crate::app::daemon::transport::TransportError;
 use crate::app::daemon::transport::TransportListener;
 use crate::app::daemon::transport::UnixSocketConnection;
 use crate::app::daemon::transport::UnixSocketListener;
+use crate::domain::SessionId;
 use crate::infra::daemon::DaemonConfig;
-use crate::infra::daemon::DaemonMetrics;
 use crate::infra::daemon::LockFile;
 use crate::infra::daemon::SessionManager;
 use crate::infra::daemon::SignalHandler;
@@ -122,7 +122,6 @@ pub struct DaemonServer {
     active_fds: Arc<std::sync::Mutex<HashSet<RawFd>>>,
     connection_wait_lock: Arc<std::sync::Mutex<()>>,
     connection_cv: Arc<std::sync::Condvar>,
-    metrics: Arc<DaemonMetrics>,
     shutdown_flag: Arc<AtomicBool>,
     stream_threads: std::sync::Mutex<Vec<thread::JoinHandle<()>>>,
 }
@@ -221,7 +220,6 @@ impl DaemonServer {
         shutdown_notifier: crate::usecases::ports::ShutdownNotifierHandle,
     ) -> Self {
         let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions()));
-        let metrics = Arc::new(DaemonMetrics::new());
         let clock = Arc::new(SystemClock::new());
         let active_connections = Arc::new(AtomicUsize::new(0));
         let usecases = UseCaseContainer::new(
@@ -237,7 +235,6 @@ impl DaemonServer {
             active_fds: Arc::new(std::sync::Mutex::new(HashSet::new())),
             connection_wait_lock: Arc::new(std::sync::Mutex::new(())),
             connection_cv: Arc::new(std::sync::Condvar::new()),
-            metrics,
             shutdown_flag: Arc::clone(&shutdown_flag),
             stream_threads: std::sync::Mutex::new(Vec::new()),
         }
@@ -344,7 +341,7 @@ impl DaemonServer {
             }
         };
 
-        let session_id = input.session_id.to_string();
+        let session_id = input.session_id.clone();
         match self.usecases.session.attach.execute(input) {
             Ok(output) => {
                 let response = attach_output_to_response(req_id, output);
@@ -402,7 +399,7 @@ impl DaemonServer {
             req_id,
             &AttachReady {
                 event: "ready",
-                session_id: &session_id,
+                session_id: session_id.as_str(),
             },
         );
         conn.write_response(&ready)?;
@@ -504,19 +501,21 @@ impl DaemonServer {
         request: crate::adapters::rpc::RpcRequest,
     ) -> Result<(), TransportError> {
         let req_id = request.id;
-        let session_param = request.param_str("session").map(str::to_string);
+        let session_param = request
+            .param_str("session")
+            .filter(|s| !s.trim().is_empty())
+            .map(SessionId::new);
 
-        let session = match SessionRepository::resolve(
-            self.session_manager.as_ref(),
-            session_param.as_deref(),
-        ) {
-            Ok(session) => session,
-            Err(err) => {
-                let response = session_error_response(req_id, err);
-                let _ = conn.write_response(&response);
-                return Ok(());
-            }
-        };
+        let session =
+            match SessionRepository::resolve(self.session_manager.as_ref(), session_param.as_ref())
+            {
+                Ok(session) => session,
+                Err(err) => {
+                    let response = session_error_response(req_id, err);
+                    let _ = conn.write_response(&response);
+                    return Ok(());
+                }
+            };
 
         if let Err(err) = session.update() {
             let response = session_error_response(req_id, err);
@@ -776,7 +775,6 @@ impl DaemonServer {
                 Ok(req) => req,
                 Err(TransportError::ConnectionClosed) | Err(TransportError::Timeout) => break,
                 Err(TransportError::SizeLimit { max_bytes }) => {
-                    self.metrics.record_error();
                     warn!(max_bytes, "Request size limit exceeded");
                     let error_response = RpcResponse::error(
                         0,
@@ -790,7 +788,6 @@ impl DaemonServer {
                     break;
                 }
                 Err(TransportError::Parse(err)) => {
-                    self.metrics.record_error();
                     debug!(error = %err, "Request parse error");
                     let error_response =
                         RpcResponse::error(0, -32700, &format!("Parse error: {}", err));
@@ -798,7 +795,6 @@ impl DaemonServer {
                     continue;
                 }
                 Err(TransportError::Serialize(err)) => {
-                    self.metrics.record_error();
                     error!(error = %err, "Response serialize error");
                     break;
                 }
@@ -820,8 +816,6 @@ impl DaemonServer {
             );
             let _request_guard = request_span.enter();
             let start = Instant::now();
-
-            self.metrics.record_request();
 
             if method == "attach_stream" {
                 self.spawn_stream_thread(conn, request, StreamKind::Attach, conn_id, conn_fd);

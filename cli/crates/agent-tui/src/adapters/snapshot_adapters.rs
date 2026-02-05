@@ -9,6 +9,6 @@ pub(crate) fn session_info_to_json(info: &SessionInfo) -> serde_json::Value {
         "pid": info.pid,
         "running": info.running,
         "created_at": info.created_at,
-        "size": { "cols": info.size.0, "rows": info.size.1 }
+        "size": { "cols": info.size.cols(), "rows": info.size.rows() }
     })
 }

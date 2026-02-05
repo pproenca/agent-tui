@@ -3,7 +3,6 @@
 use crate::common::error_codes;
 use crate::common::error_codes::ErrorCategory;
 use crate::usecases::SpawnError;
-use crate::usecases::ports::LivePreviewError;
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SpawnErrorKind;
 use crate::usecases::ports::TerminalError;
@@ -11,8 +10,20 @@ use serde_json::Value;
 use serde_json::json;
 use thiserror::Error;
 
-impl SessionError {
-    pub fn code(&self) -> i32 {
+/// Adapter-layer trait for presenting errors to external consumers.
+///
+/// This trait keeps presentation concerns (error codes, categories, suggestions)
+/// in the adapter layer rather than extending inner-layer types with inherent methods.
+pub trait ErrorPresentation {
+    fn code(&self) -> i32;
+    fn category(&self) -> ErrorCategory;
+    fn context(&self) -> Value;
+    fn suggestion(&self) -> String;
+    fn is_retryable(&self) -> bool;
+}
+
+impl ErrorPresentation for SessionError {
+    fn code(&self) -> i32 {
         match self {
             SessionError::NotFound(_) => error_codes::SESSION_NOT_FOUND,
             SessionError::AlreadyExists(_) => error_codes::SESSION_ALREADY_EXISTS,
@@ -24,11 +35,11 @@ impl SessionError {
         }
     }
 
-    pub fn category(&self) -> ErrorCategory {
+    fn category(&self) -> ErrorCategory {
         error_codes::category_for_code(self.code())
     }
 
-    pub fn context(&self) -> Value {
+    fn context(&self) -> Value {
         match self {
             SessionError::NotFound(id) => json!({ "session_id": id }),
             SessionError::AlreadyExists(id) => json!({ "session_id": id }),
@@ -47,7 +58,7 @@ impl SessionError {
         }
     }
 
-    pub fn suggestion(&self) -> String {
+    fn suggestion(&self) -> String {
         match self {
             SessionError::NotFound(_)
             | SessionError::AlreadyExists(_)
@@ -96,64 +107,12 @@ impl SessionError {
         }
     }
 
-    pub fn is_retryable(&self) -> bool {
+    fn is_retryable(&self) -> bool {
         match self {
             SessionError::Terminal(terminal_err) => terminal_err.is_retryable(),
             SessionError::Persistence { .. } => true,
             _ => error_codes::is_retryable(self.code()),
         }
-    }
-}
-
-impl LivePreviewError {
-    pub fn code(&self) -> i32 {
-        match self {
-            LivePreviewError::Session(err) => err.code(),
-            LivePreviewError::AlreadyRunning => error_codes::LIVE_PREVIEW_ALREADY_RUNNING,
-            LivePreviewError::NotRunning => error_codes::LIVE_PREVIEW_NOT_RUNNING,
-            LivePreviewError::InvalidListenAddress(_) => error_codes::LIVE_PREVIEW_INVALID_LISTEN,
-            LivePreviewError::BindFailed { .. } => error_codes::LIVE_PREVIEW_BIND_FAILED,
-        }
-    }
-
-    pub fn category(&self) -> ErrorCategory {
-        error_codes::category_for_code(self.code())
-    }
-
-    pub fn context(&self) -> Value {
-        match self {
-            LivePreviewError::Session(err) => err.context(),
-            LivePreviewError::AlreadyRunning => json!({}),
-            LivePreviewError::NotRunning => json!({}),
-            LivePreviewError::InvalidListenAddress(addr) => json!({ "listen": addr }),
-            LivePreviewError::BindFailed { addr, reason } => {
-                json!({ "listen": addr, "reason": reason })
-            }
-        }
-    }
-
-    pub fn suggestion(&self) -> String {
-        match self {
-            LivePreviewError::Session(err) => err.suggestion(),
-            LivePreviewError::AlreadyRunning => {
-                "Run 'live status' to see the API endpoints or 'daemon stop' to stop it."
-                    .to_string()
-            }
-            LivePreviewError::NotRunning => {
-                "Restart the daemon to start the live preview API.".to_string()
-            }
-            LivePreviewError::InvalidListenAddress(_) => {
-                "Use a valid HOST:PORT or IP:PORT listen address via AGENT_TUI_API_LISTEN."
-                    .to_string()
-            }
-            LivePreviewError::BindFailed { .. } => {
-                "Check if the port is available or choose another AGENT_TUI_API_LISTEN.".to_string()
-            }
-        }
-    }
-
-    pub fn is_retryable(&self) -> bool {
-        matches!(self, LivePreviewError::BindFailed { .. })
     }
 }
 

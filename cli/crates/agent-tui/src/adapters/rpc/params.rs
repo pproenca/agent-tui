@@ -108,16 +108,6 @@ pub struct SessionParams {
     pub session: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct LivePreviewStartParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub listen: Option<String>,
-    #[serde(default)]
-    pub allow_remote: bool,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PtyWriteParams {
     #[serde(skip_serializing_if = "Option::is_none")]

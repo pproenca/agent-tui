@@ -11,7 +11,7 @@ pub use screen::ScreenSnapshot;
 pub use style::CellStyle;
 pub use style::Color;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CursorPosition {
     pub row: u16,
     pub col: u16,

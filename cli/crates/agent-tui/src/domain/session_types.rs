@@ -2,7 +2,6 @@
 
 use std::fmt;
 use std::ops::Deref;
-
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -23,8 +22,11 @@ impl SessionId {
         Ok(Self(id))
     }
 
+    /// Convenience constructor that panics on invalid (empty/whitespace) input.
+    /// Use `try_new()` when handling untrusted input.
+    #[allow(clippy::expect_used)]
     pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
+        Self::try_new(id).expect("SessionId must not be empty")
     }
 
     pub fn as_str(&self) -> &str {
@@ -38,29 +40,32 @@ impl fmt::Display for SessionId {
     }
 }
 
+// Deref<Target=str> is kept intentionally: it enables `.as_deref()` on
+// `Option<SessionId>` throughout the codebase. The tradeoff (implicit &str
+// coercion weakening the newtype boundary) is accepted for ergonomics.
+impl Deref for SessionId {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl AsRef<str> for SessionId {
     fn as_ref(&self) -> &str {
         &self.0
     }
 }
 
-impl Deref for SessionId {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl From<String> for SessionId {
     fn from(s: String) -> Self {
-        Self(s)
+        Self::new(s)
     }
 }
 
 impl From<&str> for SessionId {
     fn from(s: &str) -> Self {
-        Self(s.to_string())
+        Self::new(s)
     }
 }
 
@@ -142,7 +147,7 @@ pub struct SessionInfo {
     pub pid: u32,
     pub running: bool,
     pub created_at: String,
-    pub size: (u16, u16),
+    pub size: TerminalSize,
 }
 
 impl SessionInfo {
@@ -151,15 +156,15 @@ impl SessionInfo {
     }
 
     pub fn dimensions(&self) -> (u16, u16) {
-        self.size
+        self.size.as_tuple()
     }
 
     pub fn cols(&self) -> u16 {
-        self.size.0
+        self.size.cols()
     }
 
     pub fn rows(&self) -> u16 {
-        self.size.1
+        self.size.rows()
     }
 
     pub fn created_at(&self) -> &str {
@@ -210,7 +215,7 @@ mod tests {
             pid: 1234,
             running: true,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: (80, 24),
+            size: TerminalSize::default(),
         };
         assert_eq!(info.id.as_str(), "test");
         assert_eq!(info.command, "bash");
@@ -226,7 +231,7 @@ mod tests {
             pid: 1234,
             running: true,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: (80, 24),
+            size: TerminalSize::default(),
         };
         assert!(running.is_active());
 
@@ -236,7 +241,7 @@ mod tests {
             pid: 1235,
             running: false,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: (80, 24),
+            size: TerminalSize::default(),
         };
         assert!(!stopped.is_active());
     }
@@ -249,7 +254,7 @@ mod tests {
             pid: 1234,
             running: true,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: (120, 40),
+            size: TerminalSize::try_new(120, 40).unwrap(),
         };
         assert_eq!(info.dimensions(), (120, 40));
         assert_eq!(info.cols(), 120);
@@ -264,7 +269,7 @@ mod tests {
             pid: 1234,
             running: true,
             created_at: "2024-01-01T12:30:45Z".to_string(),
-            size: (80, 24),
+            size: TerminalSize::default(),
         };
         assert_eq!(info.created_at(), "2024-01-01T12:30:45Z");
     }

@@ -7,14 +7,12 @@ use crate::infra::daemon::session::DEFAULT_MAX_SESSIONS;
 use tracing::warn;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 64;
-const DEFAULT_LOCK_TIMEOUT_SECS: u64 = 5;
 const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 300;
 const DEFAULT_MAX_REQUEST_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Clone)]
 pub struct DaemonConfig {
     max_connections: usize,
-    lock_timeout: Duration,
     idle_timeout: Duration,
     max_request_bytes: usize,
     max_sessions: usize,
@@ -29,10 +27,6 @@ impl Default for DaemonConfig {
 impl DaemonConfig {
     pub fn max_connections(&self) -> usize {
         self.max_connections
-    }
-
-    pub fn lock_timeout(&self) -> Duration {
-        self.lock_timeout
     }
 
     pub fn idle_timeout(&self) -> Duration {
@@ -50,10 +44,6 @@ impl DaemonConfig {
     pub fn from_env() -> Self {
         Self {
             max_connections: parse_env_usize("AGENT_TUI_MAX_CONNECTIONS", DEFAULT_MAX_CONNECTIONS),
-            lock_timeout: Duration::from_secs(parse_env_u64(
-                "AGENT_TUI_LOCK_TIMEOUT",
-                DEFAULT_LOCK_TIMEOUT_SECS,
-            )),
             idle_timeout: Duration::from_secs(parse_env_u64(
                 "AGENT_TUI_IDLE_TIMEOUT",
                 DEFAULT_IDLE_TIMEOUT_SECS,
@@ -61,31 +51,6 @@ impl DaemonConfig {
             max_request_bytes: parse_env_usize("AGENT_TUI_MAX_REQUEST", DEFAULT_MAX_REQUEST_BYTES),
             max_sessions: parse_env_usize("AGENT_TUI_MAX_SESSIONS", DEFAULT_MAX_SESSIONS),
         }
-    }
-
-    pub fn with_max_connections(mut self, max: usize) -> Self {
-        self.max_connections = max;
-        self
-    }
-
-    pub fn with_lock_timeout(mut self, timeout: Duration) -> Self {
-        self.lock_timeout = timeout;
-        self
-    }
-
-    pub fn with_idle_timeout(mut self, timeout: Duration) -> Self {
-        self.idle_timeout = timeout;
-        self
-    }
-
-    pub fn with_max_request_bytes(mut self, max: usize) -> Self {
-        self.max_request_bytes = max;
-        self
-    }
-
-    pub fn with_max_sessions(mut self, max: usize) -> Self {
-        self.max_sessions = max;
-        self
     }
 }
 
@@ -165,10 +130,6 @@ mod tests {
         let config = DaemonConfig::default();
         assert_eq!(config.max_connections(), DEFAULT_MAX_CONNECTIONS);
         assert_eq!(
-            config.lock_timeout(),
-            Duration::from_secs(DEFAULT_LOCK_TIMEOUT_SECS)
-        );
-        assert_eq!(
             config.idle_timeout(),
             Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS)
         );
@@ -177,35 +138,14 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_pattern() {
-        let config = DaemonConfig::default()
-            .with_max_connections(128)
-            .with_lock_timeout(Duration::from_secs(10))
-            .with_idle_timeout(Duration::from_secs(600))
-            .with_max_request_bytes(2_097_152)
-            .with_max_sessions(32);
-
-        assert_eq!(config.max_connections(), 128);
-        assert_eq!(config.lock_timeout(), Duration::from_secs(10));
-        assert_eq!(config.idle_timeout(), Duration::from_secs(600));
-        assert_eq!(config.max_request_bytes(), 2_097_152);
-        assert_eq!(config.max_sessions(), 32);
-    }
-
-    #[test]
     fn test_invalid_env_uses_defaults() {
         let _max_conn = EnvGuard::set("AGENT_TUI_MAX_CONNECTIONS", "nope");
-        let _lock = EnvGuard::set("AGENT_TUI_LOCK_TIMEOUT", "bad");
         let _idle = EnvGuard::set("AGENT_TUI_IDLE_TIMEOUT", "bad");
         let _max_req = EnvGuard::set("AGENT_TUI_MAX_REQUEST", "bad");
         let _max_sessions = EnvGuard::set("AGENT_TUI_MAX_SESSIONS", "bad");
 
         let config = DaemonConfig::from_env();
         assert_eq!(config.max_connections(), DEFAULT_MAX_CONNECTIONS);
-        assert_eq!(
-            config.lock_timeout(),
-            Duration::from_secs(DEFAULT_LOCK_TIMEOUT_SECS)
-        );
         assert_eq!(
             config.idle_timeout(),
             Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS)

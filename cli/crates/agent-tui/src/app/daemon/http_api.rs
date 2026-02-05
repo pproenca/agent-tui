@@ -40,6 +40,7 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 
+use crate::domain::session_types::SessionId;
 use crate::domain::session_types::SessionInfo;
 use crate::usecases::ports::SessionHandle;
 use crate::usecases::ports::SessionRepository;
@@ -185,7 +186,6 @@ struct ApiState {
     api_version: &'static str,
     daemon_version: String,
     daemon_commit: String,
-    start_time: Instant,
     http_url: String,
     ws_url: String,
     ws_limits: Arc<Semaphore>,
@@ -353,8 +353,8 @@ impl From<SessionInfo> for SessionInfoPayload {
             running: info.running,
             created_at: info.created_at,
             size: SizePayload {
-                cols: info.size.0,
-                rows: info.size.1,
+                cols: info.size.cols(),
+                rows: info.size.rows(),
             },
         }
     }
@@ -392,7 +392,6 @@ pub fn start_api_server(
         api_version: API_VERSION,
         daemon_version: env!("AGENT_TUI_VERSION").to_string(),
         daemon_commit: env!("AGENT_TUI_GIT_SHA").to_string(),
-        start_time: Instant::now(),
         http_url: http_url.clone(),
         ws_url: ws_url.clone(),
         ws_limits: Arc::new(Semaphore::new(config.max_ws_connections)),
@@ -574,12 +573,13 @@ async fn snapshot_handler(
     let session_id = if id == "active" {
         None
     } else {
-        Some(id.as_str())
+        Some(SessionId::new(id.as_str()))
     };
-    let session = match SessionRepository::resolve(state.session_repository.as_ref(), session_id) {
-        Ok(session) => session,
-        Err(err) => return error_response(StatusCode::NOT_FOUND, &err.to_string()),
-    };
+    let session =
+        match SessionRepository::resolve(state.session_repository.as_ref(), session_id.as_ref()) {
+            Ok(session) => session,
+            Err(err) => return error_response(StatusCode::NOT_FOUND, &err.to_string()),
+        };
     if let Err(err) = session.update() {
         return error_response(StatusCode::BAD_GATEWAY, &err.to_string());
     }
@@ -602,16 +602,21 @@ async fn ws_handler(
         return *resp;
     }
 
-    let session_param = query.session.as_deref().filter(|s| *s != "active");
+    let session_param = query
+        .session
+        .as_deref()
+        .filter(|s| *s != "active")
+        .map(SessionId::new);
     let output_encoding = match parse_output_encoding(query.encoding.as_deref()) {
         Ok(encoding) => encoding,
         Err(message) => return error_response(StatusCode::BAD_REQUEST, message),
     };
-    let session = match SessionRepository::resolve(state.session_repository.as_ref(), session_param)
-    {
-        Ok(session) => session,
-        Err(err) => return error_response(StatusCode::NOT_FOUND, &err.to_string()),
-    };
+    let session =
+        match SessionRepository::resolve(state.session_repository.as_ref(), session_param.as_ref())
+        {
+            Ok(session) => session,
+            Err(err) => return error_response(StatusCode::NOT_FOUND, &err.to_string()),
+        };
     let permit = match state.ws_limits.clone().try_acquire_owned() {
         Ok(permit) => permit,
         Err(_) => return error_response(StatusCode::SERVICE_UNAVAILABLE, "too many connections"),

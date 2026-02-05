@@ -65,3 +65,9 @@ fn usecase_layer_has_no_outward_dependencies() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/usecases");
     assert_no_forbidden_imports("usecases", &root, FORBIDDEN_INNER_IMPORTS);
 }
+
+#[test]
+fn adapter_layer_does_not_depend_on_app() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/adapters");
+    assert_no_forbidden_imports("adapters", &root, &["crate::app"]);
+}

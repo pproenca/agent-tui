@@ -29,12 +29,12 @@ impl<R: SessionRepository> WaitUseCaseImpl<R> {
 
 impl<R: SessionRepository> WaitUseCase for WaitUseCaseImpl<R> {
     fn execute(&self, input: WaitInput) -> Result<WaitOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session = self.repository.resolve(input.session_id.as_ref())?;
         let timeout = Duration::from_millis(input.timeout_ms);
         let start = self.clock.now();
 
         let condition = WaitCondition::parse(input.condition, input.text.as_deref())
-            .unwrap_or(WaitCondition::Stable);
+            .map_err(|e| SessionError::InvalidKey(e.to_string()))?;
 
         let mut stable_tracker = StableTracker::new(3);
         let poll_interval = Duration::from_millis(50);

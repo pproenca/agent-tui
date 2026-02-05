@@ -143,7 +143,7 @@ impl SessionOps for MockSession {
     }
 
     fn cursor(&self) -> CursorPosition {
-        self.cursor.clone()
+        self.cursor
     }
 
     fn session_id(&self) -> SessionId {

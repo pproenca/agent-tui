@@ -22,9 +22,9 @@ impl From<std::io::Error> for TransportError {
     fn from(err: std::io::Error) -> Self {
         match err.kind() {
             std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => Self::Timeout,
-            std::io::ErrorKind::UnexpectedEof | std::io::ErrorKind::BrokenPipe => {
-                Self::ConnectionClosed
-            }
+            std::io::ErrorKind::UnexpectedEof
+            | std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::ConnectionReset => Self::ConnectionClosed,
             _ => Self::Io(err),
         }
     }

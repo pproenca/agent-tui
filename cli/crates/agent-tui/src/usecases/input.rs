@@ -29,7 +29,7 @@ impl<R: SessionRepository> KeystrokeUseCaseImpl<R> {
 
 impl<R: SessionRepository> KeystrokeUseCase for KeystrokeUseCaseImpl<R> {
     fn execute(&self, input: KeystrokeInput) -> Result<KeystrokeOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session = self.repository.resolve(input.session_id.as_ref())?;
         session.keystroke(&input.key)?;
 
         Ok(KeystrokeOutput { success: true })
@@ -52,7 +52,7 @@ impl<R: SessionRepository> TypeUseCaseImpl<R> {
 
 impl<R: SessionRepository> TypeUseCase for TypeUseCaseImpl<R> {
     fn execute(&self, input: TypeInput) -> Result<TypeOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session = self.repository.resolve(input.session_id.as_ref())?;
         session.type_text(&input.text)?;
 
         Ok(TypeOutput { success: true })
@@ -75,7 +75,7 @@ impl<R: SessionRepository> KeydownUseCaseImpl<R> {
 
 impl<R: SessionRepository> KeydownUseCase for KeydownUseCaseImpl<R> {
     fn execute(&self, input: KeydownInput) -> Result<KeydownOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session = self.repository.resolve(input.session_id.as_ref())?;
         session.keydown(&input.key)?;
 
         Ok(KeydownOutput { success: true })
@@ -98,7 +98,7 @@ impl<R: SessionRepository> KeyupUseCaseImpl<R> {
 
 impl<R: SessionRepository> KeyupUseCase for KeyupUseCaseImpl<R> {
     fn execute(&self, input: KeyupInput) -> Result<KeyupOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_deref())?;
+        let session = self.repository.resolve(input.session_id.as_ref())?;
         session.keyup(&input.key)?;
 
         Ok(KeyupOutput { success: true })

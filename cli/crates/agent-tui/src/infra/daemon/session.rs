@@ -58,6 +58,7 @@ use crate::infra::daemon::TerminalState;
 
 pub use crate::domain::session_types::SessionId;
 pub use crate::domain::session_types::SessionInfo;
+use crate::domain::session_types::TerminalSize;
 pub use crate::infra::daemon::SessionError;
 
 const STREAM_MAX_BUFFER_BYTES: usize = 8 * 1024 * 1024;
@@ -597,14 +598,6 @@ impl Session {
         Ok(())
     }
 
-    pub fn pty_try_read(&mut self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
-        let mut cursor = self.pty_cursor.lock().unwrap_or_else(|e| e.into_inner());
-        let read = self.stream.read(&mut cursor, buf.len(), timeout_ms)?;
-        let bytes_read = read.data.len().min(buf.len());
-        buf[..bytes_read].copy_from_slice(&read.data[..bytes_read]);
-        Ok(bytes_read)
-    }
-
     pub fn stream_read(
         &self,
         cursor: &mut StreamCursor,
@@ -845,21 +838,24 @@ impl SessionManager {
             .into_iter()
             .map(
                 |(id, session)| match acquire_session_lock(&session, Duration::from_millis(100)) {
-                    Some(mut sess) => SessionInfo {
-                        id: id.clone(),
-                        command: sess.command.clone(),
-                        pid: sess.pid().unwrap_or(0),
-                        running: sess.is_running(),
-                        created_at: sess.created_at.to_rfc3339(),
-                        size: sess.size(),
-                    },
+                    Some(mut sess) => {
+                        let (cols, rows) = sess.size();
+                        SessionInfo {
+                            id: id.clone(),
+                            command: sess.command.clone(),
+                            pid: sess.pid().unwrap_or(0),
+                            running: sess.is_running(),
+                            created_at: sess.created_at.to_rfc3339(),
+                            size: TerminalSize::try_new(cols, rows).unwrap_or_default(),
+                        }
+                    }
                     None => SessionInfo {
                         id: id.clone(),
                         command: "(locked)".to_string(),
                         pid: 0,
                         running: false,
                         created_at: "".to_string(),
-                        size: (80, 24),
+                        size: TerminalSize::default(),
                     },
                 },
             )
@@ -1688,8 +1684,8 @@ impl From<&SessionInfo> for PersistedSession {
             command: info.command.clone(),
             pid: info.pid,
             created_at: info.created_at.clone(),
-            cols: info.size.0,
-            rows: info.size.1,
+            cols: info.size.cols(),
+            rows: info.size.rows(),
         }
     }
 }

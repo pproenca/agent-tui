@@ -65,13 +65,6 @@ impl ClientError {
         }
     }
 
-    pub fn context(&self) -> Option<&Value> {
-        match self {
-            ClientError::RpcError { context, .. } => context.as_ref(),
-            _ => None,
-        }
-    }
-
     pub fn to_json(&self) -> Value {
         match self {
             ClientError::RpcError {

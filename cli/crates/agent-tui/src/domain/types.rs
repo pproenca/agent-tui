@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
+use super::core::CursorPosition;
 use super::session_types::SessionId;
 use super::session_types::SessionInfo;
 
@@ -42,10 +43,6 @@ impl WaitConditionType {
         }
     }
 
-    pub fn requires_target(&self) -> bool {
-        false
-    }
-
     pub fn requires_text(&self) -> bool {
         matches!(self, Self::Text | Self::TextGone)
     }
@@ -63,13 +60,6 @@ impl FromStr for WaitConditionType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct DomainCursorPosition {
-    pub row: u16,
-    pub col: u16,
-    pub visible: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -110,7 +100,7 @@ pub struct SnapshotInput {
 pub struct SnapshotOutput {
     pub session_id: SessionId,
     pub screenshot: String,
-    pub cursor: Option<DomainCursorPosition>,
+    pub cursor: Option<CursorPosition>,
     pub rendered: Option<String>,
 }
 
@@ -200,12 +190,6 @@ pub struct KillOutput {
 }
 
 #[derive(Debug, Clone)]
-pub struct GetTitleOutput {
-    pub session_id: SessionId,
-    pub title: String,
-}
-
-#[derive(Debug, Clone)]
 pub struct TerminalWriteInput {
     pub session_id: Option<SessionId>,
     pub data: Vec<u8>,
@@ -235,32 +219,6 @@ pub struct AttachOutput {
 }
 
 #[derive(Debug, Clone)]
-pub struct LivePreviewStartInput {
-    pub session_id: Option<SessionId>,
-    pub listen_addr: Option<String>,
-    pub allow_remote: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct LivePreviewStartOutput {
-    pub session_id: SessionId,
-    pub listen_addr: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct LivePreviewStopOutput {
-    pub stopped: bool,
-    pub session_id: Option<SessionId>,
-}
-
-#[derive(Debug, Clone)]
-pub struct LivePreviewStatusOutput {
-    pub running: bool,
-    pub session_id: Option<SessionId>,
-    pub listen_addr: Option<String>,
-}
-
-#[derive(Debug, Clone)]
 pub struct CleanupInput {
     pub all: bool,
 }
@@ -277,6 +235,12 @@ pub struct CleanupOutput {
     pub failures: Vec<CleanupFailure>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("Invalid assert condition type '{invalid_value}'. Must be one of: text, session")]
+pub struct AssertConditionParseError {
+    pub invalid_value: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssertConditionType {
     Text,
@@ -284,14 +248,13 @@ pub enum AssertConditionType {
 }
 
 impl AssertConditionType {
-    pub fn parse(s: &str) -> Result<Self, String> {
+    pub fn parse(s: &str) -> Result<Self, AssertConditionParseError> {
         match s.to_lowercase().as_str() {
             "text" => Ok(Self::Text),
             "session" => Ok(Self::Session),
-            _ => Err(format!(
-                "Unknown condition type: {}. Use: text or session",
-                s
-            )),
+            _ => Err(AssertConditionParseError {
+                invalid_value: s.to_string(),
+            }),
         }
     }
 
@@ -384,13 +347,6 @@ mod tests {
         fn test_wait_condition_type_display() {
             assert_eq!(format!("{}", WaitConditionType::Text), "text");
             assert_eq!(format!("{}", WaitConditionType::Stable), "stable");
-        }
-
-        #[test]
-        fn test_wait_condition_type_requires_target() {
-            assert!(!WaitConditionType::Text.requires_target());
-            assert!(!WaitConditionType::Stable.requires_target());
-            assert!(!WaitConditionType::TextGone.requires_target());
         }
 
         #[test]

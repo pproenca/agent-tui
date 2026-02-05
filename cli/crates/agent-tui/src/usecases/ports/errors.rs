@@ -103,17 +103,3 @@ pub enum SessionError {
         source: Option<ErrorSource>,
     },
 }
-
-#[derive(Error, Debug)]
-pub enum LivePreviewError {
-    #[error("{0}")]
-    Session(#[from] SessionError),
-    #[error("Live preview already running")]
-    AlreadyRunning,
-    #[error("Live preview is not running")]
-    NotRunning,
-    #[error("Invalid listen address: {0}")]
-    InvalidListenAddress(String),
-    #[error("Failed to bind live preview listener at {addr}: {reason}")]
-    BindFailed { addr: String, reason: String },
-}

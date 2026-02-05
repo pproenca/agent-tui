@@ -8,6 +8,12 @@ use std::hash::Hasher;
 use crate::domain::WaitConditionType;
 use crate::usecases::ports::SessionOps;
 
+#[derive(Debug, thiserror::Error)]
+pub enum WaitConditionParseError {
+    #[error("condition '{0}' requires a text parameter")]
+    MissingText(WaitConditionType),
+}
+
 #[derive(Debug, Clone)]
 pub enum WaitCondition {
     Text(String),
@@ -16,14 +22,25 @@ pub enum WaitCondition {
 }
 
 impl WaitCondition {
-    pub fn parse(condition: Option<WaitConditionType>, text: Option<&str>) -> Option<Self> {
+    pub fn parse(
+        condition: Option<WaitConditionType>,
+        text: Option<&str>,
+    ) -> Result<Self, WaitConditionParseError> {
         match condition {
-            Some(WaitConditionType::Text) => text.map(|t| WaitCondition::Text(t.to_string())),
-            Some(WaitConditionType::Stable) => Some(WaitCondition::Stable),
-            Some(WaitConditionType::TextGone) => {
-                text.map(|t| WaitCondition::TextGone(t.to_string()))
+            Some(WaitConditionType::Text) => {
+                text.map(|t| WaitCondition::Text(t.to_string())).ok_or(
+                    WaitConditionParseError::MissingText(WaitConditionType::Text),
+                )
             }
-            None => text.map(|t| WaitCondition::Text(t.to_string())),
+            Some(WaitConditionType::Stable) => Ok(WaitCondition::Stable),
+            Some(WaitConditionType::TextGone) => {
+                text.map(|t| WaitCondition::TextGone(t.to_string())).ok_or(
+                    WaitConditionParseError::MissingText(WaitConditionType::TextGone),
+                )
+            }
+            None => Ok(text
+                .map(|t| WaitCondition::Text(t.to_string()))
+                .unwrap_or(WaitCondition::Stable)),
         }
     }
 }
@@ -182,31 +199,44 @@ mod tests {
 
     #[test]
     fn test_wait_condition_parse_text() {
-        let cond = WaitCondition::parse(Some(WaitConditionType::Text), Some("hello"));
-        assert!(matches!(cond, Some(WaitCondition::Text(t)) if t == "hello"));
+        let cond = WaitCondition::parse(Some(WaitConditionType::Text), Some("hello")).unwrap();
+        assert!(matches!(cond, WaitCondition::Text(t) if t == "hello"));
     }
 
     #[test]
     fn test_wait_condition_parse_text_gone() {
-        let cond = WaitCondition::parse(Some(WaitConditionType::TextGone), Some("loading"));
-        assert!(matches!(cond, Some(WaitCondition::TextGone(t)) if t == "loading"));
+        let cond =
+            WaitCondition::parse(Some(WaitConditionType::TextGone), Some("loading")).unwrap();
+        assert!(matches!(cond, WaitCondition::TextGone(t) if t == "loading"));
     }
 
     #[test]
     fn test_wait_condition_parse_stable() {
-        let cond = WaitCondition::parse(Some(WaitConditionType::Stable), None);
-        assert!(matches!(cond, Some(WaitCondition::Stable)));
+        let cond = WaitCondition::parse(Some(WaitConditionType::Stable), None).unwrap();
+        assert!(matches!(cond, WaitCondition::Stable));
     }
 
     #[test]
     fn test_wait_condition_parse_none_defaults_to_text() {
-        let cond = WaitCondition::parse(None, Some("hello"));
-        assert!(matches!(cond, Some(WaitCondition::Text(t)) if t == "hello"));
+        let cond = WaitCondition::parse(None, Some("hello")).unwrap();
+        assert!(matches!(cond, WaitCondition::Text(t) if t == "hello"));
     }
 
     #[test]
-    fn test_wait_condition_parse_invalid() {
-        let cond = WaitCondition::parse(Some(WaitConditionType::Text), None);
-        assert!(cond.is_none());
+    fn test_wait_condition_parse_none_none_defaults_to_stable() {
+        let cond = WaitCondition::parse(None, None).unwrap();
+        assert!(matches!(cond, WaitCondition::Stable));
+    }
+
+    #[test]
+    fn test_wait_condition_parse_text_missing_text_returns_error() {
+        let result = WaitCondition::parse(Some(WaitConditionType::Text), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wait_condition_parse_text_gone_missing_text_returns_error() {
+        let result = WaitCondition::parse(Some(WaitConditionType::TextGone), None);
+        assert!(result.is_err());
     }
 }

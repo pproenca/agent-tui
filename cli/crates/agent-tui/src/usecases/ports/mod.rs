@@ -9,7 +9,6 @@ pub mod terminal_engine;
 pub(crate) mod test_support;
 
 pub use clock::Clock;
-pub use errors::LivePreviewError;
 pub use errors::SessionError;
 pub use errors::SpawnErrorKind;
 pub use errors::TerminalError;

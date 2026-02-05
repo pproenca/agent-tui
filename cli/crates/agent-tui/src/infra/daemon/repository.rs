@@ -218,16 +218,11 @@ mod tests {
 
     #[test]
     fn test_session_ops_trait_is_usable_as_generic_bound() {
+        use crate::usecases::ports::test_support::MockSession;
+
         fn assert_generic_bound<S: SessionOps + ?Sized>(_session: &S) {}
 
-        let manager = SessionManager::new();
-        let cwd = std::env::current_dir()
-            .ok()
-            .map(|path| path.to_string_lossy().into_owned());
-        let session_handle = manager
-            .spawn("/bin/sh", &[], cwd.as_deref(), None, None, 80, 24)
-            .and_then(|(id, _)| SessionRepository::get(&manager, &id))
-            .unwrap();
-        assert_generic_bound(session_handle.as_ref());
+        let session = MockSession::new("test");
+        assert_generic_bound(&session);
     }
 }

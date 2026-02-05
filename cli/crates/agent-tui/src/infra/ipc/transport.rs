@@ -288,6 +288,20 @@ pub(crate) fn clear_test_listener() {
 }
 
 fn start_daemon_background_impl() -> Result<(), ClientError> {
+    // Guard: prevent recursive spawning. If AGENT_TUI_DAEMON_FOREGROUND is set,
+    // we are already a daemon child process and must not spawn another.
+    if std::env::var("AGENT_TUI_DAEMON_FOREGROUND")
+        .ok()
+        .is_some_and(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+    {
+        return Err(ClientError::DaemonNotRunning);
+    }
+
     use std::fs::OpenOptions;
     use std::process::Command;
     use std::process::Stdio;
@@ -472,5 +486,19 @@ mod tests {
         let result = start_daemon_background_impl();
         assert!(matches!(result, Err(ClientError::DaemonNotRunning)));
         assert!(DAEMON_START_TEST_REAPED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn start_daemon_background_impl_guards_against_recursive_spawn() {
+        let temp_dir = TempDir::new_in("/tmp").expect("Failed to create temp dir");
+        let socket_path = temp_dir.path().join("daemon.sock");
+        let _socket_guard = EnvGuard::set("AGENT_TUI_SOCKET", socket_path.display().to_string());
+        let _fg_guard = EnvGuard::set("AGENT_TUI_DAEMON_FOREGROUND", "1");
+
+        let result = start_daemon_background_impl();
+        assert!(
+            matches!(result, Err(ClientError::DaemonNotRunning)),
+            "should refuse to spawn when AGENT_TUI_DAEMON_FOREGROUND is set"
+        );
     }
 }

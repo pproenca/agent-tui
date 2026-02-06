@@ -1,9 +1,0 @@
-id: clean-arch-usecases-no-infrastructure
-valid:
-  - "use crate::domain::SessionId;"
-  - "use crate::usecases::ports::SessionRepository;"
-  - "use crate::infra::daemon::test_support::MockSessionRepository;"
-invalid:
-  - "use crate::infra::daemon::Session;"
-  - "use crate::adapters::rpc::Response;"
-  - "use crate::app::handlers::HandlerResult;"

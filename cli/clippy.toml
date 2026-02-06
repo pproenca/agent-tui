@@ -1,5 +1,9 @@
 disallowed-methods = [
-    { path = "std::env::set_current_dir", reason = "Use absolute paths to avoid directory-related bugs" }
+    { path = "std::env::set_current_dir", reason = "Use absolute paths to avoid directory-related bugs" },
+    { path = "std::thread::sleep", reason = "Avoid blocking sleeps in runtime paths; prefer event-driven waiting or tokio::time::sleep in async code" },
+    { path = "tokio::sync::mpsc::unbounded_channel", reason = "Use bounded channels to enforce backpressure" },
+    { path = "crossbeam_channel::unbounded", reason = "Use bounded channels to enforce backpressure" },
+    { path = "std::sync::mpsc::channel", reason = "Use bounded/concurrent channels with explicit capacity and backpressure semantics" }
 ]
 cognitive-complexity-threshold = 30
 too-many-lines-threshold = 200

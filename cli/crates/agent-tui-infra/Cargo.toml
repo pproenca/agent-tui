@@ -1,0 +1,39 @@
+[package]
+name = "agent-tui-infra"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+test-support = ["agent-tui-usecases/test-support"]
+
+[dependencies]
+bytes.workspace = true
+chrono.workspace = true
+crossbeam-channel.workspace = true
+crossterm.workspace = true
+portable-pty.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+signal-hook.workspace = true
+sysinfo.workspace = true
+tattoy-wezterm-term.workspace = true
+tattoy-wezterm-surface.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tungstenite.workspace = true
+url.workspace = true
+uuid.workspace = true
+libc.workspace = true
+agent-tui-common = { path = "../agent-tui-common" }
+agent-tui-domain = { path = "../agent-tui-domain" }
+agent-tui-usecases = { path = "../agent-tui-usecases" }
+
+[dev-dependencies]
+tempfile.workspace = true
+agent-tui-usecases = { path = "../agent-tui-usecases", features = ["test-support"] }

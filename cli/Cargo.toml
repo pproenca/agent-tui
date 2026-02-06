@@ -1,6 +1,13 @@
 [workspace]
 members = [
     "crates/agent-tui",
+    "crates/agent-tui-common",
+    "crates/agent-tui-domain",
+    "crates/agent-tui-usecases",
+    "crates/agent-tui-adapters",
+    "crates/agent-tui-infra",
+    "crates/agent-tui-app",
+    "crates/xtask",
 ]
 resolver = "2"
 
@@ -12,6 +19,14 @@ license = "MIT"
 repository = "https://github.com/pproenca/agent-tui"
 
 [workspace.dependencies]
+# Internal
+agent-tui-common = { path = "crates/agent-tui-common" }
+agent-tui-domain = { path = "crates/agent-tui-domain" }
+agent-tui-usecases = { path = "crates/agent-tui-usecases" }
+agent-tui-adapters = { path = "crates/agent-tui-adapters" }
+agent-tui-infra = { path = "crates/agent-tui-infra" }
+agent-tui-app = { path = "crates/agent-tui-app" }
+
 # External (pinned)
 anyhow = "1"
 thiserror = "2.0"
@@ -52,6 +67,7 @@ expect_used = "deny"
 print_stdout = "deny"
 print_stderr = "deny"
 dbg_macro = "deny"
+disallowed_methods = "deny"
 
 [profile.release]
 opt-level = 3

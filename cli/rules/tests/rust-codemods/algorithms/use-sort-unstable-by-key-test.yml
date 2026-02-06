@@ -1,9 +1,0 @@
-id: algo-use-sort-unstable-by-key
-valid:
-  - "vec.sort_unstable_by_key(|x| x.name);"
-  - "items.sort_unstable_by(|a, b| a.name.cmp(&b.other));"
-  - "vec.sort_unstable_by(|a, b| calc(a).cmp(&calc(b)));"
-invalid:
-  - "vec.sort_unstable_by(|a, b| a.name.cmp(&b.name));"
-  - "items.sort_unstable_by(|x, y| x.priority.cmp(&y.priority));"
-  - "self.entries.sort_unstable_by(|a, b| a.id.cmp(&b.id));"

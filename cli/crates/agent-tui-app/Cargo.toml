@@ -1,0 +1,39 @@
+[package]
+name = "agent-tui-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+base64.workspace = true
+chrono.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+crossterm.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true
+shell-words.workspace = true
+crossbeam-channel.workspace = true
+agent-tui-common = { path = "../agent-tui-common" }
+agent-tui-domain = { path = "../agent-tui-domain" }
+agent-tui-usecases = { path = "../agent-tui-usecases" }
+agent-tui-adapters = { path = "../agent-tui-adapters" }
+agent-tui-infra = { path = "../agent-tui-infra" }
+
+[dev-dependencies]
+tempfile.workspace = true
+once_cell = "1.19"
+agent-tui-usecases = { path = "../agent-tui-usecases", features = ["test-support"] }
+agent-tui-infra = { path = "../agent-tui-infra", features = ["test-support"] }

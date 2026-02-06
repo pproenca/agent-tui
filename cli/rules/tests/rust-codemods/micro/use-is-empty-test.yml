@@ -1,9 +1,0 @@
-id: micro-use-is-empty
-valid:
-  - "vec.is_empty();"
-  - "if items.is_empty() { return; }"
-  - "s.len() > 0;"
-invalid:
-  - "vec.len() == 0;"
-  - "if items.len() == 0 { return; }"
-  - "self.buffer.len() == 0;"

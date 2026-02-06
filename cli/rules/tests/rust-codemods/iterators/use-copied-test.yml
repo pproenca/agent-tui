@@ -1,9 +1,0 @@
-id: iter-use-copied
-valid:
-  - "iter.copied();"
-  - "items.iter().copied().collect();"
-  - "vec.iter().map(|x| x + 1);"
-invalid:
-  - "iter.map(|x| *x);"
-  - "items.iter().map(|item| *item);"
-  - "vec.iter().map(|v| *v).collect();"

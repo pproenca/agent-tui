@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>agent-tui Live Preview</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/xterm.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="sidebar__status">
+          <div class="status" id="status">
+            <span class="status__dot"></span>
+            <span class="status__text">Disconnected</span>
+          </div>
+          <button id="connectBtn" class="button button--icon" type="button" title="Connect"></button>
+        </div>
+
+        <div class="sidebar__section">
+          <div class="sidebar__section-header">
+            <h2 class="sidebar__section-title">Sessions</h2>
+            <button id="sessionsRefresh" class="button button--icon" type="button" title="Refresh"></button>
+          </div>
+          <div
+            id="sessionList"
+            class="session-list"
+            role="listbox"
+            aria-label="Sessions"
+          ></div>
+          <div id="sessionEmpty" class="session-empty">No sessions</div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section class="terminal">
+          <div id="terminal" class="terminal__viewport"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

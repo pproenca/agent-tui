@@ -1,9 +1,0 @@
-id: iter-avoid-collect-iter
-valid:
-  - "iter.collect::<Vec<_>>();"
-  - "iter.collect::<Vec<T>>();"
-  - "vec.iter();"
-invalid:
-  - "iter.collect::<Vec<_>>().iter();"
-  - "iter.collect::<Vec<T>>().iter();"
-  - "data.filter(f).collect::<Vec<_>>().iter();"

@@ -1,8 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `cli/`: Rust workspace for the CLI/daemon. Main crate at `cli/crates/agent-tui/`, supporting docs in `cli/docs/`.
-- `cli/rules/` and `cli/rule-tests/`: ast-grep rule definitions and YAML fixtures.
+- `cli/`: Rust workspace for the CLI/daemon. Facade crate at `cli/crates/agent-tui/`, internal layer crates under `cli/crates/agent-tui-{common,domain,usecases,adapters,infra,app}/`, and Rust task runner at `cli/crates/xtask/`.
 - `web/`: Bun-based live preview UI. Source in `web/src/`, built assets in `web/public/`.
 - `docs/`: repository-level documentation.
 - `scripts/` and `install.sh`: release/installation helpers.
@@ -15,7 +14,7 @@ Commands are managed via `just` from the repo root (it runs in `cli/`).
 - `just build` / `just build-release`: build Rust workspace (installs web deps first).
 - `just web-build`: build the web UI with Bun.
 - `just test`: run Rust tests (smoke/contract focus).
-- `just ready`: full CI-style checks (fmt, clippy, architecture, tests, version). Requires `bun`.
+- `just ready`: full CI-style checks (fmt, clippy, architecture, tests, version).
 
 ## Coding Style & Naming Conventions
 - Rust: format with `rustfmt` and lint with `clippy` (`just format`, `just lint`). Follow standard Rust naming (snake_case for functions/vars, PascalCase for types).
@@ -24,8 +23,7 @@ Commands are managed via `just` from the repo root (it runs in `cli/`).
 
 ## Testing Guidelines
 - Unit/integration tests live under `cli/crates/agent-tui/tests` and module-level `#[cfg(test)]` blocks.
-- Rule tests are YAML fixtures under `cli/rules/tests/` and `cli/rule-tests/`.
-- Run `just test` for local verification; use `just ready` before PRs. Optional checks run if `ast-grep` and `cargo-machete` are installed.
+- Run `just test` for local verification; use `just ready` before PRs. Optional dependency checks run if `cargo-machete` is installed.
 
 ## Commit & Pull Request Guidelines
 - Commit messages generally follow a conventional pattern: `type: summary` (e.g., `feat: ...`, `fix: ...`, `chore: ...`, `refactor: ...`, `ci: ...`, `release: ...`). Keep summaries short and imperative.

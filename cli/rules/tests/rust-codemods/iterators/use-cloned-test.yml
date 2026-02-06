@@ -1,9 +1,0 @@
-id: iter-use-cloned
-valid:
-  - "iter.cloned();"
-  - "items.iter().cloned().collect();"
-  - "vec.iter().map(|x| x.to_owned());"
-invalid:
-  - "iter.map(|x| x.clone());"
-  - "items.iter().map(|item| item.clone());"
-  - "vec.iter().map(|v| v.clone()).collect();"

@@ -1,112 +1,57 @@
-Target State: Single-Crate Clean Architecture (agent-tui)
+Target State: Internal Multi-Crate Clean Architecture (agent-tui workspace)
 
-Status: agreed target state for refactor
-Scope: single Cargo package, single published binary
+Status: agreed target state for enforcement
+Scope: single published binary (`agent-tui`), multi-crate internal workspace
 
 Goals
-- Maintain a single published binary (no multi-crate publishing)
-- Enforce Clean Architecture boundaries with module structure + visibility
-- Keep Rust systems conventions (explicit modules, clear error types, minimal side effects)
-- Make dependencies flow inward only
+- Keep the external CLI/API behavior unchanged.
+- Enforce dependency direction with Cargo crate boundaries.
+- Enforce architecture policy with Rust-native tooling (`xtask` + `cargo metadata`).
+- Keep runtime/event-driven guardrails in Clippy policy (no unbounded channels, no blocking `std::thread::sleep`).
 
 Non-Goals
-- Splitting into multiple publishable crates
-- Changing external CLI/RPC behavior or JSON schemas
+- Publishing layer crates independently.
+- Reintroducing pattern-based architecture enforcement.
 
-High-Level Layout (single crate)
-src/
-  main.rs               // composition root only (CLI wiring + exit codes)
-  lib.rs                // module declarations and limited re-exports
+Workspace Layout
+- `crates/agent-tui-common`: shared primitives/utilities.
+- `crates/agent-tui-domain`: domain types and business rules.
+- `crates/agent-tui-usecases`: use-case orchestration and ports.
+- `crates/agent-tui-adapters`: interface adapters (RPC/presenters/router).
+- `crates/agent-tui-infra`: infrastructure integrations (IPC/terminal/process/daemon infra).
+- `crates/agent-tui-app`: application composition and command handling.
+- `crates/agent-tui`: facade crate + binaries only (`main.rs`, `bin/*`).
+- `crates/xtask`: Rust-native repo orchestration and architecture checks.
 
-  domain/               // pure business rules, no IO/frameworks
-    mod.rs
-    errors.rs
-    session.rs
-    types.rs
+Allowed Internal Dependency Matrix
+- `agent-tui-common` -> none
+- `agent-tui-domain` -> `agent-tui-common`
+- `agent-tui-usecases` -> `agent-tui-domain`, `agent-tui-common`
+- `agent-tui-adapters` -> `agent-tui-usecases`, `agent-tui-domain`, `agent-tui-common`
+- `agent-tui-infra` -> `agent-tui-usecases`, `agent-tui-domain`, `agent-tui-common`
+- `agent-tui-app` -> `agent-tui-adapters`, `agent-tui-infra`, `agent-tui-usecases`, `agent-tui-domain`, `agent-tui-common`
+- `agent-tui` -> `agent-tui-app` (plus external CLI/doc-generation crates)
 
-  usecases/             // application logic + ports
-    mod.rs
-    ports/
-      mod.rs
-      session_repository.rs
-      sleeper.rs
-      terminal_io.rs
-    session/
-      mod.rs
-      start.rs
-      stop.rs
-      list.rs
-      cleanup.rs
+Boundary/Policy Rules
+- No production code in facade crate beyond `main.rs`, `lib.rs`, and `bin/*.rs`.
+- No permissive "root bucket" fallback for architecture validation.
+- No `std::process::exit` outside `main.rs`.
+- Disallow in Clippy:
+  - `std::thread::sleep`
+  - `tokio::sync::mpsc::unbounded_channel`
+  - `crossbeam_channel::unbounded`
+  - `std::sync::mpsc::channel`
 
-  adapters/             // interface adapters (RPC/CLI presenters)
-    mod.rs
-    rpc/
-      mod.rs
-      parse.rs
-      response.rs
-    presenter/
-      mod.rs
-      text.rs
-      json.rs
+Enforcement Tooling
+- `cargo run -p xtask -- architecture check --verbose`
+  - validates workspace crate graph against the allowed matrix.
+  - fails on unknown internal crates.
+  - fails on unknown top-level production directories in `src/`.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+  - enforces disallowed methods and lint policy.
 
-  infra/                // OS/socket/PTY/filesystem, implements ports
-    mod.rs
-    ipc/
-      mod.rs
-      unix_socket.rs
-    terminal/
-      mod.rs
-      pty.rs
-    process/
-      mod.rs
-      signals.rs
-
-  app/                  // CLI application flow (thin)
-    mod.rs
-    dispatch.rs
-    handlers/
-      mod.rs
-      sessions.rs
-      recording.rs
-      diagnostics.rs
-
-Dependency Direction (must be enforced)
-- domain: depends on nothing else (no serde_json, no std::fs, no thread/sleep)
-- usecases: depends only on domain + usecases::ports
-- adapters: depends on usecases + domain
-- infra: depends on domain + usecases::ports
-- app: depends on adapters + infra + usecases + domain
-- main.rs: depends on app only
-
-Boundary Rules
-- No std::process::exit outside main.rs
-- No JSON types outside adapters (serde_json::Value restricted to adapters; infra/ipc may use it for wire protocol)
-- No IO or threading inside domain/usecases
-- Usecases get time/sleep via ports (Sleeper trait)
-- Repositories and external calls are ports implemented in infra
-
-Visibility Rules
-- Default to pub(crate) for internal types
-- Only expose the minimal surface through lib.rs re-exports
-- Avoid re-exporting infra types into app or domain
-
-Error Handling
-- domain errors in domain/errors.rs using thiserror
-- usecases return domain/usecase errors, no printing/logging
-- adapters map errors to RPC/CLI responses
-- main.rs maps final errors to exit codes
-
-Testing Strategy
-- domain: pure unit tests
-- usecases: unit tests with mock ports
-- adapters: JSON/RPC contract tests
-- infra: integration tests (socket/pty)
-
-Enforcement Checklist
-- Explicit module declarations in lib.rs and mod.rs
-- Add boundary checks (ast-grep rules or CI script)
-- Keep files under ~400 lines by splitting into submodules
-
-Migration Notes
-- Phase changes should not alter external CLI/RPC behavior
-- Use small, reversible steps: move modules first, then tighten boundaries
+CI Baseline
+1. `cargo fmt --all -- --check`
+2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+3. `cargo run -p xtask -- architecture check --verbose`
+4. `cargo test --workspace`

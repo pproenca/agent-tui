@@ -45,8 +45,6 @@ CONFIGURATION:
     AGENT_TUI_API_LISTEN / AGENT_TUI_API_ALLOW_REMOTE / AGENT_TUI_API_STATE
                               Deprecated aliases for WS settings
     AGENT_TUI_SESSION_STORE     Session metadata log path (default: ~/.agent-tui/sessions.jsonl)
-    AGENT_TUI_RECORD_STATE      Recording state file path (default: ~/.agent-tui/recordings.json)
-    AGENT_TUI_RECORDINGS_DIR    Default recordings output directory (default: current directory)
     AGENT_TUI_LOG               Log file path (optional)
     AGENT_TUI_LOG_FORMAT        Log format (text or json; default: text)
     AGENT_TUI_LOG_STREAM        Log output stream (stderr or stdout; default: stderr)
@@ -304,7 +302,6 @@ MODES:
     list              List active sessions (default)
     show <id>         Show details for a session
     attach            Attach with TTY (defaults to --session or active)
-    record            Record session activity to VHS artifacts
     switch <id>       Set the active session
     cleanup [--all]   Remove dead/orphaned sessions")]
     #[command(after_long_help = "\
@@ -316,10 +313,6 @@ EXAMPLES:
     agent-tui -s abc123 sessions attach   # Attach to session by id (TTY)
     agent-tui sessions switch abc123      # Set active session
     agent-tui -s abc123 sessions attach -T # Attach without TTY (stream output only)
-    agent-tui sessions record             # Record active session in background
-    agent-tui sessions record --foreground
-    agent-tui sessions record -o docs/recordings
-    agent-tui -s abc123 sessions record stop
     agent-tui sessions attach --detach-keys 'ctrl-]'  # Custom detach sequence
     agent-tui sessions cleanup            # Remove dead sessions
     agent-tui sessions cleanup --all      # Remove all sessions")]
@@ -448,45 +441,6 @@ pub enum SessionsCommand {
         detach_keys: Option<DetachKeys>,
     },
 
-    /// Record a running session to VHS artifacts (.gif + .tape)
-    #[command(long_about = "\
-Record a running session to VHS artifacts.
-
-By default recording starts in background and returns immediately.
-Use --foreground to wait until recording exits.
-
-OUTPUT PATH RULES:
-    -o/--output-file omitted     Uses AGENT_TUI_RECORDINGS_DIR or current directory
-    Existing directory           Creates timestamped <session>-<time>.gif/.tape
-    Existing file                Uses file stem for .gif/.tape pair
-    Non-existing path w/ ext     Treated as file path
-    Non-existing path no ext     Treated as directory")]
-    #[command(after_long_help = "\
-EXAMPLES:
-    agent-tui sessions record
-    agent-tui sessions record --foreground
-    agent-tui sessions record -o docs/recordings
-    agent-tui sessions record -o docs/recordings/demo.gif
-    agent-tui sessions record stop")]
-    #[command(args_conflicts_with_subcommands = true)]
-    Record {
-        /// Output file or directory for recording artifacts
-        #[arg(
-            short = 'o',
-            long = "output-file",
-            value_name = "PATH",
-            value_hint = ValueHint::AnyPath
-        )]
-        output_file: Option<PathBuf>,
-
-        /// Run recorder in foreground (wait until recording exits)
-        #[arg(long)]
-        foreground: bool,
-
-        #[command(subcommand)]
-        command: Option<RecordCommand>,
-    },
-
     /// Set the active session without attaching
     #[command(alias = "select")]
     Switch {
@@ -500,12 +454,6 @@ EXAMPLES:
         #[arg(long)]
         all: bool,
     },
-}
-
-#[derive(Debug, Subcommand)]
-pub enum RecordCommand {
-    /// Stop recording for the selected or active session
-    Stop,
 }
 
 #[derive(Debug, Subcommand)]
@@ -927,65 +875,13 @@ mod tests {
     }
 
     #[test]
-    fn test_sessions_record_defaults() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "record"]);
-        let Commands::Sessions { command } = cli.command else {
-            panic!("Expected Sessions command, got {:?}", cli.command);
-        };
+    fn test_sessions_record_subcommand_rejected() {
+        let err = Cli::try_parse_from(["agent-tui", "sessions", "record"])
+            .err()
+            .expect("expected parse error");
         assert!(matches!(
-            command,
-            Some(SessionsCommand::Record {
-                output_file: None,
-                foreground: false,
-                command: None
-            })
-        ));
-    }
-
-    #[test]
-    fn test_sessions_record_foreground() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "record", "--foreground"]);
-        let Commands::Sessions { command } = cli.command else {
-            panic!("Expected Sessions command, got {:?}", cli.command);
-        };
-        assert!(matches!(
-            command,
-            Some(SessionsCommand::Record {
-                foreground: true,
-                command: None,
-                ..
-            })
-        ));
-    }
-
-    #[test]
-    fn test_sessions_record_output_file() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "record", "-o", "out.gif"]);
-        let Commands::Sessions { command } = cli.command else {
-            panic!("Expected Sessions command, got {:?}", cli.command);
-        };
-        assert!(matches!(
-            command,
-            Some(SessionsCommand::Record {
-                output_file: Some(_),
-                foreground: false,
-                command: None
-            })
-        ));
-    }
-
-    #[test]
-    fn test_sessions_record_stop() {
-        let cli = Cli::parse_from(["agent-tui", "sessions", "record", "stop"]);
-        let Commands::Sessions { command } = cli.command else {
-            panic!("Expected Sessions command, got {:?}", cli.command);
-        };
-        assert!(matches!(
-            command,
-            Some(SessionsCommand::Record {
-                command: Some(RecordCommand::Stop),
-                ..
-            })
+            err.kind(),
+            ErrorKind::UnknownArgument | ErrorKind::InvalidSubcommand
         ));
     }
 

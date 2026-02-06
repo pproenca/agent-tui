@@ -647,6 +647,9 @@ mod tests {
     )]
 
     use super::*;
+    use std::sync::Mutex;
+    use std::sync::MutexGuard;
+    use std::sync::OnceLock;
     use std::sync::atomic::Ordering;
     use tempfile::TempDir;
 
@@ -679,8 +682,18 @@ mod tests {
         }
     }
 
+    fn env_lock() -> &'static Mutex<()> {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn acquire_env_lock() -> MutexGuard<'static, ()> {
+        env_lock().lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn start_daemon_background_reaps_early_exit() {
+        let _env_lock = acquire_env_lock();
         let temp_dir = TempDir::new_in("/tmp").expect("Failed to create temp dir");
         let socket_path = temp_dir.path().join("daemon.sock");
         let _socket_guard = EnvGuard::set("AGENT_TUI_SOCKET", socket_path.display().to_string());
@@ -695,6 +708,7 @@ mod tests {
 
     #[test]
     fn start_daemon_background_impl_guards_against_recursive_spawn() {
+        let _env_lock = acquire_env_lock();
         let temp_dir = TempDir::new_in("/tmp").expect("Failed to create temp dir");
         let socket_path = temp_dir.path().join("daemon.sock");
         let _socket_guard = EnvGuard::set("AGENT_TUI_SOCKET", socket_path.display().to_string());

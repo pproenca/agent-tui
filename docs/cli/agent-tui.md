@@ -80,8 +80,6 @@ CONFIGURATION:
     AGENT_TUI_API_LISTEN / AGENT_TUI_API_ALLOW_REMOTE / AGENT_TUI_API_STATE
                               Deprecated aliases for WS settings
     AGENT_TUI_SESSION_STORE     Session metadata log path (default: ~/.agent-tui/sessions.jsonl)
-    AGENT_TUI_RECORD_STATE      Recording state file path (default: ~/.agent-tui/recordings.json)
-    AGENT_TUI_RECORDINGS_DIR    Default recordings output directory (default: current directory)
     AGENT_TUI_LOG               Log file path (optional)
     AGENT_TUI_LOG_FORMAT        Log format (text or json; default: text)
     AGENT_TUI_LOG_STREAM        Log output stream (stderr or stdout; default: stderr)
@@ -522,7 +520,6 @@ MODES:
     list              List active sessions (default)
     show <id>         Show details for a session
     attach            Attach with TTY (defaults to --session or active)
-    record            Record session activity to VHS artifacts
     switch <id>       Set the active session
     cleanup [--all]   Remove dead/orphaned sessions
 
@@ -532,7 +529,6 @@ Commands:
   list     List active sessions
   show     Show details for a specific session
   attach   Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-Q or --detach-keys)
-  record   Record a running session to VHS artifacts (.gif + .tape)
   switch   Set the active session without attaching
   cleanup  Remove dead/orphaned sessions
   help     Print this message or the help of the given subcommand(s)
@@ -571,10 +567,6 @@ EXAMPLES:
     agent-tui -s abc123 sessions attach   # Attach to session by id (TTY)
     agent-tui sessions switch abc123      # Set active session
     agent-tui -s abc123 sessions attach -T # Attach without TTY (stream output only)
-    agent-tui sessions record             # Record active session in background
-    agent-tui sessions record --foreground
-    agent-tui sessions record -o docs/recordings
-    agent-tui -s abc123 sessions record stop
     agent-tui sessions attach --detach-keys 'ctrl-]'  # Custom detach sequence
     agent-tui sessions cleanup            # Remove dead sessions
     agent-tui sessions cleanup --all      # Remove all sessions
@@ -692,114 +684,6 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
-```
-
-## `agent-tui sessions record`
-
-```text
-Record a running session to VHS artifacts.
-
-By default recording starts in background and returns immediately.
-Use --foreground to wait until recording exits.
-
-OUTPUT PATH RULES:
-    -o/--output-file omitted     Uses AGENT_TUI_RECORDINGS_DIR or current directory
-    Existing directory           Creates timestamped <session>-<time>.gif/.tape
-    Existing file                Uses file stem for .gif/.tape pair
-    Non-existing path w/ ext     Treated as file path
-    Non-existing path no ext     Treated as directory
-
-Usage: record [OPTIONS]
-       record <COMMAND>
-
-Commands:
-  stop  Stop recording for the selected or active session
-  help  Print this message or the help of the given subcommand(s)
-
-Options:
-  -o, --output-file <PATH>
-          Output file or directory for recording artifacts
-
-      --foreground
-          Run recorder in foreground (wait until recording exits)
-
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-
-Session Options:
-  -s, --session <ID>
-          Session ID to use (defaults to the most recent session)
-
-Output Options:
-  -f, --format <FORMAT>
-          Output format (text or json)
-          
-          [default: text]
-          [possible values: text, json]
-
-      --json
-          Shorthand for --format json (overrides --format if both are set)
-
-      --no-color
-          Disable colored output (also respects NO_COLOR)
-          
-          [env: NO_COLOR=1]
-
-EXAMPLES:
-    agent-tui sessions record
-    agent-tui sessions record --foreground
-    agent-tui sessions record -o docs/recordings
-    agent-tui sessions record -o docs/recordings/demo.gif
-    agent-tui sessions record stop
-```
-
-## `agent-tui sessions record stop`
-
-```text
-Stop recording for the selected or active session
-
-Usage: stop [OPTIONS]
-
-Options:
-  -h, --help
-          Print help
-
-  -V, --version
-          Print version
-
-Session Options:
-  -s, --session <ID>
-          Session ID to use (defaults to the most recent session)
-
-Output Options:
-  -f, --format <FORMAT>
-          Output format (text or json)
-          
-          [default: text]
-          [possible values: text, json]
-
-      --json
-          Shorthand for --format json (overrides --format if both are set)
-
-      --no-color
-          Disable colored output (also respects NO_COLOR)
-          
-          [env: NO_COLOR=1]
-```
-
-## `agent-tui sessions record help`
-
-```text
-Print this message or the help of the given subcommand(s)
-
-Usage: help [COMMAND]...
-
-Arguments:
-  [COMMAND]...
-          Print help for the subcommand(s)
 ```
 
 ## `agent-tui sessions switch`

@@ -20,7 +20,6 @@ pub mod commands;
 pub mod daemon;
 pub mod error;
 pub mod handlers;
-mod recording;
 pub mod rpc_client;
 
 use crate::app::commands::OutputFormat;
@@ -41,7 +40,6 @@ use crate::app::commands::Commands;
 use crate::app::commands::DaemonCommand;
 use crate::app::commands::LiveCommand;
 use crate::app::commands::LiveStartArgs;
-use crate::app::commands::RecordCommand;
 use crate::app::commands::Shell;
 use crate::app::handlers::HandlerContext;
 
@@ -689,18 +687,6 @@ impl Application {
                         let attach_id = handlers::resolve_attach_session_id(ctx)?;
                         handlers::handle_attach(ctx, attach_id, !*no_tty, detach_keys.clone())?
                     }
-                    Some(SessionsCommand::Record {
-                        output_file,
-                        foreground,
-                        command,
-                    }) => match command {
-                        None => handlers::handle_session_record_start(
-                            ctx,
-                            output_file.clone(),
-                            *foreground,
-                        )?,
-                        Some(RecordCommand::Stop) => handlers::handle_session_record_stop(ctx)?,
-                    },
                     Some(SessionsCommand::Switch { session_id }) => {
                         handlers::handle_session_switch(ctx, session_id.clone())?
                     }

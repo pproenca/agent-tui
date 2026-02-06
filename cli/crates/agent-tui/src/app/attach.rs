@@ -8,7 +8,11 @@ use std::io::Write;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::thread;
 use std::time::Duration;
+use std::time::Instant;
 
 use crate::adapters::RpcValue;
 use crate::adapters::rpc::params;
@@ -285,19 +289,19 @@ fn attach_ipc_loop<C: DaemonClient>(
     )
     .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
     let abort_handle = stream.abort_handle();
-    let output_done_rx = start_attach_stream_output(stream, Arc::clone(&stdout), false)?;
-    let event_rx = spawn_event_reader();
+    let output_worker = start_attach_stream_output(stream, Arc::clone(&stdout), false)?;
+    let event_worker = spawn_event_reader();
 
     loop {
         channel::select! {
-            recv(output_done_rx) -> result => {
+            recv(output_worker.receiver()) -> result => {
                 match result {
                     Ok(Ok(())) => break,
                     Ok(Err(err)) => return Err(err),
                     Err(_) => break,
                 }
             }
-            recv(event_rx) -> msg => {
+            recv(event_worker.receiver()) -> msg => {
                 match msg {
                     Ok(EventMessage::Event(Event::Key(key_event))) => {
                         if let Some(bytes) = key_event_to_bytes(&key_event) {
@@ -329,7 +333,9 @@ fn attach_ipc_loop<C: DaemonClient>(
                                 if let Some(handle) = abort_handle.as_ref() {
                                     handle.abort();
                                 }
-                                let _ = output_done_rx.recv_timeout(Duration::from_millis(500));
+                                let _ =
+                                    output_worker.receiver().recv_timeout(ATTACH_OUTPUT_SHUTDOWN_WAIT);
+                                event_worker.cancel();
                                 break;
                             }
 
@@ -389,21 +395,21 @@ fn attach_stream_loop<C: DaemonClient>(
         },
     )
     .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
-    let output_done_rx = start_attach_stream_output(stream, Arc::clone(&stdout), true)?;
-    let stdin_rx = spawn_stdin_reader();
+    let output_worker = start_attach_stream_output(stream, Arc::clone(&stdout), true)?;
+    let stdin_worker = spawn_stdin_reader();
     let mut stdin_active = true;
 
     loop {
         if stdin_active {
             channel::select! {
-                recv(output_done_rx) -> result => {
+                recv(output_worker.receiver()) -> result => {
                     match result {
                         Ok(Ok(())) => return Ok(()),
                         Ok(Err(err)) => return Err(err),
                         Err(_) => return Ok(()),
                     }
                 }
-                recv(stdin_rx) -> msg => {
+                recv(stdin_worker.receiver()) -> msg => {
                     match msg {
                         Ok(StdinMessage::Data(data)) => {
                             if !data.is_empty() {
@@ -419,15 +425,17 @@ fn attach_stream_loop<C: DaemonClient>(
                         }
                         Ok(StdinMessage::Eof) | Ok(StdinMessage::Error) => {
                             stdin_active = false;
+                            stdin_worker.cancel();
                         }
                         Err(_) => {
                             stdin_active = false;
+                            stdin_worker.cancel();
                         }
                     }
                 }
             }
         } else {
-            match output_done_rx.recv() {
+            match output_worker.receiver().recv() {
                 Ok(Ok(())) => return Ok(()),
                 Ok(Err(err)) => return Err(err),
                 Err(_) => return Ok(()),
@@ -566,17 +574,108 @@ enum StdinMessage {
 }
 
 const ATTACH_STDIN_CHANNEL_CAPACITY: usize = 64;
+const ATTACH_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const ATTACH_THREAD_JOIN_TIMEOUT: Duration = Duration::from_millis(500);
+const ATTACH_OUTPUT_SHUTDOWN_WAIT: Duration = Duration::from_millis(500);
 
-fn spawn_stdin_reader() -> channel::Receiver<StdinMessage> {
+struct AttachReaderWorker<T> {
+    rx: channel::Receiver<T>,
+    cancelled: Arc<AtomicBool>,
+    join: Option<thread::JoinHandle<()>>,
+    name: &'static str,
+}
+
+impl<T> AttachReaderWorker<T> {
+    fn receiver(&self) -> &channel::Receiver<T> {
+        &self.rx
+    }
+
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Relaxed);
+    }
+
+    fn shutdown(&mut self, timeout: Duration) {
+        self.cancel();
+        join_thread_with_timeout(&mut self.join, timeout, self.name);
+    }
+}
+
+impl<T> Drop for AttachReaderWorker<T> {
+    fn drop(&mut self) {
+        self.shutdown(ATTACH_THREAD_JOIN_TIMEOUT);
+    }
+}
+
+struct AttachOutputWorker {
+    done_rx: channel::Receiver<Result<(), AttachError>>,
+    join: Option<thread::JoinHandle<()>>,
+}
+
+impl AttachOutputWorker {
+    fn receiver(&self) -> &channel::Receiver<Result<(), AttachError>> {
+        &self.done_rx
+    }
+
+    fn shutdown(&mut self, timeout: Duration) {
+        join_thread_with_timeout(&mut self.join, timeout, "attach-stream-output");
+    }
+}
+
+impl Drop for AttachOutputWorker {
+    fn drop(&mut self) {
+        self.shutdown(ATTACH_THREAD_JOIN_TIMEOUT);
+    }
+}
+
+fn join_thread_with_timeout(
+    join: &mut Option<thread::JoinHandle<()>>,
+    timeout: Duration,
+    name: &'static str,
+) {
+    let Some(handle) = join.take() else {
+        return;
+    };
+    let deadline = Instant::now() + timeout;
+    while !handle.is_finished() {
+        if Instant::now() >= deadline {
+            tracing::warn!(
+                thread = name,
+                timeout_ms = timeout.as_millis(),
+                "Timed out joining attach helper thread"
+            );
+            return;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    let _ = handle.join();
+}
+
+fn spawn_stdin_reader() -> AttachReaderWorker<StdinMessage> {
     let (tx, rx) = channel::bounded(ATTACH_STDIN_CHANNEL_CAPACITY);
     let span = tracing::debug_span!("attach_stdin_reader");
-    let builder = std::thread::Builder::new().name("attach-stdin".to_string());
+    let builder = thread::Builder::new().name("attach-stdin".to_string());
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let cancelled_for_thread = Arc::clone(&cancelled);
     let tx_thread = tx.clone();
-    if let Err(err) = builder.spawn(move || {
+    let join = match builder.spawn(move || {
         let _guard = span.enter();
         let mut stdin = io::stdin();
         let mut buf = [0u8; 4096];
         loop {
+            if cancelled_for_thread.load(Ordering::Relaxed) {
+                break;
+            }
+            #[cfg(unix)]
+            {
+                match stdin_ready(ATTACH_INPUT_POLL_INTERVAL) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(_) => {
+                        let _ = tx_thread.send(StdinMessage::Error);
+                        break;
+                    }
+                }
+            }
             match stdin.read(&mut buf) {
                 Ok(0) => {
                     let _ = tx_thread.send(StdinMessage::Eof);
@@ -597,10 +696,19 @@ fn spawn_stdin_reader() -> channel::Receiver<StdinMessage> {
             }
         }
     }) {
-        tracing::warn!(error = %err, "Failed to spawn stdin reader");
-        let _ = tx.send(StdinMessage::Error);
+        Ok(handle) => Some(handle),
+        Err(err) => {
+            tracing::warn!(error = %err, "Failed to spawn stdin reader");
+            let _ = tx.send(StdinMessage::Error);
+            None
+        }
+    };
+    AttachReaderWorker {
+        rx,
+        cancelled,
+        join,
+        name: "attach-stdin",
     }
-    rx
 }
 
 enum EventMessage {
@@ -610,14 +718,53 @@ enum EventMessage {
 
 const ATTACH_EVENT_CHANNEL_CAPACITY: usize = 256;
 
-fn spawn_event_reader() -> channel::Receiver<EventMessage> {
+#[cfg(unix)]
+fn stdin_ready(timeout: Duration) -> io::Result<bool> {
+    use std::os::fd::AsRawFd;
+    let mut fds = [libc::pollfd {
+        fd: io::stdin().as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    }];
+    let timeout_ms = timeout.as_millis().min(i32::MAX as u128) as i32;
+    loop {
+        // SAFETY: `poll` is called with a valid pointer to a stack-allocated array.
+        let rc = unsafe { libc::poll(fds.as_mut_ptr(), 1, timeout_ms) };
+        if rc > 0 {
+            return Ok(fds[0].revents & libc::POLLIN != 0);
+        }
+        if rc == 0 {
+            return Ok(false);
+        }
+        let err = io::Error::last_os_error();
+        if err.kind() == io::ErrorKind::Interrupted {
+            continue;
+        }
+        return Err(err);
+    }
+}
+
+fn spawn_event_reader() -> AttachReaderWorker<EventMessage> {
     let (tx, rx) = channel::bounded(ATTACH_EVENT_CHANNEL_CAPACITY);
     let span = tracing::debug_span!("attach_event_reader");
-    let builder = std::thread::Builder::new().name("attach-events".to_string());
+    let builder = thread::Builder::new().name("attach-events".to_string());
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let cancelled_for_thread = Arc::clone(&cancelled);
     let tx_thread = tx.clone();
-    if let Err(err) = builder.spawn(move || {
+    let join = match builder.spawn(move || {
         let _guard = span.enter();
         loop {
+            if cancelled_for_thread.load(Ordering::Relaxed) {
+                break;
+            }
+            match event::poll(ATTACH_INPUT_POLL_INTERVAL) {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(_) => {
+                    let _ = tx_thread.send(EventMessage::Error);
+                    break;
+                }
+            }
             match event::read() {
                 Ok(ev) => {
                     if tx_thread.send(EventMessage::Event(ev)).is_err() {
@@ -631,10 +778,19 @@ fn spawn_event_reader() -> channel::Receiver<EventMessage> {
             }
         }
     }) {
-        tracing::warn!(error = %err, "Failed to spawn event reader");
-        let _ = tx.send(EventMessage::Error);
+        Ok(handle) => Some(handle),
+        Err(err) => {
+            tracing::warn!(error = %err, "Failed to spawn event reader");
+            let _ = tx.send(EventMessage::Error);
+            None
+        }
+    };
+    AttachReaderWorker {
+        rx,
+        cancelled,
+        join,
+        name: "attach-events",
     }
-    rx
 }
 
 enum AttachStreamEvent {
@@ -684,10 +840,10 @@ fn start_attach_stream_output(
     stream: RpcStream,
     stdout: Arc<Mutex<io::Stdout>>,
     report_drops: bool,
-) -> Result<channel::Receiver<Result<(), AttachError>>, AttachError> {
+) -> Result<AttachOutputWorker, AttachError> {
     let (tx, rx) = channel::bounded(1);
-    let builder = std::thread::Builder::new().name("attach-stream-output".to_string());
-    builder
+    let builder = thread::Builder::new().name("attach-stream-output".to_string());
+    let join = builder
         .spawn(move || {
             let result = stream_output_loop(stream, stdout, report_drops);
             let _ = tx.send(result);
@@ -695,7 +851,10 @@ fn start_attach_stream_output(
         .map_err(|err| {
             AttachError::PtyRead(format!("Failed to spawn attach output thread: {}", err))
         })?;
-    Ok(rx)
+    Ok(AttachOutputWorker {
+        done_rx: rx,
+        join: Some(join),
+    })
 }
 
 fn stream_output_loop(
@@ -1091,5 +1250,19 @@ mod tests {
             AttachStreamEvent::Closed => {}
             _ => panic!("expected closed event"),
         }
+    }
+
+    #[test]
+    fn stdin_reader_worker_shutdown_is_bounded() {
+        let mut worker = spawn_stdin_reader();
+        worker.shutdown(Duration::from_millis(250));
+        assert!(worker.join.is_none());
+    }
+
+    #[test]
+    fn event_reader_worker_shutdown_is_bounded() {
+        let mut worker = spawn_event_reader();
+        worker.shutdown(Duration::from_millis(250));
+        assert!(worker.join.is_none());
     }
 }

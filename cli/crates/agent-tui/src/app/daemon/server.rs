@@ -46,6 +46,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 const CHANNEL_CAPACITY: usize = 128;
+const STREAM_JOIN_POLL_INTERVAL: Duration = Duration::from_millis(20);
 static CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
 
 struct ShutdownWaker {
@@ -274,38 +275,19 @@ impl DaemonServer {
         };
 
         for handle in handles {
-            let (tx, rx) = mpsc::channel();
-            let handle_cell = Arc::new(std::sync::Mutex::new(Some(handle)));
-            let handle_for_joiner = Arc::clone(&handle_cell);
-            let joiner = thread::Builder::new()
-                .name("stream-joiner".to_string())
-                .spawn(move || {
-                    if let Some(handle) = handle_for_joiner
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .take()
-                    {
-                        let _ = handle.join();
-                    }
-                    let _ = tx.send(());
-                });
-            match joiner {
-                Ok(_) => {
-                    if rx.recv_timeout(timeout).is_err() {
-                        warn!(
-                            timeout_ms = timeout.as_millis(),
-                            "Timed out joining stream thread"
-                        );
-                    }
+            let deadline = Instant::now() + timeout;
+            while !handle.is_finished() {
+                if Instant::now() >= deadline {
+                    warn!(
+                        timeout_ms = timeout.as_millis(),
+                        "Timed out joining stream thread"
+                    );
+                    break;
                 }
-                Err(err) => {
-                    warn!(error = %err, "Failed to spawn stream joiner thread; joining inline");
-                    if let Some(handle) =
-                        handle_cell.lock().unwrap_or_else(|e| e.into_inner()).take()
-                    {
-                        let _ = handle.join();
-                    }
-                }
+                thread::sleep(STREAM_JOIN_POLL_INTERVAL);
+            }
+            if handle.is_finished() {
+                let _ = handle.join();
             }
         }
     }
@@ -778,6 +760,31 @@ mod tests {
         server.register_stream_thread(handle);
         server.join_stream_threads(Duration::from_secs(1));
 
+        assert!(server.stream_threads.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn join_stream_threads_times_out_without_blocking_shutdown() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
+            Arc::new(NoopShutdownNotifier);
+        let server = Arc::new(DaemonServer::with_config(
+            DaemonConfig::default(),
+            Arc::clone(&shutdown),
+            notifier,
+        ));
+
+        let handle = std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_secs(1));
+        });
+        server.register_stream_thread(handle);
+
+        let start = Instant::now();
+        server.join_stream_threads(Duration::from_millis(25));
+        assert!(
+            start.elapsed() < Duration::from_millis(500),
+            "stream join should remain bounded on timeout"
+        );
         assert!(server.stream_threads.lock().unwrap().is_empty());
     }
 }

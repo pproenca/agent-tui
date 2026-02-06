@@ -17,9 +17,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc as std_mpsc;
 use std::thread;
 use std::time::Duration;
+use std::time::Instant;
 use std::time::SystemTime;
 use tokio::net::TcpListener;
 use tokio::sync::Semaphore;
@@ -43,6 +43,7 @@ const WS_RECV_TIMEOUT: Duration = Duration::from_secs(60);
 const WS_SEND_TIMEOUT: Duration = Duration::from_secs(15);
 const WS_STREAM_TASK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const WS_MAX_PARSE_ERRORS: u8 = 3;
+const WS_JOIN_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const UI_INDEX_HTML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/web/index.html"
@@ -162,14 +163,16 @@ impl WsServerHandle {
             let _ = tx.send(true);
         }
         if let Some(join) = self.join.take() {
-            let (done_tx, done_rx) = std_mpsc::channel();
-            let _ = thread::Builder::new()
-                .name("ws-shutdown".to_string())
-                .spawn(move || {
-                    let _ = join.join();
-                    let _ = done_tx.send(());
-                });
-            if done_rx.recv_timeout(Duration::from_secs(2)).is_err() {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while !join.is_finished() {
+                if Instant::now() >= deadline {
+                    break;
+                }
+                thread::sleep(WS_JOIN_POLL_INTERVAL);
+            }
+            if join.is_finished() {
+                let _ = join.join();
+            } else {
                 warn!("WS server did not stop within shutdown timeout");
             }
         }
@@ -486,10 +489,11 @@ async fn run_stream_connection(
     request: RpcRequest,
     kind: crate::app::daemon::rpc_core::StreamKind,
 ) -> Result<(), ()> {
-    let (tx, mut rx) = mpsc::channel::<String>(state.ws_queue_capacity);
+    let (tx, rx) = mpsc::channel::<String>(state.ws_queue_capacity);
     let core = Arc::clone(&state.core);
     let stream_cancelled = Arc::new(AtomicBool::new(false));
     let stream_cancelled_for_task = Arc::clone(&stream_cancelled);
+    let mut rx = Some(rx);
 
     let mut stream_task = tokio::task::spawn_blocking(move || {
         let mut writer = ChannelWriter { tx };
@@ -501,17 +505,28 @@ async fn run_stream_connection(
         );
     });
 
-    while let Some(payload) = rx.recv().await {
+    while let Some(payload) = match rx.as_mut() {
+        Some(rx_ref) => rx_ref.recv().await,
+        None => None,
+    } {
         let send = tokio::time::timeout(WS_SEND_TIMEOUT, socket.send(Message::Text(payload))).await;
         if send.is_err() || send.ok().is_some_and(|result| result.is_err()) {
-            stream_cancelled.store(true, Ordering::Relaxed);
-            let _ = wait_for_stream_task(&mut stream_task).await;
+            let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
             return Err(());
         }
     }
 
+    cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await
+}
+
+async fn cancel_stream_task(
+    stream_cancelled: &Arc<AtomicBool>,
+    rx: &mut Option<mpsc::Receiver<String>>,
+    stream_task: &mut tokio::task::JoinHandle<()>,
+) -> Result<(), ()> {
     stream_cancelled.store(true, Ordering::Relaxed);
-    wait_for_stream_task(&mut stream_task).await
+    let _ = rx.take();
+    wait_for_stream_task(stream_task).await
 }
 
 async fn wait_for_stream_task(stream_task: &mut tokio::task::JoinHandle<()>) -> Result<(), ()> {
@@ -671,7 +686,17 @@ fn default_state_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use super::cancel_stream_task;
+    use super::WsServerHandle;
     use super::WsConfig;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
+    use std::thread;
+    use std::time::Duration;
+    use std::time::Instant;
+    use tokio::sync::mpsc;
     use crate::test_support::env_lock;
 
     struct EnvGuard {
@@ -749,5 +774,46 @@ mod tests {
         let err = super::bind_listener(&config).expect_err("expected non-loopback bind rejection");
         let message = err.to_string();
         assert!(message.contains("AGENT_TUI_WS_ALLOW_REMOTE=1"), "{message}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancel_stream_task_drops_receiver_to_release_backpressure() {
+        let (tx, rx) = mpsc::channel::<String>(1);
+        tx.send("first".to_string())
+            .await
+            .expect("seed channel");
+
+        let mut stream_task = tokio::task::spawn_blocking(move || {
+            let _ = tx.blocking_send("second".to_string());
+        });
+
+        let stream_cancelled = Arc::new(AtomicBool::new(false));
+        let mut rx = Some(rx);
+        let start = Instant::now();
+        let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
+
+        assert!(stream_cancelled.load(Ordering::Relaxed));
+        assert!(rx.is_none(), "receiver should be dropped during cancellation");
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "cancellation should unblock blocked sender promptly"
+        );
+    }
+
+    #[test]
+    fn ws_handle_shutdown_remains_bounded_on_slow_thread() {
+        let join = thread::spawn(|| thread::sleep(Duration::from_secs(5)));
+        let handle = WsServerHandle {
+            shutdown_tx: None,
+            join: Some(join),
+            state_path: PathBuf::new(),
+        };
+
+        let start = Instant::now();
+        handle.shutdown();
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "shutdown should return after timeout even if ws thread is still running"
+        );
     }
 }

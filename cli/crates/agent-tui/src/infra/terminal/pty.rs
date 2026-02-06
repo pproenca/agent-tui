@@ -328,23 +328,46 @@ impl PtyHandle {
         #[cfg(unix)]
         {
             if let Some(pid) = self.child.process_id() {
-                if let Err(err) = signal_process_group(pid, libc::SIGTERM) {
-                    if let Err(kill_err) = self.child.kill() {
-                        return Err(PtyError::Spawn {
-                            reason: format!(
-                                "failed to signal process group ({}) and kill child: {}",
-                                err, kill_err
-                            ),
-                            kind: SpawnErrorKind::Other,
-                        });
-                    }
-                    let _ = self.wait_for_exit(KILL_TIMEOUT);
-                    return Ok(());
-                } else if self.wait_for_exit(TERMINATE_TIMEOUT) {
-                    return Ok(());
-                }
+                match can_signal_process_group(pid) {
+                    Ok(true) => {
+                        if let Err(err) = signal_process_group(pid, libc::SIGTERM) {
+                            if let Err(kill_err) = self.child.kill() {
+                                return Err(PtyError::Spawn {
+                                    reason: format!(
+                                        "failed to signal process group ({}) and kill child: {}",
+                                        err, kill_err
+                                    ),
+                                    kind: SpawnErrorKind::Other,
+                                });
+                            }
+                            let _ = self.wait_for_exit(KILL_TIMEOUT);
+                            return Ok(());
+                        } else if self.wait_for_exit(TERMINATE_TIMEOUT) {
+                            return Ok(());
+                        }
 
-                let _ = signal_process_group(pid, libc::SIGKILL);
+                        let _ = signal_process_group(pid, libc::SIGKILL);
+                        let _ = self.wait_for_exit(KILL_TIMEOUT);
+                        return Ok(());
+                    }
+                    Ok(false) => {
+                        warn!(
+                            pid,
+                            "PTY child is not process-group leader; falling back to direct kill"
+                        );
+                    }
+                    Err(err) => {
+                        warn!(
+                            pid,
+                            error = %err,
+                            "Failed to verify PTY process-group leadership; falling back to direct kill"
+                        );
+                    }
+                }
+                self.child.kill().map_err(|e| PtyError::Spawn {
+                    reason: e.to_string(),
+                    kind: SpawnErrorKind::Other,
+                })?;
                 let _ = self.wait_for_exit(KILL_TIMEOUT);
                 return Ok(());
             }
@@ -407,6 +430,23 @@ fn signal_process_group(pid: u32, signal: libc::c_int) -> io::Result<()> {
         Some(code) if code == libc::ESRCH => Ok(()),
         _ => Err(err),
     }
+}
+
+#[cfg(unix)]
+fn can_signal_process_group(pid: u32) -> io::Result<bool> {
+    let pid_t: libc::pid_t = pid
+        .try_into()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid pid"))?;
+    // SAFETY: `getpgid` is safe with a valid pid_t.
+    let pgid = unsafe { libc::getpgid(pid_t) };
+    if pgid == -1 {
+        let err = io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::ESRCH) {
+            return Ok(false);
+        }
+        return Err(err);
+    }
+    Ok(pgid == pid_t)
 }
 
 pub(crate) enum ReadEvent {
@@ -549,6 +589,8 @@ pub(crate) fn keycode_to_escape_sequence(code: KeyCode) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::process::Command;
 
     #[test]
     fn test_key_to_escape_sequence() {
@@ -561,5 +603,23 @@ mod tests {
         );
         assert_eq!(key_to_escape_sequence("Ctrl+C"), Some(vec![3]));
         assert_eq!(key_to_escape_sequence("a"), Some(vec![b'a']));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn can_signal_process_group_is_false_for_non_group_leader() {
+        let mut child = Command::new("sh")
+            .arg("-c")
+            .arg("sleep 5")
+            .spawn()
+            .expect("spawn child");
+        let pid = child.id();
+        let can_signal = can_signal_process_group(pid).expect("getpgid should succeed");
+        assert!(
+            !can_signal,
+            "regular child process should not be treated as process-group leader"
+        );
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

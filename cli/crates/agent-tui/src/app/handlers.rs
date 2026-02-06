@@ -1253,8 +1253,11 @@ fn remove_api_state_file() {
     }
 }
 
-fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
-    let controller = UnixProcessController;
+fn wait_for_process_exit_with_controller<C: ProcessController>(
+    controller: &C,
+    pid: u32,
+    timeout: Duration,
+) -> bool {
     let deadline = Instant::now() + timeout;
     loop {
         match controller.check_process(pid) {
@@ -1269,7 +1272,36 @@ fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
     }
 }
 
+fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
+    let controller = UnixProcessController;
+    wait_for_process_exit_with_controller(&controller, pid, timeout)
+}
+
+fn process_running_with_controller<C: ProcessController>(controller: &C, pid: u32) -> bool {
+    matches!(
+        controller.check_process(pid),
+        Ok(crate::infra::ipc::ProcessStatus::Running)
+            | Ok(crate::infra::ipc::ProcessStatus::NoPermission)
+    )
+}
+
+const UI_STOP_TERM_TIMEOUT: Duration = Duration::from_secs(2);
+const UI_STOP_KILL_TIMEOUT: Duration = Duration::from_secs(2);
+
 fn stop_ui_server() -> Result<StopUiResult> {
+    let controller = UnixProcessController;
+    stop_ui_server_with_controller_and_timeouts(
+        &controller,
+        UI_STOP_TERM_TIMEOUT,
+        UI_STOP_KILL_TIMEOUT,
+    )
+}
+
+fn stop_ui_server_with_controller_and_timeouts<C: ProcessController>(
+    controller: &C,
+    term_timeout: Duration,
+    kill_timeout: Duration,
+) -> Result<StopUiResult> {
     if let Ok(url) = std::env::var("AGENT_TUI_UI_URL")
         && !url.trim().is_empty()
     {
@@ -1281,22 +1313,32 @@ fn stop_ui_server() -> Result<StopUiResult> {
         return Ok(StopUiResult::AlreadyStopped);
     };
 
-    if !is_process_running(state.pid) {
+    if !process_running_with_controller(controller, state.pid) {
         let _ = std::fs::remove_file(&state_path);
         return Ok(StopUiResult::AlreadyStopped);
     }
 
-    let controller = UnixProcessController;
     controller
         .send_signal(state.pid, Signal::Term)
         .with_context(|| format!("Failed to stop UI server (pid {})", state.pid))?;
 
-    if wait_for_process_exit(state.pid, Duration::from_secs(2)) {
+    if wait_for_process_exit_with_controller(controller, state.pid, term_timeout) {
         let _ = std::fs::remove_file(&state_path);
-        Ok(StopUiResult::Stopped)
-    } else {
-        Err(anyhow::anyhow!("UI server did not stop in time"))
+        return Ok(StopUiResult::Stopped);
     }
+
+    controller
+        .send_signal(state.pid, Signal::Kill)
+        .with_context(|| format!("Failed to force-stop UI server (pid {})", state.pid))?;
+
+    if wait_for_process_exit_with_controller(controller, state.pid, kill_timeout) {
+        let _ = std::fs::remove_file(&state_path);
+        return Ok(StopUiResult::Stopped);
+    }
+
+    Err(anyhow::anyhow!(
+        "UI server did not stop after SIGTERM/SIGKILL"
+    ))
 }
 
 fn build_ui_url(base: &str, state: &ApiState) -> String {
@@ -1904,12 +1946,92 @@ pub(crate) fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::ipc::ProcessStatus;
+    use crate::test_support::env_lock;
     use crate::adapters::RpcValue;
     use crate::adapters::presenter::ClientErrorView;
     use crate::adapters::presenter::Presenter;
     use crate::adapters::presenter::TextPresenter;
     use std::cell::RefCell;
+    use std::fs;
     use std::rc::Rc;
+    use std::sync::Mutex;
+    use tempfile::TempDir;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl Into<String>) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: test-only environment mutation under env_lock.
+            unsafe {
+                std::env::set_var(key, value.into());
+            }
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: test-only environment restoration under env_lock.
+            unsafe {
+                if let Some(prev) = self.prev.take() {
+                    std::env::set_var(self.key, prev);
+                } else {
+                    std::env::remove_var(self.key);
+                }
+            }
+        }
+    }
+
+    struct StopUiController {
+        status: Mutex<ProcessStatus>,
+        signals: Mutex<Vec<Signal>>,
+        kill_on_term: bool,
+        kill_on_kill: bool,
+    }
+
+    impl StopUiController {
+        fn new(status: ProcessStatus, kill_on_term: bool, kill_on_kill: bool) -> Self {
+            Self {
+                status: Mutex::new(status),
+                signals: Mutex::new(Vec::new()),
+                kill_on_term,
+                kill_on_kill,
+            }
+        }
+
+        fn signals(&self) -> Vec<Signal> {
+            self.signals
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+        }
+    }
+
+    impl ProcessController for StopUiController {
+        fn check_process(&self, _pid: u32) -> std::io::Result<crate::infra::ipc::ProcessStatus> {
+            Ok(*self.status.lock().unwrap_or_else(|e| e.into_inner()))
+        }
+
+        fn send_signal(&self, _pid: u32, signal: Signal) -> std::io::Result<()> {
+            self.signals
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(signal);
+            let should_stop = match signal {
+                Signal::Term => self.kill_on_term,
+                Signal::Kill => self.kill_on_kill,
+            };
+            if should_stop {
+                *self.status.lock().unwrap_or_else(|e| e.into_inner()) = ProcessStatus::NotFound;
+            }
+            Ok(())
+        }
+    }
 
     struct MockPresenter {
         output: Rc<RefCell<Vec<String>>>,
@@ -2089,5 +2211,34 @@ mod tests {
         let params = WaitParams::default();
         let cond = resolve_wait_condition(&params);
         assert_eq!(cond, None);
+    }
+
+    #[test]
+    fn stop_ui_server_escalates_to_sigkill_and_cleans_state() {
+        let _env = env_lock();
+        let temp = TempDir::new_in("/tmp").expect("tempdir");
+        let state_path = temp.path().join("ui.json");
+        fs::write(
+            &state_path,
+            r#"{"pid":42,"url":"http://127.0.0.1:7777/ui","port":7777}"#,
+        )
+        .expect("write ui state");
+        let _state_guard = EnvVarGuard::set("AGENT_TUI_UI_STATE", state_path.display().to_string());
+        let _external_guard = EnvVarGuard::set("AGENT_TUI_UI_URL", "");
+
+        let controller = StopUiController::new(ProcessStatus::Running, false, true);
+        let result = stop_ui_server_with_controller_and_timeouts(
+            &controller,
+            Duration::from_millis(5),
+            Duration::from_millis(5),
+        )
+        .expect("ui stop should escalate and succeed");
+
+        assert!(matches!(result, StopUiResult::Stopped));
+        assert_eq!(controller.signals(), vec![Signal::Term, Signal::Kill]);
+        assert!(
+            !state_path.exists(),
+            "state file should be removed when stop succeeds"
+        );
     }
 }

@@ -470,32 +470,35 @@ pub(crate) fn clear_test_listener() {
     }
 }
 
-fn handle_reaper_spawn_failure(child: &mut std::process::Child) {
-    match child.try_wait() {
-        Ok(Some(_status)) => {}
-        Ok(None) => {
-            // Do not block here; child continues detached and will be reaped by init when it exits.
-        }
-        Err(err) => {
-            warn!(error = %err, "Failed to query daemon process state after reaper spawn failure");
-        }
-    }
+fn handle_reaper_spawn_failure(child: std::process::Child) -> Result<(), ClientError> {
+    terminate_daemon_child(child);
+    Err(ClientError::UnexpectedResponse {
+        message: "failed to spawn daemon reaper thread; daemon process was terminated".to_string(),
+    })
 }
 
-fn spawn_daemon_reaper(child: std::process::Child) {
-    let child = std::sync::Arc::new(std::sync::Mutex::new(child));
-    let child_for_thread = std::sync::Arc::clone(&child);
+fn spawn_daemon_reaper(child: std::process::Child) -> Result<(), ClientError> {
+    let child_cell = std::sync::Arc::new(std::sync::Mutex::new(Some(child)));
+    let child_for_thread = std::sync::Arc::clone(&child_cell);
     match std::thread::Builder::new()
         .name("daemon-reaper".to_string())
         .spawn(move || {
-            let mut child = child_for_thread.lock().unwrap_or_else(|e| e.into_inner());
-            let _ = child.wait();
+            let mut guard = child_for_thread.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(mut child) = guard.take() {
+                let _ = child.wait();
+            }
         }) {
-        Ok(_) => {}
+        Ok(_) => Ok(()),
         Err(err) => {
             warn!(error = %err, "Failed to spawn daemon reaper thread");
-            let mut child = child.lock().unwrap_or_else(|e| e.into_inner());
-            handle_reaper_spawn_failure(&mut child);
+            let mut guard = child_cell.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(child) = guard.take() {
+                handle_reaper_spawn_failure(child)
+            } else {
+                Err(ClientError::UnexpectedResponse {
+                    message: "failed to spawn daemon reaper thread".to_string(),
+                })
+            }
         }
     }
 }
@@ -509,6 +512,10 @@ fn terminate_daemon_child(mut child: std::process::Child) {
     }
     if let Err(err) = child.wait() {
         warn!(error = %err, "Failed to reap daemon process");
+    }
+    #[cfg(test)]
+    {
+        DAEMON_START_TEST_REAPED.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -598,8 +605,7 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
         }
         std::thread::sleep(delay);
         if transport.is_daemon_running() {
-            spawn_daemon_reaper(child);
-            return Ok(());
+            return spawn_daemon_reaper(child);
         }
 
         delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
@@ -699,25 +705,36 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn reaper_failure_fallback_is_non_blocking() {
+    fn reaper_failure_fallback_terminates_and_reaps_child() {
+        use crate::infra::ipc::ProcessController;
+        use crate::infra::ipc::ProcessStatus;
+        use crate::infra::ipc::UnixProcessController;
         use std::process::Command;
         use std::time::Duration;
         use std::time::Instant;
 
-        let mut child = Command::new("sh")
+        let child = Command::new("sh")
             .arg("-c")
-            .arg("sleep 1")
+            .arg("sleep 30")
             .spawn()
             .expect("failed to spawn child");
+        let pid = child.id();
 
         let start = Instant::now();
-        handle_reaper_spawn_failure(&mut child);
+        let result = handle_reaper_spawn_failure(child);
+        assert!(matches!(result, Err(ClientError::UnexpectedResponse { .. })));
         assert!(
-            start.elapsed() < Duration::from_millis(500),
-            "reaper fallback should not block on child.wait()"
+            start.elapsed() < Duration::from_secs(2),
+            "reaper fallback should terminate child in bounded time"
         );
 
-        let _ = child.kill();
-        let _ = child.wait();
+        let controller = UnixProcessController;
+        let status = controller
+            .check_process(pid)
+            .expect("process check should succeed");
+        assert!(
+            matches!(status, ProcessStatus::NotFound),
+            "child must be reaped after fallback, got {status:?}"
+        );
     }
 }

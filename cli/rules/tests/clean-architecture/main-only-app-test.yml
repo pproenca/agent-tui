@@ -1,6 +1,0 @@
-id: clean-arch-main-only-app
-valid:
-  - "use agent_tui::Application;"
-invalid:
-  - "use crate::infra::daemon::Server;"
-  - "use agent_tui::domain::Session;"

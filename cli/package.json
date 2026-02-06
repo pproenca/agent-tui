@@ -37,11 +37,11 @@
   },
   "scripts": {
     "build:native": "cargo build --release -p agent-tui && node scripts/copy-native.js",
-    "dist:npm": "bun scripts/xtask.ts dist npm",
+    "dist:npm": "cargo run -p xtask -- dist npm",
     "postinstall": "node scripts/postinstall.js",
     "preversion": "just ready",
     "version": "echo 'ERROR: Use just release bump=patch|minor|major|x.y.z' && exit 1",
-    "version:check": "bun scripts/xtask.ts version check"
+    "version:check": "cargo run -p xtask -- version check"
   },
   "version": "1.0.0",
   "workspaces": [

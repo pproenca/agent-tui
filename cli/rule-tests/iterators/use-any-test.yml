@@ -1,9 +1,0 @@
-id: iter-use-any
-valid:
-  - "iter.any(|x| x > 5);"
-  - "iter.filter(|x| x > 5).next();"
-  - "iter.find(pred).is_some();"
-invalid:
-  - "iter.filter(|x| x > 5).next().is_some();"
-  - "vec.iter().filter(predicate).next().is_some();"
-  - "self.data.filter(|x| x.is_valid()).next().is_some();"

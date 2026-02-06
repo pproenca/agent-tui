@@ -1,0 +1,21 @@
+[package]
+name = "agent-tui-adapters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+base64.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+agent-tui-common = { path = "../agent-tui-common" }
+agent-tui-domain = { path = "../agent-tui-domain" }
+agent-tui-usecases = { path = "../agent-tui-usecases" }

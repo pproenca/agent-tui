@@ -1,8 +1,0 @@
-id: clean-arch-infra-no-adapters-usecases
-valid:
-  - "use crate::domain::SessionId;"
-  - "use crate::usecases::ports::SessionRepository;"
-invalid:
-  - "use crate::adapters::rpc::Response;"
-  - "use crate::app::handlers::HandlerResult;"
-  - "use crate::usecases::snapshot::SnapshotUseCase;"

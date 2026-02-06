@@ -15,14 +15,14 @@ dev:
     cargo run -p agent-tui -- daemon
 
 # Run CI checks (format, clippy, architecture, tests, version).
-ready: _ensure-bun
-    bun scripts/xtask.ts ci
+ready:
+    cargo run -p xtask -- ci
 
 # Run Clean Architecture boundary checks and emit a dependency graph snapshot.
-boundaries: _ensure-bun
+boundaries:
     @mkdir -p docs/architecture
-    bun scripts/xtask.ts architecture graph --format json > docs/architecture/dependencies.json
-    bun scripts/xtask.ts architecture check --verbose
+    cargo run -p xtask -- architecture graph --format json > docs/architecture/dependencies.json
+    cargo run -p xtask -- architecture check --verbose
 
 # Format Rust code.
 format:
@@ -71,6 +71,11 @@ web-build: _ensure-bun
 
 # Build web UI and sync it into the CLI embedded assets.
 web-sync: web-build
+    @rm -rf crates/agent-tui-app/assets/web
+    @mkdir -p crates/agent-tui-app/assets/web
+    cp -a ../web/public/. crates/agent-tui-app/assets/web/
+
+    # Keep facade crate mirror for legacy packaging/scripts.
     @rm -rf crates/agent-tui/assets/web
     @mkdir -p crates/agent-tui/assets/web
     cp -a ../web/public/. crates/agent-tui/assets/web/
@@ -93,8 +98,8 @@ watch: _ensure-cargo-watch
 
 # Create and push a release tag (no version bump commit).
 # Usage: just release bump=patch|minor|major|x.y.z
-release bump="patch": _ensure-bun
-    bun scripts/xtask.ts release {{bump}}
+release bump="patch":
+    cargo run -p xtask -- release {{bump}}
 
 # Internal: ensure bun is installed.
 _ensure-bun:

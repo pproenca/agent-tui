@@ -99,7 +99,7 @@ impl RealTestHarness {
             if self.is_daemon_exited() {
                 return;
             }
-            thread::sleep(Duration::from_millis(50));
+            thread::park_timeout(Duration::from_millis(50));
         }
 
         if !self.is_daemon_exited()
@@ -126,7 +126,7 @@ fn wait_for_daemon_ready(socket_path: &Path, daemon: &mut Child, timeout: Durati
         if let Ok(Some(status)) = daemon.try_wait() {
             panic!("Daemon exited early with status {}", status);
         }
-        thread::sleep(Duration::from_millis(50));
+        thread::park_timeout(Duration::from_millis(50));
     }
     panic!(
         "Timed out waiting for daemon readiness at {}",

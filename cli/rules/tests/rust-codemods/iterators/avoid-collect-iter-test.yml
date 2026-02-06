@@ -1,8 +1,0 @@
-id: iter-avoid-collect-iter
-valid:
-  - "iter.filter(|x| x > 0).map(|x| x * 2);"
-  - "items.into_iter().collect::<Vec<_>>();"
-  - "vec.iter().cloned();"
-invalid:
-  - "iter.collect::<Vec<_>>().iter();"
-  - "items.map(f).collect::<Vec<String>>().iter();"

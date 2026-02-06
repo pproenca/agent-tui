@@ -1,0 +1,18 @@
+[package]
+name = "agent-tui-usecases"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+test-support = []
+
+[dependencies]
+thiserror.workspace = true
+agent-tui-common = { path = "../agent-tui-common" }
+agent-tui-domain = { path = "../agent-tui-domain" }

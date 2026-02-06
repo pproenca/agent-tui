@@ -1,0 +1,313 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap");
+
+:root {
+  color-scheme: light;
+  --bg: #f8f5f0;
+  --bg-accent: #f0e7dc;
+  --panel: #ffffff;
+  --panel-border: #e0d7cb;
+  --sidebar: #f2ece3;
+  --sidebar-border: #e2d6c7;
+  --terminal-bg: #11100e;
+  --terminal-border: rgba(255, 255, 255, 0.08);
+  --ink: #1f1a16;
+  --muted: #6c6259;
+  --accent: #0e7a73;
+  --accent-soft: rgba(14, 122, 115, 0.15);
+  --warning: #d97706;
+  --shadow: 0 20px 50px rgba(31, 26, 22, 0.12);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --control-height: 44px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Space Grotesk", "IBM Plex Mono", sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at top, #fff, var(--bg))
+      fixed,
+    linear-gradient(120deg, var(--bg-accent), var(--bg));
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+.app {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-6) var(--space-9);
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.sidebar {
+  background: var(--sidebar);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 24px;
+  padding: var(--space-4);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  position: sticky;
+  top: var(--space-6);
+  max-height: calc(100vh - var(--space-7));
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sidebar__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.sidebar__section-title {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+  animation: pulse 2s infinite;
+}
+
+.status--connected .status__dot {
+  background: var(--accent);
+}
+
+.status__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  padding-right: var(--space-1);
+  flex: 1;
+  min-height: 0;
+}
+
+.session-item {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.session-item:hover {
+  background: var(--bg-accent);
+}
+
+.session-item--selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.session-item__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.session-item__dot--running {
+  background: var(--accent);
+}
+
+.session-item__id {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-item__shortcut {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.session-empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: var(--space-2);
+  border-radius: 8px;
+  border: 1px dashed var(--panel-border);
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px rgba(14, 122, 115, 0.25);
+}
+
+.button--icon {
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0;
+  font-size: 16px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--panel-border);
+}
+
+.button--icon:hover {
+  box-shadow: 0 4px 12px rgba(31, 26, 22, 0.15);
+}
+
+.button--icon svg {
+  display: block;
+  stroke: currentColor;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: calc(100vh - var(--space-7) * 2);
+}
+
+.terminal {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--terminal-bg);
+  border-radius: 20px;
+  padding: var(--space-6);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--terminal-border);
+  min-width: 0;
+}
+
+.button:focus-visible,
+.session-item:focus-visible {
+  outline: 2px solid rgba(14, 122, 115, 0.4);
+  outline-offset: 2px;
+}
+
+.terminal__viewport {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.xterm {
+  font-family: "IBM Plex Mono", monospace !important;
+}
+
+@media (max-width: 980px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .app {
+    padding: var(--space-6) var(--space-4) var(--space-7);
+  }
+
+  .terminal {
+    padding: var(--space-4);
+    border-radius: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

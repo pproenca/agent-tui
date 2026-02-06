@@ -64,12 +64,9 @@ jobs:
           ref: ${{ steps.resolve.outputs.ref }}
           fetch-depth: 0
 
-      - name: Setup bun
-        uses: oven-sh/setup-bun@v1
-
       - name: Validate version consistency
         working-directory: cli
-        run: bun scripts/xtask.ts version check --quiet
+        run: cargo run -p xtask -- version check --quiet
 
       - name: Resolve head SHA
         id: sha
@@ -151,12 +148,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup bun
-        uses: oven-sh/setup-bun@v1
-
       - name: Set release version
         working-directory: cli
-        run: bun scripts/xtask.ts version set "${{ needs.validate.outputs.version }}"
+        run: cargo run -p xtask -- version set "${{ needs.validate.outputs.version }}"
 
       - name: Install cross
         if: matrix.build == 'cross'
@@ -208,9 +202,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup bun
-        uses: oven-sh/setup-bun@v1
-
       - name: Download Linux release artifacts
         uses: actions/download-artifact@v4
         with:
@@ -227,11 +218,11 @@ jobs:
 
       - name: Verify release artifacts
         working-directory: cli
-        run: bun scripts/xtask.ts dist verify --input artifacts --kind release
+        run: cargo run -p xtask -- dist verify --input artifacts --kind release
 
       - name: Prepare release assets
         working-directory: cli
-        run: bun scripts/xtask.ts dist release --input artifacts --output release
+        run: cargo run -p xtask -- dist release --input artifacts --output release
 
       - name: Generate build provenance attestation
         if: needs.validate.outputs.dry_run != 'true'
@@ -277,9 +268,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup bun
-        uses: oven-sh/setup-bun@v1
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -296,15 +284,15 @@ jobs:
 
       - name: Set release version
         working-directory: cli
-        run: bun scripts/xtask.ts version set "${{ needs.validate.outputs.version }}"
+        run: cargo run -p xtask -- version set "${{ needs.validate.outputs.version }}"
 
       - name: Verify npm artifacts
         working-directory: cli
-        run: bun scripts/xtask.ts dist verify --input artifacts --kind npm
+        run: cargo run -p xtask -- dist verify --input artifacts --kind npm
 
       - name: Prepare npm package
         working-directory: cli
-        run: bun scripts/xtask.ts dist npm --input artifacts --output npm
+        run: cargo run -p xtask -- dist npm --input artifacts --output npm
 
       - name: Publish to npm with provenance
         working-directory: cli
@@ -352,9 +340,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup bun
-        uses: oven-sh/setup-bun@v1
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -371,15 +356,15 @@ jobs:
 
       - name: Set release version
         working-directory: cli
-        run: bun scripts/xtask.ts version set "${{ needs.validate.outputs.version }}"
+        run: cargo run -p xtask -- version set "${{ needs.validate.outputs.version }}"
 
       - name: Verify npm artifacts
         working-directory: cli
-        run: bun scripts/xtask.ts dist verify --input artifacts --kind npm
+        run: cargo run -p xtask -- dist verify --input artifacts --kind npm
 
       - name: Prepare npm package
         working-directory: cli
-        run: bun scripts/xtask.ts dist npm --input artifacts --output npm
+        run: cargo run -p xtask -- dist npm --input artifacts --output npm
 
       - name: Check if packages already published (npm)
         id: npm-check

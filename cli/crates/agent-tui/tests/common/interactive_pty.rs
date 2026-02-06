@@ -47,7 +47,7 @@ impl InteractivePtyRunner {
         let mut reader = pair.master.try_clone_reader().map_err(io::Error::other)?;
         let writer = pair.master.take_writer().map_err(io::Error::other)?;
 
-        let (output_tx, output_rx) = mpsc::channel();
+        let (output_tx, output_rx) = mpsc::sync_channel(1024);
         let reader_join = thread::Builder::new()
             .name("interactive-pty-reader".to_string())
             .spawn(move || {
@@ -172,6 +172,11 @@ impl Drop for InteractivePtyRunner {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        // If the reader thread is blocked on `send` because the sync channel is full,
+        // dropping the receiver first forces `send` to error and lets the thread exit.
+        let (_unused_tx, replacement_rx) = mpsc::sync_channel(1);
+        let old_rx = std::mem::replace(&mut self.output_rx, replacement_rx);
+        drop(old_rx);
         join_reader_thread(&mut self.reader_join);
     }
 }
@@ -190,7 +195,7 @@ mod tests {
         let completed = Arc::new(AtomicBool::new(false));
         let completed_for_thread = Arc::clone(&completed);
         let mut reader_join = Some(thread::spawn(move || {
-            thread::sleep(Duration::from_millis(25));
+            thread::park_timeout(Duration::from_millis(25));
             completed_for_thread.store(true, Ordering::SeqCst);
         }));
 

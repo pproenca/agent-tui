@@ -25,6 +25,7 @@ use crate::usecases::AttachUseCase;
 use crate::usecases::ports::SessionRepository;
 use crate::usecases::ports::ShutdownNotifierHandle;
 use crate::usecases::ports::StreamCursor;
+use crate::usecases::ports::StreamWaiterHandle;
 
 const ATTACH_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
 const ATTACH_STREAM_MAX_TICK_BYTES: usize = 512 * 1024;
@@ -32,6 +33,14 @@ const ATTACH_STREAM_HEARTBEAT: Duration = Duration::from_secs(30);
 const LIVE_PREVIEW_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
 const LIVE_PREVIEW_STREAM_MAX_TICK_BYTES: usize = 256 * 1024;
 const LIVE_PREVIEW_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
+const STREAM_WAIT_SLICE: Duration = Duration::from_millis(250);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StreamWaitStatus {
+    Notified,
+    HeartbeatElapsed,
+    Terminated,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StreamKind {
@@ -119,10 +128,13 @@ impl RpcCore {
         writer: &mut impl RpcResponseWriter,
         request: RpcRequest,
         kind: StreamKind,
+        connection_cancelled: Option<&AtomicBool>,
     ) -> Result<(), RpcCoreError> {
         match kind {
-            StreamKind::Attach => self.handle_attach_stream(writer, request),
-            StreamKind::LivePreview => self.handle_live_preview_stream(writer, request),
+            StreamKind::Attach => self.handle_attach_stream(writer, request, connection_cancelled),
+            StreamKind::LivePreview => {
+                self.handle_live_preview_stream(writer, request, connection_cancelled)
+            }
         }
     }
 
@@ -130,10 +142,40 @@ impl RpcCore {
         self.shutdown_flag.load(Ordering::Relaxed)
     }
 
+    fn should_stream_terminate(&self, connection_cancelled: Option<&AtomicBool>) -> bool {
+        self.should_shutdown()
+            || connection_cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed))
+    }
+
+    fn wait_for_stream_event_or_tick(
+        &self,
+        subscription: &StreamWaiterHandle,
+        heartbeat: Duration,
+        connection_cancelled: Option<&AtomicBool>,
+    ) -> StreamWaitStatus {
+        let deadline = Instant::now() + heartbeat;
+        loop {
+            if self.should_stream_terminate(connection_cancelled) {
+                return StreamWaitStatus::Terminated;
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return StreamWaitStatus::HeartbeatElapsed;
+            }
+            let wait = deadline
+                .saturating_duration_since(now)
+                .min(STREAM_WAIT_SLICE);
+            if subscription.wait(Some(wait)) {
+                return StreamWaitStatus::Notified;
+            }
+        }
+    }
+
     fn handle_attach_stream(
         &self,
         writer: &mut impl RpcResponseWriter,
         request: RpcRequest,
+        connection_cancelled: Option<&AtomicBool>,
     ) -> Result<(), RpcCoreError> {
         let req_id = request.id;
         let input = match parse_attach_input(&request) {
@@ -212,7 +254,7 @@ impl RpcCore {
         let mut cursor = StreamCursor { seq: stream_seq };
 
         loop {
-            if self.should_shutdown() {
+            if self.should_stream_terminate(connection_cancelled) {
                 let response = RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
                 let _ = writer.write_response(&response);
                 return Ok(());
@@ -221,6 +263,12 @@ impl RpcCore {
             let mut sent_any = false;
 
             loop {
+                if self.should_stream_terminate(connection_cancelled) {
+                    let response =
+                        RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
+                    let _ = writer.write_response(&response);
+                    return Ok(());
+                }
                 if budget == 0 {
                     break;
                 }
@@ -284,16 +332,23 @@ impl RpcCore {
                 continue;
             }
 
-            if !subscription.wait(Some(ATTACH_STREAM_HEARTBEAT)) {
-                if self.should_shutdown() {
+            match self.wait_for_stream_event_or_tick(
+                &subscription,
+                ATTACH_STREAM_HEARTBEAT,
+                connection_cancelled,
+            ) {
+                StreamWaitStatus::Notified => {}
+                StreamWaitStatus::HeartbeatElapsed => {
+                    let response =
+                        RpcResponse::success_json(req_id, &AttachEvent { event: "heartbeat" });
+                    writer.write_response(&response)?;
+                }
+                StreamWaitStatus::Terminated => {
                     let response =
                         RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
                     let _ = writer.write_response(&response);
                     return Ok(());
                 }
-                let response =
-                    RpcResponse::success_json(req_id, &AttachEvent { event: "heartbeat" });
-                writer.write_response(&response)?;
             }
         }
     }
@@ -302,6 +357,7 @@ impl RpcCore {
         &self,
         writer: &mut impl RpcResponseWriter,
         request: RpcRequest,
+        connection_cancelled: Option<&AtomicBool>,
     ) -> Result<(), RpcCoreError> {
         let req_id = request.id;
         let session_param = parse_live_preview_session_selector(&request);
@@ -405,7 +461,7 @@ impl RpcCore {
         let mut last_size = (snapshot.cols, snapshot.rows);
 
         loop {
-            if self.should_shutdown() {
+            if self.should_stream_terminate(connection_cancelled) {
                 let response = RpcResponse::success_json(
                     req_id,
                     &LivePreviewClosed {
@@ -420,6 +476,17 @@ impl RpcCore {
             let mut sent_any = false;
 
             loop {
+                if self.should_stream_terminate(connection_cancelled) {
+                    let response = RpcResponse::success_json(
+                        req_id,
+                        &LivePreviewClosed {
+                            event: "closed",
+                            time: start_time.elapsed().as_secs_f64(),
+                        },
+                    );
+                    let _ = writer.write_response(&response);
+                    return Ok(());
+                }
                 if budget == 0 {
                     break;
                 }
@@ -529,8 +596,23 @@ impl RpcCore {
                 continue;
             }
 
-            if !subscription.wait(Some(LIVE_PREVIEW_STREAM_HEARTBEAT)) {
-                if self.should_shutdown() {
+            match self.wait_for_stream_event_or_tick(
+                &subscription,
+                LIVE_PREVIEW_STREAM_HEARTBEAT,
+                connection_cancelled,
+            ) {
+                StreamWaitStatus::Notified => {}
+                StreamWaitStatus::HeartbeatElapsed => {
+                    let response = RpcResponse::success_json(
+                        req_id,
+                        &LivePreviewHeartbeat {
+                            event: "heartbeat",
+                            time: start_time.elapsed().as_secs_f64(),
+                        },
+                    );
+                    writer.write_response(&response)?;
+                }
+                StreamWaitStatus::Terminated => {
                     let response = RpcResponse::success_json(
                         req_id,
                         &LivePreviewClosed {
@@ -541,14 +623,6 @@ impl RpcCore {
                     let _ = writer.write_response(&response);
                     return Ok(());
                 }
-                let response = RpcResponse::success_json(
-                    req_id,
-                    &LivePreviewHeartbeat {
-                        event: "heartbeat",
-                        time: start_time.elapsed().as_secs_f64(),
-                    },
-                );
-                writer.write_response(&response)?;
             }
         }
     }
@@ -569,15 +643,26 @@ fn live_preview_initial_cursor(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
 
-    fn make_request(params: Option<serde_json::Value>) -> RpcRequest {
-        RpcRequest::new(1, "live_preview_stream".to_string(), params)
+    fn make_request(params_json: Option<&str>) -> RpcRequest {
+        let request_json = match params_json {
+            Some(params) => {
+                format!(
+                    r#"{{"jsonrpc":"2.0","id":1,"method":"live_preview_stream","params":{params}}}"#
+                )
+            }
+            None => r#"{"jsonrpc":"2.0","id":1,"method":"live_preview_stream"}"#.to_string(),
+        };
+        serde_json::from_str(&request_json).expect("valid rpc request")
     }
 
     #[test]
     fn live_preview_selector_maps_active_to_none() {
-        let request = make_request(Some(json!({ "session": "active" })));
+        let request = make_request(Some(r#"{"session":"active"}"#));
         let parsed = parse_live_preview_session_selector(&request);
         assert!(parsed.is_none());
     }
@@ -591,7 +676,7 @@ mod tests {
 
     #[test]
     fn live_preview_selector_keeps_explicit_session_id() {
-        let request = make_request(Some(json!({ "session": "sess-1" })));
+        let request = make_request(Some(r#"{"session":"sess-1"}"#));
         let parsed = parse_live_preview_session_selector(&request).expect("session id");
         assert_eq!(parsed.as_str(), "sess-1");
     }
@@ -606,5 +691,50 @@ mod tests {
         };
         let cursor = live_preview_initial_cursor(&snapshot);
         assert_eq!(cursor.seq, 123);
+    }
+
+    struct SleepWaiter;
+
+    impl crate::usecases::ports::StreamWaiter for SleepWaiter {
+        fn wait(&self, timeout: Option<Duration>) -> bool {
+            if let Some(timeout) = timeout {
+                std::thread::sleep(timeout);
+            }
+            false
+        }
+    }
+
+    #[test]
+    fn stream_wait_exits_early_when_connection_is_cancelled() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
+            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
+        let core = RpcCore::with_config(
+            crate::infra::daemon::DaemonConfig::default(),
+            shutdown,
+            notifier,
+        );
+
+        let subscription: crate::usecases::ports::StreamWaiterHandle = Arc::new(SleepWaiter);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancelled_for_thread = Arc::clone(&cancelled);
+        let join = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            cancelled_for_thread.store(true, Ordering::Relaxed);
+        });
+
+        let start = Instant::now();
+        let status = core.wait_for_stream_event_or_tick(
+            &subscription,
+            Duration::from_secs(30),
+            Some(cancelled.as_ref()),
+        );
+        let _ = join.join();
+
+        assert_eq!(status, StreamWaitStatus::Terminated);
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "wait should terminate quickly once cancelled"
+        );
     }
 }

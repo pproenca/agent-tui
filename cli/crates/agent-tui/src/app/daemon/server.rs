@@ -275,10 +275,18 @@ impl DaemonServer {
 
         for handle in handles {
             let (tx, rx) = mpsc::channel();
+            let handle_cell = Arc::new(std::sync::Mutex::new(Some(handle)));
+            let handle_for_joiner = Arc::clone(&handle_cell);
             let joiner = thread::Builder::new()
                 .name("stream-joiner".to_string())
                 .spawn(move || {
-                    let _ = handle.join();
+                    if let Some(handle) = handle_for_joiner
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .take()
+                    {
+                        let _ = handle.join();
+                    }
                     let _ = tx.send(());
                 });
             match joiner {
@@ -290,7 +298,14 @@ impl DaemonServer {
                         );
                     }
                 }
-                Err(err) => warn!(error = %err, "Failed to spawn stream joiner thread"),
+                Err(err) => {
+                    warn!(error = %err, "Failed to spawn stream joiner thread; joining inline");
+                    if let Some(handle) =
+                        handle_cell.lock().unwrap_or_else(|e| e.into_inner()).take()
+                    {
+                        let _ = handle.join();
+                    }
+                }
             }
         }
     }
@@ -432,7 +447,7 @@ impl DaemonServer {
                     let mut writer = UnixRpcWriter { conn: &mut conn };
                     server_for_thread
                         .core
-                        .handle_stream(&mut writer, request, kind)
+                        .handle_stream(&mut writer, request, kind, None)
                 };
 
                 debug!(
@@ -475,7 +490,7 @@ impl DaemonServer {
 
                 warn!("Failed to spawn stream thread, handling on worker thread");
                 let mut writer = UnixRpcWriter { conn: &mut conn };
-                let _ = server.core.handle_stream(&mut writer, request, kind);
+                let _ = server.core.handle_stream(&mut writer, request, kind, None);
 
                 let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
                 if remaining == 0 {

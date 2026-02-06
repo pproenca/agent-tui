@@ -190,7 +190,7 @@ fn connect_ws_socket(url: &Url) -> Result<WebSocket<TcpStream>, ClientError> {
 
 pub enum ClientConnection {
     Unix(UnixMessageConnection),
-    Ws(WsMessageConnection),
+    Ws(Box<WsMessageConnection>),
 }
 
 impl ClientConnection {
@@ -232,7 +232,7 @@ impl ClientConnection {
             }
             Self::Ws(conn) => {
                 conn.socket
-                    .send(Message::Text(message.to_string().into()))
+                    .send(Message::Text(message.to_string()))
                     .map_err(ws_error_to_client)?;
             }
         }
@@ -359,7 +359,9 @@ impl IpcTransport for WsSocketTransport {
         };
         debug!(addr = %addr, "Connecting to daemon websocket");
         let socket = connect_ws_socket(addr)?;
-        Ok(ClientConnection::Ws(WsMessageConnection { socket }))
+        Ok(ClientConnection::Ws(Box::new(WsMessageConnection {
+            socket,
+        })))
     }
 
     fn is_daemon_running(&self) -> bool {
@@ -468,6 +470,48 @@ pub(crate) fn clear_test_listener() {
     }
 }
 
+fn handle_reaper_spawn_failure(child: &mut std::process::Child) {
+    match child.try_wait() {
+        Ok(Some(_status)) => {}
+        Ok(None) => {
+            // Do not block here; child continues detached and will be reaped by init when it exits.
+        }
+        Err(err) => {
+            warn!(error = %err, "Failed to query daemon process state after reaper spawn failure");
+        }
+    }
+}
+
+fn spawn_daemon_reaper(child: std::process::Child) {
+    let child = std::sync::Arc::new(std::sync::Mutex::new(child));
+    let child_for_thread = std::sync::Arc::clone(&child);
+    match std::thread::Builder::new()
+        .name("daemon-reaper".to_string())
+        .spawn(move || {
+            let mut child = child_for_thread.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = child.wait();
+        }) {
+        Ok(_) => {}
+        Err(err) => {
+            warn!(error = %err, "Failed to spawn daemon reaper thread");
+            let mut child = child.lock().unwrap_or_else(|e| e.into_inner());
+            handle_reaper_spawn_failure(&mut child);
+        }
+    }
+}
+
+fn terminate_daemon_child(mut child: std::process::Child) {
+    if let Ok(Some(_status)) = child.try_wait() {
+        return;
+    }
+    if let Err(err) = child.kill() {
+        warn!(error = %err, "Failed to terminate daemon process");
+    }
+    if let Err(err) = child.wait() {
+        warn!(error = %err, "Failed to reap daemon process");
+    }
+}
+
 fn start_daemon_background_impl() -> Result<(), ClientError> {
     // Guard: prevent recursive spawning. If AGENT_TUI_DAEMON_FOREGROUND is set,
     // we are already a daemon child process and must not spawn another.
@@ -486,36 +530,6 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
     use std::fs::OpenOptions;
     use std::process::Command;
     use std::process::Stdio;
-
-    fn spawn_daemon_reaper(child: std::process::Child) {
-        let child = std::sync::Arc::new(std::sync::Mutex::new(child));
-        let child_for_thread = std::sync::Arc::clone(&child);
-        match std::thread::Builder::new()
-            .name("daemon-reaper".to_string())
-            .spawn(move || {
-                let mut child = child_for_thread.lock().unwrap_or_else(|e| e.into_inner());
-                let _ = child.wait();
-            }) {
-            Ok(_) => {}
-            Err(err) => {
-                warn!(error = %err, "Failed to spawn daemon reaper thread");
-                let mut child = child.lock().unwrap_or_else(|e| e.into_inner());
-                let _ = child.wait();
-            }
-        }
-    }
-
-    fn terminate_daemon_child(mut child: std::process::Child) {
-        if let Ok(Some(_status)) = child.try_wait() {
-            return;
-        }
-        if let Err(err) = child.kill() {
-            warn!(error = %err, "Failed to terminate daemon process");
-        }
-        if let Err(err) = child.wait() {
-            warn!(error = %err, "Failed to reap daemon process");
-        }
-    }
 
     let log_path = socket_path().with_extension("log");
 
@@ -681,5 +695,29 @@ mod tests {
             matches!(result, Err(ClientError::DaemonNotRunning)),
             "should refuse to spawn when AGENT_TUI_DAEMON_FOREGROUND is set"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reaper_failure_fallback_is_non_blocking() {
+        use std::process::Command;
+        use std::time::Duration;
+        use std::time::Instant;
+
+        let mut child = Command::new("sh")
+            .arg("-c")
+            .arg("sleep 1")
+            .spawn()
+            .expect("failed to spawn child");
+
+        let start = Instant::now();
+        handle_reaper_spawn_failure(&mut child);
+        assert!(
+            start.elapsed() < Duration::from_millis(500),
+            "reaper fallback should not block on child.wait()"
+        );
+
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

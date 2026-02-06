@@ -76,6 +76,19 @@ agent-tui wait "Loading complete"
 agent-tui kill
 ```
 
+### Session Recording (VHS)
+
+```bash
+# Record active session (background)
+agent-tui sessions record
+
+# Record active session to a directory
+agent-tui sessions record -o docs/recordings
+
+# Stop recording for a specific session
+agent-tui --session <id> sessions record stop
+```
+
 ## CLI Reference
 
 For the full CLI reference (auto-generated from clap), see `docs/cli/agent-tui.md`.
@@ -128,6 +141,8 @@ agent-tui screenshot --json
 | `AGENT_TUI_API_LISTEN` / `AGENT_TUI_API_ALLOW_REMOTE` / `AGENT_TUI_API_STATE` | Deprecated aliases for WS settings | - |
 | `AGENT_TUI_API_TOKEN` | Deprecated and ignored | - |
 | `AGENT_TUI_SESSION_STORE` | Session metadata log path | `~/.agent-tui/sessions.jsonl` |
+| `AGENT_TUI_RECORD_STATE` | Recording state file path | `~/.agent-tui/recordings.json` |
+| `AGENT_TUI_RECORDINGS_DIR` | Default recordings output directory | current working directory |
 | `AGENT_TUI_UI_URL` | External UI URL | - |
 | `AGENT_TUI_DETACH_KEYS` | Attach detach key sequence | `Ctrl+]` |
 | `AGENT_TUI_LOG` | Log file path (optional) | - |

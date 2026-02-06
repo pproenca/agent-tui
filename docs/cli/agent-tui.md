@@ -67,18 +67,21 @@ OUTPUT:
     --format text  Human-readable text (default)
 
 CONFIGURATION:
-    AGENT_TUI_TRANSPORT         IPC transport (unix or tcp; default: unix)
-    AGENT_TUI_TCP_PORT          TCP port when transport is tcp
+    AGENT_TUI_TRANSPORT         IPC transport (unix or ws; default: unix)
+    AGENT_TUI_WS_ADDR           Remote WS-RPC target when transport is ws (e.g. ws://host:port/ws)
     AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-Q)
     AGENT_TUI_DAEMON_FOREGROUND Run daemon start in foreground (internal)
-    AGENT_TUI_API_LISTEN        API bind address (default: 127.0.0.1:0)
-    AGENT_TUI_API_ALLOW_REMOTE  Allow non-loopback bind (default: false)
-    AGENT_TUI_API_TOKEN         Override token (or 'none' to disable)
-    AGENT_TUI_API_STATE         State file path (default: ~/.agent-tui/api.json)
-    AGENT_TUI_API_DISABLED      Disable API server (default: false)
-    AGENT_TUI_API_MAX_CONNECTIONS  Max WebSocket connections (default: 32)
-    AGENT_TUI_API_WS_QUEUE      API websocket queue size (default: 128)
+    AGENT_TUI_WS_LISTEN         Daemon WS bind address (default: 127.0.0.1:0)
+    AGENT_TUI_WS_ALLOW_REMOTE   Allow non-loopback WS bind (default: false)
+    AGENT_TUI_WS_STATE          Daemon WS state file path (default: ~/.agent-tui/api.json)
+    AGENT_TUI_WS_DISABLED       Disable daemon WS server (default: false)
+    AGENT_TUI_WS_MAX_CONNECTIONS  Max WebSocket connections (default: 32)
+    AGENT_TUI_WS_QUEUE          WS outbound queue size (default: 128)
+    AGENT_TUI_API_LISTEN / AGENT_TUI_API_ALLOW_REMOTE / AGENT_TUI_API_STATE
+                              Deprecated aliases for WS settings
     AGENT_TUI_SESSION_STORE     Session metadata log path (default: ~/.agent-tui/sessions.jsonl)
+    AGENT_TUI_RECORD_STATE      Recording state file path (default: ~/.agent-tui/recordings.json)
+    AGENT_TUI_RECORDINGS_DIR    Default recordings output directory (default: current directory)
     AGENT_TUI_LOG               Log file path (optional)
     AGENT_TUI_LOG_FORMAT        Log format (text or json; default: text)
     AGENT_TUI_LOG_STREAM        Log output stream (stderr or stdout; default: stderr)
@@ -519,6 +522,7 @@ MODES:
     list              List active sessions (default)
     show <id>         Show details for a session
     attach            Attach with TTY (defaults to --session or active)
+    record            Record session activity to VHS artifacts
     switch <id>       Set the active session
     cleanup [--all]   Remove dead/orphaned sessions
 
@@ -528,6 +532,7 @@ Commands:
   list     List active sessions
   show     Show details for a specific session
   attach   Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-Q or --detach-keys)
+  record   Record a running session to VHS artifacts (.gif + .tape)
   switch   Set the active session without attaching
   cleanup  Remove dead/orphaned sessions
   help     Print this message or the help of the given subcommand(s)
@@ -566,6 +571,10 @@ EXAMPLES:
     agent-tui -s abc123 sessions attach   # Attach to session by id (TTY)
     agent-tui sessions switch abc123      # Set active session
     agent-tui -s abc123 sessions attach -T # Attach without TTY (stream output only)
+    agent-tui sessions record             # Record active session in background
+    agent-tui sessions record --foreground
+    agent-tui sessions record -o docs/recordings
+    agent-tui -s abc123 sessions record stop
     agent-tui sessions attach --detach-keys 'ctrl-]'  # Custom detach sequence
     agent-tui sessions cleanup            # Remove dead sessions
     agent-tui sessions cleanup --all      # Remove all sessions
@@ -685,6 +694,114 @@ Output Options:
           [env: NO_COLOR=1]
 ```
 
+## `agent-tui sessions record`
+
+```text
+Record a running session to VHS artifacts.
+
+By default recording starts in background and returns immediately.
+Use --foreground to wait until recording exits.
+
+OUTPUT PATH RULES:
+    -o/--output-file omitted     Uses AGENT_TUI_RECORDINGS_DIR or current directory
+    Existing directory           Creates timestamped <session>-<time>.gif/.tape
+    Existing file                Uses file stem for .gif/.tape pair
+    Non-existing path w/ ext     Treated as file path
+    Non-existing path no ext     Treated as directory
+
+Usage: record [OPTIONS]
+       record <COMMAND>
+
+Commands:
+  stop  Stop recording for the selected or active session
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -o, --output-file <PATH>
+          Output file or directory for recording artifacts
+
+      --foreground
+          Run recorder in foreground (wait until recording exits)
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Session Options:
+  -s, --session <ID>
+          Session ID to use (defaults to the most recent session)
+
+Output Options:
+  -f, --format <FORMAT>
+          Output format (text or json)
+          
+          [default: text]
+          [possible values: text, json]
+
+      --json
+          Shorthand for --format json (overrides --format if both are set)
+
+      --no-color
+          Disable colored output (also respects NO_COLOR)
+          
+          [env: NO_COLOR=1]
+
+EXAMPLES:
+    agent-tui sessions record
+    agent-tui sessions record --foreground
+    agent-tui sessions record -o docs/recordings
+    agent-tui sessions record -o docs/recordings/demo.gif
+    agent-tui sessions record stop
+```
+
+## `agent-tui sessions record stop`
+
+```text
+Stop recording for the selected or active session
+
+Usage: stop [OPTIONS]
+
+Options:
+  -h, --help
+          Print help
+
+  -V, --version
+          Print version
+
+Session Options:
+  -s, --session <ID>
+          Session ID to use (defaults to the most recent session)
+
+Output Options:
+  -f, --format <FORMAT>
+          Output format (text or json)
+          
+          [default: text]
+          [possible values: text, json]
+
+      --json
+          Shorthand for --format json (overrides --format if both are set)
+
+      --no-color
+          Disable colored output (also respects NO_COLOR)
+          
+          [env: NO_COLOR=1]
+```
+
+## `agent-tui sessions record help`
+
+```text
+Print this message or the help of the given subcommand(s)
+
+Usage: help [COMMAND]...
+
+Arguments:
+  [COMMAND]...
+          Print help for the subcommand(s)
+```
+
 ## `agent-tui sessions switch`
 
 ```text
@@ -775,21 +892,19 @@ Arguments:
 ## `agent-tui live`
 
 ```text
-Show the daemon's live preview API endpoints.
+Show the daemon's live preview WebSocket endpoints.
 
-The daemon exposes HTTP + WebSocket endpoints for live preview by default.
-The daemon also serves a built-in web UI at /ui.
-Use this command to print the URLs and token so external frontends can connect.
+The daemon serves a built-in web UI at /ui and exposes JSON-RPC over WebSocket at /ws.
+Use this command to print WS/UI URLs so external frontends can connect.
 
 CONFIGURATION:
-    AGENT_TUI_API_LISTEN         Bind address (default: 127.0.0.1:0)
-    AGENT_TUI_API_ALLOW_REMOTE   Allow non-loopback bind (default: false)
-    AGENT_TUI_API_TOKEN          Override token (or 'none' to disable)
-    AGENT_TUI_API_STATE          State file path (default: ~/.agent-tui/api.json)
-    AGENT_TUI_UI_URL             External UI URL to open with --open (CLI appends api/ws/token/session)
+    AGENT_TUI_WS_LISTEN          Bind address (default: 127.0.0.1:0)
+    AGENT_TUI_WS_ALLOW_REMOTE    Allow non-loopback bind (default: false)
+    AGENT_TUI_WS_STATE           State file path (default: ~/.agent-tui/api.json)
+    AGENT_TUI_UI_URL             External UI URL to open with --open (CLI appends ws/session/auto)
 
 SECURITY:
-    API is token-protected by default. Use --allow-remote only when needed.
+    Remote exposure is opt-in. Set AGENT_TUI_WS_ALLOW_REMOTE=1 for non-loopback binds.
 
 Usage: live [OPTIONS] [COMMAND]
 
@@ -853,15 +968,15 @@ Options:
 
 Deprecated:
   -l, --listen [<ADDR>]
-          Deprecated (use AGENT_TUI_API_LISTEN and restart the daemon)
+          Deprecated (use AGENT_TUI_WS_LISTEN and restart the daemon)
 
       --allow-remote
-          Deprecated (use AGENT_TUI_API_ALLOW_REMOTE and restart the daemon)
+          Deprecated (use AGENT_TUI_WS_ALLOW_REMOTE and restart the daemon)
 
       --max-viewers <COUNT>
-          Deprecated (use AGENT_TUI_API_MAX_CONNECTIONS and restart the daemon)
+          Deprecated (use AGENT_TUI_WS_MAX_CONNECTIONS and restart the daemon)
           
-          [env: AGENT_TUI_API_MAX_CONNECTIONS=]
+          [env: AGENT_TUI_WS_MAX_CONNECTIONS=]
 
 Session Options:
   -s, --session <ID>

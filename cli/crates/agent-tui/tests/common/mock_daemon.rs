@@ -172,6 +172,8 @@ pub struct MockDaemon {
     socket_path: PathBuf,
     pid_path: PathBuf,
     shutdown_tx: Option<oneshot::Sender<()>>,
+    server_task: Option<tokio::task::JoinHandle<()>>,
+    runtime_handle: tokio::runtime::Handle,
     requests: Arc<Mutex<Vec<RecordedRequest>>>,
     request_counter: Arc<RequestCounter>,
     delay_controller: Arc<DelayController>,
@@ -331,7 +333,8 @@ impl MockDaemon {
         let handlers_clone = handlers.clone();
         let sequence_counters_clone = sequence_counters.clone();
 
-        tokio::spawn(async move {
+        let runtime_handle = tokio::runtime::Handle::current();
+        let server_task = tokio::spawn(async move {
             Self::run_server(
                 listener,
                 requests_clone,
@@ -349,6 +352,8 @@ impl MockDaemon {
             socket_path,
             pid_path,
             shutdown_tx: Some(shutdown_tx),
+            server_task: Some(server_task),
+            runtime_handle,
             requests,
             request_counter,
             delay_controller,
@@ -696,6 +701,22 @@ impl Drop for MockDaemon {
     fn drop(&mut self) {
         if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(());
+        }
+        if let Some(mut task) = self.server_task.take() {
+            if tokio::runtime::Handle::try_current().is_ok() {
+                task.abort();
+                return;
+            }
+            let runtime = self.runtime_handle.clone();
+            runtime.block_on(async {
+                match tokio::time::timeout(Duration::from_millis(500), &mut task).await {
+                    Ok(_) => {}
+                    Err(_) => {
+                        task.abort();
+                        let _ = task.await;
+                    }
+                }
+            });
         }
     }
 }

@@ -41,6 +41,7 @@ const DEFAULT_WS_QUEUE_CAPACITY: usize = 128;
 const WS_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const WS_RECV_TIMEOUT: Duration = Duration::from_secs(60);
 const WS_SEND_TIMEOUT: Duration = Duration::from_secs(15);
+const WS_STREAM_TASK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const WS_MAX_PARSE_ERRORS: u8 = 3;
 const UI_INDEX_HTML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -487,20 +488,48 @@ async fn run_stream_connection(
 ) -> Result<(), ()> {
     let (tx, mut rx) = mpsc::channel::<String>(state.ws_queue_capacity);
     let core = Arc::clone(&state.core);
+    let stream_cancelled = Arc::new(AtomicBool::new(false));
+    let stream_cancelled_for_task = Arc::clone(&stream_cancelled);
 
-    let _stream_task = tokio::task::spawn_blocking(move || {
+    let mut stream_task = tokio::task::spawn_blocking(move || {
         let mut writer = ChannelWriter { tx };
-        let _ = core.handle_stream(&mut writer, request, kind);
+        let _ = core.handle_stream(
+            &mut writer,
+            request,
+            kind,
+            Some(stream_cancelled_for_task.as_ref()),
+        );
     });
 
     while let Some(payload) = rx.recv().await {
         let send = tokio::time::timeout(WS_SEND_TIMEOUT, socket.send(Message::Text(payload))).await;
         if send.is_err() || send.ok().is_some_and(|result| result.is_err()) {
+            stream_cancelled.store(true, Ordering::Relaxed);
+            let _ = wait_for_stream_task(&mut stream_task).await;
             return Err(());
         }
     }
 
-    Ok(())
+    stream_cancelled.store(true, Ordering::Relaxed);
+    wait_for_stream_task(&mut stream_task).await
+}
+
+async fn wait_for_stream_task(stream_task: &mut tokio::task::JoinHandle<()>) -> Result<(), ()> {
+    match tokio::time::timeout(WS_STREAM_TASK_SHUTDOWN_TIMEOUT, &mut *stream_task).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(err)) => {
+            warn!(error = %err, "WS stream task failed");
+            Err(())
+        }
+        Err(_) => {
+            warn!(
+                timeout_ms = WS_STREAM_TASK_SHUTDOWN_TIMEOUT.as_millis(),
+                "WS stream task shutdown timed out; aborting"
+            );
+            stream_task.abort();
+            Err(())
+        }
+    }
 }
 
 async fn send_rpc_response(socket: &mut WebSocket, response: &RpcResponse) -> Result<(), ()> {

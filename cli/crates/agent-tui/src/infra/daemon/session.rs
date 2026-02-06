@@ -15,6 +15,8 @@ use std::sync::Arc;
 use std::sync::Condvar;
 use std::sync::Mutex;
 use std::sync::RwLock;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -87,7 +89,8 @@ struct StreamBuffer {
     state: RwLock<StreamState>,
     wait_lock: Mutex<()>,
     cv: Condvar,
-    notifiers: Mutex<Vec<channel::Sender<()>>>,
+    notifiers: Arc<Mutex<Vec<(u64, channel::Sender<()>)>>>,
+    next_notifier_id: AtomicU64,
     max_bytes: usize,
 }
 
@@ -117,6 +120,8 @@ impl StreamReader {
 
 struct StreamWaiterImpl {
     receiver: channel::Receiver<()>,
+    notifiers: Arc<Mutex<Vec<(u64, channel::Sender<()>)>>>,
+    notifier_id: u64,
 }
 
 impl StreamWaiter for StreamWaiterImpl {
@@ -125,6 +130,13 @@ impl StreamWaiter for StreamWaiterImpl {
             Some(timeout) => self.receiver.recv_timeout(timeout).is_ok(),
             None => self.receiver.recv().is_ok(),
         }
+    }
+}
+
+impl Drop for StreamWaiterImpl {
+    fn drop(&mut self) {
+        let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
+        notifiers.retain(|(id, _)| *id != self.notifier_id);
     }
 }
 
@@ -147,7 +159,8 @@ impl StreamBuffer {
             }),
             wait_lock: Mutex::new(()),
             cv: Condvar::new(),
-            notifiers: Mutex::new(Vec::new()),
+            notifiers: Arc::new(Mutex::new(Vec::new())),
+            next_notifier_id: AtomicU64::new(1),
             max_bytes,
         }
     }
@@ -213,12 +226,17 @@ impl StreamBuffer {
 
     fn subscribe(&self) -> StreamWaiterHandle {
         let (tx, rx) = channel::bounded(1);
+        let notifier_id = self.next_notifier_id.fetch_add(1, Ordering::Relaxed);
         self.notify_listeners();
         {
             let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
-            notifiers.push(tx);
+            notifiers.push((notifier_id, tx));
         }
-        Arc::new(StreamWaiterImpl { receiver: rx })
+        Arc::new(StreamWaiterImpl {
+            receiver: rx,
+            notifiers: Arc::clone(&self.notifiers),
+            notifier_id,
+        })
     }
 
     fn latest_seq(&self) -> u64 {
@@ -228,11 +246,19 @@ impl StreamBuffer {
 
     fn notify_listeners(&self) {
         let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
-        notifiers.retain(|sender| match sender.try_send(()) {
+        notifiers.retain(|(_, sender)| match sender.try_send(()) {
             Ok(()) => true,
             Err(channel::TrySendError::Full(_)) => true,
             Err(channel::TrySendError::Disconnected(_)) => false,
         });
+    }
+
+    #[cfg(test)]
+    fn notifier_count(&self) -> usize {
+        self.notifiers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .len()
     }
 
     fn read(
@@ -1464,6 +1490,19 @@ mod stream_tests {
         let subscription = buffer.subscribe();
         buffer.close(None);
         assert!(subscription.wait(Some(Duration::from_millis(50))));
+    }
+
+    #[test]
+    fn stream_subscribe_drop_removes_notifier_without_extra_events() {
+        let buffer = StreamBuffer::new(16);
+        let subscription = buffer.subscribe();
+        assert_eq!(buffer.notifier_count(), 1);
+        drop(subscription);
+        assert_eq!(
+            buffer.notifier_count(),
+            0,
+            "dropped subscription should be removed immediately"
+        );
     }
 }
 

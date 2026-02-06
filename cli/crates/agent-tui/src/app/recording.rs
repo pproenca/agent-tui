@@ -10,6 +10,9 @@ use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -291,9 +294,41 @@ pub(crate) fn start_recording_with_controller<C: ProcessController>(
                 status
             )));
         }
+    } else {
+        spawn_recording_reaper(child).map_err(|err| {
+            let _ = remove_recording_entry(&store, &request.session_id, controller);
+            RecordingError::Other(err)
+        })?;
     }
 
     Ok(StartRecordingResult { entry })
+}
+
+fn spawn_recording_reaper(child: Child) -> anyhow::Result<()> {
+    let pid = child.id();
+    let child_cell = Arc::new(Mutex::new(Some(child)));
+    let child_for_thread = Arc::clone(&child_cell);
+    match thread::Builder::new()
+        .name(format!("recording-reaper-{pid}"))
+        .spawn(move || {
+            let mut guard = child_for_thread.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(mut child) = guard.take() {
+                let _ = child.wait();
+            }
+        }) {
+        Ok(_handle) => Ok(()),
+        Err(err) => {
+            warn!(pid, error = %err, "Failed to spawn recording reaper thread");
+            let mut guard = child_cell.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(mut child) = guard.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            Err(anyhow!(
+                "failed to spawn recording reaper thread for pid {pid}: {err}"
+            ))
+        }
+    }
 }
 
 pub(crate) fn stop_recording_with_controller<C: ProcessController>(
@@ -719,7 +754,9 @@ fn absolutize(path: &Path) -> anyhow::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::ipc::ProcessController;
     use crate::infra::ipc::ProcessStatus;
+    use crate::infra::ipc::UnixProcessController;
     use std::collections::HashMap;
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
@@ -1100,5 +1137,92 @@ sleep 30
 
         let _ = fake_vhs.kill();
         let _ = fake_vhs.wait();
+    }
+
+    #[test]
+    fn background_recording_process_is_reaped_after_exit() {
+        let temp = TempDir::new_in("/tmp").expect("tempdir");
+        let env_lock = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+        let state_path = temp.path().join("recordings.json");
+        let old_state = std::env::var("AGENT_TUI_RECORD_STATE").ok();
+        let old_recordings_dir = std::env::var("AGENT_TUI_RECORDINGS_DIR").ok();
+        let old_path = std::env::var("PATH").ok();
+        // SAFETY: test-only environment mutation under a process-wide env lock.
+        unsafe {
+            std::env::set_var("AGENT_TUI_RECORD_STATE", state_path.display().to_string());
+            std::env::set_var("AGENT_TUI_RECORDINGS_DIR", temp.path().display().to_string());
+        }
+
+        let fake_bin_dir = temp.path().join("bin");
+        fs::create_dir_all(&fake_bin_dir).expect("create fake bin dir");
+        let fake_vhs = fake_bin_dir.join("vhs");
+        fs::write(
+            &fake_vhs,
+            r#"#!/bin/sh
+sleep 0.2
+"#,
+        )
+        .expect("write fake vhs");
+        let mut perms = fs::metadata(&fake_vhs)
+            .expect("fake vhs metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&fake_vhs, perms).expect("set fake vhs perms");
+
+        let path = old_path.clone().unwrap_or_default();
+        let new_path = format!("{}:{}", fake_bin_dir.display(), path);
+        // SAFETY: test-only environment mutation under a process-wide env lock.
+        unsafe {
+            std::env::set_var("PATH", new_path);
+        }
+
+        let request = StartRecordingRequest {
+            session_id: "sess-bg".to_string(),
+            output_file: Some(temp.path().join("out.gif")),
+            foreground: false,
+        };
+        let controller = UnixProcessController;
+        let result =
+            start_recording_with_controller(request, &controller).expect("start recording");
+        let pid = result.entry.pid;
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut reaped = false;
+        while Instant::now() < deadline {
+            match controller
+                .check_process(pid)
+                .expect("process check should succeed")
+            {
+                ProcessStatus::NotFound => {
+                    reaped = true;
+                    break;
+                }
+                ProcessStatus::Running | ProcessStatus::NoPermission => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+            }
+        }
+
+        assert!(
+            reaped,
+            "background recording process should be reaped once it exits (pid={pid})"
+        );
+
+        // SAFETY: test-only environment restoration under a process-wide env lock.
+        unsafe {
+            match old_state {
+                Some(value) => std::env::set_var("AGENT_TUI_RECORD_STATE", value),
+                None => std::env::remove_var("AGENT_TUI_RECORD_STATE"),
+            }
+            match old_recordings_dir {
+                Some(value) => std::env::set_var("AGENT_TUI_RECORDINGS_DIR", value),
+                None => std::env::remove_var("AGENT_TUI_RECORDINGS_DIR"),
+            }
+            match old_path {
+                Some(value) => std::env::set_var("PATH", value),
+                None => std::env::remove_var("PATH"),
+            }
+        }
+        drop(env_lock);
     }
 }

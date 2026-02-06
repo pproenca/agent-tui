@@ -20,6 +20,7 @@ pub struct InteractivePtyRunner {
     writer: Box<dyn Write + Send>,
     output_rx: mpsc::Receiver<Vec<u8>>,
     output: Vec<u8>,
+    reader_join: Option<thread::JoinHandle<()>>,
 }
 
 impl InteractivePtyRunner {
@@ -47,7 +48,7 @@ impl InteractivePtyRunner {
         let writer = pair.master.take_writer().map_err(io::Error::other)?;
 
         let (output_tx, output_rx) = mpsc::channel();
-        thread::Builder::new()
+        let reader_join = thread::Builder::new()
             .name("interactive-pty-reader".to_string())
             .spawn(move || {
                 let mut buf = [0u8; 4096];
@@ -72,6 +73,7 @@ impl InteractivePtyRunner {
             writer,
             output_rx,
             output: Vec::new(),
+            reader_join: Some(reader_join),
         })
     }
 
@@ -160,9 +162,41 @@ impl InteractivePtyRunner {
     }
 }
 
+fn join_reader_thread(reader_join: &mut Option<thread::JoinHandle<()>>) {
+    if let Some(handle) = reader_join.take() {
+        let _ = handle.join();
+    }
+}
+
 impl Drop for InteractivePtyRunner {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        join_reader_thread(&mut self.reader_join);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::join_reader_thread;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn join_reader_thread_waits_for_completion() {
+        let completed = Arc::new(AtomicBool::new(false));
+        let completed_for_thread = Arc::clone(&completed);
+        let mut reader_join = Some(thread::spawn(move || {
+            thread::sleep(Duration::from_millis(25));
+            completed_for_thread.store(true, Ordering::SeqCst);
+        }));
+
+        join_reader_thread(&mut reader_join);
+
+        assert!(completed.load(Ordering::SeqCst));
+        assert!(reader_join.is_none());
     }
 }

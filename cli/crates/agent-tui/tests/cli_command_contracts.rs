@@ -189,6 +189,8 @@ fn command_paths_match_expected_matrix() {
         "sessions attach".to_string(),
         "sessions cleanup".to_string(),
         "sessions list".to_string(),
+        "sessions record".to_string(),
+        "sessions record stop".to_string(),
         "sessions show".to_string(),
         "sessions switch".to_string(),
         "type".to_string(),
@@ -347,6 +349,44 @@ fn wait_assert_returns_non_zero_on_timeout() {
 }
 
 #[test]
+fn sessions_record_start_uses_sessions_lookup() {
+    let harness = TestHarness::new();
+    harness.set_success_response(
+        "sessions",
+        json!({
+            "sessions": [{
+                "id": "session-1",
+                "command": "bash",
+                "pid": 12345,
+                "running": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "size": { "cols": 120, "rows": 40 }
+            }],
+            "active_session": "session-1"
+        }),
+    );
+
+    harness.run(&["sessions", "record"]).code(1);
+    harness.assert_method_called("sessions");
+}
+
+#[test]
+fn sessions_record_stop_errors_without_active_recording() {
+    let harness = TestHarness::new();
+    setup_running_session(&harness);
+    let state_dir = TempDir::new_in("/tmp").expect("temp dir");
+    let state_path = state_dir.path().join("recordings.json");
+
+    harness
+        .cli_command()
+        .env("AGENT_TUI_RECORD_STATE", &state_path)
+        .args(["sessions", "record", "stop"])
+        .assert()
+        .code(1);
+    harness.assert_method_called("sessions");
+}
+
+#[test]
 fn standalone_version_env_and_completions_contract() {
     let env = StandaloneEnv::new();
 
@@ -454,6 +494,8 @@ fn help_entrypoints_remain_valid() {
         &["kill", "--help"],
         &["sessions", "--help"],
         &["sessions", "help"],
+        &["sessions", "record", "--help"],
+        &["sessions", "record", "stop", "--help"],
         &["live", "--help"],
         &["live", "help"],
         &["daemon", "--help"],

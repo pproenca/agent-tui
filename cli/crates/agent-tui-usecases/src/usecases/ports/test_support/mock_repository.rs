@@ -102,7 +102,7 @@ impl SessionRepository for MockSessionRepository {
             args: args.to_vec(),
             cwd: cwd.map(|s| s.to_string()),
             env: env.cloned(),
-            session_id: session_id.clone(),
+            session_id,
             cols,
             rows,
         });

@@ -882,29 +882,28 @@ impl SessionManager {
 
         session_refs
             .into_iter()
-            .map(
-                |(id, session)| match acquire_session_lock(&session, Duration::from_millis(100)) {
-                    Some(mut sess) => {
-                        let (cols, rows) = sess.size();
-                        SessionInfo {
-                            id: id.clone(),
-                            command: sess.command.clone(),
-                            pid: sess.pid().unwrap_or(0),
-                            running: sess.is_running(),
-                            created_at: sess.created_at.to_rfc3339(),
-                            size: TerminalSize::try_new(cols, rows).unwrap_or_default(),
-                        }
+            .map(|(id, session)| {
+                if let Some(mut sess) = acquire_session_lock(&session, Duration::from_millis(100)) {
+                    let (cols, rows) = sess.size();
+                    SessionInfo {
+                        id,
+                        command: sess.command.clone(),
+                        pid: sess.pid().unwrap_or(0),
+                        running: sess.is_running(),
+                        created_at: sess.created_at.to_rfc3339(),
+                        size: TerminalSize::try_new(cols, rows).unwrap_or_default(),
                     }
-                    None => SessionInfo {
-                        id: id.clone(),
+                } else {
+                    SessionInfo {
+                        id,
                         command: "(locked)".to_string(),
                         pid: 0,
                         running: false,
-                        created_at: "".to_string(),
+                        created_at: String::new(),
                         size: TerminalSize::default(),
-                    },
-                },
-            )
+                    }
+                }
+            })
             .collect()
     }
 

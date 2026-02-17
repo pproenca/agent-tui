@@ -113,7 +113,7 @@ impl TestHarness {
             .last_request_for(method)
             .unwrap_or_else(|| panic!("Expected method '{}' to be called", method));
 
-        let actual_params = request.params.clone().unwrap_or(Value::Null);
+        let actual_params = request.params.unwrap_or(Value::Null);
 
         if expected_params.is_object() && actual_params.is_object() {
             let expected_obj = expected_params.as_object().unwrap();

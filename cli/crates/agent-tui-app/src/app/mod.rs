@@ -473,9 +473,10 @@ impl Application {
         };
 
         let mut ctx = HandlerContext::new(&mut client, cli.session, format);
-        self.dispatch_command(&mut ctx, &cli.command)
+        let command_for_error = format!("{:?}", &cli.command);
+        self.dispatch_command(&mut ctx, cli.command)
             .map_err(|e| self.wrap_error(e, format))
-            .with_context(|| format!("failed to execute command {:?}", cli.command))
+            .with_context(|| format!("failed to execute command {command_for_error}"))
     }
 
     fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool> {
@@ -595,7 +596,7 @@ impl Application {
     fn dispatch_command<C: DaemonClient>(
         &self,
         ctx: &mut HandlerContext<C>,
-        command: &Commands,
+        command: Commands,
     ) -> Result<()> {
         match command {
             Commands::Daemon(daemon_cmd) => match daemon_cmd {
@@ -611,31 +612,24 @@ impl Application {
                 cwd,
                 cols,
                 rows,
-            } => handlers::handle_spawn(
-                ctx,
-                command.clone(),
-                args.clone(),
-                cwd.clone(),
-                *cols,
-                *rows,
-            )?,
+            } => handlers::handle_spawn(ctx, command, args, cwd, cols, rows)?,
 
             Commands::Screenshot {
                 region,
                 strip_ansi,
                 include_cursor,
-            } => handlers::handle_snapshot(ctx, region.clone(), *strip_ansi, *include_cursor)?,
+            } => handlers::handle_snapshot(ctx, region, strip_ansi, include_cursor)?,
 
-            Commands::Resize { cols, rows } => handlers::handle_resize(ctx, *cols, *rows)?,
+            Commands::Resize { cols, rows } => handlers::handle_resize(ctx, cols, rows)?,
             Commands::Restart => handlers::handle_restart(ctx)?,
 
             Commands::Press {
-                keys,
+                mut keys,
                 hold,
                 release,
             } => {
                 const PRESS_INTER_KEY_DELAY_MS: u64 = 50;
-                if *hold {
+                if hold {
                     if keys.len() != 1 {
                         return Err(anyhow::Error::new(crate::app::error::CliError::new(
                             ctx.format,
@@ -644,8 +638,19 @@ impl Application {
                             exit_codes::USAGE,
                         )));
                     }
-                    handlers::handle_keydown(ctx, keys[0].clone())?
-                } else if *release {
+                    let key = match keys.pop() {
+                        Some(key) => key,
+                        None => {
+                            return Err(anyhow::Error::new(crate::app::error::CliError::new(
+                                ctx.format,
+                                "Press --hold requires exactly one key (Ctrl, Alt, Shift, Meta)",
+                                None,
+                                exit_codes::USAGE,
+                            )));
+                        }
+                    };
+                    handlers::handle_keydown(ctx, key)?
+                } else if release {
                     if keys.len() != 1 {
                         return Err(anyhow::Error::new(crate::app::error::CliError::new(
                             ctx.format,
@@ -654,11 +659,23 @@ impl Application {
                             exit_codes::USAGE,
                         )));
                     }
-                    handlers::handle_keyup(ctx, keys[0].clone())?
+                    let key = match keys.pop() {
+                        Some(key) => key,
+                        None => {
+                            return Err(anyhow::Error::new(crate::app::error::CliError::new(
+                                ctx.format,
+                                "Press --release requires exactly one key (Ctrl, Alt, Shift, Meta)",
+                                None,
+                                exit_codes::USAGE,
+                            )));
+                        }
+                    };
+                    handlers::handle_keyup(ctx, key)?
                 } else {
-                    for (idx, key) in keys.iter().enumerate() {
-                        handlers::handle_press(ctx, key.to_string())?;
-                        if idx + 1 < keys.len() {
+                    let key_count = keys.len();
+                    for (idx, key) in keys.into_iter().enumerate() {
+                        handlers::handle_press(ctx, key)?;
+                        if idx + 1 < key_count {
                             std::thread::park_timeout(std::time::Duration::from_millis(
                                 PRESS_INTER_KEY_DELAY_MS,
                             ));
@@ -667,9 +684,9 @@ impl Application {
                 }
             }
 
-            Commands::Type { text } => handlers::handle_type(ctx, text.to_string())?,
+            Commands::Type { text } => handlers::handle_type(ctx, text)?,
 
-            Commands::Wait { params } => handlers::handle_wait(ctx, params.clone())?,
+            Commands::Wait { params } => handlers::handle_wait(ctx, params)?,
             Commands::Kill => handlers::handle_kill(ctx)?,
 
             Commands::Sessions { command } => {
@@ -678,25 +695,25 @@ impl Application {
                 match command {
                     None | Some(SessionsCommand::List) => handlers::handle_sessions(ctx)?,
                     Some(SessionsCommand::Show { session_id }) => {
-                        handlers::handle_session_show(ctx, session_id.clone())?
+                        handlers::handle_session_show(ctx, session_id)?
                     }
                     Some(SessionsCommand::Attach {
                         no_tty,
                         detach_keys,
                     }) => {
                         let attach_id = handlers::resolve_attach_session_id(ctx)?;
-                        handlers::handle_attach(ctx, attach_id, !*no_tty, detach_keys.clone())?
+                        handlers::handle_attach(ctx, attach_id, !no_tty, detach_keys)?
                     }
                     Some(SessionsCommand::Switch { session_id }) => {
-                        handlers::handle_session_switch(ctx, session_id.clone())?
+                        handlers::handle_session_switch(ctx, session_id)?
                     }
-                    Some(SessionsCommand::Cleanup { all }) => handlers::handle_cleanup(ctx, *all)?,
+                    Some(SessionsCommand::Cleanup { all }) => handlers::handle_cleanup(ctx, all)?,
                 }
             }
 
             Commands::Live { command } => match command {
                 None => handlers::handle_live_start(ctx, LiveStartArgs::default())?,
-                Some(LiveCommand::Start(args)) => handlers::handle_live_start(ctx, args.clone())?,
+                Some(LiveCommand::Start(args)) => handlers::handle_live_start(ctx, args)?,
                 Some(LiveCommand::Stop) => handlers::handle_live_stop(ctx)?,
                 Some(LiveCommand::Status) => handlers::handle_live_status(ctx)?,
             },

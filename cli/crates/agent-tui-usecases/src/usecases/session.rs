@@ -40,17 +40,25 @@ impl<R: SessionRepository> SpawnUseCaseImpl<R> {
 
 impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
     fn execute(&self, input: SpawnInput) -> Result<SpawnOutput, SpawnError> {
-        let session_id_str = input.session_id.map(|id| id.to_string());
-        let command = input.command.clone();
+        let SpawnInput {
+            command,
+            args,
+            cwd,
+            env,
+            session_id,
+            cols,
+            rows,
+        } = input;
+        let session_id_str = session_id.map(|id| id.to_string());
 
         match self.repository.spawn(
-            &input.command,
-            &input.args,
-            input.cwd.as_deref(),
-            input.env.as_ref(),
+            &command,
+            &args,
+            cwd.as_deref(),
+            env.as_ref(),
             session_id_str,
-            input.cols,
-            input.rows,
+            cols,
+            rows,
         ) {
             Ok((session_id, pid)) => Ok(SpawnOutput { session_id, pid }),
             Err(SessionError::LimitReached(max)) => Err(SpawnError::SessionLimitReached { max }),

@@ -85,22 +85,12 @@ pub fn check_condition<S: SessionOps + ?Sized>(
     stable_tracker: &mut StableTracker,
 ) -> bool {
     let _ = session.update();
+    let screen = session.screen_text();
 
     match condition {
-        WaitCondition::Text(text) => {
-            let screen = session.screen_text();
-            screen.contains(text)
-        }
-
-        WaitCondition::Stable => {
-            let screen = session.screen_text();
-            stable_tracker.add_hash(&screen)
-        }
-
-        WaitCondition::TextGone(text) => {
-            let screen = session.screen_text();
-            !screen.contains(text)
-        }
+        WaitCondition::Text(text) => screen.contains(text),
+        WaitCondition::Stable => stable_tracker.add_hash(&screen),
+        WaitCondition::TextGone(text) => !screen.contains(text),
     }
 }
 

@@ -57,13 +57,20 @@ macro_rules! key_handler {
             ctx: &mut HandlerContext<C>,
             key: String,
         ) -> HandlerResult {
-            let success_message = $success(&key);
+            let success_message = match ctx.format {
+                OutputFormat::Text => Some($success(&key)),
+                OutputFormat::Json => None,
+            };
             let params = params::KeyParams {
                 key,
                 session: ctx.session.clone(),
             };
             let result = call_with_params(ctx.client, $method, params)?;
-            ctx.output_success_and_ok(&result, &success_message, concat!($method, " failed"))
+            if let Some(success_message) = success_message {
+                ctx.output_success_and_ok(&result, &success_message, concat!($method, " failed"))
+            } else {
+                ctx.output_success_and_ok(&result, "", concat!($method, " failed"))
+            }
         }
     };
 }
@@ -278,17 +285,23 @@ pub(crate) fn handle_wait<C: DaemonClient>(
     use crate::adapters::presenter::WaitResult;
 
     let cond = resolve_wait_condition(&wait_params);
+    let WaitParams {
+        text,
+        timeout,
+        assert,
+        ..
+    } = wait_params;
     let rpc_params = params::WaitParams {
         session: ctx.session.clone(),
-        text: wait_params.text.clone(),
-        timeout_ms: wait_params.timeout,
+        text,
+        timeout_ms: timeout,
         condition: cond,
     };
     let result = call_with_params(ctx.client, "wait", rpc_params)?;
 
     let wait_result = WaitResult::from_json(&result);
 
-    if wait_params.assert && !wait_result.found {
+    if assert && !wait_result.found {
         return Err(CliError::new(
             ctx.format,
             "Wait condition not met within timeout",

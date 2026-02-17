@@ -237,48 +237,41 @@ impl PtyHandle {
         }
 
         if self.read_buffer.is_empty() && !self.read_closed {
-            let mut events = Vec::new();
-            {
-                let read_rx = match self.read_rx.as_ref() {
-                    Some(rx) => rx,
-                    None => {
-                        return Err(PtyError::Read {
-                            reason: "PTY read channel is not available".to_string(),
-                            source: None,
-                        });
-                    }
-                };
-
-                let first_event = if timeout_ms < 0 {
-                    match read_rx.recv() {
-                        Ok(event) => Some(event),
-                        Err(_) => {
-                            self.read_closed = true;
-                            None
-                        }
-                    }
-                } else {
-                    let timeout = Duration::from_millis(timeout_ms as u64);
-                    match read_rx.recv_timeout(timeout) {
-                        Ok(event) => Some(event),
-                        Err(channel::RecvTimeoutError::Timeout) => None,
-                        Err(channel::RecvTimeoutError::Disconnected) => {
-                            self.read_closed = true;
-                            None
-                        }
-                    }
-                };
-
-                if let Some(event) = first_event {
-                    events.push(event);
+            let read_rx = match self.read_rx.as_ref() {
+                Some(rx) => rx.clone(),
+                None => {
+                    return Err(PtyError::Read {
+                        reason: "PTY read channel is not available".to_string(),
+                        source: None,
+                    });
                 }
+            };
 
-                while let Ok(event) = read_rx.try_recv() {
-                    events.push(event);
+            let first_event = if timeout_ms < 0 {
+                match read_rx.recv() {
+                    Ok(event) => Some(event),
+                    Err(_) => {
+                        self.read_closed = true;
+                        None
+                    }
                 }
+            } else {
+                let timeout = Duration::from_millis(timeout_ms as u64);
+                match read_rx.recv_timeout(timeout) {
+                    Ok(event) => Some(event),
+                    Err(channel::RecvTimeoutError::Timeout) => None,
+                    Err(channel::RecvTimeoutError::Disconnected) => {
+                        self.read_closed = true;
+                        None
+                    }
+                }
+            };
+
+            if let Some(event) = first_event {
+                self.handle_read_event(event);
             }
 
-            for event in events {
+            while let Ok(event) = read_rx.try_recv() {
                 self.handle_read_event(event);
             }
         }

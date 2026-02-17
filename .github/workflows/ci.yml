@@ -191,7 +191,7 @@ jobs:
       - name: Verify generated CLI docs are up to date
         working-directory: cli
         run: |
-          cargo run -p agent-tui --bin agent-tui-cli-docs
+          NO_COLOR=1 cargo run -p agent-tui --bin agent-tui-cli-docs
           git diff --exit-code -- ../docs/cli/agent-tui.md
 
       - name: Verify skill docs command references
@@ -219,6 +219,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-command-fast-
 
+      - name: Build fast command test binaries
+        working-directory: cli
+        run: |
+          cargo test -p agent-tui --test cli_smoke --test cli_contracts --test cli_command_contracts --no-run
+
       - name: Run fast command verification
         working-directory: cli
         run: |
@@ -245,6 +250,11 @@ jobs:
           key: ${{ runner.os }}-cargo-command-core-e2e-${{ hashFiles('cli/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-command-core-e2e-
+
+      - name: Build core runtime command E2E binary
+        working-directory: cli
+        run: |
+          cargo test -p agent-tui --features slow-tests --test system_e2e --no-run
 
       - name: Run core runtime command E2E suite
         working-directory: cli

@@ -543,7 +543,7 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
                 pid: state.pid,
                 listen: state.listen.clone(),
                 ws_url: state.ws_url.clone(),
-                ui_url: daemon_ui_url.clone(),
+                ui_url: daemon_ui_url,
                 started_at: state.started_at,
             };
             println!("{}", serde_json::to_string_pretty(&output)?);
@@ -873,10 +873,10 @@ pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
             let output = VersionOutput {
                 cli_version,
                 cli_commit,
-                daemon_version: daemon_version.clone(),
-                daemon_commit: daemon_commit.clone(),
+                daemon_version,
+                daemon_commit,
                 mode: "daemon",
-                daemon_error: daemon_error.clone(),
+                daemon_error,
             };
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
@@ -1996,26 +1996,23 @@ mod tests {
     #[test]
     fn test_assert_condition_parsing_session() {
         let condition = "session:my-session";
-        let parts: Vec<&str> = condition.splitn(2, ':').collect();
-        assert_eq!(parts.len(), 2);
-        assert_eq!(parts[0], "session");
-        assert_eq!(parts[1], "my-session");
+        let (kind, value) = condition.split_once(':').expect("expected separator");
+        assert_eq!(kind, "session");
+        assert_eq!(value, "my-session");
     }
 
     #[test]
     fn test_assert_condition_parsing_with_colon_in_value() {
         let condition = "text:URL: https://example.com";
-        let parts: Vec<&str> = condition.splitn(2, ':').collect();
-        assert_eq!(parts.len(), 2);
-        assert_eq!(parts[0], "text");
-        assert_eq!(parts[1], "URL: https://example.com");
+        let (kind, value) = condition.split_once(':').expect("expected separator");
+        assert_eq!(kind, "text");
+        assert_eq!(value, "URL: https://example.com");
     }
 
     #[test]
     fn test_assert_condition_parsing_invalid() {
         let condition = "invalid_format";
-        let parts: Vec<&str> = condition.splitn(2, ':').collect();
-        assert_eq!(parts.len(), 1);
+        assert!(condition.split_once(':').is_none());
     }
 
     #[test]

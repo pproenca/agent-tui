@@ -109,7 +109,7 @@ impl DaemonClient for MockClient {
         self.calls
             .lock()
             .unwrap()
-            .push((method.to_string(), params.clone()));
+            .push((method.to_string(), params));
 
         let responses = self.responses.lock().unwrap();
         if let Some(response) = responses.get(method) {

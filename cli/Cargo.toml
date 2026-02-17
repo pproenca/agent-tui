@@ -59,7 +59,6 @@ tungstenite = "0.24"
 assert_cmd = "2.1"
 predicates = "3.1"
 tempfile = "3.24"
-proptest = "1.9"
 
 [workspace.lints.clippy]
 unwrap_used = "deny"

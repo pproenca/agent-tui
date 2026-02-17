@@ -42,7 +42,7 @@ impl ScreenGrid for ScreenBuffer {
         self.cells
             .get(row)
             .and_then(|r| r.get(col))
-            .map(|c| (c.char, c.style.clone()))
+            .map(|c| (c.char, c.style))
     }
 }
 
@@ -100,19 +100,42 @@ impl VirtualTerminal {
 
     pub fn screen_text(&self) -> String {
         let buffer = self.screen_buffer();
-        let mut lines = Vec::new();
-        for row in &buffer.cells {
-            let mut line = String::new();
-            for cell in row {
-                line.push(cell.char);
+        let mut trimmed_lengths = Vec::with_capacity(buffer.cells.len());
+        let mut last_non_empty_row = None;
+        let mut total_trimmed_chars = 0usize;
+
+        for (row_idx, row) in buffer.cells.iter().enumerate() {
+            let trimmed_len = row
+                .iter()
+                .rposition(|cell| !cell.char.is_whitespace())
+                .map(|idx| idx + 1)
+                .unwrap_or(0);
+            if trimmed_len > 0 {
+                last_non_empty_row = Some(row_idx);
+                total_trimmed_chars += trimmed_len;
             }
-            let trimmed = line.trim_end();
-            lines.push(trimmed.to_string());
+            trimmed_lengths.push(trimmed_len);
         }
-        while lines.last().map(|l| l.is_empty()).unwrap_or(false) {
-            lines.pop();
+
+        let Some(last_row) = last_non_empty_row else {
+            return String::new();
+        };
+
+        let rendered_rows = last_row + 1;
+        let mut output =
+            String::with_capacity(total_trimmed_chars + rendered_rows.saturating_sub(1));
+
+        for (row_idx, row) in buffer.cells.iter().take(rendered_rows).enumerate() {
+            if row_idx > 0 {
+                output.push('\n');
+            }
+            let trimmed_len = trimmed_lengths[row_idx];
+            for cell in row.iter().take(trimmed_len) {
+                output.push(cell.char);
+            }
         }
-        lines.join("\n")
+
+        output
     }
 
     pub fn screen_buffer(&self) -> ScreenBuffer {

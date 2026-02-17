@@ -27,12 +27,23 @@ mod codes {
 
 pub struct Colors;
 
+fn wrap_with_ansi(text: &str, prefixes: &[&str]) -> String {
+    let prefix_len: usize = prefixes.iter().map(|prefix| prefix.len()).sum();
+    let mut out = String::with_capacity(prefix_len + text.len() + codes::RESET.len());
+    for prefix in prefixes {
+        out.push_str(prefix);
+    }
+    out.push_str(text);
+    out.push_str(codes::RESET);
+    out
+}
+
 impl Colors {
     pub fn success(text: &str) -> String {
         if is_disabled() {
             text.to_string()
         } else {
-            format!("{}{}{}", codes::GREEN, text, codes::RESET)
+            wrap_with_ansi(text, &[codes::GREEN])
         }
     }
 
@@ -40,7 +51,7 @@ impl Colors {
         if is_disabled() {
             text.to_string()
         } else {
-            format!("{}{}{}", codes::RED, text, codes::RESET)
+            wrap_with_ansi(text, &[codes::RED])
         }
     }
 
@@ -48,7 +59,7 @@ impl Colors {
         if is_disabled() {
             text.to_string()
         } else {
-            format!("{}{}{}", codes::CYAN, text, codes::RESET)
+            wrap_with_ansi(text, &[codes::CYAN])
         }
     }
 
@@ -56,7 +67,7 @@ impl Colors {
         if is_disabled() {
             text.to_string()
         } else {
-            format!("{}{}{}", codes::YELLOW, text, codes::RESET)
+            wrap_with_ansi(text, &[codes::YELLOW])
         }
     }
 
@@ -64,7 +75,7 @@ impl Colors {
         if is_disabled() {
             text.to_string()
         } else {
-            format!("{}{}{}", codes::DIM, text, codes::RESET)
+            wrap_with_ansi(text, &[codes::DIM])
         }
     }
 
@@ -72,7 +83,7 @@ impl Colors {
         if is_disabled() {
             text.to_string()
         } else {
-            format!("{}{}{}", codes::BOLD, text, codes::RESET)
+            wrap_with_ansi(text, &[codes::BOLD])
         }
     }
 
@@ -80,7 +91,7 @@ impl Colors {
         if is_disabled() {
             text.to_string()
         } else {
-            format!("{}{}{}{}", codes::BOLD, codes::CYAN, text, codes::RESET)
+            wrap_with_ansi(text, &[codes::BOLD, codes::CYAN])
         }
     }
 }

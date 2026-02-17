@@ -584,12 +584,13 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
 
     let log_recent_failure = || {
         if let Ok(log_content) = std::fs::read_to_string(&log_path) {
-            let last_lines: String = log_content
-                .lines()
-                .rev()
-                .take(5)
-                .collect::<Vec<_>>()
-                .join("\n");
+            let mut last_lines = String::new();
+            for line in log_content.lines().rev().take(5) {
+                if !last_lines.is_empty() {
+                    last_lines.push('\n');
+                }
+                last_lines.push_str(line);
+            }
             if !last_lines.is_empty() {
                 error!("Daemon failed to start. Recent log output:\n{}", last_lines);
             }

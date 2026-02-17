@@ -7,7 +7,7 @@ pub enum Color {
     Rgb(u8, u8, u8),
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct CellStyle {
     pub bold: bool,
     pub underline: bool,

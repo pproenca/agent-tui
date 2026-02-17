@@ -343,8 +343,9 @@ fn completion_status(expected: &[u8], path: &PathBuf) -> Result<CompletionStatus
 
 fn install_completions(script: &[u8], path: &PathBuf) -> Result<InstallOutcome> {
     let status = completion_status(script, path)?;
+    let path = path.clone();
     if matches!(status, CompletionStatus::UpToDate) {
-        return Ok(InstallOutcome::AlreadyUpToDate(path.clone()));
+        return Ok(InstallOutcome::AlreadyUpToDate(path));
     }
 
     if let Some(parent) = path.parent() {
@@ -352,12 +353,12 @@ fn install_completions(script: &[u8], path: &PathBuf) -> Result<InstallOutcome> 
             format!("failed to create completion directory {}", parent.display())
         })?;
     }
-    fs::write(path, script)
+    fs::write(&path, script)
         .with_context(|| format!("failed to write completions to {}", path.display()))?;
     Ok(match status {
-        CompletionStatus::Missing => InstallOutcome::Installed(path.clone()),
-        CompletionStatus::OutOfDate => InstallOutcome::Updated(path.clone()),
-        CompletionStatus::UpToDate => InstallOutcome::AlreadyUpToDate(path.clone()),
+        CompletionStatus::Missing => InstallOutcome::Installed(path),
+        CompletionStatus::OutOfDate => InstallOutcome::Updated(path),
+        CompletionStatus::UpToDate => InstallOutcome::AlreadyUpToDate(path),
     })
 }
 
@@ -473,10 +474,9 @@ impl Application {
         };
 
         let mut ctx = HandlerContext::new(&mut client, cli.session, format);
-        let command_for_error = format!("{:?}", &cli.command);
         self.dispatch_command(&mut ctx, cli.command)
             .map_err(|e| self.wrap_error(e, format))
-            .with_context(|| format!("failed to execute command {command_for_error}"))
+            .context("failed to execute command")
     }
 
     fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool> {

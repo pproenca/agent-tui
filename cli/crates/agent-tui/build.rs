@@ -7,7 +7,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=AGENT_TUI_VERSION");
     println!("cargo:rerun-if-env-changed=AGENT_TUI_GIT_SHA");
 
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| "".to_string());
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| String::new());
 
     let version = env::var("AGENT_TUI_VERSION")
         .ok()

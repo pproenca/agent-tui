@@ -8,6 +8,7 @@ pub use types::RpcResponse;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
 
@@ -113,7 +114,7 @@ pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse
         .as_ref()
         .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))
         .and_then(|p| {
-            serde_json::from_value(p.clone()).map_err(|e| {
+            params::SpawnParams::deserialize(p).map_err(|e| {
                 RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", e))
             })
         })?;
@@ -149,7 +150,7 @@ pub fn parse_snapshot_input(request: &RpcRequest) -> SnapshotInput {
     let rpc_params: params::SnapshotParams = request
         .params
         .as_ref()
-        .and_then(|p| serde_json::from_value(p.clone()).ok())
+        .and_then(|p| params::SnapshotParams::deserialize(p).ok())
         .unwrap_or_default();
 
     SnapshotInput {
@@ -239,7 +240,7 @@ pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> 
     let rpc_params: params::WaitParams = request
         .params
         .as_ref()
-        .and_then(|p| serde_json::from_value(p.clone()).ok())
+        .and_then(|p| params::WaitParams::deserialize(p).ok())
         .unwrap_or_default();
 
     let condition = match rpc_params.condition.as_deref() {
@@ -302,7 +303,7 @@ pub fn parse_resize_input(request: &RpcRequest) -> ResizeInput {
     let rpc_params: params::ResizeParams = request
         .params
         .as_ref()
-        .and_then(|p| serde_json::from_value(p.clone()).ok())
+        .and_then(|p| params::ResizeParams::deserialize(p).ok())
         .unwrap_or(params::ResizeParams {
             cols: 0,
             rows: 0,
@@ -348,7 +349,7 @@ pub fn parse_attach_input(request: &RpcRequest) -> Result<AttachInput, RpcRespon
     })
 }
 
-pub fn attach_output_to_response(id: u64, output: AttachOutput) -> RpcResponse {
+pub fn attach_output_to_response(id: u64, output: &AttachOutput) -> RpcResponse {
     let session_id = output.session_id.as_str();
     let message = format!("Now attached to session {}", session_id);
     RpcResponse::success(
@@ -426,7 +427,7 @@ pub fn parse_terminal_write_input(request: &RpcRequest) -> Result<TerminalWriteI
         .as_ref()
         .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))
         .and_then(|p| {
-            serde_json::from_value(p.clone()).map_err(|e| {
+            params::PtyWriteParams::deserialize(p).map_err(|e| {
                 RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", e))
             })
         })?;

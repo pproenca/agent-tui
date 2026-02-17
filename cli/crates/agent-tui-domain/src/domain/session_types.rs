@@ -316,7 +316,7 @@ mod tests {
         #[test]
         fn test_try_new_from_string_validates() {
             assert!(
-                SessionId::try_new("".to_string()).is_err(),
+                SessionId::try_new(String::new()).is_err(),
                 "try_new should validate String"
             );
             assert!(

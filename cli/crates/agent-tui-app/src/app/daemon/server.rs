@@ -344,8 +344,7 @@ impl DaemonServer {
 
             let request_id = request.id;
             let method = request.method.clone();
-            let session = request.param_str("session").map(str::to_string);
-            let session_field = session.as_deref().unwrap_or("-");
+            let session_field = request.param_str("session").unwrap_or("-");
             let request_span = tracing::debug_span!(
                 "rpc_request",
                 request_id,

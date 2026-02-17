@@ -186,18 +186,18 @@ impl RpcCore {
             }
         };
 
-        let session_id = input.session_id.clone();
-        match self.usecases.session.attach.execute(input) {
+        let session_id = match self.usecases.session.attach.execute(input) {
             Ok(output) => {
-                let response = attach_output_to_response(req_id, output);
+                let response = attach_output_to_response(req_id, &output);
                 writer.write_response(&response)?;
+                output.session_id
             }
             Err(err) => {
                 let response = session_error_response(req_id, err);
                 let _ = writer.write_response(&response);
                 return Ok(());
             }
-        }
+        };
 
         let session =
             match SessionRepository::resolve(self.session_manager.as_ref(), Some(&session_id)) {

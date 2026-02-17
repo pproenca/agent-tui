@@ -1685,14 +1685,18 @@ fn process_info_from_sysinfo(pid: u32) -> Option<ProcessInfo> {
 
     let cmd = process.cmd();
     let cmdline = if !cmd.is_empty() {
-        let cmdline = cmd
-            .iter()
-            .map(|arg| arg.to_string_lossy())
-            .collect::<Vec<_>>()
-            .join(" ");
+        let mut cmdline = String::new();
+        for arg in cmd {
+            if !cmdline.is_empty() {
+                cmdline.push(' ');
+            }
+            cmdline.push_str(&arg.to_string_lossy());
+        }
         Some(cmdline)
     } else {
-        process.exe().map(|path| path.to_string_lossy().to_string())
+        process
+            .exe()
+            .map(|path| path.to_string_lossy().into_owned())
     };
 
     let start_time = if process.start_time() > 0 {
@@ -1713,11 +1717,19 @@ fn parse_cmdline_bytes(bytes: &[u8]) -> Option<String> {
     if bytes.is_empty() {
         return None;
     }
-    let mut cmdline = String::from_utf8_lossy(bytes).replace('\0', " ");
-    cmdline = cmdline.trim().to_string();
-    if cmdline.is_empty() {
+    let decoded = String::from_utf8_lossy(bytes);
+    let trimmed = decoded.trim_matches(|ch: char| ch == '\0' || ch.is_whitespace());
+    if trimmed.is_empty() {
         None
     } else {
+        let mut cmdline = String::with_capacity(trimmed.len());
+        for ch in trimmed.chars() {
+            if ch == '\0' {
+                cmdline.push(' ');
+            } else {
+                cmdline.push(ch);
+            }
+        }
         Some(cmdline)
     }
 }

@@ -92,7 +92,7 @@ pub fn handle_attach<U: AttachUseCase>(usecase: &U, request: RpcRequest) -> RpcR
     };
 
     match usecase.execute(input) {
-        Ok(output) => attach_output_to_response(req_id, output),
+        Ok(output) => attach_output_to_response(req_id, &output),
         Err(e) => session_error_response(req_id, e),
     }
 }

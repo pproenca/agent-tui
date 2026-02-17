@@ -499,11 +499,11 @@ pub(crate) fn handle_session_switch<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     session_id: String,
 ) -> HandlerResult {
+    let success_message = format!("Active session set to {}", Colors::session_id(&session_id));
     let params = params::SessionParams {
-        session: Some(session_id.clone()),
+        session: Some(session_id),
     };
     let result = call_with_params(ctx.client, "attach", params)?;
-    let success_message = format!("Active session set to {}", Colors::session_id(&session_id));
     ctx.output_success_and_ok(&result, &success_message, "Switch failed")
 }
 
@@ -535,18 +535,17 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
     let open_base_url = std::env::var("AGENT_TUI_UI_URL")
         .ok()
         .map(|url| url.trim().to_string())
-        .filter(|url| !url.is_empty())
-        .unwrap_or_else(|| daemon_ui_url.clone());
+        .filter(|url| !url.is_empty());
 
     match ctx.format {
         OutputFormat::Json => {
             #[derive(Serialize)]
-            struct LiveStartOutput {
+            struct LiveStartOutput<'a> {
                 running: bool,
                 pid: u32,
-                listen: String,
-                ws_url: String,
-                ui_url: String,
+                listen: &'a str,
+                ws_url: &'a str,
+                ui_url: &'a str,
                 #[serde(skip_serializing_if = "Option::is_none")]
                 started_at: Option<u64>,
             }
@@ -554,9 +553,9 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
             let output = LiveStartOutput {
                 running: true,
                 pid: state.pid,
-                listen: state.listen.clone(),
-                ws_url: state.ws_url.clone(),
-                ui_url: daemon_ui_url,
+                listen: &state.listen,
+                ws_url: &state.ws_url,
+                ui_url: &daemon_ui_url,
                 started_at: state.started_at,
             };
             println!("{}", serde_json::to_string_pretty(&output)?);
@@ -568,7 +567,8 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
     }
 
     if args.open {
-        let target = build_ui_url(&open_base_url, &state);
+        let open_base_url = open_base_url.as_deref().unwrap_or(&daemon_ui_url);
+        let target = build_ui_url(open_base_url, &state);
         if let Err(err) = open_in_browser(&target, args.browser.as_deref()) {
             eprintln!("Warning: failed to open browser: {}", err);
         }
@@ -1307,16 +1307,16 @@ pub(crate) fn handle_cleanup<C: DaemonClient>(
     let result = CleanupResult { cleaned, failures };
 
     #[derive(Serialize)]
-    struct CleanupFailureJson {
-        session: String,
-        error: String,
+    struct CleanupFailureJson<'a> {
+        session: &'a str,
+        error: &'a str,
     }
 
     #[derive(Serialize)]
-    struct CleanupOutputJson {
+    struct CleanupOutputJson<'a> {
         sessions_cleaned: usize,
         sessions_failed: usize,
-        failures: Vec<CleanupFailureJson>,
+        failures: Vec<CleanupFailureJson<'a>>,
     }
 
     let output = CleanupOutputJson {
@@ -1326,8 +1326,8 @@ pub(crate) fn handle_cleanup<C: DaemonClient>(
             .failures
             .iter()
             .map(|f| CleanupFailureJson {
-                session: f.session_id.clone(),
-                error: f.error.clone(),
+                session: &f.session_id,
+                error: &f.error,
             })
             .collect(),
     };
@@ -1573,18 +1573,14 @@ pub(crate) fn handle_assert<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     condition: String,
 ) -> HandlerResult {
-    let parts: Vec<&str> = condition.splitn(2, ':').collect();
-    if parts.len() != 2 {
-        return Err(CliError::new(
+    let (cond_type, cond_value) = condition.split_once(':').ok_or_else(|| {
+        CliError::new(
             ctx.format,
             "Invalid condition format. Use: text:pattern or session:id",
             None,
             super::exit_codes::USAGE,
         )
-        .into());
-    }
-
-    let (cond_type, cond_value) = (parts[0], parts[1]);
+    })?;
 
     let passed = match cond_type {
         "text" => {
@@ -1622,12 +1618,7 @@ pub(crate) fn handle_assert<C: DaemonClient>(
         }
     };
 
-    let assert_result = crate::adapters::presenter::AssertResult {
-        passed,
-        condition: condition.clone(),
-    };
-
-    if assert_result.passed {
+    if passed {
         match ctx.format {
             OutputFormat::Json => {
                 #[derive(Serialize)]
@@ -1642,6 +1633,7 @@ pub(crate) fn handle_assert<C: DaemonClient>(
                 println!("{}", serde_json::to_string_pretty(&output)?);
             }
             OutputFormat::Text => {
+                let assert_result = crate::adapters::presenter::AssertResult { passed, condition };
                 ctx.presenter().present_assert_result(&assert_result);
             }
         }
@@ -1657,7 +1649,7 @@ pub(crate) fn handle_assert<C: DaemonClient>(
         };
         return Err(CliError::new(
             ctx.format,
-            format!("Assertion failed: {}", assert_result.condition),
+            format!("Assertion failed: {}", condition),
             Some(serde_json::to_string_pretty(&output)?),
             super::exit_codes::GENERAL_ERROR,
         )
@@ -2000,10 +1992,9 @@ mod tests {
     #[test]
     fn test_assert_condition_parsing_text() {
         let condition = "text:Submit";
-        let parts: Vec<&str> = condition.splitn(2, ':').collect();
-        assert_eq!(parts.len(), 2);
-        assert_eq!(parts[0], "text");
-        assert_eq!(parts[1], "Submit");
+        let (kind, value) = condition.split_once(':').expect("expected separator");
+        assert_eq!(kind, "text");
+        assert_eq!(value, "Submit");
     }
 
     #[test]

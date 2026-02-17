@@ -16,22 +16,22 @@ pub fn render_screen(buffer: &ScreenBuffer) -> String {
     }
 
     let mut out = Vec::new();
-    let mut current_style: Option<CellStyle> = None;
+    let mut current_style: Option<&CellStyle> = None;
 
     for (row_idx, row) in buffer.cells.iter().enumerate() {
         let mut col = 0;
         while col < row.len() {
-            let style = row[col].style.clone();
+            let style = &row[col].style;
             let mut run_end = col + 1;
-            while run_end < row.len() && row[run_end].style == style {
+            while run_end < row.len() && row[run_end].style == *style {
                 run_end += 1;
             }
 
-            if current_style.as_ref() != Some(&style) {
-                if let Err(err) = apply_style(&mut out, &style) {
+            if current_style != Some(style) {
+                if let Err(err) = apply_style(&mut out, style) {
                     debug!(error = %err, "Failed to apply terminal style");
                 }
-                current_style = Some(style.clone());
+                current_style = Some(style);
             }
 
             let mut text = String::with_capacity(run_end - col);

@@ -62,8 +62,6 @@ Use this file when you need complete CLI coverage and exact options.
 - Options:
   - `--open`: open UI in browser (uses `AGENT_TUI_UI_URL` if set).
   - `--browser <cmd>`: override `$BROWSER`.
-- Deprecated:
-  - `--listen`, `--allow-remote`, `--max-viewers` (use env vars and restart the daemon).
 
 ### Daemon
 - `agent-tui daemon start`
@@ -87,8 +85,6 @@ Use this file when you need complete CLI coverage and exact options.
 - `AGENT_TUI_WS_DISABLED`: disable daemon WS server (boolean).
 - `AGENT_TUI_WS_MAX_CONNECTIONS`: max live connections.
 - `AGENT_TUI_WS_QUEUE`: outbound WS queue size.
-- `AGENT_TUI_API_LISTEN` / `AGENT_TUI_API_ALLOW_REMOTE` / `AGENT_TUI_API_STATE` / `AGENT_TUI_API_MAX_CONNECTIONS` / `AGENT_TUI_API_WS_QUEUE`: deprecated aliases for WS settings.
-- `AGENT_TUI_API_TOKEN`: deprecated and ignored.
 - `AGENT_TUI_UI_URL`: base URL to open with `live start --open`.
 - `AGENT_TUI_SESSION_STORE`: session metadata log path (default: `~/.agent-tui/sessions.jsonl`).
 - `AGENT_TUI_LOG`: log file path (optional).

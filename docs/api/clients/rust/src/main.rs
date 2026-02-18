@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    let state = read_api_state()?;
+    let state = read_ws_state()?;
     let ws_url = ws_url.unwrap_or(state.ws_url);
     let mut url = Url::parse(&ws_url).context("invalid ws url")?;
     url.query_pairs_mut()
@@ -60,13 +60,13 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-struct ApiState {
+struct WsState {
     ws_url: String,
     token: Option<String>,
 }
 
-fn read_api_state() -> Result<ApiState> {
-    let path = env::var("AGENT_TUI_API_STATE")
+fn read_ws_state() -> Result<WsState> {
+    let path = env::var("AGENT_TUI_WS_STATE")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
@@ -76,7 +76,7 @@ fn read_api_state() -> Result<ApiState> {
     let contents = fs::read_to_string(&path)
         .with_context(|| format!("failed to read {}", path.display()))?;
     let value: serde_json::Value = serde_json::from_str(&contents)?;
-    Ok(ApiState {
+    Ok(WsState {
         ws_url: value
             .get("ws_url")
             .and_then(|v| v.as_str())

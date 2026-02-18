@@ -42,10 +42,6 @@ CONFIGURATION:
     AGENT_TUI_WS_DISABLED       Disable daemon WS server (default: false)
     AGENT_TUI_WS_MAX_CONNECTIONS  Max WebSocket connections (default: 32)
     AGENT_TUI_WS_QUEUE          WS outbound queue size (default: 128)
-    AGENT_TUI_API_LISTEN / AGENT_TUI_API_ALLOW_REMOTE / AGENT_TUI_API_STATE /
-    AGENT_TUI_API_MAX_CONNECTIONS / AGENT_TUI_API_WS_QUEUE
-                              Deprecated aliases for WS settings
-    AGENT_TUI_API_TOKEN         Deprecated and ignored
     AGENT_TUI_SESSION_STORE     Session metadata log path (default: ~/.agent-tui/sessions.jsonl)
     AGENT_TUI_LOG               Log file path (optional)
     AGENT_TUI_LOG_FORMAT        Log format (text or json; default: text)
@@ -473,21 +469,6 @@ pub enum LiveCommand {
 
 #[derive(Debug, Clone, Default, Args)]
 pub struct LiveStartArgs {
-    /// Deprecated (use AGENT_TUI_WS_LISTEN and restart the daemon)
-    #[arg(
-        short = 'l',
-        long,
-        value_name = "ADDR",
-        num_args = 0..=1,
-        default_missing_value = "127.0.0.1:0",
-        help_heading = "Deprecated"
-    )]
-    pub listen: Option<String>,
-
-    /// Deprecated (use AGENT_TUI_WS_ALLOW_REMOTE and restart the daemon)
-    #[arg(long, help_heading = "Deprecated")]
-    pub allow_remote: bool,
-
     /// Open the preview URL in a browser (uses AGENT_TUI_UI_URL if set)
     #[arg(long)]
     pub open: bool,
@@ -495,15 +476,6 @@ pub struct LiveStartArgs {
     /// Browser command to use (overrides $BROWSER)
     #[arg(long, value_name = "CMD", value_hint = ValueHint::CommandName)]
     pub browser: Option<String>,
-
-    /// Deprecated (use AGENT_TUI_WS_MAX_CONNECTIONS and restart the daemon)
-    #[arg(
-        long,
-        value_name = "COUNT",
-        env = "AGENT_TUI_WS_MAX_CONNECTIONS",
-        help_heading = "Deprecated"
-    )]
-    pub max_viewers: Option<u16>,
 }
 
 #[derive(Debug, Subcommand)]

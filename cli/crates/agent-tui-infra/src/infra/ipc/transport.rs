@@ -60,9 +60,6 @@ fn ws_state_path_from_env() -> std::path::PathBuf {
     if let Ok(path) = std::env::var("AGENT_TUI_WS_STATE") {
         return std::path::PathBuf::from(path);
     }
-    if let Ok(path) = std::env::var("AGENT_TUI_API_STATE") {
-        return std::path::PathBuf::from(path);
-    }
     let home = std::env::var("HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));

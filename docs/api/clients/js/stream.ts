@@ -10,8 +10,7 @@ for (const arg of process.argv.slice(2)) {
   }
 }
 
-const statePath =
-  Bun.env.AGENT_TUI_API_STATE ?? `${homedir()}/.agent-tui/api.json`;
+const statePath = Bun.env.AGENT_TUI_WS_STATE ?? `${homedir()}/.agent-tui/api.json`;
 const stateRaw = await readFile(statePath, "utf8");
 const state = JSON.parse(stateRaw);
 

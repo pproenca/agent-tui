@@ -113,7 +113,7 @@ impl StandaloneEnv {
         self.cli_command().args(args).assert()
     }
 
-    fn write_api_state(&self) {
+    fn write_ws_state(&self) {
         let data = json!({
             "pid": std::process::id(),
             "ws_url": "ws://127.0.0.1:43210/ws",
@@ -123,9 +123,9 @@ impl StandaloneEnv {
         });
         fs::write(
             &self.ws_state_path,
-            serde_json::to_string_pretty(&data).expect("serialize api state"),
+            serde_json::to_string_pretty(&data).expect("serialize ws state"),
         )
-        .expect("write api state");
+        .expect("write ws state");
     }
 
     fn stop_daemon_best_effort(&self) {
@@ -388,30 +388,17 @@ fn standalone_daemon_commands_contract() {
 }
 
 #[test]
-fn live_start_alias_and_deprecated_flags_contract() {
+fn live_start_alias_contract() {
     let harness = TestHarness::new();
     let env = StandaloneEnv::new();
-    env.write_api_state();
+    env.write_ws_state();
 
     harness
         .cli_command()
         .env("AGENT_TUI_WS_STATE", &env.ws_state_path)
-        .args([
-            "--format",
-            "json",
-            "live",
-            "start",
-            "--listen",
-            "127.0.0.1:0",
-            "--allow-remote",
-            "--max-viewers",
-            "12",
-        ])
+        .args(["--format", "json", "live", "start"])
         .assert()
         .success()
-        .stderr(predicate::str::contains(
-            "Live preview is now served by the daemon WebSocket server",
-        ))
         .stdout(predicate::str::contains("\"running\": true"));
 
     harness
@@ -426,7 +413,7 @@ fn live_start_alias_and_deprecated_flags_contract() {
 #[test]
 fn standalone_live_status_and_stop_contract() {
     let env = StandaloneEnv::new();
-    env.write_api_state();
+    env.write_ws_state();
 
     env.run(&["--format", "json", "live", "status"])
         .success()

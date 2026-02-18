@@ -7,7 +7,6 @@ import {
   reduceSessionsFeedState,
   reduceTerminalStreamState,
   resolveSelectedSessionId,
-  shouldPromoteSelectionToActive,
   sortSessionsForFlightdeck,
   shouldAutoConnect,
   type SessionsFeedState,
@@ -224,31 +223,5 @@ describe("active terminal sync", () => {
       lastDisconnectReason: "manual",
     });
     expect(action).toBe("none");
-  });
-});
-
-describe("selection to active sync", () => {
-  test("promotes selected session when it is running", () => {
-    const payload: SessionsResponse = {
-      active: "alpha",
-      sessions: BASE_SESSIONS,
-    };
-    expect(shouldPromoteSelectionToActive(payload, "gamma")).toBe(true);
-  });
-
-  test("does not promote selected session when it is stopped", () => {
-    const payload: SessionsResponse = {
-      active: "alpha",
-      sessions: BASE_SESSIONS,
-    };
-    expect(shouldPromoteSelectionToActive(payload, "beta")).toBe(false);
-  });
-
-  test("does not promote selected session when missing from payload", () => {
-    const payload: SessionsResponse = {
-      active: "alpha",
-      sessions: BASE_SESSIONS,
-    };
-    expect(shouldPromoteSelectionToActive(payload, "missing")).toBe(false);
   });
 });

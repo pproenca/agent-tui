@@ -8,7 +8,6 @@ import {
   normalizedSessionValue,
   reduceSessionsFeedState,
   reduceTerminalStreamState,
-  shouldPromoteSelectionToActive,
   shouldAutoConnect,
   sortSessionsForFlightdeck,
   type TerminalDisconnectReason,
@@ -897,11 +896,6 @@ async function connect() {
 function selectSession(targetId: string) {
   if (normalizedSessionValue(config.session) === targetId) {
     return;
-  }
-  if (shouldPromoteSelectionToActive(latestSessions, targetId)) {
-    void rpcCall("attach", { session: targetId }).catch(() => {
-      // Keep preview selection local even if daemon active session cannot be updated.
-    });
   }
   applySessionsFeedState(
     reduceSessionsFeedState(sessionsFeedState, {

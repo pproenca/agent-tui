@@ -2,6 +2,10 @@
 
 Run:
 - `skills/tui-explorer/scripts/tui_explorer discover --command "<app command>"`
+- Before running discover, start live preview so users can observe exploration in the web UI:
+  - `agent-tui live start --open`
+- After verification, stop preview:
+  - `agent-tui live stop`
 
 ## Strategy
 - Bounded BFS over action paths.
@@ -23,3 +27,7 @@ Run:
 - `acceptance.md`
 - `trace.jsonl`
 - `discover-report.json`
+
+## Session isolation
+- Session changes made in the web UI are preview-local.
+- Discovery/verify commands must not rely on browser-driven active session switching.

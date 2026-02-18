@@ -1,4 +1,4 @@
 interface:
   display_name: "TUI Explorer"
   short_description: "Discover and replay TUI acceptance paths"
-  default_prompt: "Use tui-explorer to discover bounded TUI navigation paths, generate schema v1 markdown acceptance tests, and verify them with fail-fast replay and artifacts. First, ask whether the user wants a live preview over the HTTP endpoint; if yes, start `agent-tui live start --open` before discovery and stop it with `agent-tui live stop` after verification."
+  default_prompt: "Use tui-explorer to discover bounded TUI navigation paths, generate schema v1 markdown acceptance tests, and verify them with fail-fast replay and artifacts. Start live preview over the HTTP endpoint with `agent-tui live start --open` before discovery so the user can watch exploration in the built-in web UI, and stop it with `agent-tui live stop` after verification. Treat browser session selection as preview-local and do not switch the daemon active session from UI navigation."

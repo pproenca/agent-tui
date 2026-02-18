@@ -24,7 +24,7 @@ Run:
 - `time_budget_sec`
 
 ## Artifacts
-- `acceptance.md`
+- `acceptance.md` (includes OpenSpec-style `WHEN/THEN/SHOULD` expectation narrative plus executable step lines)
 - `trace.jsonl`
 - `discover-report.json`
 

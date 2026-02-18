@@ -802,6 +802,25 @@ fn parse_quoted_step(raw_value: &str, kind: &str, line: &str) -> Result<String, 
     })
 }
 
+fn is_openspec_expectation_line(line: &str) -> bool {
+    for prefix in [
+        "- **WHEN**",
+        "- **THEN**",
+        "- **AND**",
+        "- **SHOULD**",
+        "- WHEN",
+        "- THEN",
+        "- AND",
+        "- SHOULD",
+    ] {
+        if line.starts_with(prefix) {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn validate_frontmatter(frontmatter: &BTreeMap<String, Value>) -> Result<(), ExplorerError> {
     for required in [
         "schema_version",
@@ -907,6 +926,14 @@ fn parse_spec_text(text: &str) -> Result<Spec, ExplorerError> {
             )));
         }
 
+        if line == "### Expectation" || line == "### Expectations" {
+            continue;
+        }
+
+        if is_openspec_expectation_line(line) {
+            continue;
+        }
+
         if line == "- wait_stable: true" {
             current_steps.push(Step::WaitStable);
             continue;
@@ -971,6 +998,61 @@ fn scalar_to_markdown(value: &Value) -> Result<String, ExplorerError> {
     }
 }
 
+fn quote_for_markdown(value: &str, context: &str) -> Result<String, ExplorerError> {
+    serde_json::to_string(value)
+        .map_err(|error| ExplorerError::spec(format!("failed to render {context}: {error}")))
+}
+
+fn render_expectation_block(steps: &[Step]) -> Result<Vec<String>, ExplorerError> {
+    let mut action_summary = Vec::new();
+    let mut expected_texts = Vec::new();
+
+    for step in steps {
+        match step {
+            Step::Expect(value) => expected_texts.push(quote_for_markdown(value, "expectation")?),
+            Step::Press(value) => {
+                action_summary.push(format!("press {}", quote_for_markdown(value, "press")?))
+            }
+            Step::Type(value) => {
+                action_summary.push(format!("type {}", quote_for_markdown(value, "type")?))
+            }
+            Step::WaitStable => action_summary.push("wait_stable".to_string()),
+        }
+    }
+
+    let when_clause = if action_summary.is_empty() {
+        "the scenario starts from a fresh session".to_string()
+    } else {
+        format!("the operator replays: {}", action_summary.join(", "))
+    };
+
+    let then_clause = if expected_texts.is_empty() {
+        "the scenario reaches a stable terminal state".to_string()
+    } else {
+        format!("the screen contains {}", expected_texts.join(", "))
+    };
+
+    let should_clause = if expected_texts.is_empty() {
+        "run the machine steps below without additional text assertions".to_string()
+    } else {
+        format!(
+            "execute machine checks: {}",
+            expected_texts
+                .iter()
+                .map(|value| format!("expect {value}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+
+    Ok(vec![
+        "### Expectation".to_string(),
+        format!("- **WHEN** {when_clause}"),
+        format!("- **THEN** {then_clause}"),
+        format!("- **SHOULD** {should_clause}"),
+    ])
+}
+
 fn render_markdown(spec: &Spec) -> Result<String, ExplorerError> {
     let mut lines = vec!["---".to_string()];
 
@@ -994,26 +1076,22 @@ fn render_markdown(spec: &Spec) -> Result<String, ExplorerError> {
 
     for scenario in &spec.scenarios {
         lines.push(format!("## Scenario: {}", scenario.name));
+        lines.extend(render_expectation_block(&scenario.steps)?);
+        lines.push(String::new());
         for step in &scenario.steps {
             match step {
                 Step::WaitStable => lines.push("- wait_stable: true".to_string()),
                 Step::Expect(value) => lines.push(format!(
                     "- expect: {}",
-                    serde_json::to_string(value).map_err(|error| ExplorerError::spec(format!(
-                        "failed to render expect step: {error}"
-                    )))?
+                    quote_for_markdown(value, "expect step")?
                 )),
                 Step::Press(value) => lines.push(format!(
                     "- press: {}",
-                    serde_json::to_string(value).map_err(|error| ExplorerError::spec(format!(
-                        "failed to render press step: {error}"
-                    )))?
+                    quote_for_markdown(value, "press step")?
                 )),
                 Step::Type(value) => lines.push(format!(
                     "- type: {}",
-                    serde_json::to_string(value).map_err(|error| ExplorerError::spec(format!(
-                        "failed to render type step: {error}"
-                    )))?
+                    quote_for_markdown(value, "type step")?
                 )),
             }
         }
@@ -1628,6 +1706,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_allows_openspec_expectation_block() {
+        let spec_text = "---\nschema_version: \"v1\"\ncommand: \"printf app\"\ncols: 120\nrows: 40\ndefault_timeout_ms: 3000\ngenerated_at: \"2026-02-18T00:00:00Z\"\ngenerator: \"tui-explorer/1\"\n---\n\n## Scenario: Basic\n### Expectation\n- **WHEN** the operator replays: press \"Enter\", wait_stable\n- **THEN** the screen contains \"OK\"\n- **SHOULD** execute machine checks: expect \"OK\"\n- press: \"Enter\"\n- wait_stable: true\n- expect: \"OK\"\n";
+        let spec = assert_ok(parse_spec_text(spec_text));
+        assert_eq!(spec.scenarios.len(), 1);
+        assert!(matches!(spec.scenarios[0].steps[0], Step::Press(_)));
+        assert!(matches!(spec.scenarios[0].steps[1], Step::WaitStable));
+        assert!(matches!(spec.scenarios[0].steps[2], Step::Expect(_)));
+    }
+
+    #[test]
     fn discovery_dedupes_hashes_and_respects_limits() {
         let screens = as_map(vec![
             (Vec::new(), "Main Menu"),
@@ -1826,8 +1914,78 @@ mod tests {
     }
 
     #[test]
+    fn render_markdown_includes_openspec_expectation_block() {
+        let spec = Spec {
+            frontmatter: BTreeMap::from([
+                (
+                    "schema_version".to_string(),
+                    Value::String("v1".to_string()),
+                ),
+                (
+                    "command".to_string(),
+                    Value::String("printf app".to_string()),
+                ),
+                ("cwd".to_string(), Value::Null),
+                ("cols".to_string(), Value::Number(120.into())),
+                ("rows".to_string(), Value::Number(40.into())),
+                ("default_timeout_ms".to_string(), Value::Number(3000.into())),
+                (
+                    "generated_at".to_string(),
+                    Value::String("2026-02-18T00:00:00Z".to_string()),
+                ),
+                (
+                    "generator".to_string(),
+                    Value::String("tui-explorer/1".to_string()),
+                ),
+            ]),
+            scenarios: vec![Scenario {
+                name: "Basic".to_string(),
+                steps: vec![
+                    Step::Press("Enter".to_string()),
+                    Step::WaitStable,
+                    Step::Expect("OK".to_string()),
+                ],
+            }],
+        };
+
+        let text = assert_ok(render_markdown(&spec));
+        assert!(text.contains("### Expectation"));
+        assert!(text.contains("- **WHEN**"));
+        assert!(text.contains("- **THEN**"));
+        assert!(text.contains("- **SHOULD**"));
+        assert!(text.contains("- expect: \"OK\""));
+    }
+
+    #[test]
     fn verify_happy_path() {
         let spec = assert_ok(parse_spec_text(VALID_SPEC));
+        let mut runner = FakeRunner::new(as_map(vec![
+            (Vec::new(), "OK"),
+            (vec!["Enter".to_string()], "OK"),
+        ]));
+
+        let temp = match tempdir() {
+            Ok(path) => path,
+            Err(error) => panic!("failed to create temp dir: {error}"),
+        };
+
+        let report = assert_ok(verify_with_runner(
+            &spec,
+            Path::new("acceptance.md"),
+            &mut runner,
+            temp.path(),
+            None,
+            true,
+        ));
+
+        assert_eq!(report.failed_scenarios, 0);
+        assert_eq!(report.passed_scenarios, 1);
+    }
+
+    #[test]
+    fn verify_happy_path_with_openspec_expectation_lines() {
+        let spec_text = "---\nschema_version: \"v1\"\ncommand: \"printf app\"\ncols: 120\nrows: 40\ndefault_timeout_ms: 3000\ngenerated_at: \"2026-02-18T00:00:00Z\"\ngenerator: \"tui-explorer/1\"\n---\n\n## Scenario: Basic\n### Expectation\n- **WHEN** replaying the path: press \"Enter\", wait_stable\n- **THEN** the screen contains \"OK\"\n- **SHOULD** execute machine checks: expect \"OK\"\n- press: \"Enter\"\n- wait_stable: true\n- expect: \"OK\"\n";
+        let spec = assert_ok(parse_spec_text(spec_text));
         let mut runner = FakeRunner::new(as_map(vec![
             (Vec::new(), "OK"),
             (vec!["Enter".to_string()], "OK"),

@@ -512,7 +512,7 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
     args: LiveStartArgs,
 ) -> HandlerResult {
     let state_path = ws_state_path();
-    let state = wait_for_api_state(&state_path, Duration::from_secs(3)).ok_or_else(|| {
+    let state = wait_for_ws_state(&state_path, Duration::from_secs(3)).ok_or_else(|| {
         CliError::new(
             ctx.format,
             "WebSocket live preview is not available. Restart the daemon and try again."
@@ -670,7 +670,7 @@ pub(crate) fn handle_live_status<C: DaemonClient>(ctx: &mut HandlerContext<C>) -
 }
 
 pub(crate) fn handle_live_status_standalone(format: OutputFormat) -> HandlerResult {
-    let status = read_api_state_running(&ws_state_path());
+    let status = read_ws_state_running(&ws_state_path());
     let ui_status = resolve_ui_status();
 
     match format {
@@ -903,7 +903,7 @@ pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct ApiState {
+struct WsState {
     pid: u32,
     ws_url: String,
     #[serde(default)]
@@ -915,7 +915,7 @@ struct ApiState {
     http_url: Option<String>,
 }
 
-impl ApiState {
+impl WsState {
     fn resolved_ui_url(&self) -> String {
         if let Some(url) = self.ui_url.as_ref()
             && !url.trim().is_empty()
@@ -986,7 +986,7 @@ fn ws_state_path() -> PathBuf {
     home.join(".agent-tui").join("api.json")
 }
 
-fn read_api_state(path: &PathBuf) -> Option<ApiState> {
+fn read_ws_state(path: &PathBuf) -> Option<WsState> {
     let contents = std::fs::read_to_string(path).ok()?;
     serde_json::from_str(&contents).ok()
 }
@@ -1000,8 +1000,8 @@ fn is_process_running(pid: u32) -> bool {
     )
 }
 
-fn read_api_state_running(path: &PathBuf) -> Option<ApiState> {
-    let state = read_api_state(path)?;
+fn read_ws_state_running(path: &PathBuf) -> Option<WsState> {
+    let state = read_ws_state(path)?;
     if is_process_running(state.pid) {
         Some(state)
     } else {
@@ -1010,10 +1010,10 @@ fn read_api_state_running(path: &PathBuf) -> Option<ApiState> {
     }
 }
 
-fn wait_for_api_state(path: &PathBuf, timeout: Duration) -> Option<ApiState> {
+fn wait_for_ws_state(path: &PathBuf, timeout: Duration) -> Option<WsState> {
     let deadline = Instant::now() + timeout;
     loop {
-        if let Some(state) = read_api_state_running(path) {
+        if let Some(state) = read_ws_state_running(path) {
             return Some(state);
         }
         if Instant::now() >= deadline {
@@ -1073,7 +1073,7 @@ fn resolve_ui_status() -> UiStatus {
     }
 }
 
-fn remove_api_state_file() {
+fn remove_ws_state_file() {
     let state_path = ws_state_path();
     if let Err(err) = std::fs::remove_file(&state_path)
         && err.kind() != std::io::ErrorKind::NotFound
@@ -1174,7 +1174,7 @@ fn stop_ui_server_with_controller_and_timeouts<C: ProcessController>(
     ))
 }
 
-fn build_ui_url(base: &str, state: &ApiState) -> String {
+fn build_ui_url(base: &str, state: &WsState) -> String {
     let (base, fragment) = base.split_once('#').unwrap_or((base, ""));
     if let Ok(mut url) = url::Url::parse(base) {
         let existing: Vec<(String, String)> = url
@@ -1664,7 +1664,7 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
     let pid = match get_daemon_pid() {
         PidLookupResult::Found(pid) => pid,
         PidLookupResult::NotRunning => {
-            remove_api_state_file();
+            remove_ws_state_file();
             return Ok(StopResult::AlreadyStopped);
         }
         PidLookupResult::Error(msg) => {
@@ -1683,7 +1683,7 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
         if let Ok(mut client) = UnixSocketClient::connect()
             && let Ok(result) = daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket)
         {
-            remove_api_state_file();
+            remove_ws_state_file();
             return Ok(StopResult::Stopped {
                 pid,
                 warnings: result.warnings,
@@ -1702,7 +1702,7 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
         Err(err) => return Err(err.into()),
     };
 
-    remove_api_state_file();
+    remove_ws_state_file();
     Ok(stop_result)
 }
 
@@ -1765,6 +1765,15 @@ mod tests {
             // SAFETY: test-only environment mutation under env_lock.
             unsafe {
                 std::env::set_var(key, value.into());
+            }
+            Self { key, prev }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: test-only environment mutation under env_lock.
+            unsafe {
+                std::env::remove_var(key);
             }
             Self { key, prev }
         }
@@ -2003,6 +2012,21 @@ mod tests {
         let params = WaitParams::default();
         let cond = resolve_wait_condition(&params);
         assert_eq!(cond, None);
+    }
+
+    #[test]
+    fn ws_state_path_ignores_deprecated_api_state_alias() {
+        let _env = env_lock();
+        let temp = TempDir::new_in("/tmp").expect("tempdir");
+        let home = temp.path().join("home");
+        fs::create_dir_all(&home).expect("create temp home");
+        let _home_guard = EnvVarGuard::set("HOME", home.display().to_string());
+        let _ws_state_guard = EnvVarGuard::remove("AGENT_TUI_WS_STATE");
+        let _api_state_guard =
+            EnvVarGuard::set("AGENT_TUI_API_STATE", "/tmp/deprecated-state.json");
+
+        let expected = home.join(".agent-tui").join("api.json");
+        assert_eq!(ws_state_path(), expected);
     }
 
     #[test]

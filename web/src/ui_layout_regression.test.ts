@@ -22,4 +22,11 @@ describe("live preview layout hooks", () => {
     expect(css).toContain(".session-item__facts");
     expect(css).toContain("grid-template-columns: clamp(");
   });
+
+  test("keeps wide sidebar grid and metadata pill treatment", () => {
+    const css = readSrcFile("styles.css");
+    expect(css).toContain("grid-template-columns: clamp(260px, 24vw, 340px) minmax(0, 1fr);");
+    expect(css).toContain(".session-item__fact");
+    expect(css).toContain("box-shadow: var(--shadow-soft);");
+  });
 });

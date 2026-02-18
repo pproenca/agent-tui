@@ -10,6 +10,12 @@
   <body>
     <div class="app">
       <aside class="sidebar">
+        <header class="sidebar__header">
+          <p class="sidebar__eyebrow">Live preview</p>
+          <h1 class="sidebar__title">Flight Deck</h1>
+          <p class="sidebar__subtitle">Inspect and attach to active sessions in real time.</p>
+        </header>
+
         <div class="sidebar__status">
           <div class="status" id="status">
             <span class="status__dot"></span>
@@ -20,7 +26,10 @@
 
         <div class="sidebar__section">
           <div class="sidebar__section-header">
-            <h2 class="sidebar__section-title">Sessions</h2>
+            <div class="sidebar__section-heading">
+              <h2 class="sidebar__section-title">Sessions</h2>
+              <span id="sessionCount" class="sessions-count">0</span>
+            </div>
             <span id="sessionsModeBadge" class="sessions-mode-badge" hidden>Live stream</span>
             <button id="sessionsRefresh" class="button button--icon" type="button" title="Refresh"></button>
           </div>

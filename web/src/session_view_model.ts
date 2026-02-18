@@ -19,6 +19,7 @@ export type SessionCardViewModel = {
   pidLabel: string;
   sizeLabel: string;
   createdLabel: string;
+  facts: string[];
   running: boolean;
   selected: boolean;
 };
@@ -76,21 +77,76 @@ export function shouldAutoConnect(autoParam: string | null): boolean {
   return true;
 }
 
+export type TerminalDisconnectReason = "manual" | "reconnect" | "server" | "error";
+export type TerminalSyncAction = "none" | "reconnect" | "connect";
+
+export type TerminalSyncContext = {
+  terminalConnected: boolean;
+  connectedSessionId: string | null;
+  autoConnect: boolean;
+  lastDisconnectReason: TerminalDisconnectReason | null;
+};
+
+export function decideTerminalSyncAction(
+  configuredSession: string,
+  payload: SessionsResponse,
+  context: TerminalSyncContext,
+): TerminalSyncAction {
+  if (normalizedSessionValue(configuredSession) !== "active") {
+    return "none";
+  }
+
+  const activeSession = payload.active ?? null;
+  if (!activeSession) {
+    return "none";
+  }
+
+  if (context.terminalConnected) {
+    if (!context.connectedSessionId) {
+      return "none";
+    }
+    return context.connectedSessionId === activeSession ? "none" : "reconnect";
+  }
+
+  if (!context.autoConnect || context.lastDisconnectReason === "manual") {
+    return "none";
+  }
+
+  return "connect";
+}
+
 export function buildSessionCards(
   payload: SessionsResponse,
   configuredSession: string,
 ): SessionCardViewModel[] {
   const selectedId = resolveSelectedSessionId(configuredSession, payload);
-  return sortSessionsForFlightdeck(payload.sessions).map((session) => ({
-    id: session.id,
-    command: session.command || "(unknown)",
-    statusLabel: session.running ? "running" : "stopped",
-    pidLabel: session.pid > 0 ? `pid ${session.pid}` : "pid -",
-    sizeLabel: `${session.size.cols}x${session.size.rows}`,
-    createdLabel: formatSessionCreatedAt(session.created_at),
-    running: session.running,
-    selected: selectedId === session.id,
-  }));
+  return sortSessionsForFlightdeck(payload.sessions).map((session) => {
+    const pidLabel = session.pid > 0 ? `pid ${session.pid}` : "pid -";
+    const sizeLabel = `${session.size.cols}x${session.size.rows}`;
+    const createdLabel = formatSessionCreatedAt(session.created_at);
+    return {
+      id: session.id,
+      command: session.command || "(unknown)",
+      statusLabel: session.running ? "running" : "stopped",
+      pidLabel,
+      sizeLabel,
+      createdLabel,
+      facts: [pidLabel, sizeLabel, createdLabel],
+      running: session.running,
+      selected: selectedId === session.id,
+    };
+  });
+}
+
+export function shouldPromoteSelectionToActive(
+  payload: SessionsResponse | null,
+  selectedSessionId: string,
+): boolean {
+  if (!payload) {
+    return false;
+  }
+  const selected = payload.sessions.find((session) => session.id === selectedSessionId);
+  return selected?.running ?? false;
 }
 
 export type TerminalStreamState = {

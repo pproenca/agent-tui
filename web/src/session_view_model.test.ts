@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildSessionCards,
+  decideTerminalSyncAction,
   formatSessionCreatedAt,
   reduceSessionsFeedState,
   reduceTerminalStreamState,
   resolveSelectedSessionId,
+  shouldPromoteSelectionToActive,
   sortSessionsForFlightdeck,
   shouldAutoConnect,
   type SessionsFeedState,
@@ -87,6 +89,7 @@ describe("session formatting", () => {
     expect(cards[2]?.statusLabel).toBe("stopped");
     expect(cards[0]?.pidLabel).toBe("pid 333");
     expect(cards[0]?.sizeLabel).toBe("80x24");
+    expect(cards[0]?.facts).toEqual(["pid 333", "80x24", "2026-02-18 11:00Z"]);
   });
 });
 
@@ -163,5 +166,89 @@ describe("sessions feed reducer", () => {
     const next = reduceSessionsFeedState(state, { type: "stream_failure" });
     expect(next.mode).toBe("poll");
     expect(next.degraded).toBe(true);
+  });
+});
+
+describe("active terminal sync", () => {
+  test("reconnects when active session changes while terminal is connected", () => {
+    const payload: SessionsResponse = {
+      active: "gamma",
+      sessions: BASE_SESSIONS,
+    };
+    const action = decideTerminalSyncAction("active", payload, {
+      terminalConnected: true,
+      connectedSessionId: "alpha",
+      autoConnect: true,
+      lastDisconnectReason: null,
+    });
+    expect(action).toBe("reconnect");
+  });
+
+  test("keeps stream when connected session already matches active", () => {
+    const payload: SessionsResponse = {
+      active: "gamma",
+      sessions: BASE_SESSIONS,
+    };
+    const action = decideTerminalSyncAction("active", payload, {
+      terminalConnected: true,
+      connectedSessionId: "gamma",
+      autoConnect: true,
+      lastDisconnectReason: null,
+    });
+    expect(action).toBe("none");
+  });
+
+  test("auto-connects after non-manual disconnect when active becomes available", () => {
+    const payload: SessionsResponse = {
+      active: "gamma",
+      sessions: BASE_SESSIONS,
+    };
+    const action = decideTerminalSyncAction("active", payload, {
+      terminalConnected: false,
+      connectedSessionId: null,
+      autoConnect: true,
+      lastDisconnectReason: "error",
+    });
+    expect(action).toBe("connect");
+  });
+
+  test("does not auto-connect after manual disconnect", () => {
+    const payload: SessionsResponse = {
+      active: "gamma",
+      sessions: BASE_SESSIONS,
+    };
+    const action = decideTerminalSyncAction("active", payload, {
+      terminalConnected: false,
+      connectedSessionId: null,
+      autoConnect: true,
+      lastDisconnectReason: "manual",
+    });
+    expect(action).toBe("none");
+  });
+});
+
+describe("selection to active sync", () => {
+  test("promotes selected session when it is running", () => {
+    const payload: SessionsResponse = {
+      active: "alpha",
+      sessions: BASE_SESSIONS,
+    };
+    expect(shouldPromoteSelectionToActive(payload, "gamma")).toBe(true);
+  });
+
+  test("does not promote selected session when it is stopped", () => {
+    const payload: SessionsResponse = {
+      active: "alpha",
+      sessions: BASE_SESSIONS,
+    };
+    expect(shouldPromoteSelectionToActive(payload, "beta")).toBe(false);
+  });
+
+  test("does not promote selected session when missing from payload", () => {
+    const payload: SessionsResponse = {
+      active: "alpha",
+      sessions: BASE_SESSIONS,
+    };
+    expect(shouldPromoteSelectionToActive(payload, "missing")).toBe(false);
   });
 });

@@ -4,11 +4,14 @@ import { createElement, Plus, RefreshCw, X, type IconNode } from "lucide";
 
 import {
   buildSessionCards,
+  decideTerminalSyncAction,
   normalizedSessionValue,
   reduceSessionsFeedState,
   reduceTerminalStreamState,
+  shouldPromoteSelectionToActive,
   shouldAutoConnect,
   sortSessionsForFlightdeck,
+  type TerminalDisconnectReason,
   type SessionInfo,
   type SessionsFeedState,
   type SessionsResponse,
@@ -29,6 +32,7 @@ const statusEl = document.getElementById("status") as HTMLDivElement;
 const statusText = statusEl.querySelector(".status__text") as HTMLSpanElement;
 const sessionListEl = document.getElementById("sessionList") as HTMLDivElement;
 const sessionEmptyEl = document.getElementById("sessionEmpty") as HTMLDivElement;
+const sessionCountEl = document.getElementById("sessionCount") as HTMLSpanElement | null;
 const sessionsRefreshBtn = document.getElementById("sessionsRefresh") as
   | HTMLButtonElement
   | null;
@@ -42,6 +46,7 @@ if (sessionsRefreshBtn) {
 }
 
 const params = new URLSearchParams(window.location.search);
+const autoConnectEnabled = shouldAutoConnect(params.get("auto"));
 let decoder = new TextDecoder();
 let requestId = 1;
 
@@ -82,7 +87,7 @@ term.open(document.getElementById("terminal") as HTMLDivElement);
 fitAddon.fit();
 window.addEventListener("resize", () => fitAddon.fit());
 
-type DisconnectReason = "manual" | "reconnect" | "server" | "error";
+type DisconnectReason = TerminalDisconnectReason;
 type RpcResponse = {
   id?: number;
   result?: any;
@@ -92,6 +97,8 @@ type RpcResponse = {
 let terminalSocket: WebSocket | null = null;
 let terminalSocketState: { reason: DisconnectReason | null; streamId: number | null } | null =
   null;
+let connectedTerminalSessionId: string | null = null;
+let lastTerminalDisconnectReason: DisconnectReason | null = null;
 let terminalState: TerminalStreamState = {
   sessionId: normalizedSessionValue(config.session),
   closedNoticeSent: false,
@@ -135,6 +142,9 @@ function setSessionsNotice(message: string) {
   sessionListEl.replaceChildren();
   sessionEmptyEl.textContent = message;
   sessionEmptyEl.hidden = false;
+  if (sessionCountEl) {
+    sessionCountEl.textContent = "0";
+  }
   latestSessions = null;
 }
 
@@ -149,6 +159,9 @@ function renderSessions(payload: SessionsResponse) {
 
   sessionEmptyEl.hidden = true;
   const cards = buildSessionCards(payload, config.session);
+  if (sessionCountEl) {
+    sessionCountEl.textContent = String(cards.length);
+  }
   cards.forEach((card, index) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -163,17 +176,26 @@ function renderSessions(payload: SessionsResponse) {
     const top = document.createElement("div");
     top.className = "session-item__top";
 
+    const status = document.createElement("span");
+    status.className = "session-item__status";
+
     const dot = document.createElement("span");
     dot.className = "session-item__dot";
     if (card.running) {
       dot.classList.add("session-item__dot--running");
     }
-    top.appendChild(dot);
+    status.appendChild(dot);
 
-    const id = document.createElement("span");
+    const statusLabel = document.createElement("span");
+    statusLabel.className = "session-item__status-label";
+    statusLabel.textContent = card.statusLabel;
+    status.appendChild(statusLabel);
+
+    top.appendChild(status);
+
+    const id = document.createElement("div");
     id.className = "session-item__id";
     id.textContent = card.id;
-    top.appendChild(id);
 
     if (index < 9) {
       const shortcut = document.createElement("span");
@@ -187,10 +209,16 @@ function renderSessions(payload: SessionsResponse) {
     command.textContent = card.command;
 
     const meta = document.createElement("div");
-    meta.className = "session-item__meta";
-    meta.textContent = `${card.statusLabel} • ${card.pidLabel} • ${card.sizeLabel} • ${card.createdLabel}`;
+    meta.className = "session-item__facts";
+    card.facts.forEach((fact) => {
+      const factEl = document.createElement("span");
+      factEl.className = "session-item__fact";
+      factEl.textContent = fact;
+      meta.appendChild(factEl);
+    });
 
     button.appendChild(top);
+    button.appendChild(id);
     button.appendChild(command);
     button.appendChild(meta);
     button.addEventListener("click", () => selectSession(card.id));
@@ -383,6 +411,16 @@ function handleSessionsStreamResult(result: any): void {
     }),
   );
   renderSessions(payload);
+
+  const terminalSync = decideTerminalSyncAction(config.session, payload, {
+    terminalConnected: terminalSocket !== null,
+    connectedSessionId: connectedTerminalSessionId,
+    autoConnect: autoConnectEnabled,
+    lastDisconnectReason: lastTerminalDisconnectReason,
+  });
+  if (terminalSync === "connect" || terminalSync === "reconnect") {
+    void connect();
+  }
 }
 
 function startSessionsFeed() {
@@ -486,6 +524,8 @@ function showTerminationNotice() {
 }
 
 function finalizeTerminalDisconnect(reason: DisconnectReason) {
+  connectedTerminalSessionId = null;
+  lastTerminalDisconnectReason = reason;
   setButtonIcon(connectBtn, Plus);
   connectBtn.title = "Connect";
   setStatus("Disconnected", false);
@@ -521,6 +561,9 @@ function handleTerminalPayload(payload: any) {
 
   switch (payload.event) {
     case "ready":
+      if (typeof payload.session_id === "string") {
+        connectedTerminalSessionId = payload.session_id;
+      }
       if (payload.cols && payload.rows) {
         term.resize(payload.cols, payload.rows);
       }
@@ -563,6 +606,8 @@ async function connect() {
   }
 
   disconnectTerminal("reconnect");
+  lastTerminalDisconnectReason = null;
+  connectedTerminalSessionId = null;
   terminalState = reduceTerminalStreamState(terminalState, { type: "reset_stream" });
   setStatus("Connecting...", false);
 
@@ -642,6 +687,11 @@ function selectSession(targetId: string) {
   if (normalizedSessionValue(config.session) === targetId) {
     return;
   }
+  if (shouldPromoteSelectionToActive(latestSessions, targetId)) {
+    void rpcCall("attach", { session: targetId }).catch(() => {
+      // Keep preview selection local even if daemon active session cannot be updated.
+    });
+  }
   applySessionsFeedState(
     reduceSessionsFeedState(sessionsFeedState, {
       type: "select_session",
@@ -685,7 +735,7 @@ document.addEventListener("keydown", (event) => {
 
 async function init() {
   startSessionsFeed();
-  if (shouldAutoConnect(params.get("auto"))) {
+  if (autoConnectEnabled) {
     void connect();
   }
 }

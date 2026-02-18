@@ -45,6 +45,19 @@ describe("live preview layout hooks", () => {
     expect(css).toContain("min-height: var(--control-height);");
   });
 
+  test("stacks sidebar controls and wraps card metadata on narrow screens", () => {
+    const css = readSrcFile("styles.css");
+    expect(css).toContain("@media (max-width: 560px)");
+    expect(css).toContain(".sidebar__status {\n    grid-template-columns: 1fr;");
+    expect(css).toContain(
+      ".sidebar__section-header > .button--icon {\n    grid-column: 1;\n    grid-row: auto;\n    justify-self: stretch;",
+    );
+    expect(css).toContain(".session-list {\n  display: flex;\n  flex-direction: column;\n  gap: var(--space-2);\n  overflow-y: auto;\n  overflow-x: hidden;");
+    expect(css).toContain(".session-item__meta {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: var(--space-2);\n  flex-wrap: wrap;");
+    expect(css).toContain(".session-item__detail {\n  display: none;\n  color: var(--muted);\n  font-family: \"IBM Plex Mono\", monospace;\n  font-size: 10px;\n  line-height: 1.1;\n  white-space: nowrap;\n  max-width: 100%;");
+    expect(css).toContain(".session-item__detail {\n    margin-left: 0;\n    white-space: normal;\n    overflow-wrap: anywhere;");
+  });
+
   test("keeps listbox option semantics via aria-selected", () => {
     const app = readSrcFile("app.ts");
     expect(app).toContain('button.setAttribute("aria-selected", card.selected ? "true" : "false")');

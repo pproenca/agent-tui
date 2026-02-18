@@ -26,13 +26,14 @@ Generate replayable acceptance tests from discovered TUI navigation paths.
 - Replay fails on scenario failure and exits non-zero.
 
 ## Workflow
-1. Run `discover` for the target command.
-2. Inspect generated artifacts:
+1. Ask whether the user wants a live preview while discovery/replay runs. If yes, start live preview over the HTTP endpoint with `agent-tui live start --open` before discovery and stop it with `agent-tui live stop` after verification.
+2. Run `discover` for the target command.
+3. Inspect generated artifacts:
    - `acceptance.md`
    - `trace.jsonl`
    - `discover-report.json`
-3. Run `verify` against the generated `acceptance.md`.
-4. On failure, inspect `verify-report.json` and files under `failures/`.
+4. Run `verify` against the generated `acceptance.md`.
+5. On failure, inspect `verify-report.json` and files under `failures/`.
 
 ## References
 - Schema details: `references/schema-v1.md`

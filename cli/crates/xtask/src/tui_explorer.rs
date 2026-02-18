@@ -1959,6 +1959,25 @@ mod tests {
     }
 
     #[test]
+    fn metadata_requires_live_preview_confirmation_over_http_endpoint() {
+        let root = workspace_root();
+        let skill_path = root.join("skills/tui-explorer/SKILL.md");
+        let text = match fs::read_to_string(&skill_path) {
+            Ok(content) => content,
+            Err(error) => panic!("failed to read {}: {error}", skill_path.display()),
+        };
+
+        assert!(
+            text.contains("Ask whether the user wants a live preview"),
+            "skill guidance must require asking before enabling live preview"
+        );
+        assert!(
+            text.contains("HTTP endpoint"),
+            "skill guidance must state live preview is served over the HTTP endpoint"
+        );
+    }
+
+    #[test]
     fn metadata_yaml_has_required_fields() {
         let root = workspace_root();
         let metadata_path = root.join("skills/tui-explorer/agents/openai.yaml");
@@ -1969,6 +1988,25 @@ mod tests {
 
         assert!(text.contains("display_name:"));
         assert!(text.contains("short_description:"));
+    }
+
+    #[test]
+    fn metadata_yaml_requires_live_preview_confirmation_over_http_endpoint() {
+        let root = workspace_root();
+        let metadata_path = root.join("skills/tui-explorer/agents/openai.yaml");
+        let text = match fs::read_to_string(&metadata_path) {
+            Ok(content) => content,
+            Err(error) => panic!("failed to read {}: {error}", metadata_path.display()),
+        };
+
+        assert!(
+            text.contains("ask whether the user wants a live preview"),
+            "default prompt must require asking before enabling live preview"
+        );
+        assert!(
+            text.contains("HTTP endpoint"),
+            "default prompt must mention the HTTP endpoint live preview"
+        );
     }
 
     fn workspace_root() -> PathBuf {

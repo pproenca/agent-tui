@@ -666,6 +666,15 @@ mod tests {
             }
             Self { key, value: prev }
         }
+
+        fn remove(key: &'static str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: test-only environment mutation for isolated test setup.
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, value: prev }
+        }
     }
 
     impl Drop for EnvGuard {
@@ -687,6 +696,20 @@ mod tests {
 
     fn acquire_env_lock() -> MutexGuard<'static, ()> {
         env_lock().lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn ws_state_path_ignores_deprecated_api_state_alias() {
+        let _env_lock = acquire_env_lock();
+        let temp_dir = TempDir::new_in("/tmp").expect("Failed to create temp dir");
+        let home = temp_dir.path().join("home");
+        std::fs::create_dir_all(&home).expect("create temp home");
+        let _home_guard = EnvGuard::set("HOME", home.display().to_string());
+        let _ws_state_guard = EnvGuard::remove("AGENT_TUI_WS_STATE");
+        let _api_state_guard = EnvGuard::set("AGENT_TUI_API_STATE", "/tmp/deprecated-state.json");
+
+        let expected = home.join(".agent-tui").join("api.json");
+        assert_eq!(ws_state_path_from_env(), expected);
     }
 
     #[test]

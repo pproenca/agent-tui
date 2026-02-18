@@ -1036,9 +1036,9 @@ mod tests {
             let _env_lock = env_lock();
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
-            let api_state = tmp.path().join("api.json");
+            let ws_state = tmp.path().join("api.json");
             let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
-            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &api_state);
+            let _ws_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &ws_state);
 
             let app = Application::new();
             let cli = make_cli(Commands::Live {
@@ -1059,9 +1059,9 @@ mod tests {
             let _env_lock = env_lock();
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
-            let api_state = tmp.path().join("api.json");
+            let ws_state = tmp.path().join("api.json");
             let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
-            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &api_state);
+            let _ws_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &ws_state);
 
             let app = Application::new();
             let cli = make_cli(Commands::Live {
@@ -1124,14 +1124,14 @@ mod tests {
         }
 
         #[test]
-        fn handle_standalone_commands_daemon_stop_removes_stale_api_state() {
+        fn handle_standalone_commands_daemon_stop_removes_stale_ws_state() {
             let _env_lock = env_lock();
             let tmp = TempDir::new().expect("temp dir");
             let socket_path = tmp.path().join("agent-tui-test.sock");
-            let api_state = tmp.path().join("api.json");
-            std::fs::write(&api_state, r#"{"pid":1}"#).expect("write api state");
+            let ws_state = tmp.path().join("api.json");
+            std::fs::write(&ws_state, r#"{"pid":1}"#).expect("write ws state");
             let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
-            let _api_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &api_state);
+            let _ws_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &ws_state);
 
             let app = Application::new();
             let cli = make_cli(Commands::Daemon(DaemonCommand::Stop { force: true }));
@@ -1142,8 +1142,8 @@ mod tests {
                 "daemon stop should succeed when daemon is already stopped"
             );
             assert!(
-                !api_state.exists(),
-                "API state file should be cleaned on successful stop path"
+                !ws_state.exists(),
+                "WS state file should be cleaned on successful stop path"
             );
         }
     }

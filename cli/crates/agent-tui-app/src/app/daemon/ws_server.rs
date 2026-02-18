@@ -670,6 +670,15 @@ mod tests {
             }
             Self { key, prev }
         }
+
+        fn remove(key: &'static str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: test-only env mutation.
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, prev }
+        }
     }
 
     impl Drop for EnvGuard {
@@ -695,6 +704,19 @@ mod tests {
 
         let config = WsConfig::from_env();
         assert_eq!(config.listen, "127.0.0.1:7777");
+    }
+
+    #[test]
+    fn ws_config_ignores_deprecated_api_aliases() {
+        let _env = env_lock();
+        let _ws_listen = EnvGuard::remove("AGENT_TUI_WS_LISTEN");
+        let _ws_state = EnvGuard::remove("AGENT_TUI_WS_STATE");
+        let _api_listen = EnvGuard::set("AGENT_TUI_API_LISTEN", "127.0.0.1:9999");
+        let _api_state = EnvGuard::set("AGENT_TUI_API_STATE", "/tmp/deprecated-state.json");
+
+        let config = WsConfig::from_env();
+        assert_eq!(config.listen, super::DEFAULT_WS_LISTEN);
+        assert_eq!(config.state_path, super::default_state_path());
     }
 
     #[test]

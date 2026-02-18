@@ -53,6 +53,10 @@ check-cli-docs-sync:
 check-skill-docs-sync:
     ../scripts/check-skill-docs-sync.sh
 
+# Run tui-explorer skill unit tests.
+check-tui-explorer:
+    ../scripts/check-tui-explorer.sh
+
 # Build Rust workspace (ensures embedded web UI is fresh).
 build: web-sync
     cargo build --workspace

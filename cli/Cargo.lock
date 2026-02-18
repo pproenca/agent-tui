@@ -3787,10 +3787,12 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "cargo_metadata",
+ "chrono",
  "clap",
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "walkdir",
 ]
 

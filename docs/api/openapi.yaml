@@ -3,8 +3,8 @@ info:
   title: agent-tui Daemon API
   version: "1"
   description: |
-    HTTP API exposed by the agent-tui daemon. Authentication is required unless the daemon
-    was started with API auth disabled.
+    HTTP API exposed by the agent-tui daemon.
+    Authentication is not currently enforced. `AGENT_TUI_API_TOKEN` is deprecated and ignored.
 servers:
   - url: http://127.0.0.1:{port}
     description: Local daemon
@@ -16,12 +16,6 @@ paths:
     get:
       summary: List sessions
       description: Returns all known sessions and the active session id.
-      security:
-        - bearerAuth: []
-        - tokenHeader: []
-        - tokenQuery: []
-      parameters:
-        - $ref: '#/components/parameters/token'
       responses:
         '200':
           description: Sessions payload
@@ -29,19 +23,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SessionsResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
   /api/v1/sessions/{id}/snapshot:
     get:
       summary: Live preview snapshot
       description: Returns the current terminal snapshot for a session.
-      security:
-        - bearerAuth: []
-        - tokenHeader: []
-        - tokenQuery: []
       parameters:
         - $ref: '#/components/parameters/sessionId'
-        - $ref: '#/components/parameters/token'
       responses:
         '200':
           description: Snapshot payload
@@ -49,8 +36,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SnapshotResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '502':
@@ -60,34 +45,20 @@ paths:
       summary: Live preview stream (WebSocket)
       description: |
         WebSocket upgrade endpoint. Use AsyncAPI for the detailed stream schema.
-      security:
-        - bearerAuth: []
-        - tokenHeader: []
-        - tokenQuery: []
       parameters:
         - $ref: '#/components/parameters/session'
         - $ref: '#/components/parameters/encoding'
-        - $ref: '#/components/parameters/token'
       responses:
         '101':
           description: Switching Protocols
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
-    token:
-      name: token
-      in: query
-      description: Authentication token (if enabled).
-      required: false
-      schema:
-        type: string
     session:
       name: session
       in: query
@@ -113,12 +84,6 @@ components:
       schema:
         type: string
   responses:
-    Unauthorized:
-      description: Invalid or missing token.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: Session not found.
       content:
@@ -199,16 +164,3 @@ components:
       properties:
         error:
           type: string
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: agent-tui
-    tokenHeader:
-      type: apiKey
-      in: header
-      name: x-agent-tui-token
-    tokenQuery:
-      type: apiKey
-      in: query
-      name: token

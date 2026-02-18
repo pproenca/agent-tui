@@ -58,3 +58,4 @@ description: >
 - Demo script: `references/demo.md`
 - User prompt templates: `references/prompt-templates.md`
 - Minimal command sets by use case: `references/use-cases.md`
+- Explorer/replay automation skill: `../tui-explorer/SKILL.md`

@@ -3,8 +3,8 @@ info:
   title: agent-tui Live Preview Stream
   version: "1"
   description: |
-    WebSocket stream for live terminal preview. Authentication is required unless the daemon
-    was started with API auth disabled.
+    WebSocket stream for live terminal preview.
+    Authentication is not currently enforced. `AGENT_TUI_API_TOKEN` is deprecated and ignored.
 servers:
   local:
     url: ws://127.0.0.1:{port}/api/v1/stream
@@ -28,10 +28,6 @@ channels:
           type: string
           enum: [base64, binary]
           default: base64
-      token:
-        description: Authentication token (if enabled).
-        schema:
-          type: string
     bindings:
       ws:
         query:
@@ -40,8 +36,6 @@ channels:
             session:
               type: string
             encoding:
-              type: string
-            token:
               type: string
     subscribe:
       summary: Daemon publishes session preview events.

@@ -845,7 +845,9 @@ mod tests {
     fn make_flightdeck_request(params_json: Option<&str>) -> RpcRequest {
         let request_json = match params_json {
             Some(params) => {
-                format!(r#"{{"jsonrpc":"2.0","id":7,"method":"flightdeck_stream","params":{params}}}"#)
+                format!(
+                    r#"{{"jsonrpc":"2.0","id":7,"method":"flightdeck_stream","params":{params}}}"#
+                )
             }
             None => r#"{"jsonrpc":"2.0","id":7,"method":"flightdeck_stream"}"#.to_string(),
         };
@@ -1066,9 +1068,15 @@ mod tests {
         });
 
         let _ = handle.wait_for_event("ready", Duration::from_secs(2));
-        let spawn_result =
-            core.session_manager
-                .spawn("sh", &[], None, None, Some("flightdeck-new".to_string()), 80, 24);
+        let spawn_result = core.session_manager.spawn(
+            "sh",
+            &[],
+            None,
+            None,
+            Some("flightdeck-new".to_string()),
+            80,
+            24,
+        );
         if spawn_result.is_err() {
             cancelled.store(true, Ordering::Relaxed);
             let _ = join.join();
@@ -1091,7 +1099,10 @@ mod tests {
                     .any(|item| item.get("id").and_then(|v| v.as_str()) == Some("flightdeck-new"))
             })
             .unwrap_or(false);
-        assert!(contains_new, "sessions event should include newly spawned session");
+        assert!(
+            contains_new,
+            "sessions event should include newly spawned session"
+        );
     }
 
     #[test]

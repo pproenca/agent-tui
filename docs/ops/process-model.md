@@ -25,7 +25,8 @@ Type=simple
 ExecStart=/usr/local/bin/agent-tui daemon start
 Restart=on-failure
 Environment=AGENT_TUI_DAEMON_FOREGROUND=1
-Environment=AGENT_TUI_API_ALLOW_REMOTE=1
+Environment=AGENT_TUI_WS_LISTEN=0.0.0.0:8080
+Environment=AGENT_TUI_WS_ALLOW_REMOTE=1
 Environment=AGENT_TUI_LOG_STREAM=stdout
 Environment=AGENT_TUI_LOG_FORMAT=json
 
@@ -35,9 +36,10 @@ WantedBy=multi-user.target
 
 ## Recommended envs for cloud-friendly runs
 
-- `PORT`: Sets the API listen port when `AGENT_TUI_API_LISTEN` is unset.
-- `AGENT_TUI_API_ALLOW_REMOTE=1`: Allows binding non-loopback addresses.
+- `AGENT_TUI_WS_LISTEN=0.0.0.0:8080`: Explicit bind address for daemon WS endpoint.
+- `AGENT_TUI_WS_ALLOW_REMOTE=1`: Allows binding non-loopback addresses.
 - `AGENT_TUI_LOG_STREAM=stdout`: Sends logs to stdout for aggregation.
 - `AGENT_TUI_LOG_FORMAT=json`: Emits structured logs for log processors.
+- `PORT`: Optional Bun web preview server port when running standalone `web/server.ts`.
 
 Local defaults remain unchanged; use a supervisor to manage restarts and lifecycle.

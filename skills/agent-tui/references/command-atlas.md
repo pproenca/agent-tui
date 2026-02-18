@@ -81,15 +81,18 @@ Use this file when you need complete CLI coverage and exact options.
 ## Environment Variables
 - `NO_COLOR`: disable colored output.
 - `AGENT_TUI_DETACH_KEYS`: default detach keys for `sessions attach`.
-- `AGENT_TUI_API_LISTEN`: live API bind address.
-- `AGENT_TUI_API_ALLOW_REMOTE`: allow non-loopback bind (boolean).
-- `AGENT_TUI_API_TOKEN`: override live API token (or "none" to disable).
-- `AGENT_TUI_API_STATE`: state file path (default: `~/.agent-tui/api.json`).
-- `AGENT_TUI_API_MAX_CONNECTIONS`: max live connections.
+- `AGENT_TUI_WS_LISTEN`: daemon WS bind address (default: `127.0.0.1:0`).
+- `AGENT_TUI_WS_ALLOW_REMOTE`: allow non-loopback bind (boolean).
+- `AGENT_TUI_WS_STATE`: state file path (default: `~/.agent-tui/api.json`).
+- `AGENT_TUI_WS_DISABLED`: disable daemon WS server (boolean).
+- `AGENT_TUI_WS_MAX_CONNECTIONS`: max live connections.
+- `AGENT_TUI_WS_QUEUE`: outbound WS queue size.
+- `AGENT_TUI_API_LISTEN` / `AGENT_TUI_API_ALLOW_REMOTE` / `AGENT_TUI_API_STATE` / `AGENT_TUI_API_MAX_CONNECTIONS` / `AGENT_TUI_API_WS_QUEUE`: deprecated aliases for WS settings.
+- `AGENT_TUI_API_TOKEN`: deprecated and ignored.
 - `AGENT_TUI_UI_URL`: base URL to open with `live start --open`.
 - `AGENT_TUI_SESSION_STORE`: session metadata log path (default: `~/.agent-tui/sessions.jsonl`).
 - `AGENT_TUI_LOG`: log file path (optional).
 - `AGENT_TUI_LOG_FORMAT`: log format (text or json; default: text).
 - `AGENT_TUI_LOG_STREAM`: log output stream (stderr or stdout; default: stderr).
 - `BROWSER`: browser command (overridden by `--browser`).
-- `PORT`: fallback port for API listen when `AGENT_TUI_API_LISTEN` is unset.
+- `PORT`: Bun web preview server port (`web/server.ts`), when using standalone web UI.

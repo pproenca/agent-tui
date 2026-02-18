@@ -1959,7 +1959,7 @@ mod tests {
     }
 
     #[test]
-    fn metadata_requires_live_preview_confirmation_over_http_endpoint() {
+    fn metadata_requires_live_preview_start_over_http_endpoint() {
         let root = workspace_root();
         let skill_path = root.join("skills/tui-explorer/SKILL.md");
         let text = match fs::read_to_string(&skill_path) {
@@ -1968,12 +1968,12 @@ mod tests {
         };
 
         assert!(
-            text.contains("Ask whether the user wants a live preview"),
-            "skill guidance must require asking before enabling live preview"
+            text.contains("Start live preview over the HTTP endpoint"),
+            "skill guidance must require starting live preview over the HTTP endpoint"
         );
         assert!(
-            text.contains("HTTP endpoint"),
-            "skill guidance must state live preview is served over the HTTP endpoint"
+            text.contains("Treat browser session selection as preview-local"),
+            "skill guidance must state browser selection does not switch daemon active session"
         );
     }
 
@@ -1991,7 +1991,7 @@ mod tests {
     }
 
     #[test]
-    fn metadata_yaml_requires_live_preview_confirmation_over_http_endpoint() {
+    fn metadata_yaml_requires_live_preview_start_over_http_endpoint() {
         let root = workspace_root();
         let metadata_path = root.join("skills/tui-explorer/agents/openai.yaml");
         let text = match fs::read_to_string(&metadata_path) {
@@ -2000,12 +2000,12 @@ mod tests {
         };
 
         assert!(
-            text.contains("ask whether the user wants a live preview"),
-            "default prompt must require asking before enabling live preview"
+            text.contains("Start live preview over the HTTP endpoint"),
+            "default prompt must require starting live preview over the HTTP endpoint"
         );
         assert!(
-            text.contains("HTTP endpoint"),
-            "default prompt must mention the HTTP endpoint live preview"
+            text.contains("preview-local"),
+            "default prompt must mention preview-local session selection"
         );
     }
 

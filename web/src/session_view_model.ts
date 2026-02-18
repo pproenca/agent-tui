@@ -140,17 +140,6 @@ export function buildSessionCards(
   });
 }
 
-export function shouldPromoteSelectionToActive(
-  payload: SessionsResponse | null,
-  selectedSessionId: string,
-): boolean {
-  if (!payload) {
-    return false;
-  }
-  const selected = payload.sessions.find((session) => session.id === selectedSessionId);
-  return selected?.running ?? false;
-}
-
 export type TerminalStreamState = {
   sessionId: string;
   closedNoticeSent: boolean;

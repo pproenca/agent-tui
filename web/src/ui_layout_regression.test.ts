@@ -79,4 +79,9 @@ describe("live preview layout hooks", () => {
     expect(app).toContain("session: connectedTerminalSessionId");
     expect(app).toContain("fitAddon.proposeDimensions()");
   });
+
+  test("keeps UI session selection preview-local without mutating active session", () => {
+    const app = readSrcFile("app.ts");
+    expect(app).not.toContain('rpcCall("attach"');
+  });
 });

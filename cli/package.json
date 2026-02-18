@@ -26,10 +26,10 @@
   "license": "MIT",
   "name": "agent-tui",
   "optionalDependencies": {
-    "agent-tui-darwin-arm64": "1.0.0",
-    "agent-tui-darwin-x64": "1.0.0",
-    "agent-tui-linux-arm64": "1.0.0",
-    "agent-tui-linux-x64": "1.0.0"
+    "agent-tui-darwin-arm64": "1.0.1",
+    "agent-tui-darwin-x64": "1.0.1",
+    "agent-tui-linux-arm64": "1.0.1",
+    "agent-tui-linux-x64": "1.0.1"
   },
   "repository": {
     "type": "git",
@@ -43,7 +43,7 @@
     "version": "echo 'ERROR: Use just release bump=patch|minor|major|x.y.z' && exit 1",
     "version:check": "cargo run -p xtask -- version check"
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "workspaces": [
     "npm/*"
   ]

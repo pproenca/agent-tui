@@ -394,6 +394,7 @@ impl DaemonServer {
         let method = match kind {
             crate::app::daemon::rpc_core::StreamKind::Attach => "attach_stream",
             crate::app::daemon::rpc_core::StreamKind::LivePreview => "live_preview_stream",
+            crate::app::daemon::rpc_core::StreamKind::Flightdeck => "flightdeck_stream",
         };
 
         server.active_connections.fetch_add(1, Ordering::Relaxed);

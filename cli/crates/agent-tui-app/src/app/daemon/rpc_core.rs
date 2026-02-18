@@ -11,6 +11,7 @@ use crate::adapters::session_error_response;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde::Serialize;
+use serde_json::json;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -33,6 +34,10 @@ const ATTACH_STREAM_HEARTBEAT: Duration = Duration::from_secs(30);
 const LIVE_PREVIEW_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
 const LIVE_PREVIEW_STREAM_MAX_TICK_BYTES: usize = 256 * 1024;
 const LIVE_PREVIEW_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
+const FLIGHTDECK_STREAM_DEFAULT_INTERVAL_MS: u64 = 1000;
+const FLIGHTDECK_STREAM_MIN_INTERVAL_MS: u64 = 250;
+const FLIGHTDECK_STREAM_MAX_INTERVAL_MS: u64 = 5000;
+const FLIGHTDECK_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
 const STREAM_WAIT_SLICE: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +51,7 @@ enum StreamWaitStatus {
 pub(crate) enum StreamKind {
     Attach,
     LivePreview,
+    Flightdeck,
 }
 
 #[derive(Debug)]
@@ -119,6 +125,7 @@ impl RpcCore {
         match method {
             "attach_stream" => Some(StreamKind::Attach),
             "live_preview_stream" => Some(StreamKind::LivePreview),
+            "flightdeck_stream" => Some(StreamKind::Flightdeck),
             _ => None,
         }
     }
@@ -134,6 +141,9 @@ impl RpcCore {
             StreamKind::Attach => self.handle_attach_stream(writer, request, connection_cancelled),
             StreamKind::LivePreview => {
                 self.handle_live_preview_stream(writer, request, connection_cancelled)
+            }
+            StreamKind::Flightdeck => {
+                self.handle_flightdeck_stream(writer, request, connection_cancelled)
             }
         }
     }
@@ -626,6 +636,175 @@ impl RpcCore {
             }
         }
     }
+
+    fn flightdeck_snapshot(&self) -> FlightdeckSnapshot {
+        let mut sessions = self
+            .session_manager
+            .list()
+            .into_iter()
+            .map(|session| FlightdeckSessionSnapshot {
+                id: session.id.to_string(),
+                command: session.command,
+                pid: session.pid,
+                running: session.running,
+                created_at: session.created_at,
+                cols: session.size.cols(),
+                rows: session.size.rows(),
+            })
+            .collect::<Vec<_>>();
+        sessions.sort_by(|left, right| left.id.cmp(&right.id));
+        FlightdeckSnapshot {
+            active_session: self
+                .session_manager
+                .active_session_id()
+                .map(|session_id| session_id.to_string()),
+            sessions,
+        }
+    }
+
+    fn handle_flightdeck_stream(
+        &self,
+        writer: &mut impl RpcResponseWriter,
+        request: RpcRequest,
+        connection_cancelled: Option<&AtomicBool>,
+    ) -> Result<(), RpcCoreError> {
+        let req_id = request.id;
+        let interval_ms = request
+            .param_u64("interval_ms", FLIGHTDECK_STREAM_DEFAULT_INTERVAL_MS)
+            .clamp(
+                FLIGHTDECK_STREAM_MIN_INTERVAL_MS,
+                FLIGHTDECK_STREAM_MAX_INTERVAL_MS,
+            );
+        let interval = Duration::from_millis(interval_ms);
+        let start_time = Instant::now();
+
+        #[derive(Serialize)]
+        struct FlightdeckEvent {
+            event: &'static str,
+            active_session: Option<String>,
+            sessions: Vec<serde_json::Value>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            time: Option<f64>,
+        }
+
+        #[derive(Serialize)]
+        struct FlightdeckHeartbeat {
+            event: &'static str,
+            time: f64,
+        }
+
+        #[derive(Serialize)]
+        struct FlightdeckClosed {
+            event: &'static str,
+            time: f64,
+        }
+
+        let mut snapshot = self.flightdeck_snapshot();
+        writer.write_response(&RpcResponse::success_json(
+            req_id,
+            &FlightdeckEvent {
+                event: "ready",
+                active_session: snapshot.active_session.clone(),
+                sessions: snapshot.to_json_sessions(),
+                time: None,
+            },
+        ))?;
+
+        let mut next_snapshot_deadline = Instant::now() + interval;
+        let mut next_heartbeat_deadline = Instant::now() + FLIGHTDECK_STREAM_HEARTBEAT;
+
+        loop {
+            if self.should_stream_terminate(connection_cancelled) {
+                let _ = writer.write_response(&RpcResponse::success_json(
+                    req_id,
+                    &FlightdeckClosed {
+                        event: "closed",
+                        time: start_time.elapsed().as_secs_f64(),
+                    },
+                ));
+                return Ok(());
+            }
+
+            let now = Instant::now();
+            if now >= next_snapshot_deadline {
+                let next_snapshot = self.flightdeck_snapshot();
+                if next_snapshot != snapshot {
+                    writer.write_response(&RpcResponse::success_json(
+                        req_id,
+                        &FlightdeckEvent {
+                            event: "sessions",
+                            active_session: next_snapshot.active_session.clone(),
+                            sessions: next_snapshot.to_json_sessions(),
+                            time: Some(start_time.elapsed().as_secs_f64()),
+                        },
+                    ))?;
+                    snapshot = next_snapshot;
+                }
+                next_snapshot_deadline = now + interval;
+                continue;
+            }
+
+            if now >= next_heartbeat_deadline {
+                writer.write_response(&RpcResponse::success_json(
+                    req_id,
+                    &FlightdeckHeartbeat {
+                        event: "heartbeat",
+                        time: start_time.elapsed().as_secs_f64(),
+                    },
+                ))?;
+                next_heartbeat_deadline = now + FLIGHTDECK_STREAM_HEARTBEAT;
+                continue;
+            }
+
+            let next_deadline = if next_snapshot_deadline <= next_heartbeat_deadline {
+                next_snapshot_deadline
+            } else {
+                next_heartbeat_deadline
+            };
+            let wait = next_deadline
+                .saturating_duration_since(now)
+                .min(STREAM_WAIT_SLICE);
+            std::thread::park_timeout(wait);
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FlightdeckSessionSnapshot {
+    id: String,
+    command: String,
+    pid: u32,
+    running: bool,
+    created_at: String,
+    cols: u16,
+    rows: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FlightdeckSnapshot {
+    active_session: Option<String>,
+    sessions: Vec<FlightdeckSessionSnapshot>,
+}
+
+impl FlightdeckSnapshot {
+    fn to_json_sessions(&self) -> Vec<serde_json::Value> {
+        self.sessions
+            .iter()
+            .map(|session| {
+                json!({
+                    "id": session.id,
+                    "command": session.command,
+                    "pid": session.pid,
+                    "running": session.running,
+                    "created_at": session.created_at,
+                    "size": {
+                        "cols": session.cols,
+                        "rows": session.rows,
+                    }
+                })
+            })
+            .collect()
+    }
 }
 
 fn parse_live_preview_session_selector(request: &RpcRequest) -> Option<crate::domain::SessionId> {
@@ -643,10 +822,13 @@ fn live_preview_initial_cursor(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
     use std::sync::Arc;
+    use std::sync::Mutex;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
     use std::time::Duration;
+    use std::time::Instant;
 
     fn make_request(params_json: Option<&str>) -> RpcRequest {
         let request_json = match params_json {
@@ -658,6 +840,76 @@ mod tests {
             None => r#"{"jsonrpc":"2.0","id":1,"method":"live_preview_stream"}"#.to_string(),
         };
         serde_json::from_str(&request_json).expect("valid rpc request")
+    }
+
+    fn make_flightdeck_request(params_json: Option<&str>) -> RpcRequest {
+        let request_json = match params_json {
+            Some(params) => {
+                format!(r#"{{"jsonrpc":"2.0","id":7,"method":"flightdeck_stream","params":{params}}}"#)
+            }
+            None => r#"{"jsonrpc":"2.0","id":7,"method":"flightdeck_stream"}"#.to_string(),
+        };
+        serde_json::from_str(&request_json).expect("valid rpc request")
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingWriterHandle {
+        values: Arc<Mutex<Vec<Value>>>,
+    }
+
+    impl RecordingWriterHandle {
+        fn snapshot(&self) -> Vec<Value> {
+            self.values
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .clone()
+        }
+
+        fn wait_for_event(&self, event: &str, timeout: Duration) -> Option<Value> {
+            let deadline = Instant::now() + timeout;
+            loop {
+                let values = self.snapshot();
+                if let Some(found) = values
+                    .into_iter()
+                    .find(|value| value["result"]["event"] == event)
+                {
+                    return Some(found);
+                }
+                if Instant::now() >= deadline {
+                    return None;
+                }
+                std::thread::park_timeout(Duration::from_millis(20));
+            }
+        }
+    }
+
+    struct RecordingWriter {
+        handle: RecordingWriterHandle,
+    }
+
+    impl RecordingWriter {
+        fn new() -> (Self, RecordingWriterHandle) {
+            let handle = RecordingWriterHandle::default();
+            (
+                Self {
+                    handle: handle.clone(),
+                },
+                handle,
+            )
+        }
+    }
+
+    impl RpcResponseWriter for RecordingWriter {
+        fn write_response(&mut self, response: &RpcResponse) -> Result<(), RpcCoreError> {
+            let value = serde_json::to_value(response)
+                .map_err(|err| RpcCoreError::Other(format!("serialize response: {err}")))?;
+            self.handle
+                .values
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .push(value);
+            Ok(())
+        }
     }
 
     #[test]
@@ -735,6 +987,149 @@ mod tests {
         assert!(
             start.elapsed() < Duration::from_secs(2),
             "wait should terminate quickly once cancelled"
+        );
+    }
+
+    #[test]
+    fn stream_kind_recognizes_flightdeck_stream() {
+        assert_eq!(
+            RpcCore::stream_kind_for_method("flightdeck_stream"),
+            Some(StreamKind::Flightdeck)
+        );
+    }
+
+    #[test]
+    fn flightdeck_stream_emits_ready_with_sessions_payload() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
+            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
+        let core = Arc::new(RpcCore::with_config(
+            crate::infra::daemon::DaemonConfig::default(),
+            shutdown,
+            notifier,
+        ));
+
+        let (mut writer, handle) = RecordingWriter::new();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let request = make_flightdeck_request(Some(r#"{"interval_ms":250}"#));
+
+        let core_for_stream = Arc::clone(&core);
+        let cancelled_for_stream = Arc::clone(&cancelled);
+        let join = std::thread::spawn(move || {
+            let _ = core_for_stream.handle_stream(
+                &mut writer,
+                request,
+                StreamKind::Flightdeck,
+                Some(cancelled_for_stream.as_ref()),
+            );
+        });
+
+        let ready = handle.wait_for_event("ready", Duration::from_secs(2));
+        cancelled.store(true, Ordering::Relaxed);
+        let _ = join.join();
+
+        let Some(ready) = ready else {
+            panic!("flightdeck stream did not emit ready event");
+        };
+        assert!(ready["result"]["sessions"].is_array());
+        assert!(
+            ready["result"].get("active_session").is_some(),
+            "ready payload should include active_session"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn flightdeck_stream_emits_sessions_event_when_inventory_changes() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
+            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
+        let core = Arc::new(RpcCore::with_config(
+            crate::infra::daemon::DaemonConfig::default(),
+            shutdown,
+            notifier,
+        ));
+
+        let (mut writer, handle) = RecordingWriter::new();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let request = make_flightdeck_request(Some(r#"{"interval_ms":250}"#));
+
+        let core_for_stream = Arc::clone(&core);
+        let cancelled_for_stream = Arc::clone(&cancelled);
+        let join = std::thread::spawn(move || {
+            let _ = core_for_stream.handle_stream(
+                &mut writer,
+                request,
+                StreamKind::Flightdeck,
+                Some(cancelled_for_stream.as_ref()),
+            );
+        });
+
+        let _ = handle.wait_for_event("ready", Duration::from_secs(2));
+        let spawn_result =
+            core.session_manager
+                .spawn("sh", &[], None, None, Some("flightdeck-new".to_string()), 80, 24);
+        if spawn_result.is_err() {
+            cancelled.store(true, Ordering::Relaxed);
+            let _ = join.join();
+            return;
+        }
+
+        let sessions = handle.wait_for_event("sessions", Duration::from_secs(3));
+        cancelled.store(true, Ordering::Relaxed);
+        let _ = join.join();
+        core.shutdown_all_sessions();
+
+        let Some(sessions) = sessions else {
+            panic!("flightdeck stream did not emit sessions event");
+        };
+        let contains_new = sessions["result"]["sessions"]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .any(|item| item.get("id").and_then(|v| v.as_str()) == Some("flightdeck-new"))
+            })
+            .unwrap_or(false);
+        assert!(contains_new, "sessions event should include newly spawned session");
+    }
+
+    #[test]
+    fn flightdeck_stream_emits_closed_and_exits_on_cancellation() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
+            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
+        let core = Arc::new(RpcCore::with_config(
+            crate::infra::daemon::DaemonConfig::default(),
+            shutdown,
+            notifier,
+        ));
+
+        let (mut writer, handle) = RecordingWriter::new();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let request = make_flightdeck_request(Some(r#"{"interval_ms":250}"#));
+
+        let core_for_stream = Arc::clone(&core);
+        let cancelled_for_stream = Arc::clone(&cancelled);
+        let start = Instant::now();
+        let join = std::thread::spawn(move || {
+            let _ = core_for_stream.handle_stream(
+                &mut writer,
+                request,
+                StreamKind::Flightdeck,
+                Some(cancelled_for_stream.as_ref()),
+            );
+        });
+
+        let _ = handle.wait_for_event("ready", Duration::from_secs(2));
+        cancelled.store(true, Ordering::Relaxed);
+        let _ = join.join();
+
+        let closed = handle.wait_for_event("closed", Duration::from_secs(1));
+        assert!(closed.is_some(), "expected closed event on cancellation");
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "stream should exit quickly when cancelled"
         );
     }
 }

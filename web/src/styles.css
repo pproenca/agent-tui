@@ -86,7 +86,7 @@ body {
 .sidebar__section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--space-2);
 }
 
@@ -145,11 +145,11 @@ body {
   background: var(--panel);
   border-radius: 8px;
   padding: var(--space-2) var(--space-3);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
   cursor: pointer;
   transition: background 0.15s ease;
+  text-align: left;
 }
 
 .session-item:hover {
@@ -173,6 +173,12 @@ body {
   background: var(--accent);
 }
 
+.session-item__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .session-item__id {
   font-family: "IBM Plex Mono", monospace;
   font-size: 12px;
@@ -186,6 +192,23 @@ body {
   font-size: 10px;
   color: var(--muted);
   font-family: "IBM Plex Mono", monospace;
+}
+
+.session-item__command {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-item__meta {
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-empty {
@@ -245,6 +268,18 @@ body {
 .button--icon svg {
   display: block;
   stroke: currentColor;
+}
+
+.sessions-mode-badge {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--warning);
+  background: rgba(217, 119, 6, 0.08);
+  color: var(--warning);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .main {

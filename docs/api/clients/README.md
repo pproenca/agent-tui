@@ -9,7 +9,7 @@ including binary output frames (`encoding=binary`).
 bun run docs/api/clients/js/stream.ts
 ```
 
-The script reads `AGENT_TUI_API_STATE` or `~/.agent-tui/api.json` by default.
+The script reads `AGENT_TUI_WS_STATE` or `~/.agent-tui/api.json` by default.
 
 ## Rust
 

@@ -30,4 +30,4 @@ Commands are managed via `just` from the repo root (it runs in `cli/`).
 - PRs should include: a clear description, tests run, and linked issues. Add screenshots or clips for UI changes in `web/`.
 
 ## Configuration Notes
-- The web server reads daemon state from `AGENT_TUI_API_STATE` (defaults to `~/.agent-tui/api.json`). Document any new env vars you introduce.
+- The web server reads daemon state from `AGENT_TUI_WS_STATE` (defaults to `~/.agent-tui/api.json`). Document any new env vars you introduce.

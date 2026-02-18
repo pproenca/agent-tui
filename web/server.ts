@@ -5,7 +5,7 @@ const root = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(root, "public");
 const port = Number.parseInt(Bun.env.PORT ?? "4173", 10);
 const apiStatePath =
-  Bun.env.AGENT_TUI_API_STATE ??
+  Bun.env.AGENT_TUI_WS_STATE ??
   join(Bun.env.HOME ?? "/tmp", ".agent-tui", "api.json");
 
 function resolvePath(pathname: string): string {

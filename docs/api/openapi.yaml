@@ -4,7 +4,7 @@ info:
   version: "1"
   description: |
     HTTP API exposed by the agent-tui daemon.
-    Authentication is not currently enforced. `AGENT_TUI_API_TOKEN` is deprecated and ignored.
+    Authentication is not currently enforced.
 servers:
   - url: http://127.0.0.1:{port}
     description: |

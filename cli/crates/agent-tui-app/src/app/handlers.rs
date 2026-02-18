@@ -511,16 +511,6 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     args: LiveStartArgs,
 ) -> HandlerResult {
-    if args.listen.is_some() || args.allow_remote || args.max_viewers.is_some() {
-        eprintln!(
-            "{} Live preview is now served by the daemon WebSocket server. Configure it via:",
-            Colors::info("Note:")
-        );
-        eprintln!(
-            "  AGENT_TUI_WS_LISTEN / AGENT_TUI_WS_ALLOW_REMOTE / AGENT_TUI_WS_MAX_CONNECTIONS"
-        );
-    }
-
     let state_path = ws_state_path();
     let state = wait_for_api_state(&state_path, Duration::from_secs(3)).ok_or_else(|| {
         CliError::new(
@@ -988,9 +978,6 @@ enum StopUiResult {
 
 fn ws_state_path() -> PathBuf {
     if let Ok(path) = std::env::var("AGENT_TUI_WS_STATE") {
-        return PathBuf::from(path);
-    }
-    if let Ok(path) = std::env::var("AGENT_TUI_API_STATE") {
         return PathBuf::from(path);
     }
     let home = std::env::var("HOME")
@@ -1468,35 +1455,6 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
         (
             "AGENT_TUI_WS_QUEUE",
             std::env::var("AGENT_TUI_WS_QUEUE").ok(),
-        ),
-        // Deprecated aliases (kept for compatibility).
-        (
-            "AGENT_TUI_API_LISTEN",
-            std::env::var("AGENT_TUI_API_LISTEN").ok(),
-        ),
-        (
-            "AGENT_TUI_API_ALLOW_REMOTE",
-            std::env::var("AGENT_TUI_API_ALLOW_REMOTE").ok(),
-        ),
-        (
-            "AGENT_TUI_API_STATE",
-            std::env::var("AGENT_TUI_API_STATE").ok(),
-        ),
-        (
-            "AGENT_TUI_API_TOKEN",
-            std::env::var("AGENT_TUI_API_TOKEN").ok(),
-        ),
-        (
-            "AGENT_TUI_API_DISABLED",
-            std::env::var("AGENT_TUI_API_DISABLED").ok(),
-        ),
-        (
-            "AGENT_TUI_API_MAX_CONNECTIONS",
-            std::env::var("AGENT_TUI_API_MAX_CONNECTIONS").ok(),
-        ),
-        (
-            "AGENT_TUI_API_WS_QUEUE",
-            std::env::var("AGENT_TUI_API_WS_QUEUE").ok(),
         ),
         (
             "AGENT_TUI_SESSION_STORE",

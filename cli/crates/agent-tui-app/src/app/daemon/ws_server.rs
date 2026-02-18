@@ -70,75 +70,32 @@ impl WsConfig {
     pub fn from_env() -> Self {
         let enabled = env_bool("AGENT_TUI_WS_DISABLED")
             .map(|v| !v)
-            .or_else(|| env_bool("AGENT_TUI_API_DISABLED").map(|v| !v))
             .unwrap_or(true);
 
         let allow_remote = std::env::var("AGENT_TUI_WS_ALLOW_REMOTE")
             .ok()
             .and_then(|v| parse_bool(&v))
-            .or_else(|| {
-                std::env::var("AGENT_TUI_API_ALLOW_REMOTE")
-                    .ok()
-                    .and_then(|v| {
-                        warn!(
-                            "AGENT_TUI_API_ALLOW_REMOTE is deprecated; use AGENT_TUI_WS_ALLOW_REMOTE"
-                        );
-                        parse_bool(&v)
-                    })
-            })
             .unwrap_or(false);
 
         let listen = std::env::var("AGENT_TUI_WS_LISTEN")
             .ok()
             .and_then(non_empty)
-            .or_else(|| {
-                std::env::var("AGENT_TUI_API_LISTEN").ok().and_then(|v| {
-                    warn!("AGENT_TUI_API_LISTEN is deprecated; use AGENT_TUI_WS_LISTEN");
-                    non_empty(v)
-                })
-            })
             .unwrap_or_else(|| DEFAULT_WS_LISTEN.to_string());
 
         let state_path = std::env::var("AGENT_TUI_WS_STATE")
             .map(PathBuf::from)
-            .or_else(|_| {
-                std::env::var("AGENT_TUI_API_STATE").map(|v| {
-                    warn!("AGENT_TUI_API_STATE is deprecated; use AGENT_TUI_WS_STATE");
-                    PathBuf::from(v)
-                })
-            })
             .unwrap_or_else(|_| default_state_path());
 
         let max_connections = std::env::var("AGENT_TUI_WS_MAX_CONNECTIONS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
-            .or_else(|| {
-                std::env::var("AGENT_TUI_API_MAX_CONNECTIONS")
-                    .ok()
-                    .and_then(|v| {
-                        warn!(
-                            "AGENT_TUI_API_MAX_CONNECTIONS is deprecated; use AGENT_TUI_WS_MAX_CONNECTIONS"
-                        );
-                        v.parse::<usize>().ok()
-                    })
-            })
             .unwrap_or(DEFAULT_MAX_CONNECTIONS);
 
         let ws_queue_capacity = std::env::var("AGENT_TUI_WS_QUEUE")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
-            .or_else(|| {
-                std::env::var("AGENT_TUI_API_WS_QUEUE").ok().and_then(|v| {
-                    warn!("AGENT_TUI_API_WS_QUEUE is deprecated; use AGENT_TUI_WS_QUEUE");
-                    v.parse::<usize>().ok()
-                })
-            })
             .filter(|v| *v > 0)
             .unwrap_or(DEFAULT_WS_QUEUE_CAPACITY);
-
-        if std::env::var("AGENT_TUI_API_TOKEN").is_ok() {
-            warn!("AGENT_TUI_API_TOKEN is deprecated and ignored");
-        }
 
         Self {
             enabled,
@@ -713,15 +670,6 @@ mod tests {
             }
             Self { key, prev }
         }
-
-        fn remove(key: &'static str) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: test-only env mutation.
-            unsafe {
-                std::env::remove_var(key);
-            }
-            Self { key, prev }
-        }
     }
 
     impl Drop for EnvGuard {
@@ -741,23 +689,12 @@ mod tests {
     }
 
     #[test]
-    fn ws_config_prefers_ws_env() {
+    fn ws_config_reads_ws_env() {
         let _env = env_lock();
         let _listen = EnvGuard::set("AGENT_TUI_WS_LISTEN", "127.0.0.1:7777");
-        let _deprecated = EnvGuard::set("AGENT_TUI_API_LISTEN", "127.0.0.1:9999");
 
         let config = WsConfig::from_env();
         assert_eq!(config.listen, "127.0.0.1:7777");
-    }
-
-    #[test]
-    fn ws_config_uses_deprecated_alias() {
-        let _env = env_lock();
-        let _listen = EnvGuard::remove("AGENT_TUI_WS_LISTEN");
-        let _deprecated = EnvGuard::set("AGENT_TUI_API_LISTEN", "127.0.0.1:9999");
-
-        let config = WsConfig::from_env();
-        assert_eq!(config.listen, "127.0.0.1:9999");
     }
 
     #[test]

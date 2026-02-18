@@ -16,7 +16,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agent-tui"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "agent-tui-app",
  "anyhow",
@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "agent-tui-adapters"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "agent-tui-common",
  "agent-tui-domain",
@@ -49,7 +49,7 @@ dependencies = [
 
 [[package]]
 name = "agent-tui-app"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "agent-tui-adapters",
  "agent-tui-common",
@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "agent-tui-common"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "thiserror 2.0.18",
  "tracing",
@@ -87,14 +87,14 @@ dependencies = [
 
 [[package]]
 name = "agent-tui-domain"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "agent-tui-infra"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "agent-tui-common",
  "agent-tui-domain",
@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "agent-tui-usecases"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "agent-tui-common",
  "agent-tui-domain",
@@ -3783,7 +3783,7 @@ checksum = "9edde0db4769d2dc68579893f2306b26c6ecfbe0ef499b013d731b7b9247e0b9"
 
 [[package]]
 name = "xtask"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "cargo_metadata",

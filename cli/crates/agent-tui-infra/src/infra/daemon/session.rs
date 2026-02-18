@@ -64,6 +64,7 @@ use crate::domain::session_types::TerminalSize;
 pub use crate::infra::daemon::SessionError;
 
 const STREAM_MAX_BUFFER_BYTES: usize = 8 * 1024 * 1024;
+const COMMAND_TIMELINE_MAX_ENTRIES: usize = 512;
 pub(crate) const PUMP_FLUSH_TIMEOUT: Duration = Duration::from_millis(50);
 const SESSION_QUERY_LOCK_TIMEOUT: Duration = Duration::from_millis(100);
 const STARTUP_TERMINATE_TIMEOUT: Duration = Duration::from_millis(500);
@@ -507,6 +508,78 @@ impl ModifierState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandTimelineEntry {
+    pub seq: u64,
+    pub kind: String,
+    pub value: String,
+}
+
+#[derive(Default)]
+struct CommandTimeline {
+    entries: VecDeque<CommandTimelineEntry>,
+    base_seq: u64,
+    next_seq: u64,
+}
+
+impl CommandTimeline {
+    fn push(&mut self, kind: &str, value: String) {
+        let entry = CommandTimelineEntry {
+            seq: self.next_seq,
+            kind: kind.to_string(),
+            value,
+        };
+        self.entries.push_back(entry);
+        self.next_seq = self.next_seq.saturating_add(1);
+
+        while self.entries.len() > COMMAND_TIMELINE_MAX_ENTRIES {
+            let _ = self.entries.pop_front();
+            self.base_seq = self.base_seq.saturating_add(1);
+        }
+    }
+
+    fn read(&self, cursor: &mut u64, max_entries: usize) -> Vec<CommandTimelineEntry> {
+        if max_entries == 0 {
+            return Vec::new();
+        }
+
+        if *cursor < self.base_seq {
+            *cursor = self.base_seq;
+        }
+
+        let offset = cursor.saturating_sub(self.base_seq) as usize;
+        if offset >= self.entries.len() {
+            return Vec::new();
+        }
+
+        let take = (self.entries.len() - offset).min(max_entries);
+        let items = self
+            .entries
+            .iter()
+            .skip(offset)
+            .take(take)
+            .cloned()
+            .collect::<Vec<_>>();
+        *cursor = cursor.saturating_add(take as u64);
+        items
+    }
+}
+
+fn sanitize_command_timeline_value(value: &str) -> String {
+    const MAX_CHARS: usize = 160;
+    let normalized = value
+        .replace('\r', "\\r")
+        .replace('\n', "\\n")
+        .replace('\t', "\\t");
+    let mut chars = normalized.chars();
+    let clipped = chars.by_ref().take(MAX_CHARS).collect::<String>();
+    if chars.next().is_some() {
+        format!("{clipped}...")
+    } else {
+        clipped
+    }
+}
+
 pub struct Session {
     pub id: SessionId,
     pub command: String,
@@ -515,6 +588,7 @@ pub struct Session {
     terminal: TerminalState,
     held_modifiers: ModifierState,
     stream: Arc<StreamBuffer>,
+    command_timeline: CommandTimeline,
     pty_rx: Option<channel::Receiver<ReadEvent>>,
     pty_cursor: Arc<Mutex<StreamCursor>>,
     pump_tx: Option<channel::Sender<PumpCommand>>,
@@ -534,11 +608,17 @@ impl Session {
             terminal: TerminalState::new(cols, rows),
             held_modifiers: ModifierState::default(),
             stream,
+            command_timeline: CommandTimeline::default(),
             pty_rx,
             pty_cursor: Arc::new(Mutex::new(StreamCursor::default())),
             pump_tx: None,
             pump_join: None,
         }
+    }
+
+    fn record_command_timeline_entry(&mut self, kind: &str, value: String) {
+        self.command_timeline.push(kind, value);
+        self.stream.notify();
     }
 
     pub fn pid(&self) -> Option<u32> {
@@ -576,10 +656,11 @@ impl Session {
         self.terminal.cursor()
     }
 
-    pub fn keystroke(&self, key: &str) -> Result<(), SessionError> {
+    pub fn keystroke(&mut self, key: &str) -> Result<(), SessionError> {
         let seq =
             key_to_escape_sequence(key).ok_or_else(|| SessionError::InvalidKey(key.to_string()))?;
         self.pty.write(&seq)?;
+        self.record_command_timeline_entry("press", key.to_string());
         Ok(())
     }
 
@@ -591,6 +672,7 @@ impl Session {
             ))
         })?;
         self.held_modifiers.set(modifier, true);
+        self.record_command_timeline_entry("keydown", key.to_string());
         Ok(())
     }
 
@@ -602,11 +684,13 @@ impl Session {
             ))
         })?;
         self.held_modifiers.set(modifier, false);
+        self.record_command_timeline_entry("keyup", key.to_string());
         Ok(())
     }
 
-    pub fn type_text(&self, text: &str) -> Result<(), SessionError> {
+    pub fn type_text(&mut self, text: &str) -> Result<(), SessionError> {
         self.pty.write_str(text)?;
+        self.record_command_timeline_entry("type", sanitize_command_timeline_value(text));
         Ok(())
     }
 
@@ -622,8 +706,9 @@ impl Session {
         Ok(())
     }
 
-    pub fn pty_write(&self, data: &[u8]) -> Result<(), SessionError> {
+    pub fn pty_write(&mut self, data: &[u8]) -> Result<(), SessionError> {
         self.pty.write(data)?;
+        self.record_command_timeline_entry("write", format!("{} bytes", data.len()));
         Ok(())
     }
 
@@ -638,6 +723,14 @@ impl Session {
 
     pub fn stream_reader(&self) -> StreamReader {
         StreamReader::new(Arc::clone(&self.stream))
+    }
+
+    pub fn command_timeline_read(
+        &self,
+        cursor: &mut u64,
+        max_entries: usize,
+    ) -> Vec<CommandTimelineEntry> {
+        self.command_timeline.read(cursor, max_entries)
     }
 
     pub fn stream_subscribe(&self) -> StreamWaiterHandle {

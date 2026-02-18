@@ -125,7 +125,7 @@ agent-tui screenshot --json
 | `AGENT_TUI_WS_DISABLED` | Disable daemon WS server | `false` |
 | `AGENT_TUI_WS_MAX_CONNECTIONS` | Max WS connections | `32` |
 | `AGENT_TUI_WS_QUEUE` | WS outbound queue size | `128` |
-| `AGENT_TUI_API_LISTEN` / `AGENT_TUI_API_ALLOW_REMOTE` / `AGENT_TUI_API_STATE` | Deprecated aliases for WS settings | - |
+| `AGENT_TUI_API_LISTEN` / `AGENT_TUI_API_ALLOW_REMOTE` / `AGENT_TUI_API_STATE` / `AGENT_TUI_API_MAX_CONNECTIONS` / `AGENT_TUI_API_WS_QUEUE` | Deprecated aliases for WS settings | - |
 | `AGENT_TUI_API_TOKEN` | Deprecated and ignored | - |
 | `AGENT_TUI_SESSION_STORE` | Session metadata log path | `~/.agent-tui/sessions.jsonl` |
 | `AGENT_TUI_UI_URL` | External UI URL | - |
@@ -133,7 +133,7 @@ agent-tui screenshot --json
 | `AGENT_TUI_LOG` | Log file path (optional) | - |
 | `AGENT_TUI_LOG_FORMAT` | Log format (`text` or `json`) | `text` |
 | `AGENT_TUI_LOG_STREAM` | Log output stream (`stderr` or `stdout`) | `stderr` |
-| `PORT` | Fallback port for API listen | - |
+| `PORT` | Standalone Bun web server port (`web/server.ts`) | - |
 | `NO_COLOR` | Disable colored output | - |
 
 ## Architecture

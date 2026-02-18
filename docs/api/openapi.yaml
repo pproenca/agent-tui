@@ -7,10 +7,12 @@ info:
     Authentication is not currently enforced. `AGENT_TUI_API_TOKEN` is deprecated and ignored.
 servers:
   - url: http://127.0.0.1:{port}
-    description: Local daemon
+    description: |
+      Local daemon endpoint. Read the effective port from the daemon WS state file
+      (`AGENT_TUI_WS_STATE`, default `~/.agent-tui/api.json`).
     variables:
       port:
-        default: "PORT"
+        default: "0"
 paths:
   /api/v1/sessions:
     get:

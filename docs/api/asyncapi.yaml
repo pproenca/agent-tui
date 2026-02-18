@@ -9,10 +9,12 @@ servers:
   local:
     url: ws://127.0.0.1:{port}/api/v1/stream
     protocol: ws
-    description: Local daemon
+    description: |
+      Local daemon endpoint. Read the effective port from the daemon WS state file
+      (`AGENT_TUI_WS_STATE`, default `~/.agent-tui/api.json`).
     variables:
       port:
-        default: "PORT"
+        default: "0"
 channels:
   /api/v1/stream:
     description: Live preview event stream.

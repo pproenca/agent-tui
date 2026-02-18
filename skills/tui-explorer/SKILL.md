@@ -29,7 +29,7 @@ Generate replayable acceptance tests from discovered TUI navigation paths.
 1. Start live preview over the HTTP endpoint with `agent-tui live start --open` before discovery so the user can watch exploration in the built-in web UI.
 2. Run `discover` for the target command.
 3. Inspect generated artifacts:
-   - `acceptance.md`
+   - `acceptance.md` (human-readable OpenSpec-style expectations + machine-executable steps)
    - `trace.jsonl`
    - `discover-report.json`
 4. Run `verify` against the generated `acceptance.md`.

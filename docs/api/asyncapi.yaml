@@ -5,6 +5,8 @@ info:
   description: |
     WebSocket stream for live terminal preview.
     Authentication is not currently enforced.
+    Streams are selected via JSON-RPC methods sent to `/ws`:
+    `live_preview_stream` (terminal output) and `flightdeck_stream` (session inventory).
 servers:
   local:
     url: ws://127.0.0.1:{port}/api/v1/stream
@@ -45,6 +47,8 @@ channels:
         oneOf:
           - $ref: '#/components/messages/Hello'
           - $ref: '#/components/messages/Ready'
+          - $ref: '#/components/messages/FlightdeckReady'
+          - $ref: '#/components/messages/FlightdeckSessions'
           - $ref: '#/components/messages/Init'
           - $ref: '#/components/messages/OutputBase64'
           - $ref: '#/components/messages/OutputBinary'
@@ -92,6 +96,42 @@ components:
             type: integer
           rows:
             type: integer
+    FlightdeckReady:
+      name: flightdeck_ready
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, sessions]
+        properties:
+          event:
+            type: string
+            enum: [ready]
+          active_session:
+            type: string
+            nullable: true
+          sessions:
+            type: array
+            items:
+              $ref: '#/components/schemas/SessionInfo'
+    FlightdeckSessions:
+      name: flightdeck_sessions
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, sessions, time]
+        properties:
+          event:
+            type: string
+            enum: [sessions]
+          active_session:
+            type: string
+            nullable: true
+          sessions:
+            type: array
+            items:
+              $ref: '#/components/schemas/SessionInfo'
+          time:
+            type: number
     Init:
       name: init
       contentType: application/json
@@ -199,3 +239,29 @@ components:
             enum: [error]
           message:
             type: string
+  schemas:
+    SessionInfo:
+      type: object
+      required: [id, command, pid, running, created_at, size]
+      properties:
+        id:
+          type: string
+        command:
+          type: string
+        pid:
+          type: integer
+          format: int64
+        running:
+          type: boolean
+        created_at:
+          type: string
+        size:
+          type: object
+          required: [cols, rows]
+          properties:
+            cols:
+              type: integer
+              format: int32
+            rows:
+              type: integer
+              format: int32

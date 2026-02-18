@@ -1,10 +1,24 @@
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
-import { createElement, Plus, X, RefreshCw, type IconNode } from "lucide";
+import { createElement, Plus, RefreshCw, X, type IconNode } from "lucide";
+
+import {
+  buildSessionCards,
+  normalizedSessionValue,
+  reduceSessionsFeedState,
+  reduceTerminalStreamState,
+  shouldAutoConnect,
+  sortSessionsForFlightdeck,
+  type SessionInfo,
+  type SessionsFeedState,
+  type SessionsResponse,
+  type TerminalStreamState,
+} from "./session_view_model";
 
 const ICON_ATTRS = { width: 16, height: 16, "stroke-width": 2 };
 const RPC_TIMEOUT_MS = 5000;
-const REFRESH_INTERVAL_MS = 5000;
+const POLL_REFRESH_INTERVAL_MS = 5000;
+const FLIGHTDECK_STREAM_INTERVAL_MS = 1000;
 
 function setButtonIcon(button: HTMLButtonElement, iconDef: IconNode): void {
   button.replaceChildren(createElement(iconDef, ICON_ATTRS));
@@ -17,6 +31,9 @@ const sessionListEl = document.getElementById("sessionList") as HTMLDivElement;
 const sessionEmptyEl = document.getElementById("sessionEmpty") as HTMLDivElement;
 const sessionsRefreshBtn = document.getElementById("sessionsRefresh") as
   | HTMLButtonElement
+  | null;
+const sessionsModeBadgeEl = document.getElementById("sessionsModeBadge") as
+  | HTMLSpanElement
   | null;
 
 setButtonIcon(connectBtn, Plus);
@@ -65,33 +82,33 @@ term.open(document.getElementById("terminal") as HTMLDivElement);
 fitAddon.fit();
 window.addEventListener("resize", () => fitAddon.fit());
 
-let socket: WebSocket | null = null;
-let socketState: { reason: DisconnectReason | null; streamId: number | null } | null =
-  null;
-let closedNoticeSent = false;
-let latestSessions: SessionsResponse | null = null;
-let sessionsLoading = false;
-let refreshInterval: ReturnType<typeof setInterval> | null = null;
-
 type DisconnectReason = "manual" | "reconnect" | "server" | "error";
-type SessionsResponse = {
-  active?: string | null;
-  sessions: SessionInfo[];
-};
-
-type SessionInfo = {
-  id: string;
-  command: string;
-  pid: number;
-  running: boolean;
-  created_at: string;
-  size: { cols: number; rows: number };
-};
-
 type RpcResponse = {
   id?: number;
   result?: any;
   error?: { code?: number; message?: string };
+};
+
+let terminalSocket: WebSocket | null = null;
+let terminalSocketState: { reason: DisconnectReason | null; streamId: number | null } | null =
+  null;
+let terminalState: TerminalStreamState = {
+  sessionId: normalizedSessionValue(config.session),
+  closedNoticeSent: false,
+  closedNoticeCount: 0,
+};
+
+let sessionsSocket: WebSocket | null = null;
+let sessionsSocketState: { reason: "manual" | "error" | "server" | null; streamId: number } | null =
+  null;
+let sessionsLoading = false;
+let latestSessions: SessionsResponse | null = null;
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+let sessionsFeedState: SessionsFeedState = {
+  mode: "stream",
+  degraded: false,
+  selectedSession: config.session,
+  payload: null,
 };
 
 function setStatus(text: string, connected: boolean) {
@@ -103,59 +120,82 @@ function setStatus(text: string, connected: boolean) {
   }
 }
 
-function normalizedSessionValue(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? "active" : trimmed;
-}
-
-function livePreviewStreamParams(): Record<string, string> | undefined {
-  const session = normalizedSessionValue(config.session);
-  if (session === "active") {
-    return undefined;
-  }
-  return { session };
-}
-
-function showTerminationNotice() {
-  if (!closedNoticeSent) {
-    closedNoticeSent = true;
-    term.write("\r\n\x1b[90m[session terminated]\x1b[0m\r\n");
+function applySessionsFeedState(nextState: SessionsFeedState): void {
+  sessionsFeedState = nextState;
+  config.session = nextState.selectedSession;
+  if (sessionsModeBadgeEl) {
+    sessionsModeBadgeEl.hidden = !nextState.degraded;
+    sessionsModeBadgeEl.textContent = nextState.degraded
+      ? "Polling fallback"
+      : "Live stream";
   }
 }
 
-function startPeriodicRefresh() {
-  if (refreshInterval) return;
-  refreshInterval = setInterval(() => {
-    void refreshSessions();
-  }, REFRESH_INTERVAL_MS);
+function setSessionsNotice(message: string) {
+  sessionListEl.replaceChildren();
+  sessionEmptyEl.textContent = message;
+  sessionEmptyEl.hidden = false;
+  latestSessions = null;
 }
 
-function stopPeriodicRefresh() {
-  if (refreshInterval) {
-    clearInterval(refreshInterval);
-    refreshInterval = null;
-  }
-}
+function renderSessions(payload: SessionsResponse) {
+  latestSessions = payload;
+  sessionListEl.replaceChildren();
 
-function finalizeDisconnect(reason: DisconnectReason) {
-  stopPeriodicRefresh();
-  setButtonIcon(connectBtn, Plus);
-  connectBtn.title = "Connect";
-  setStatus("Disconnected", false);
-  if (reason === "server") {
-    showTerminationNotice();
-  }
-}
-
-function disconnect(reason: DisconnectReason = "manual") {
-  if (!socket) {
-    finalizeDisconnect(reason);
+  if ((payload.sessions ?? []).length === 0) {
+    setSessionsNotice("No sessions");
     return;
   }
-  if (socketState) {
-    socketState.reason = reason;
-  }
-  socket.close();
+
+  sessionEmptyEl.hidden = true;
+  const cards = buildSessionCards(payload, config.session);
+  cards.forEach((card, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "session-item";
+    button.dataset.sessionId = card.id;
+    button.setAttribute("role", "option");
+    if (card.selected) {
+      button.classList.add("session-item--selected");
+      button.setAttribute("aria-current", "true");
+    }
+
+    const top = document.createElement("div");
+    top.className = "session-item__top";
+
+    const dot = document.createElement("span");
+    dot.className = "session-item__dot";
+    if (card.running) {
+      dot.classList.add("session-item__dot--running");
+    }
+    top.appendChild(dot);
+
+    const id = document.createElement("span");
+    id.className = "session-item__id";
+    id.textContent = card.id;
+    top.appendChild(id);
+
+    if (index < 9) {
+      const shortcut = document.createElement("span");
+      shortcut.className = "session-item__shortcut";
+      shortcut.textContent = `\u2318${index + 1}`;
+      top.appendChild(shortcut);
+    }
+
+    const command = document.createElement("div");
+    command.className = "session-item__command";
+    command.textContent = card.command;
+
+    const meta = document.createElement("div");
+    meta.className = "session-item__meta";
+    meta.textContent = `${card.statusLabel} • ${card.pidLabel} • ${card.sizeLabel} • ${card.createdLabel}`;
+
+    button.appendChild(top);
+    button.appendChild(command);
+    button.appendChild(meta);
+    button.addEventListener("click", () => selectSession(card.id));
+    sessionListEl.appendChild(button);
+  });
 }
 
 function buildWsEndpoint(): string | null {
@@ -242,79 +282,18 @@ async function rpcCall(method: string, params?: Record<string, unknown>): Promis
   });
 }
 
-function setSessionsNotice(message: string) {
-  sessionListEl.replaceChildren();
-  sessionEmptyEl.textContent = message;
-  sessionEmptyEl.hidden = false;
-  latestSessions = null;
+function mapSessionsResult(result: any): SessionsResponse {
+  const sessions = Array.isArray(result?.sessions)
+    ? (result.sessions as SessionInfo[])
+    : [];
+  const active =
+    typeof result?.active_session === "string" || result?.active_session === null
+      ? (result.active_session as string | null)
+      : null;
+  return { sessions, active };
 }
 
-function selectSession(targetId: string) {
-  if (normalizedSessionValue(config.session) === targetId) {
-    return;
-  }
-  config.session = targetId;
-  if (socket) {
-    void connect();
-  }
-  if (latestSessions) {
-    renderSessions(latestSessions);
-  }
-}
-
-function renderSessions(payload: SessionsResponse) {
-  latestSessions = payload;
-  sessionListEl.replaceChildren();
-  const sessions = payload.sessions ?? [];
-  const selectedValue = normalizedSessionValue(config.session);
-  const selectedId =
-    selectedValue === "active" ? payload.active ?? null : selectedValue;
-
-  if (sessions.length === 0) {
-    setSessionsNotice("No sessions");
-    return;
-  }
-
-  sessionEmptyEl.hidden = true;
-
-  sessions.forEach((session, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "session-item";
-    button.dataset.sessionId = session.id;
-    button.setAttribute("role", "option");
-
-    if (selectedId && session.id === selectedId) {
-      button.classList.add("session-item--selected");
-      button.setAttribute("aria-current", "true");
-    }
-
-    const dot = document.createElement("span");
-    dot.className = "session-item__dot";
-    if (session.running) {
-      dot.classList.add("session-item__dot--running");
-    }
-
-    const id = document.createElement("span");
-    id.className = "session-item__id";
-    id.textContent = session.id;
-
-    button.appendChild(dot);
-    button.appendChild(id);
-
-    if (index < 9) {
-      const shortcut = document.createElement("span");
-      shortcut.className = "session-item__shortcut";
-      shortcut.textContent = `\u2318${index + 1}`;
-      button.appendChild(shortcut);
-    }
-
-    button.addEventListener("click", () => selectSession(session.id));
-    sessionListEl.appendChild(button);
-  });
-}
-
-async function refreshSessions() {
+async function refreshSessionsViaRpc() {
   if (sessionsLoading) {
     return;
   }
@@ -331,16 +310,19 @@ async function refreshSessions() {
   }
 
   try {
-    const result = (await rpcCall("sessions")) as {
-      sessions?: SessionInfo[];
-      active_session?: string | null;
-    };
-    renderSessions({
-      sessions: Array.isArray(result.sessions) ? result.sessions : [],
-      active: result.active_session ?? null,
-    });
+    const result = await rpcCall("sessions");
+    const payload = mapSessionsResult(result);
+    applySessionsFeedState(
+      reduceSessionsFeedState(sessionsFeedState, {
+        type: "poll_payload",
+        payload,
+      }),
+    );
+    renderSessions(payload);
   } catch {
-    setSessionsNotice("Failed to load");
+    if (!latestSessions) {
+      setSessionsNotice("Failed to load");
+    }
   } finally {
     sessionsLoading = false;
     sessionListEl.setAttribute("aria-busy", "false");
@@ -348,6 +330,179 @@ async function refreshSessions() {
       sessionsRefreshBtn.disabled = false;
     }
   }
+}
+
+function stopPollingFallback() {
+  if (!pollInterval) {
+    return;
+  }
+  clearInterval(pollInterval);
+  pollInterval = null;
+}
+
+function startPollingFallback() {
+  if (pollInterval) {
+    return;
+  }
+  void refreshSessionsViaRpc();
+  pollInterval = setInterval(() => {
+    void refreshSessionsViaRpc();
+  }, POLL_REFRESH_INTERVAL_MS);
+}
+
+function activatePollingFallback() {
+  applySessionsFeedState(reduceSessionsFeedState(sessionsFeedState, { type: "stream_failure" }));
+  startPollingFallback();
+}
+
+function stopSessionsFeed() {
+  if (sessionsSocket && sessionsSocketState) {
+    sessionsSocketState.reason = "manual";
+    sessionsSocket.close();
+  }
+  sessionsSocket = null;
+  sessionsSocketState = null;
+}
+
+function handleSessionsStreamResult(result: any): void {
+  if (!result || typeof result !== "object") {
+    return;
+  }
+  if (result.event !== "ready" && result.event !== "sessions") {
+    return;
+  }
+
+  const payload = mapSessionsResult({
+    sessions: result.sessions,
+    active_session: result.active_session ?? null,
+  });
+  applySessionsFeedState(
+    reduceSessionsFeedState(sessionsFeedState, {
+      type: "stream_payload",
+      payload,
+    }),
+  );
+  renderSessions(payload);
+}
+
+function startSessionsFeed() {
+  stopSessionsFeed();
+
+  const endpoint = buildWsEndpoint();
+  if (!endpoint) {
+    activatePollingFallback();
+    setSessionsNotice("Waiting for daemon...");
+    return;
+  }
+
+  const ws = new WebSocket(endpoint);
+  const streamId = nextRequestId();
+  const state = {
+    reason: null as "manual" | "error" | "server" | null,
+    streamId,
+  };
+  sessionsSocket = ws;
+  sessionsSocketState = state;
+
+  ws.addEventListener("open", () => {
+    if (sessionsSocket !== ws || !sessionsSocketState) {
+      return;
+    }
+    const payload = {
+      jsonrpc: "2.0",
+      id: sessionsSocketState.streamId,
+      method: "flightdeck_stream",
+      params: {
+        interval_ms: FLIGHTDECK_STREAM_INTERVAL_MS,
+      },
+    };
+    ws.send(JSON.stringify(payload));
+    stopPollingFallback();
+    applySessionsFeedState(reduceSessionsFeedState(sessionsFeedState, { type: "stream_recovered" }));
+  });
+
+  ws.addEventListener("message", (event) => {
+    if (sessionsSocket !== ws || !sessionsSocketState || typeof event.data !== "string") {
+      return;
+    }
+
+    let response: RpcResponse;
+    try {
+      response = JSON.parse(event.data) as RpcResponse;
+    } catch {
+      return;
+    }
+
+    if (response.id !== sessionsSocketState.streamId) {
+      return;
+    }
+    if (response.error) {
+      state.reason = "error";
+      activatePollingFallback();
+      ws.close();
+      return;
+    }
+
+    handleSessionsStreamResult(response.result);
+  });
+
+  ws.addEventListener("close", () => {
+    if (sessionsSocket !== ws) {
+      return;
+    }
+    const reason = state.reason ?? "server";
+    sessionsSocket = null;
+    sessionsSocketState = null;
+    if (reason !== "manual") {
+      activatePollingFallback();
+    }
+  });
+
+  ws.addEventListener("error", () => {
+    if (sessionsSocket !== ws) {
+      return;
+    }
+    state.reason = "error";
+    activatePollingFallback();
+    ws.close();
+  });
+}
+
+function livePreviewStreamParams(): Record<string, string> | undefined {
+  const session = normalizedSessionValue(config.session);
+  if (session === "active") {
+    return undefined;
+  }
+  return { session };
+}
+
+function showTerminationNotice() {
+  const next = reduceTerminalStreamState(terminalState, { type: "stream_closed" });
+  const shouldWrite = next.closedNoticeCount > terminalState.closedNoticeCount;
+  terminalState = next;
+  if (shouldWrite) {
+    term.write("\r\n\x1b[90m[session terminated]\x1b[0m\r\n");
+  }
+}
+
+function finalizeTerminalDisconnect(reason: DisconnectReason) {
+  setButtonIcon(connectBtn, Plus);
+  connectBtn.title = "Connect";
+  setStatus("Disconnected", false);
+  if (reason === "server") {
+    showTerminationNotice();
+  }
+}
+
+function disconnectTerminal(reason: DisconnectReason = "manual") {
+  if (!terminalSocket) {
+    finalizeTerminalDisconnect(reason);
+    return;
+  }
+  if (terminalSocketState) {
+    terminalSocketState.reason = reason;
+  }
+  terminalSocket.close();
 }
 
 function decodeBase64(data: string): string {
@@ -359,7 +514,7 @@ function decodeBase64(data: string): string {
   return decoder.decode(bytes, { stream: true });
 }
 
-function handleStreamPayload(payload: any) {
+function handleTerminalPayload(payload: any) {
   if (!payload || typeof payload !== "object") {
     return;
   }
@@ -372,9 +527,9 @@ function handleStreamPayload(payload: any) {
       break;
     case "init":
       if (payload.init) {
+        terminalState = reduceTerminalStreamState(terminalState, { type: "reset_stream" });
         term.reset();
         term.write(payload.init);
-        closedNoticeSent = false;
       }
       break;
     case "output":
@@ -391,7 +546,9 @@ function handleStreamPayload(payload: any) {
       break;
     case "closed":
       showTerminationNotice();
-      void refreshSessions();
+      if (sessionsFeedState.mode === "poll") {
+        void refreshSessionsViaRpc();
+      }
       break;
     default:
       break;
@@ -399,15 +556,14 @@ function handleStreamPayload(payload: any) {
 }
 
 async function connect() {
-  void refreshSessions();
   const endpoint = buildWsEndpoint();
   if (!endpoint) {
     setStatus("No daemon", false);
     return;
   }
 
-  disconnect("reconnect");
-  closedNoticeSent = false;
+  disconnectTerminal("reconnect");
+  terminalState = reduceTerminalStreamState(terminalState, { type: "reset_stream" });
   setStatus("Connecting...", false);
 
   const ws = new WebSocket(endpoint);
@@ -416,34 +572,33 @@ async function connect() {
     reason: null as DisconnectReason | null,
     streamId,
   };
-  socket = ws;
-  socketState = state;
+  terminalSocket = ws;
+  terminalSocketState = state;
   decoder = new TextDecoder();
 
   ws.addEventListener("open", () => {
-    if (socket !== ws || !socketState) {
+    if (terminalSocket !== ws || !terminalSocketState) {
       return;
     }
 
     const payload: Record<string, unknown> = {
       jsonrpc: "2.0",
-      id: socketState.streamId,
+      id: terminalSocketState.streamId,
       method: "live_preview_stream",
     };
-    const params = livePreviewStreamParams();
-    if (params) {
-      payload.params = params;
+    const streamParams = livePreviewStreamParams();
+    if (streamParams) {
+      payload.params = streamParams;
     }
     ws.send(JSON.stringify(payload));
 
     setStatus("Connected", true);
     setButtonIcon(connectBtn, X);
     connectBtn.title = "Disconnect";
-    startPeriodicRefresh();
   });
 
   ws.addEventListener("message", (event) => {
-    if (socket !== ws || typeof event.data !== "string" || !socketState) {
+    if (terminalSocket !== ws || typeof event.data !== "string" || !terminalSocketState) {
       return;
     }
 
@@ -454,67 +609,85 @@ async function connect() {
       return;
     }
 
-    if (response.id !== socketState.streamId) {
+    if (response.id !== terminalSocketState.streamId) {
       return;
     }
-
     if (response.error) {
       setStatus(`Error: ${response.error.message ?? "rpc error"}`, false);
-      disconnect("error");
+      disconnectTerminal("error");
       return;
     }
-
-    handleStreamPayload(response.result);
+    handleTerminalPayload(response.result);
   });
 
   ws.addEventListener("close", () => {
-    if (socket !== ws) {
+    if (terminalSocket !== ws) {
       return;
     }
     const reason = state.reason ?? "server";
-    socket = null;
-    socketState = null;
-    finalizeDisconnect(reason);
+    terminalSocket = null;
+    terminalSocketState = null;
+    finalizeTerminalDisconnect(reason);
   });
 
   ws.addEventListener("error", () => {
-    if (socket !== ws) {
+    if (terminalSocket !== ws) {
       return;
     }
-    disconnect("error");
+    disconnectTerminal("error");
   });
 }
 
+function selectSession(targetId: string) {
+  if (normalizedSessionValue(config.session) === targetId) {
+    return;
+  }
+  applySessionsFeedState(
+    reduceSessionsFeedState(sessionsFeedState, {
+      type: "select_session",
+      sessionId: targetId,
+    }),
+  );
+  terminalState = reduceTerminalStreamState(terminalState, {
+    type: "switch_session",
+    sessionId: targetId,
+  });
+  if (terminalSocket) {
+    void connect();
+  }
+  if (latestSessions) {
+    renderSessions(latestSessions);
+  }
+}
+
 connectBtn.addEventListener("click", () => {
-  if (socket) {
-    disconnect("manual");
+  if (terminalSocket) {
+    disconnectTerminal("manual");
   } else {
     void connect();
   }
 });
 
 sessionsRefreshBtn?.addEventListener("click", () => {
-  void refreshSessions();
+  void refreshSessionsViaRpc();
 });
 
-document.addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key >= "1" && e.key <= "9") {
-    const index = parseInt(e.key, 10) - 1;
-    const sessions = latestSessions?.sessions ?? [];
-    if (index < sessions.length) {
-      e.preventDefault();
-      selectSession(sessions[index].id);
+document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key >= "1" && event.key <= "9") {
+    const index = parseInt(event.key, 10) - 1;
+    const orderedSessions = sortSessionsForFlightdeck(latestSessions?.sessions ?? []);
+    if (index < orderedSessions.length) {
+      event.preventDefault();
+      selectSession(orderedSessions[index].id);
     }
   }
 });
 
 async function init() {
-  const auto = params.get("auto");
-  if (auto === "1" || auto === "true") {
+  startSessionsFeed();
+  if (shouldAutoConnect(params.get("auto"))) {
     void connect();
-    return;
   }
-  void refreshSessions();
 }
 
 void init();

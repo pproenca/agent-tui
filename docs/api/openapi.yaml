@@ -47,6 +47,9 @@ paths:
       summary: Live preview stream (WebSocket)
       description: |
         WebSocket upgrade endpoint. Use AsyncAPI for the detailed stream schema.
+        JSON-RPC stream methods supported on this socket:
+        - `live_preview_stream` (single-session terminal output)
+        - `flightdeck_stream` (session inventory updates for the web flightdeck)
       parameters:
         - $ref: '#/components/parameters/session'
         - $ref: '#/components/parameters/encoding'

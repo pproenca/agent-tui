@@ -1509,6 +1509,7 @@ mod stream_tests {
 
 #[cfg(test)]
 mod pump_tests {
+    use super::PUMP_FLUSH_TIMEOUT;
     use super::Session;
     use super::StreamCursor;
     use super::spawn_pump;
@@ -1520,15 +1521,15 @@ mod pump_tests {
     use std::time::Instant;
 
     #[cfg(unix)]
-    #[test]
-    fn session_pump_streams_output_into_buffer() {
-        let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
+    fn run_pump_stream_output_case() {
+        const OUTPUT_MARKER: &str = "hi";
+        let args = vec!["-c".to_string(), "printf 'hi\\n'; sleep 0.02".to_string()];
         let shell = if Path::new("/bin/sh").exists() {
             "/bin/sh"
         } else {
             "sh"
         };
-        let pty = PtyHandle::spawn(shell, &args, None, None, 80, 24).unwrap();
+        let pty = PtyHandle::spawn(shell, &args, Some("/tmp"), None, 80, 24).unwrap();
         let session = Session::new("test-session".into(), "sh".to_string(), pty, 80, 24);
         let session = Arc::new(Mutex::new(session));
 
@@ -1540,25 +1541,51 @@ mod pump_tests {
 
         let reader = { session.lock().unwrap().stream_reader() };
         let mut cursor = StreamCursor::default();
-        let deadline = Instant::now() + Duration::from_millis(500);
+        let deadline = Instant::now() + Duration::from_millis(1500);
         let mut collected = Vec::new();
 
         while Instant::now() < deadline {
-            let read = reader.read(&mut cursor, 64, 10).unwrap();
+            let ack = { session.lock().unwrap().request_flush() };
+            if let Some(ack) = ack {
+                let _ = ack.recv_timeout(PUMP_FLUSH_TIMEOUT);
+            }
+
+            let read = reader.read(&mut cursor, 4096, 50).unwrap();
             if !read.data.is_empty() {
                 collected.extend_from_slice(&read.data);
             }
-            if String::from_utf8_lossy(&collected).contains("hi") {
+            if String::from_utf8_lossy(&collected).contains(OUTPUT_MARKER) {
+                break;
+            }
+            if read.closed && cursor.seq >= read.latest_cursor.seq {
                 break;
             }
         }
 
-        assert!(String::from_utf8_lossy(&collected).contains("hi"));
+        assert!(
+            String::from_utf8_lossy(&collected).contains(OUTPUT_MARKER),
+            "stream buffer did not contain expected marker; collected={:?}",
+            String::from_utf8_lossy(&collected)
+        );
 
         let join = { session.lock().unwrap().shutdown_pump() };
         let _ = session.lock().unwrap().kill();
         if let Some(join) = join {
             let _ = join.join();
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn session_pump_streams_output_into_buffer() {
+        run_pump_stream_output_case();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn session_pump_streams_output_into_buffer_stress() {
+        for _ in 0..20 {
+            run_pump_stream_output_case();
         }
     }
 }

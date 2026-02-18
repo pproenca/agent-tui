@@ -30,6 +30,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use walkdir::WalkDir;
 
+mod tui_explorer;
+
 #[derive(Parser, Debug)]
 #[command(name = "xtask")]
 #[command(about = "Rust workspace task runner")]
@@ -53,6 +55,10 @@ enum Commands {
     Dist {
         #[command(subcommand)]
         command: DistCommands,
+    },
+    TuiExplorer {
+        #[command(subcommand)]
+        command: tui_explorer::TuiExplorerCommands,
     },
 }
 
@@ -177,6 +183,9 @@ fn run() -> Result<()> {
                 &path_from_root(&root, &output),
             ),
         },
+        Commands::TuiExplorer { command } => {
+            std::process::exit(tui_explorer::run(&root, command));
+        }
     }
 }
 
@@ -707,6 +716,10 @@ fn ci(root: &Path) -> Result<()> {
 
     run_step("Running tests", || {
         run_command("cargo", &["test", "--workspace"], Some(root))
+    })?;
+
+    run_step("Running tui-explorer tests", || {
+        run_command("bash", &["../scripts/check-tui-explorer.sh"], Some(root))
     })?;
 
     if has_command("cargo-machete") {

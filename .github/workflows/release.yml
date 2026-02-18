@@ -6,14 +6,15 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to release (e.g., 0.2.0)'
+      bump:
+        description: 'Semantic version bump for the next release'
         required: true
-        type: string
-      ref:
-        description: 'Git ref to release (defaults to refs/tags/v<version>)'
-        required: false
-        type: string
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
       dry_run:
         description: 'Dry run (skip publishing)'
         required: false
@@ -21,7 +22,7 @@ on:
         default: false
 
 concurrency:
-  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -31,6 +32,7 @@ env:
 jobs:
   validate:
     name: Validate Release
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -48,11 +50,7 @@ jobs:
         id: resolve
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            REF_INPUT="${{ inputs.ref }}"
-            if [ -z "$REF_INPUT" ]; then
-              REF_INPUT="refs/tags/v${{ inputs.version }}"
-            fi
-            echo "ref=$REF_INPUT" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.ref }}" >> "$GITHUB_OUTPUT"
             echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
           else
             echo "ref=${{ github.ref }}" >> "$GITHUB_OUTPUT"
@@ -78,11 +76,44 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            INPUT_VERSION="${{ inputs.version }}"
-            VERSION="$INPUT_VERSION"
+            BUMP="${{ inputs.bump }}"
+            LATEST_TAG="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
+            if [ -n "$LATEST_TAG" ]; then
+              BASE_VERSION="${LATEST_TAG#v}"
+            else
+              BASE_VERSION="$(cargo run -p xtask -- version current)"
+            fi
+            BASE_VERSION="${BASE_VERSION%%[-+]*}"
+
+            if ! [[ "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Cannot bump non-semver base version: $BASE_VERSION"
+              exit 1
+            fi
+
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+            case "$BUMP" in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                ;;
+              *)
+                echo "::error::Unsupported bump type: $BUMP"
+                exit 1
+                ;;
+            esac
+
+            VERSION="${MAJOR}.${MINOR}.${PATCH}"
             TAG_NAME="v$VERSION"
-            if ! git tag --points-at HEAD --list "$TAG_NAME" | grep -q "$TAG_NAME"; then
-              echo "::error::Tag $TAG_NAME does not point at the selected ref"
+            if git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+              echo "::error::Tag $TAG_NAME already exists"
               exit 1
             fi
           else
@@ -235,6 +266,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.validate.outputs.tag_name }}
+          target_commitish: ${{ needs.validate.outputs.head_sha }}
           files: cli/release/*
           generate_release_notes: true
           draft: false

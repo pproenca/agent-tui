@@ -697,6 +697,7 @@ impl Session {
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), SessionError> {
         self.pty.resize(cols, rows)?;
         self.terminal.resize(cols, rows);
+        self.record_command_timeline_entry("resize", format!("{cols}x{rows}"));
         self.stream.notify();
         Ok(())
     }

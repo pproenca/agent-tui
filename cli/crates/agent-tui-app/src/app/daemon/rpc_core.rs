@@ -1102,6 +1102,65 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn live_preview_stream_emits_command_events_for_resize() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
+            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
+        let core = Arc::new(RpcCore::with_config(
+            crate::infra::daemon::DaemonConfig::default(),
+            shutdown,
+            notifier,
+        ));
+
+        let spawn_result = core.session_manager.spawn(
+            "sh",
+            &[],
+            None,
+            None,
+            Some("timeline-resize-session".to_string()),
+            80,
+            24,
+        );
+        if spawn_result.is_err() {
+            return;
+        }
+
+        let (mut writer, handle) = RecordingWriter::new();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let request = make_request(Some(r#"{"session":"timeline-resize-session"}"#));
+
+        let core_for_stream = Arc::clone(&core);
+        let cancelled_for_stream = Arc::clone(&cancelled);
+        let join = std::thread::spawn(move || {
+            let _ = core_for_stream.handle_stream(
+                &mut writer,
+                request,
+                StreamKind::LivePreview,
+                Some(cancelled_for_stream.as_ref()),
+            );
+        });
+
+        let _ = handle.wait_for_event("ready", Duration::from_secs(2));
+
+        if let Ok(session) = core.session_manager.get("timeline-resize-session") {
+            let mut guard = session.lock().unwrap_or_else(|poison| poison.into_inner());
+            let _ = guard.resize(120, 40);
+        }
+
+        let command = handle.wait_for_event("command", Duration::from_secs(2));
+        cancelled.store(true, Ordering::Relaxed);
+        let _ = join.join();
+        core.shutdown_all_sessions();
+
+        let Some(command) = command else {
+            panic!("live preview stream did not emit command event for resize");
+        };
+        assert_eq!(command["result"]["kind"], "resize");
+        assert_eq!(command["result"]["value"], "120x40");
+    }
+
     #[test]
     fn flightdeck_stream_emits_ready_with_sessions_payload() {
         let shutdown = Arc::new(AtomicBool::new(false));

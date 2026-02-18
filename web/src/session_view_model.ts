@@ -20,6 +20,7 @@ export type SessionCardViewModel = {
   sizeLabel: string;
   createdLabel: string;
   facts: string[];
+  detailLabel: string;
   running: boolean;
   selected: boolean;
 };
@@ -131,7 +132,8 @@ export function buildSessionCards(
       pidLabel,
       sizeLabel,
       createdLabel,
-      facts: [pidLabel, sizeLabel, createdLabel],
+      facts: [pidLabel],
+      detailLabel: `${sizeLabel} · ${createdLabel}`,
       running: session.running,
       selected: selectedId === session.id,
     };

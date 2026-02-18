@@ -89,7 +89,7 @@ describe("session formatting", () => {
     expect(cards[2]?.statusLabel).toBe("stopped");
     expect(cards[0]?.pidLabel).toBe("pid 333");
     expect(cards[0]?.sizeLabel).toBe("80x24");
-    expect(cards[0]?.facts).toEqual(["pid 333", "80x24", "2026-02-18 11:00Z"]);
+    expect(cards[0]?.facts).toEqual(["pid 333"]);
   });
 });
 

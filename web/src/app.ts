@@ -22,12 +22,21 @@ const ICON_ATTRS = { width: 16, height: 16, "stroke-width": 2 };
 const RPC_TIMEOUT_MS = 5000;
 const POLL_REFRESH_INTERVAL_MS = 5000;
 const FLIGHTDECK_STREAM_INTERVAL_MS = 1000;
+const LIVE_PREVIEW_RESIZE_DEBOUNCE_MS = 120;
+const MAX_COMMAND_TIMELINE_ITEMS = 200;
 
 function setButtonIcon(button: HTMLButtonElement, iconDef: IconNode): void {
-  button.replaceChildren(createElement(iconDef, ICON_ATTRS));
+  const iconSlot = button.querySelector(".button__icon");
+  const iconEl = createElement(iconDef, ICON_ATTRS);
+  if (iconSlot) {
+    iconSlot.replaceChildren(iconEl);
+    return;
+  }
+  button.replaceChildren(iconEl);
 }
 
 const connectBtn = document.getElementById("connectBtn") as HTMLButtonElement;
+const connectBtnLabel = document.getElementById("connectBtnLabel") as HTMLSpanElement | null;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const statusText = statusEl.querySelector(".status__text") as HTMLSpanElement;
 const sessionListEl = document.getElementById("sessionList") as HTMLDivElement;
@@ -39,8 +48,25 @@ const sessionsRefreshBtn = document.getElementById("sessionsRefresh") as
 const sessionsModeBadgeEl = document.getElementById("sessionsModeBadge") as
   | HTMLSpanElement
   | null;
+const commandTimelineEl = document.getElementById("commandTimeline") as HTMLDivElement | null;
+const commandTimelineEmptyEl = document.getElementById("commandTimelineEmpty") as
+  | HTMLDivElement
+  | null;
+const commandTimelineCountEl = document.getElementById("commandTimelineCount") as
+  | HTMLSpanElement
+  | null;
 
-setButtonIcon(connectBtn, Plus);
+function setConnectButtonState(connected: boolean): void {
+  const label = connected ? "Disconnect" : "Connect";
+  setButtonIcon(connectBtn, connected ? X : Plus);
+  connectBtn.title = label;
+  connectBtn.setAttribute("aria-label", label);
+  if (connectBtnLabel) {
+    connectBtnLabel.textContent = label;
+  }
+}
+
+setConnectButtonState(false);
 if (sessionsRefreshBtn) {
   setButtonIcon(sessionsRefreshBtn, RefreshCw);
 }
@@ -82,10 +108,103 @@ const term = new Terminal({
   },
 });
 const fitAddon = new FitAddon();
+const terminalViewportEl = document.getElementById("terminal") as HTMLDivElement;
+let livePreviewTerminalSize: { cols: number; rows: number } | null = null;
+let pendingLivePreviewResize: { cols: number; rows: number } | null = null;
+let livePreviewResizeTimer: ReturnType<typeof setTimeout> | null = null;
+
+function fitTerminalViewport(): void {
+  fitAddon.fit();
+}
+
+function clearScheduledLivePreviewResize(): void {
+  if (!livePreviewResizeTimer) {
+    return;
+  }
+  clearTimeout(livePreviewResizeTimer);
+  livePreviewResizeTimer = null;
+}
+
+function setLivePreviewTerminalSize(cols: number, rows: number): void {
+  livePreviewTerminalSize = { cols, rows };
+  if (
+    pendingLivePreviewResize &&
+    pendingLivePreviewResize.cols === cols &&
+    pendingLivePreviewResize.rows === rows
+  ) {
+    pendingLivePreviewResize = null;
+  }
+  term.resize(cols, rows);
+}
+
+function clearLivePreviewTerminalSize(): void {
+  clearScheduledLivePreviewResize();
+  pendingLivePreviewResize = null;
+  livePreviewTerminalSize = null;
+  fitTerminalViewport();
+}
+
+async function syncLivePreviewResizeToDaemon(): Promise<void> {
+  if (!terminalSocket || !connectedTerminalSessionId) {
+    return;
+  }
+  const proposed = fitAddon.proposeDimensions();
+  if (!proposed) {
+    return;
+  }
+  const cols = Math.max(2, Math.floor(proposed.cols));
+  const rows = Math.max(1, Math.floor(proposed.rows));
+  if (
+    livePreviewTerminalSize &&
+    livePreviewTerminalSize.cols === cols &&
+    livePreviewTerminalSize.rows === rows
+  ) {
+    return;
+  }
+  if (pendingLivePreviewResize && pendingLivePreviewResize.cols === cols && pendingLivePreviewResize.rows === rows) {
+    return;
+  }
+  pendingLivePreviewResize = { cols, rows };
+  try {
+    await rpcCall("resize", {
+      session: connectedTerminalSessionId,
+      cols,
+      rows,
+    });
+  } catch {
+    pendingLivePreviewResize = null;
+  }
+}
+
+function requestLivePreviewResize(): void {
+  if (!terminalSocket || !connectedTerminalSessionId) {
+    return;
+  }
+  clearScheduledLivePreviewResize();
+  livePreviewResizeTimer = setTimeout(() => {
+    livePreviewResizeTimer = null;
+    void syncLivePreviewResizeToDaemon();
+  }, LIVE_PREVIEW_RESIZE_DEBOUNCE_MS);
+}
+
 term.loadAddon(fitAddon);
-term.open(document.getElementById("terminal") as HTMLDivElement);
-fitAddon.fit();
-window.addEventListener("resize", () => fitAddon.fit());
+term.open(terminalViewportEl);
+fitTerminalViewport();
+window.addEventListener("resize", () => {
+  if (livePreviewTerminalSize) {
+    requestLivePreviewResize();
+    return;
+  }
+  fitTerminalViewport();
+});
+if (typeof ResizeObserver !== "undefined") {
+  const observer = new ResizeObserver(() => {
+    if (livePreviewTerminalSize) {
+      requestLivePreviewResize();
+    }
+  });
+  observer.observe(terminalViewportEl);
+}
 
 type DisconnectReason = TerminalDisconnectReason;
 type RpcResponse = {
@@ -148,6 +267,54 @@ function setSessionsNotice(message: string) {
   latestSessions = null;
 }
 
+function updateCommandTimelineState(): void {
+  const count = commandTimelineEl?.childElementCount ?? 0;
+  if (commandTimelineCountEl) {
+    commandTimelineCountEl.textContent = String(count);
+  }
+  if (commandTimelineEmptyEl) {
+    commandTimelineEmptyEl.hidden = count > 0;
+  }
+}
+
+function resetCommandTimeline(): void {
+  commandTimelineEl?.replaceChildren();
+  updateCommandTimelineState();
+}
+
+function appendCommandTimelineEntry(kind: string, value: string, time: number | null): void {
+  if (!commandTimelineEl) {
+    return;
+  }
+
+  const item = document.createElement("div");
+  item.className = "timeline__item";
+
+  const kindEl = document.createElement("span");
+  kindEl.className = "timeline__item-kind";
+  kindEl.textContent = kind;
+
+  const valueEl = document.createElement("span");
+  valueEl.className = "timeline__item-value";
+  valueEl.textContent = value;
+
+  item.appendChild(kindEl);
+  item.appendChild(valueEl);
+
+  if (typeof time === "number" && Number.isFinite(time)) {
+    const timeEl = document.createElement("span");
+    timeEl.className = "timeline__item-time";
+    timeEl.textContent = `+${time.toFixed(2)}s`;
+    item.appendChild(timeEl);
+  }
+
+  commandTimelineEl.appendChild(item);
+  while (commandTimelineEl.childElementCount > MAX_COMMAND_TIMELINE_ITEMS) {
+    commandTimelineEl.firstElementChild?.remove();
+  }
+  updateCommandTimelineState();
+}
+
 function renderSessions(payload: SessionsResponse) {
   latestSessions = payload;
   sessionListEl.replaceChildren();
@@ -162,15 +329,19 @@ function renderSessions(payload: SessionsResponse) {
   if (sessionCountEl) {
     sessionCountEl.textContent = String(cards.length);
   }
+  let selectedOptionId: string | null = null;
   cards.forEach((card, index) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "session-item";
+    button.id = `session-option-${card.id}`;
     button.dataset.sessionId = card.id;
     button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", card.selected ? "true" : "false");
+    button.setAttribute("aria-label", `${card.statusLabel} ${card.id} ${card.command}`);
     if (card.selected) {
       button.classList.add("session-item--selected");
-      button.setAttribute("aria-current", "true");
+      selectedOptionId = button.id;
     }
 
     const top = document.createElement("div");
@@ -191,7 +362,15 @@ function renderSessions(payload: SessionsResponse) {
     statusLabel.textContent = card.statusLabel;
     status.appendChild(statusLabel);
 
-    top.appendChild(status);
+    const badges = document.createElement("div");
+    badges.className = "session-item__badges";
+
+    if (card.selected) {
+      const selectedBadge = document.createElement("span");
+      selectedBadge.className = "session-item__selected";
+      selectedBadge.textContent = "selected";
+      badges.appendChild(selectedBadge);
+    }
 
     const id = document.createElement("div");
     id.className = "session-item__id";
@@ -201,7 +380,12 @@ function renderSessions(payload: SessionsResponse) {
       const shortcut = document.createElement("span");
       shortcut.className = "session-item__shortcut";
       shortcut.textContent = `\u2318${index + 1}`;
-      top.appendChild(shortcut);
+      badges.appendChild(shortcut);
+    }
+
+    top.appendChild(status);
+    if (badges.childElementCount > 0) {
+      top.appendChild(badges);
     }
 
     const command = document.createElement("div");
@@ -209,13 +393,24 @@ function renderSessions(payload: SessionsResponse) {
     command.textContent = card.command;
 
     const meta = document.createElement("div");
-    meta.className = "session-item__facts";
+    meta.className = "session-item__meta";
+
+    const facts = document.createElement("div");
+    facts.className = "session-item__facts";
     card.facts.forEach((fact) => {
       const factEl = document.createElement("span");
       factEl.className = "session-item__fact";
       factEl.textContent = fact;
-      meta.appendChild(factEl);
+      facts.appendChild(factEl);
     });
+    meta.appendChild(facts);
+
+    if (card.detailLabel) {
+      const detail = document.createElement("span");
+      detail.className = "session-item__detail";
+      detail.textContent = card.detailLabel;
+      meta.appendChild(detail);
+    }
 
     button.appendChild(top);
     button.appendChild(id);
@@ -224,6 +419,11 @@ function renderSessions(payload: SessionsResponse) {
     button.addEventListener("click", () => selectSession(card.id));
     sessionListEl.appendChild(button);
   });
+  if (selectedOptionId) {
+    sessionListEl.setAttribute("aria-activedescendant", selectedOptionId);
+  } else {
+    sessionListEl.removeAttribute("aria-activedescendant");
+  }
 }
 
 function buildWsEndpoint(): string | null {
@@ -526,8 +726,8 @@ function showTerminationNotice() {
 function finalizeTerminalDisconnect(reason: DisconnectReason) {
   connectedTerminalSessionId = null;
   lastTerminalDisconnectReason = reason;
-  setButtonIcon(connectBtn, Plus);
-  connectBtn.title = "Connect";
+  clearLivePreviewTerminalSize();
+  setConnectButtonState(false);
   setStatus("Disconnected", false);
   if (reason === "server") {
     showTerminationNotice();
@@ -565,7 +765,8 @@ function handleTerminalPayload(payload: any) {
         connectedTerminalSessionId = payload.session_id;
       }
       if (payload.cols && payload.rows) {
-        term.resize(payload.cols, payload.rows);
+        setLivePreviewTerminalSize(payload.cols, payload.rows);
+        requestLivePreviewResize();
       }
       break;
     case "init":
@@ -584,13 +785,22 @@ function handleTerminalPayload(payload: any) {
       break;
     case "resize":
       if (payload.cols && payload.rows) {
-        term.resize(payload.cols, payload.rows);
+        setLivePreviewTerminalSize(payload.cols, payload.rows);
       }
       break;
     case "closed":
       showTerminationNotice();
       if (sessionsFeedState.mode === "poll") {
         void refreshSessionsViaRpc();
+      }
+      break;
+    case "command":
+      if (typeof payload.kind === "string" && typeof payload.value === "string") {
+        appendCommandTimelineEntry(
+          payload.kind,
+          payload.value,
+          typeof payload.time === "number" ? payload.time : null,
+        );
       }
       break;
     default:
@@ -609,7 +819,9 @@ async function connect() {
   lastTerminalDisconnectReason = null;
   connectedTerminalSessionId = null;
   terminalState = reduceTerminalStreamState(terminalState, { type: "reset_stream" });
+  resetCommandTimeline();
   setStatus("Connecting...", false);
+  clearLivePreviewTerminalSize();
 
   const ws = new WebSocket(endpoint);
   const streamId = nextRequestId();
@@ -638,8 +850,7 @@ async function connect() {
     ws.send(JSON.stringify(payload));
 
     setStatus("Connected", true);
-    setButtonIcon(connectBtn, X);
-    connectBtn.title = "Disconnect";
+    setConnectButtonState(true);
   });
 
   ws.addEventListener("message", (event) => {
@@ -702,6 +913,7 @@ function selectSession(targetId: string) {
     type: "switch_session",
     sessionId: targetId,
   });
+  resetCommandTimeline();
   if (terminalSocket) {
     void connect();
   }
@@ -734,6 +946,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 async function init() {
+  updateCommandTimelineState();
   startSessionsFeed();
   if (autoConnectEnabled) {
     void connect();

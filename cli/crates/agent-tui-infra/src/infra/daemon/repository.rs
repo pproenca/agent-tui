@@ -68,7 +68,7 @@ impl SessionOps for SessionHandleImpl {
     }
 
     fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError> {
-        let session_guard = mutex_lock_or_recover(&self.inner);
+        let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.pty_write(data)
     }
 
@@ -94,12 +94,12 @@ impl SessionOps for SessionHandleImpl {
     }
 
     fn keystroke(&self, key: &str) -> Result<(), SessionError> {
-        let session_guard = mutex_lock_or_recover(&self.inner);
+        let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.keystroke(key)
     }
 
     fn type_text(&self, text: &str) -> Result<(), SessionError> {
-        let session_guard = mutex_lock_or_recover(&self.inner);
+        let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.type_text(text)
     }
 

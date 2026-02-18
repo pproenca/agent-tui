@@ -21,7 +21,16 @@
             <span class="status__dot"></span>
             <span class="status__text">Disconnected</span>
           </div>
-          <button id="connectBtn" class="button button--icon" type="button" title="Connect"></button>
+          <button
+            id="connectBtn"
+            class="button button--icon"
+            type="button"
+            title="Connect"
+            aria-label="Connect"
+          >
+            <span class="button__icon" aria-hidden="true"></span>
+            <span id="connectBtnLabel" class="button__label">Connect</span>
+          </button>
         </div>
 
         <div class="sidebar__section">
@@ -31,7 +40,16 @@
               <span id="sessionCount" class="sessions-count">0</span>
             </div>
             <span id="sessionsModeBadge" class="sessions-mode-badge" hidden>Live stream</span>
-            <button id="sessionsRefresh" class="button button--icon" type="button" title="Refresh"></button>
+            <button
+              id="sessionsRefresh"
+              class="button button--icon"
+              type="button"
+              title="Refresh"
+              aria-label="Refresh"
+            >
+              <span class="button__icon" aria-hidden="true"></span>
+              <span id="sessionsRefreshLabel" class="button__label">Refresh</span>
+            </button>
           </div>
           <div
             id="sessionList"
@@ -46,6 +64,14 @@
       <main class="main">
         <section class="terminal">
           <div id="terminal" class="terminal__viewport"></div>
+        </section>
+        <section class="timeline" aria-live="polite">
+          <div class="timeline__header">
+            <h2 class="timeline__title">Command timeline</h2>
+            <span id="commandTimelineCount" class="timeline__count">0</span>
+          </div>
+          <div id="commandTimeline" class="timeline__list"></div>
+          <div id="commandTimelineEmpty" class="timeline__empty">No command activity yet.</div>
         </section>
       </main>
     </div>

@@ -52,6 +52,7 @@ channels:
           - $ref: '#/components/messages/Init'
           - $ref: '#/components/messages/OutputBase64'
           - $ref: '#/components/messages/OutputBinary'
+          - $ref: '#/components/messages/Command'
           - $ref: '#/components/messages/Dropped'
           - $ref: '#/components/messages/Resize'
           - $ref: '#/components/messages/Heartbeat'
@@ -173,6 +174,23 @@ components:
         format: binary
       description: |
         Binary output frame when encoding=binary. First byte is 0x01, remaining bytes are raw output.
+    Command:
+      name: command
+      contentType: application/json
+      payload:
+        type: object
+        required: [event, time, kind, value]
+        properties:
+          event:
+            type: string
+            enum: [command]
+          time:
+            type: number
+          kind:
+            type: string
+            enum: [press, type, keydown, keyup, write]
+          value:
+            type: string
     Dropped:
       name: dropped
       contentType: application/json

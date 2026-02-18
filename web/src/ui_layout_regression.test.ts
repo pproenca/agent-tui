@@ -10,23 +10,60 @@ function readSrcFile(name: string): string {
 }
 
 describe("live preview layout hooks", () => {
-  test("keeps sidebar header and session count affordance", () => {
+  test("keeps sidebar and timeline hooks in markup", () => {
     const html = readSrcFile("index.html");
     expect(html).toContain('class="sidebar__header"');
     expect(html).toContain('id="sessionCount"');
+    expect(html).toContain('id="commandTimeline"');
+  });
+
+  test("keeps terminal/timeline layout resilient and visible", () => {
+    const css = readSrcFile("styles.css");
+    expect(css).toContain("grid-template-rows: minmax(0, 1fr) auto;");
+    expect(css).toContain(".terminal {");
+    expect(css).toContain("min-height: 0;");
+    expect(css).toContain("grid-template-areas:");
+    expect(css).toContain('"main"');
+    expect(css).toContain('"sidebar"');
   });
 
   test("keeps session card hierarchy classes in stylesheet", () => {
     const css = readSrcFile("styles.css");
     expect(css).toContain(".session-item__status");
-    expect(css).toContain(".session-item__facts");
-    expect(css).toContain("grid-template-columns: clamp(");
+    expect(css).toContain(".session-item__fact");
+    expect(css).toContain(".session-item__meta");
   });
 
-  test("keeps wide sidebar grid and metadata pill treatment", () => {
+  test("keeps touch-safe, labeled sidebar controls", () => {
+    const html = readSrcFile("index.html");
+    expect(html).toContain('id="connectBtnLabel"');
+    expect(html).toContain('id="sessionsRefreshLabel"');
+
     const css = readSrcFile("styles.css");
-    expect(css).toContain("grid-template-columns: clamp(260px, 24vw, 340px) minmax(0, 1fr);");
-    expect(css).toContain(".session-item__fact");
-    expect(css).toContain("box-shadow: var(--shadow-soft);");
+    expect(css).toContain(".button__label");
+    expect(css).toContain(".button--icon");
+    expect(css).toContain("min-height: var(--control-height);");
+  });
+
+  test("keeps listbox option semantics via aria-selected", () => {
+    const app = readSrcFile("app.ts");
+    expect(app).toContain('button.setAttribute("aria-selected", card.selected ? "true" : "false")');
+    expect(app).not.toContain('button.setAttribute("aria-current", "true")');
+  });
+
+  test("keeps live preview stream size authoritative during window resize", () => {
+    const app = readSrcFile("app.ts");
+    expect(app).toContain("let livePreviewTerminalSize");
+    expect(app).toContain('window.addEventListener("resize", () => {');
+    expect(app).toContain("if (livePreviewTerminalSize) {");
+    expect(app).toContain("livePreviewTerminalSize = { cols, rows };");
+  });
+
+  test("emits resize rpc when viewport changes during live preview", () => {
+    const app = readSrcFile("app.ts");
+    expect(app).toContain('const LIVE_PREVIEW_RESIZE_DEBOUNCE_MS');
+    expect(app).toContain('rpcCall("resize", {');
+    expect(app).toContain("session: connectedTerminalSessionId");
+    expect(app).toContain("fitAddon.proposeDimensions()");
   });
 });

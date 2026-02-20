@@ -580,6 +580,36 @@ fn sanitize_command_timeline_value(value: &str) -> String {
     }
 }
 
+/// Adapter that wraps an `Arc<Mutex<Box<dyn Write>>>` into a `Write` impl,
+/// allowing the virtual terminal to write query responses (DSR/CPR) back to
+/// the child process through the shared PTY writer.
+struct ArcWriter(Arc<Mutex<Box<dyn std::io::Write + Send>>>);
+
+impl std::io::Write for ArcWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut guard = mutex_lock_or_recover(&self.0);
+        let mut offset = 0;
+        while offset < buf.len() {
+            match guard.write(&buf[offset..]) {
+                Ok(0) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::WriteZero,
+                        "PTY writer closed",
+                    ));
+                }
+                Ok(n) => offset += n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        mutex_lock_or_recover(&self.0).flush()
+    }
+}
+
 pub struct Session {
     pub id: SessionId,
     pub command: String,
@@ -600,12 +630,13 @@ impl Session {
         let stream = Arc::new(StreamBuffer::new(STREAM_MAX_BUFFER_BYTES));
         let mut pty = PtySession::new(pty);
         let pty_rx = pty.take_read_rx();
+        let pty_writer: Box<dyn std::io::Write + Send> = Box::new(ArcWriter(pty.writer_handle()));
         Self {
             id,
             command,
             created_at: Utc::now(),
             pty,
-            terminal: TerminalState::new(cols, rows),
+            terminal: TerminalState::new(cols, rows, pty_writer),
             held_modifiers: ModifierState::default(),
             stream,
             command_timeline: CommandTimeline::default(),

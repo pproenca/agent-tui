@@ -72,7 +72,7 @@ pub struct VirtualTerminal {
 }
 
 impl VirtualTerminal {
-    pub fn new(cols: u16, rows: u16) -> Self {
+    pub fn new(cols: u16, rows: u16, writer: Box<dyn io::Write + Send>) -> Self {
         let size = TerminalSize {
             rows: rows as usize,
             cols: cols as usize,
@@ -82,7 +82,6 @@ impl VirtualTerminal {
         };
         let config: Arc<dyn TerminalConfiguration + Send + Sync> =
             Arc::new(DefaultTerminalConfig::default());
-        let writer: Box<dyn io::Write + Send> = Box::new(io::sink());
         let terminal = Terminal::new(size, config, "agent-tui", env!("CARGO_PKG_VERSION"), writer);
         Self {
             terminal,
@@ -274,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_basic_terminal() {
-        let mut term = VirtualTerminal::new(80, 24);
+        let mut term = VirtualTerminal::new(80, 24, Box::new(io::sink()));
         term.process(b"Hello, World!");
         let text = term.screen_text();
         assert!(text.contains("Hello, World!"));
@@ -282,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_cursor_position() {
-        let mut term = VirtualTerminal::new(80, 24);
+        let mut term = VirtualTerminal::new(80, 24, Box::new(io::sink()));
         term.process(b"ABC");
         let cursor = term.cursor();
         assert_eq!(cursor.col, 3);
@@ -291,11 +290,59 @@ mod tests {
 
     #[test]
     fn test_screen_buffer() {
-        let mut term = VirtualTerminal::new(80, 24);
+        let mut term = VirtualTerminal::new(80, 24, Box::new(io::sink()));
         term.process(b"\x1b[1mBold\x1b[0m Normal");
         let buffer = term.screen_buffer();
 
         assert!(buffer.cells[0][0].style.bold);
         assert_eq!(buffer.cells[0][0].char, 'B');
+    }
+
+    #[test]
+    fn test_dsr_cursor_position_response() {
+        // DSR (Device Status Report) with param 6 requests cursor position.
+        // The terminal should write back a CPR (Cursor Position Report).
+        // wezterm may write the response on an internal thread, so we
+        // poll briefly for the result.
+        let writer = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let writer_clone = Arc::clone(&writer);
+        let boxed: Box<dyn io::Write + Send> = Box::new(WriterSpy(writer_clone));
+
+        let mut term = VirtualTerminal::new(80, 24, boxed);
+        // Move cursor to row 3, col 5 (1-indexed)
+        term.process(b"\x1b[3;5H");
+        // Send DSR query
+        term.process(b"\x1b[6n");
+
+        let expected = b"\x1b[3;5R";
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            let output = writer.lock().unwrap();
+            if output.windows(expected.len()).any(|w| w == expected) {
+                break; // success
+            }
+            drop(output);
+            if std::time::Instant::now() >= deadline {
+                let output = writer.lock().unwrap();
+                panic!(
+                    "expected CPR response '\\x1b[3;5R' within 2s, got {:?}",
+                    String::from_utf8_lossy(&output)
+                );
+            }
+            std::hint::spin_loop();
+        }
+    }
+
+    /// Helper that captures writes into a shared Vec.
+    struct WriterSpy(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl io::Write for WriterSpy {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
     }
 }

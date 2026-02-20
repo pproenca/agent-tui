@@ -15,6 +15,12 @@ impl PtySession {
         Self { handle }
     }
 
+    pub fn writer_handle(
+        &self,
+    ) -> std::sync::Arc<std::sync::Mutex<Box<dyn std::io::Write + Send>>> {
+        self.handle.writer_handle()
+    }
+
     pub fn pid(&self) -> Option<u32> {
         self.handle.pid()
     }

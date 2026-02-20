@@ -141,6 +141,12 @@ impl PtyHandle {
             .unwrap_or(false)
     }
 
+    /// Returns a clone of the PTY writer handle for feeding terminal responses
+    /// (e.g. DSR/CPR) back to the child process.
+    pub fn writer_handle(&self) -> Arc<Mutex<Box<dyn Write + Send>>> {
+        Arc::clone(&self.writer)
+    }
+
     pub fn write(&self, data: &[u8]) -> Result<(), PtyError> {
         if data.is_empty() {
             return Ok(());

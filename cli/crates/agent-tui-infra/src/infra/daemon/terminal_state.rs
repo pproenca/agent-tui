@@ -9,9 +9,9 @@ pub struct TerminalState {
 }
 
 impl TerminalState {
-    pub fn new(cols: u16, rows: u16) -> Self {
+    pub fn new(cols: u16, rows: u16, writer: Box<dyn std::io::Write + Send>) -> Self {
         Self {
-            terminal: VirtualTerminal::new(cols, rows),
+            terminal: VirtualTerminal::new(cols, rows, writer),
         }
     }
 

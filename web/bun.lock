@@ -5,14 +5,14 @@
     "": {
       "name": "agent-tui-web",
       "dependencies": {
-        "lucide": "^0.563.0",
+        "lucide": "^0.577.0",
         "xterm": "^5.3.0",
         "xterm-addon-fit": "^0.8.0",
       },
     },
   },
   "packages": {
-    "lucide": ["lucide@0.563.0", "", {}, "sha512-2zBzDJ5n2Plj3d0ksj6h9TWPOSiKu9gtxJxnBAye11X/8gfWied6IYJn6ADYBp1NPoJmgpyOYP3wMrVx69+2AA=="],
+    "lucide": ["lucide@0.577.0", "", {}, "sha512-PpC/m5eOItp/WU/GlQPFBXDOhq6HibL73KzYP37OX3LM7VmzWQF8voEj8QRWUFvy9FIKfeDQkWYoyS1D/MdWFA=="],
 
     "xterm": ["xterm@5.3.0", "", {}, "sha512-8QqjlekLUFTrU6x7xck1MsPzPA571K5zNqWm0M0oroYEWVOptZ0+ubQSkQ3uxIEhcIHRujJy6emDWX4A7qyFzg=="],
 

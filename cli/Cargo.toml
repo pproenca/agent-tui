@@ -40,12 +40,12 @@ clap_complete = "4.5"
 crossterm = "0.29"
 base64 = "0.22"
 portable-pty = "0.9"
-rand = "0.9"
-axum = { version = "0.7", features = ["ws"] }
-tower-http = { version = "0.5", features = ["cors"] }
+rand = "0.10"
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["cors"] }
 libc = "0.2"
 signal-hook = "0.4"
-sysinfo = "0.33"
+sysinfo = "0.38"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
@@ -55,7 +55,7 @@ crossbeam-channel = "0.5"
 bytes = "1.7"
 shell-words = "1.1"
 url = "2.5"
-tungstenite = "0.24"
+tungstenite = "0.29"
 assert_cmd = "2.1"
 predicates = "3.1"
 tempfile = "3.24"

@@ -1,5 +1,6 @@
 //! Daemon WebSocket server (UI assets + RPC over WebSocket).
 
+use axum::extract::Query;
 use axum::extract::State;
 use axum::extract::ws::Message;
 use axum::extract::ws::WebSocket;
@@ -28,6 +29,7 @@ use tokio::sync::watch;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
+use uuid::Uuid;
 
 use crate::adapters::rpc::RpcRequest;
 use crate::adapters::rpc::RpcResponse;
@@ -159,6 +161,8 @@ struct WsState {
     ws_limits: Arc<Semaphore>,
     ws_queue_capacity: usize,
     shutdown_rx: watch::Receiver<bool>,
+    auth_token: String,
+    ws_url: String,
 }
 
 pub(crate) fn start_ws_server(
@@ -171,8 +175,9 @@ pub(crate) fn start_ws_server(
     }
 
     let (listener, local_addr) = bind_listener(&config)?;
-    let ws_url = format_ws_url(&local_addr);
-    let ui_url = format_ui_url(&local_addr);
+    let auth_token = generate_ws_auth_token();
+    let ws_url = format_ws_url(&local_addr, &auth_token);
+    let ui_url = format_ui_url(&local_addr, &ws_url);
     let listen_addr = local_addr.to_string();
     if let Err(err) = write_state_file(&config.state_path, &ws_url, &ui_url, &listen_addr) {
         warn!(error = %err, "Failed to write WS state file");
@@ -185,6 +190,8 @@ pub(crate) fn start_ws_server(
         ws_limits: Arc::new(Semaphore::new(config.max_connections)),
         ws_queue_capacity: config.ws_queue_capacity,
         shutdown_rx: shutdown_rx.clone(),
+        auth_token,
+        ws_url: ws_url.clone(),
     });
 
     let state_path = config.state_path.clone();
@@ -285,8 +292,9 @@ fn build_router(state: Arc<WsState>) -> axum::Router {
         .with_state(state)
 }
 
-async fn ui_root_handler() -> Response {
-    Redirect::temporary("/ui").into_response()
+async fn ui_root_handler(State(state): State<Arc<WsState>>) -> Response {
+    let ws = encode_url_query_value(&state.ws_url);
+    Redirect::temporary(&format!("/ui?ws={ws}")).into_response()
 }
 
 async fn ui_index_handler() -> Response {
@@ -309,7 +317,26 @@ async fn ui_xterm_handler() -> Response {
     ([("content-type", "text/css; charset=utf-8")], UI_XTERM_CSS).into_response()
 }
 
-async fn ws_handler(State(state): State<Arc<WsState>>, ws: WebSocketUpgrade) -> Response {
+#[derive(Debug, Default, serde::Deserialize)]
+struct WsAuthQuery {
+    token: Option<String>,
+}
+
+async fn ws_handler(
+    State(state): State<Arc<WsState>>,
+    Query(query): Query<WsAuthQuery>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    if query.token.as_deref() != Some(state.auth_token.as_str()) {
+        let response = RpcResponse::error(0, -32001, "unauthorized");
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            serde_json::to_string(&response)
+                .unwrap_or_else(|_| "{\"error\":\"unauthorized\"}".to_string()),
+        )
+            .into_response();
+    }
+
     let permit = match state.ws_limits.clone().try_acquire_owned() {
         Ok(permit) => permit,
         Err(_) => {
@@ -569,20 +596,29 @@ fn bind_listener(config: &WsConfig) -> Result<(std::net::TcpListener, SocketAddr
     Ok((listener, local_addr))
 }
 
-fn format_ws_url(addr: &SocketAddr) -> String {
+fn format_ws_url(addr: &SocketAddr, auth_token: &str) -> String {
     let host = match addr.ip() {
         std::net::IpAddr::V4(ip) => ip.to_string(),
         std::net::IpAddr::V6(ip) => format!("[{ip}]"),
     };
-    format!("ws://{}:{}/ws", host, addr.port())
+    format!("ws://{}:{}/ws?token={}", host, addr.port(), auth_token)
 }
 
-fn format_ui_url(addr: &SocketAddr) -> String {
+fn format_ui_url(addr: &SocketAddr, ws_url: &str) -> String {
     let host = match addr.ip() {
         std::net::IpAddr::V4(ip) => ip.to_string(),
         std::net::IpAddr::V6(ip) => format!("[{ip}]"),
     };
-    format!("http://{}:{}/ui", host, addr.port())
+    let ws = encode_url_query_value(ws_url);
+    format!("http://{}:{}/ui?ws={}", host, addr.port(), ws)
+}
+
+fn encode_url_query_value(value: &str) -> String {
+    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
+}
+
+fn generate_ws_auth_token() -> String {
+    Uuid::new_v4().simple().to_string()
 }
 
 #[derive(serde::Serialize)]
@@ -733,6 +769,24 @@ mod tests {
         let err = super::bind_listener(&config).expect_err("expected non-loopback bind rejection");
         let message = err.to_string();
         assert!(message.contains("AGENT_TUI_WS_ALLOW_REMOTE=1"), "{message}");
+    }
+
+    #[test]
+    fn format_ws_url_embeds_auth_token() {
+        let addr: std::net::SocketAddr = "127.0.0.1:12345".parse().expect("valid addr");
+        let url = super::format_ws_url(&addr, "secret-token");
+        assert_eq!(url, "ws://127.0.0.1:12345/ws?token=secret-token");
+    }
+
+    #[test]
+    fn format_ui_url_embeds_encoded_ws_url() {
+        let addr: std::net::SocketAddr = "127.0.0.1:12345".parse().expect("valid addr");
+        let ws_url = "ws://127.0.0.1:12345/ws?token=secret-token";
+        let ui_url = super::format_ui_url(&addr, ws_url);
+        assert!(
+            ui_url.contains("ws=ws%3A%2F%2F127.0.0.1%3A12345%2Fws%3Ftoken%3Dsecret-token"),
+            "{ui_url}"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

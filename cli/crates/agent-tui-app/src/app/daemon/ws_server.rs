@@ -5,6 +5,9 @@ use axum::extract::ws::Message;
 use axum::extract::ws::WebSocket;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::ws::close_code;
+use axum::http::HeaderMap;
+use axum::http::StatusCode;
+use axum::http::Uri;
 use axum::response::Html;
 use axum::response::IntoResponse;
 use axum::response::Redirect;
@@ -64,6 +67,7 @@ pub(crate) struct WsConfig {
     state_path: PathBuf,
     max_connections: usize,
     ws_queue_capacity: usize,
+    api_token: Option<String>,
 }
 
 impl WsConfig {
@@ -96,6 +100,9 @@ impl WsConfig {
             .and_then(|v| v.parse::<usize>().ok())
             .filter(|v| *v > 0)
             .unwrap_or(DEFAULT_WS_QUEUE_CAPACITY);
+        let api_token = std::env::var("AGENT_TUI_API_TOKEN")
+            .ok()
+            .and_then(non_empty);
 
         Self {
             enabled,
@@ -104,6 +111,7 @@ impl WsConfig {
             state_path,
             max_connections,
             ws_queue_capacity,
+            api_token,
         }
     }
 }
@@ -159,6 +167,7 @@ struct WsState {
     ws_limits: Arc<Semaphore>,
     ws_queue_capacity: usize,
     shutdown_rx: watch::Receiver<bool>,
+    api_token: Option<Arc<str>>,
 }
 
 pub(crate) fn start_ws_server(
@@ -185,6 +194,7 @@ pub(crate) fn start_ws_server(
         ws_limits: Arc::new(Semaphore::new(config.max_connections)),
         ws_queue_capacity: config.ws_queue_capacity,
         shutdown_rx: shutdown_rx.clone(),
+        api_token: config.api_token.as_deref().map(Arc::<str>::from),
     });
 
     let state_path = config.state_path.clone();
@@ -309,7 +319,24 @@ async fn ui_xterm_handler() -> Response {
     ([("content-type", "text/css; charset=utf-8")], UI_XTERM_CSS).into_response()
 }
 
-async fn ws_handler(State(state): State<Arc<WsState>>, ws: WebSocketUpgrade) -> Response {
+async fn ws_handler(
+    State(state): State<Arc<WsState>>,
+    headers: HeaderMap,
+    uri: Uri,
+    ws: WebSocketUpgrade,
+) -> Response {
+    if let Some(expected) = state.api_token.as_deref()
+        && !request_has_valid_token(&headers, &uri, expected)
+    {
+        let response = RpcResponse::error(0, -32001, "unauthorized");
+        return (
+            StatusCode::UNAUTHORIZED,
+            serde_json::to_string(&response)
+                .unwrap_or_else(|_| "{\"error\":\"unauthorized\"}".to_string()),
+        )
+            .into_response();
+    }
+
     let permit = match state.ws_limits.clone().try_acquire_owned() {
         Ok(permit) => permit,
         Err(_) => {
@@ -534,6 +561,24 @@ fn non_empty(value: String) -> Option<String> {
     }
 }
 
+fn request_has_valid_token(headers: &HeaderMap, uri: &Uri, expected: &str) -> bool {
+    if let Some(value) = headers.get(axum::http::header::AUTHORIZATION)
+        && let Ok(value) = value.to_str()
+        && let Some(token) = value.strip_prefix("Bearer ")
+        && token == expected
+    {
+        return true;
+    }
+
+    uri.query()
+        .map(|query| {
+            url::form_urlencoded::parse(query.as_bytes()).any(|(key, value)| {
+                matches!(key.as_ref(), "token" | "access_token") && value == expected
+            })
+        })
+        .unwrap_or(false)
+}
+
 fn bind_listener(config: &WsConfig) -> Result<(std::net::TcpListener, SocketAddr), WsServerError> {
     let mut addrs = config
         .listen
@@ -549,6 +594,11 @@ fn bind_listener(config: &WsConfig) -> Result<(std::net::TcpListener, SocketAddr
         return Err(WsServerError::InvalidListen {
             message: "refusing to bind non-loopback address without AGENT_TUI_WS_ALLOW_REMOTE=1"
                 .to_string(),
+        });
+    }
+    if config.allow_remote && config.api_token.is_none() {
+        return Err(WsServerError::InvalidListen {
+            message: "AGENT_TUI_API_TOKEN is required when AGENT_TUI_WS_ALLOW_REMOTE=1".to_string(),
         });
     }
 
@@ -728,11 +778,28 @@ mod tests {
             state_path: std::path::PathBuf::from("/tmp/agent-tui-ws-test-state.json"),
             max_connections: 1,
             ws_queue_capacity: 1,
+            api_token: None,
         };
 
         let err = super::bind_listener(&config).expect_err("expected non-loopback bind rejection");
         let message = err.to_string();
         assert!(message.contains("AGENT_TUI_WS_ALLOW_REMOTE=1"), "{message}");
+    }
+
+    #[test]
+    fn bind_listener_requires_token_when_remote_is_allowed() {
+        let config = WsConfig {
+            enabled: true,
+            listen: "127.0.0.1:0".to_string(),
+            allow_remote: true,
+            state_path: std::path::PathBuf::from("/tmp/agent-tui-ws-test-state.json"),
+            max_connections: 1,
+            ws_queue_capacity: 1,
+            api_token: None,
+        };
+
+        let err = super::bind_listener(&config).expect_err("expected token requirement");
+        assert!(err.to_string().contains("AGENT_TUI_API_TOKEN"));
     }
 
     #[tokio::test(flavor = "current_thread")]

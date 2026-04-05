@@ -33,7 +33,6 @@ const ATTACH_STREAM_MAX_TICK_BYTES: usize = 512 * 1024;
 const ATTACH_STREAM_HEARTBEAT: Duration = Duration::from_secs(30);
 const LIVE_PREVIEW_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
 const LIVE_PREVIEW_STREAM_MAX_TICK_BYTES: usize = 256 * 1024;
-const LIVE_PREVIEW_COMMAND_MAX_EVENTS_PER_TICK: usize = 64;
 const LIVE_PREVIEW_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
 const FLIGHTDECK_STREAM_DEFAULT_INTERVAL_MS: u64 = 1000;
 const FLIGHTDECK_STREAM_MIN_INTERVAL_MS: u64 = 250;
@@ -392,14 +391,6 @@ impl RpcCore {
 
         let snapshot = session.live_preview_snapshot();
         let session_id = session.session_id().to_string();
-        let timeline_session = match self.session_manager.get(&session_id) {
-            Ok(session) => session,
-            Err(err) => {
-                let response = session_error_response(req_id, err);
-                let _ = writer.write_response(&response);
-                return Ok(());
-            }
-        };
         #[derive(Serialize)]
         struct LivePreviewReady<'a> {
             event: &'static str,
@@ -429,14 +420,6 @@ impl RpcCore {
             event: &'static str,
             time: f64,
             data_b64: &'a str,
-        }
-
-        #[derive(Serialize)]
-        struct LivePreviewCommand<'a> {
-            event: &'static str,
-            time: f64,
-            kind: &'a str,
-            value: &'a str,
         }
 
         #[derive(Serialize)]
@@ -485,7 +468,6 @@ impl RpcCore {
 
         let subscription = session.stream_subscribe();
         let mut cursor = live_preview_initial_cursor(&snapshot);
-        let mut command_cursor = 0_u64;
         let mut last_size = (snapshot.cols, snapshot.rows);
 
         loop {
@@ -620,33 +602,7 @@ impl RpcCore {
                 sent_any = true;
             }
 
-            let command_events = {
-                let session_guard = timeline_session
-                    .lock()
-                    .unwrap_or_else(|poison| poison.into_inner());
-                session_guard.command_timeline_read(
-                    &mut command_cursor,
-                    LIVE_PREVIEW_COMMAND_MAX_EVENTS_PER_TICK,
-                )
-            };
-            for command in &command_events {
-                let response = RpcResponse::success_json(
-                    req_id,
-                    &LivePreviewCommand {
-                        event: "command",
-                        time: start_time.elapsed().as_secs_f64(),
-                        kind: &command.kind,
-                        value: &command.value,
-                    },
-                );
-                writer.write_response(&response)?;
-                sent_any = true;
-            }
-
             if sent_any && budget == 0 {
-                continue;
-            }
-            if command_events.len() == LIVE_PREVIEW_COMMAND_MAX_EVENTS_PER_TICK {
                 continue;
             }
 
@@ -1046,7 +1002,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn live_preview_stream_emits_command_events_for_session_input() {
+    fn live_preview_stream_does_not_emit_command_events_for_session_input() {
         let shutdown = Arc::new(AtomicBool::new(false));
         let notifier: crate::usecases::ports::ShutdownNotifierHandle =
             Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
@@ -1091,20 +1047,20 @@ mod tests {
             let _ = guard.type_text("echo timeline\n");
         }
 
-        let command = handle.wait_for_event("command", Duration::from_secs(2));
+        let command = handle.wait_for_event("command", Duration::from_millis(300));
         cancelled.store(true, Ordering::Relaxed);
         let _ = join.join();
         core.shutdown_all_sessions();
 
         assert!(
-            command.is_some(),
-            "live preview stream did not emit command event"
+            command.is_none(),
+            "live preview stream should not emit command events"
         );
     }
 
     #[cfg(unix)]
     #[test]
-    fn live_preview_stream_emits_command_events_for_resize() {
+    fn live_preview_stream_emits_resize_event_for_resize() {
         let shutdown = Arc::new(AtomicBool::new(false));
         let notifier: crate::usecases::ports::ShutdownNotifierHandle =
             Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
@@ -1149,16 +1105,16 @@ mod tests {
             let _ = guard.resize(120, 40);
         }
 
-        let command = handle.wait_for_event("command", Duration::from_secs(2));
+        let resize = handle.wait_for_event("resize", Duration::from_secs(2));
         cancelled.store(true, Ordering::Relaxed);
         let _ = join.join();
         core.shutdown_all_sessions();
 
-        let Some(command) = command else {
-            panic!("live preview stream did not emit command event for resize");
+        let Some(resize) = resize else {
+            panic!("live preview stream did not emit resize event");
         };
-        assert_eq!(command["result"]["kind"], "resize");
-        assert_eq!(command["result"]["value"], "120x40");
+        assert_eq!(resize["result"]["cols"], 120);
+        assert_eq!(resize["result"]["rows"], 40);
     }
 
     #[test]

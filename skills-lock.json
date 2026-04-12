@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "harness-engineering": {
+      "source": "pproenca/dot-skills",
+      "sourceType": "github",
+      "computedHash": "fb276d9f944a37f0d3400d44f22a5be2defa82baccd487f655afaedfac5d3a33"
+    }
+  }
+}

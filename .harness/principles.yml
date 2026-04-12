@@ -1,0 +1,192 @@
+version: "1.0"
+
+principles:
+  - id: vertical-domain-ownership
+    name: Each business domain owns its vertical slice
+    description: >
+      Session, terminal, and daemon are distinct business domains. Each should
+      own its full stack from types through infrastructure — not share horizontal
+      crate buckets with other domains.
+    rationale: >
+      The current horizontal crate layout (one crate per Clean Architecture layer)
+      means all domains are co-located within each layer crate. An agent working
+      on session usecases can freely import terminal usecases — nothing prevents
+      cross-domain coupling. Vertical domain ownership makes boundaries explicit
+      and compiler-enforced.
+    enforcement: structural-test
+    severity: error
+    examples:
+      good: |
+        // Each domain has its own module boundary within the layer crate.
+        // agent-tui-usecases/src/usecases/session/mod.rs
+        // agent-tui-usecases/src/usecases/terminal/mod.rs
+        // agent-tui-usecases/src/usecases/daemon/mod.rs
+        //
+        // Cross-domain imports require going through public ports, not
+        // reaching into another domain's internal modules.
+        use crate::usecases::session::SessionRepository;  // port trait
+      bad: |
+        // Currently: all usecases in a flat namespace, no domain boundary.
+        // agent-tui-usecases/src/usecases/session.rs
+        // agent-tui-usecases/src/usecases/snapshot.rs  (terminal domain)
+        // agent-tui-usecases/src/usecases/wait.rs      (terminal domain)
+        // agent-tui-usecases/src/usecases/shutdown.rs   (daemon domain)
+        //
+        // Any usecase can import any other with no boundary:
+        use crate::usecases::snapshot::take_screenshot;  // cross-domain leak
+
+  - id: forward-only-dependencies
+    name: Dependencies flow forward only through the layer stack
+    description: >
+      common → domain → usecases → adapters/infra → app → facade.
+      No reverse imports. No lateral imports between adapters and infra.
+    rationale: >
+      The forward-only rule is what makes each layer independently testable and
+      replaceable. Agents working in inner layers never need to understand outer
+      layers. This is already enforced by Cargo crate boundaries — this principle
+      exists to ensure it stays enforced as the architecture evolves.
+    enforcement: cargo-crate-boundary
+    severity: error
+    examples:
+      good: |
+        // usecases depends on domain only (Cargo.toml enforces this)
+        use agent_tui_domain::types::SessionId;
+      bad: |
+        // usecases importing from infra — would fail Cargo compilation
+        use agent_tui_infra::daemon::PtySession;  // compile error
+
+  - id: no-panics-in-production
+    name: No panics in production code
+    description: >
+      unwrap() and expect() are denied workspace-wide via Clippy.
+      Use ? operator, anyhow::Context, or thiserror types for error handling.
+      Tests may use unwrap/expect (allowed via clippy.toml).
+    rationale: >
+      A panic in daemon code kills all active PTY sessions. Agents default to
+      unwrap() when prototyping — the Clippy deny forces them to handle errors
+      properly from the start. The cost of an extra .context("why") is near zero;
+      the cost of a production panic is session data loss.
+    enforcement: lint
+    severity: error
+    examples:
+      good: |
+        let session = repository
+            .get(&session_id)
+            .await
+            .context("failed to retrieve session")?;
+      bad: |
+        let session = repository.get(&session_id).await.unwrap();
+
+  - id: structured-errors-with-context
+    name: All errors carry category, message, and source chain
+    description: >
+      Domain errors use thiserror with descriptive messages. Infrastructure and
+      application errors use anyhow with .context(). DaemonError with ErrorCategory
+      provides structured error codes for JSON-RPC responses.
+    rationale: >
+      Error messages are context that agents use to diagnose and self-correct.
+      "session not found: {id}" lets an agent retry with the right ID.
+      "something went wrong" gives the agent nothing to act on. Every error
+      in the chain should answer: what failed, where, and why.
+    enforcement: review
+    severity: warning
+    examples:
+      good: |
+        #[derive(Debug, Error)]
+        #[error("session not found: {session_id}")]
+        pub struct SessionNotFoundError {
+            pub session_id: SessionId,
+        }
+      bad: |
+        return Err(anyhow!("error"));
+
+  - id: no-blocking-in-async
+    name: No blocking operations in async context
+    description: >
+      std::thread::sleep, unbounded channels, std::process::exit (except main.rs),
+      and std::env::set_current_dir are banned via Clippy disallowed_methods.
+      Use tokio::time::sleep, bounded channels, and absolute paths.
+    rationale: >
+      The daemon runs on Tokio with a shared thread pool. A blocking call in
+      async context stalls all concurrent sessions. Agents reach for std::thread::sleep
+      by default — the Clippy ban forces them toward non-blocking alternatives.
+    enforcement: lint
+    severity: error
+    examples:
+      good: |
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let (tx, rx) = tokio::sync::mpsc::channel(32);  // bounded
+      bad: |
+        std::thread::sleep(Duration::from_millis(100));  // blocks thread pool
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();  // no backpressure
+
+  - id: facade-is-a-shell
+    name: The facade crate contains only entry points
+    description: >
+      cli/crates/agent-tui/ holds main.rs, lib.rs, and bin/*.rs only.
+      No production logic. All behavior lives in layer crates.
+      Enforced by xtask src layout check.
+    rationale: >
+      The facade is the composition root's entry point — it delegates to app.
+      If logic creeps into the facade, it bypasses all architectural boundaries.
+      Agents adding new features should never touch the facade crate.
+    enforcement: structural-test
+    severity: error
+    examples:
+      good: |
+        // main.rs — delegates immediately
+        fn main() -> anyhow::Result<()> {
+            agent_tui_app::run()
+        }
+      bad: |
+        // main.rs — contains business logic
+        fn main() -> anyhow::Result<()> {
+            let sessions = list_sessions();  // logic in facade
+            for s in sessions { /* ... */ }
+        }
+
+  - id: trait-ports-for-external-deps
+    name: Use cases define trait ports; infra provides implementations
+    description: >
+      Business logic in usecases never directly accesses PTY, filesystem, network,
+      or daemon internals. It defines trait ports (SessionRepository, TerminalEngine,
+      ShutdownNotifier, Clock) and the infra layer provides concrete implementations.
+    rationale: >
+      Trait ports let agents write and test business logic without spinning up
+      PTY sessions or daemon processes. The mock implementations in
+      usecases/ports/test_support/ exist precisely for this. Without ports,
+      every usecase test becomes an integration test.
+    enforcement: review
+    severity: warning
+    examples:
+      good: |
+        // In usecases: define what you need
+        #[async_trait]
+        pub trait SessionRepository: Send + Sync {
+            async fn get(&self, id: &SessionId) -> Result<SessionInfo>;
+        }
+        // In infra: provide the implementation
+        impl SessionRepository for InMemorySessionRepo { /* ... */ }
+      bad: |
+        // In usecases: directly using infra types
+        use agent_tui_infra::daemon::repository::InMemoryRepo;
+        pub async fn list_sessions(repo: &InMemoryRepo) -> Vec<SessionInfo> { /* ... */ }
+
+  - id: structured-logging-only
+    name: Use tracing for all operational output
+    description: >
+      print_stdout and print_stderr are denied via Clippy (except xtask).
+      Use tracing::{info, warn, error, debug, trace} with structured fields.
+      The daemon supports JSON log output via AGENT_TUI_LOG_FORMAT=json.
+    rationale: >
+      Structured logs are queryable and machine-parseable. Agents that emit
+      println! create output that's invisible to log aggregation. The Clippy
+      deny ensures all operational output goes through tracing, which supports
+      both human-readable and JSON formats.
+    enforcement: lint
+    severity: error
+    examples:
+      good: |
+        tracing::info!(session_id = %id, "session created");
+      bad: |
+        println!("Session {} created", id);

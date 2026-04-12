@@ -1,0 +1,216 @@
+version: "1.0"
+
+# Enforcement rules for agent-tui.
+# Rules marked [ENFORCED] have existing tooling. Rules marked [GAP] need implementation.
+
+naming:
+  files:
+    pattern: snake_case
+    exceptions:
+      - AGENTS.md
+      - ARCHITECTURE.md
+      - README.md
+      - Cargo.toml
+      - Cargo.lock
+      - Dockerfile
+      - justfile
+    violation_message: |
+      Naming violation — {{file}} uses {{actual_pattern}} instead of snake_case.
+      Rust files must use snake_case naming (e.g., session_types.rs, not sessionTypes.rs).
+      See: AGENTS.md#coding-style--naming-conventions
+  types:
+    pattern: PascalCase
+    # [ENFORCED] via rustfmt and Rust compiler warnings
+  functions:
+    pattern: snake_case
+    # [ENFORCED] via Rust compiler warnings
+  constants:
+    pattern: SCREAMING_SNAKE_CASE
+    # [ENFORCED] via Rust compiler warnings
+  modules:
+    pattern: snake_case
+    # [ENFORCED] via Rust compiler requirements
+
+file_limits:
+  max_lines: 500
+  max_function_lines: 200   # [ENFORCED] clippy too-many-lines-threshold = 200
+  max_cognitive_complexity: 30   # [ENFORCED] clippy cognitive-complexity-threshold = 30
+  violation_message: |
+    File size violation — {{file}} has {{actual_lines}} lines (max: 500).
+    Split into focused modules. Each module should own one concept.
+    If the file is a handler, extract logic into a usecase.
+    If the file is infrastructure, extract shared helpers into common.
+    See: ARCHITECTURE.md#where-new-code-goes
+
+logging:
+  style: structured
+  framework: tracing
+  required_fields:
+    - level
+    - message
+  prohibited_patterns:
+    # [ENFORCED] via Clippy workspace lints
+    - pattern: "println!"
+      reason: "print_stdout = deny in workspace Clippy config"
+    - pattern: "eprintln!"
+      reason: "print_stderr = deny in workspace Clippy config"
+    - pattern: "dbg!"
+      reason: "dbg_macro = deny in workspace Clippy config"
+  violation_message: |
+    Logging violation — {{file}}:{{line}} uses {{pattern}} instead of tracing macros.
+    Use tracing::{info, warn, error, debug, trace} with structured fields.
+    Example: tracing::info!(session_id = %id, "session created");
+    See: docs/design-docs/core-beliefs.md#5-structured-errors-are-agent-context
+
+imports:
+  # Crate-level boundary check
+  # [ENFORCED] via Cargo crate dependencies + xtask architecture check
+  crate_boundary_check: true
+  crate_boundary_tool: "cargo run -p xtask -- architecture check --verbose"
+
+  # Domain-level boundary check (WITHIN layer crates)
+  # [GAP] No tooling enforces domain isolation within a layer crate.
+  # Currently, session usecases can freely import terminal usecases.
+  domain_boundary_check: false
+  domain_boundary_violations:
+    - description: >
+        agent-tui-domain contains types for session, terminal, and daemon
+        in a flat namespace. No module boundary separates domain concerns.
+      files:
+        - cli/crates/agent-tui-domain/src/domain/types.rs
+        - cli/crates/agent-tui-domain/src/domain/session_types.rs
+    - description: >
+        agent-tui-usecases contains all business logic in a flat usecases/
+        directory. Session, terminal, and daemon usecases can freely import
+        each other with no boundary.
+      files:
+        - cli/crates/agent-tui-usecases/src/usecases/session.rs
+        - cli/crates/agent-tui-usecases/src/usecases/snapshot.rs
+        - cli/crates/agent-tui-usecases/src/usecases/input.rs
+        - cli/crates/agent-tui-usecases/src/usecases/wait.rs
+        - cli/crates/agent-tui-usecases/src/usecases/shutdown.rs
+        - cli/crates/agent-tui-usecases/src/usecases/diagnostics.rs
+    - description: >
+        agent-tui-adapters handlers are organized under daemon/handlers/
+        but have no domain-level module boundary. All handlers share one
+        router and can import each other's types.
+      files:
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/snapshot.rs
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/input.rs
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/wait.rs
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/diagnostics.rs
+    - description: >
+        agent-tui-infra mixes daemon infrastructure, IPC transport, and
+        terminal emulation in one crate. The daemon/ and terminal/ subdirectories
+        provide some separation, but ipc/ serves the daemon domain while being
+        a sibling to terminal/.
+      files:
+        - cli/crates/agent-tui-infra/src/infra/daemon/
+        - cli/crates/agent-tui-infra/src/infra/terminal/
+        - cli/crates/agent-tui-infra/src/infra/ipc/
+  violation_message: |
+    Domain boundary violation — {{source_file}} imports from {{target_file}}.
+    These files belong to different business domains ({{source_domain}} and
+    {{target_domain}}). Cross-domain imports should go through trait ports
+    defined in the usecases layer, not direct module imports.
+    To fix: Extract shared types into domain or use a port trait.
+    See: .harness/domains.yml, .harness/principles.yml#vertical-domain-ownership
+
+  banned_patterns:
+    # [ENFORCED] via Clippy disallowed_methods
+    - pattern: "std::thread::sleep"
+      reason: "Blocks async runtime thread pool"
+    - pattern: "std::env::set_current_dir"
+      reason: "Use absolute paths to avoid directory-related bugs"
+    - pattern: "tokio::sync::mpsc::unbounded_channel"
+      reason: "Use bounded channels to enforce backpressure"
+    - pattern: "crossbeam_channel::unbounded"
+      reason: "Use bounded channels to enforce backpressure"
+    - pattern: "std::sync::mpsc::channel"
+      reason: "Use bounded/concurrent channels with explicit capacity"
+    # [ENFORCED] via Clippy workspace lints
+    - pattern: ".unwrap()"
+      context: "production code (not #[cfg(test)])"
+      reason: "unwrap_used = deny — handle errors with ? or .context()"
+    - pattern: ".expect("
+      context: "production code (not #[cfg(test)])"
+      reason: "expect_used = deny — handle errors with ? or .context()"
+
+testing:
+  # [ENFORCED] test suites run in CI
+  suites:
+    - name: smoke
+      command: "cargo test --lib --test cli_smoke --test cli_contracts"
+      required: true
+    - name: contracts
+      command: "cargo test --test cli_command_contracts"
+      required: true
+    - name: architecture
+      command: "cargo run -p xtask -- architecture check --verbose"
+      required: true
+    - name: e2e
+      command: "cargo test -p agent-tui --features slow-tests --test system_e2e"
+      required: false  # slow, gated by feature flag
+
+  # [GAP] Domain-level test isolation not enforced.
+  # Tests for session, terminal, and daemon usecases live in shared test files.
+  # No enforcement that each domain has its own test coverage.
+  domain_test_coverage: false
+
+  naming_pattern: "*_test.rs or #[cfg(test)] mod tests"
+  fixture_location: cli/crates/agent-tui/tests/fixtures/
+
+architecture:
+  # [ENFORCED] xtask validates these
+  required_crates:
+    - agent-tui-common
+    - agent-tui-domain
+    - agent-tui-usecases
+    - agent-tui-adapters
+    - agent-tui-infra
+    - agent-tui-app
+    - agent-tui
+  src_layout_check: true
+  unknown_crate_detection: true
+
+  # [GAP] xtask checks crate-level deps but not domain isolation within crates.
+  # Proposed: extend xtask with a `domain-isolation` subcommand that:
+  # 1. Parses use/mod statements within each layer crate
+  # 2. Maps each file to its business domain (from .harness/domains.yml current_paths)
+  # 3. Flags imports that cross domain boundaries within the same crate
+  # 4. Emits agent-legible violation messages with remediation steps
+  domain_isolation_check: false
+  domain_isolation_tool: "cargo run -p xtask -- domain-isolation check"  # proposed
+
+ci_gates:
+  # [ENFORCED] in .github/workflows/ci.yml
+  - name: format
+    command: "cargo fmt --all -- --check"
+    blocks_merge: true
+  - name: lint
+    command: "cargo clippy --workspace -- -D warnings"
+    blocks_merge: true
+  - name: architecture
+    command: "cargo run -p xtask -- architecture check --verbose"
+    blocks_merge: true
+  - name: tests
+    command: "just test"
+    blocks_merge: true
+  - name: version-check
+    command: "cargo run -p xtask -- version check"
+    blocks_merge: true
+
+  # [GAP] These CI gates do not exist yet
+  - name: knowledge-freshness
+    description: >
+      Validate that all paths in AGENTS.md point to real files,
+      all cross-links in docs/ resolve, and generated CLI docs are current.
+    command: "cargo run -p xtask -- harness check-knowledge"  # proposed
+    blocks_merge: false
+  - name: domain-isolation
+    description: >
+      Validate that files within each layer crate respect domain boundaries
+      as defined in .harness/domains.yml.
+    command: "cargo run -p xtask -- domain-isolation check"  # proposed
+    blocks_merge: false

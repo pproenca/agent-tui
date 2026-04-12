@@ -1,0 +1,116 @@
+version: "1.0"
+
+scale:
+  - A   # Exemplary: fully harnessed, principles followed, tests comprehensive
+  - B   # Good: solid foundation, minor gaps
+  - C   # Adequate: functional but notable gaps, agents may stumble
+  - D   # Weak: significant gaps, agents will produce inconsistent results
+  - F   # Missing/broken: agents are flying blind
+
+dimensions:
+  - code_quality
+  - test_coverage
+  - documentation
+  - observability
+  - reliability
+  - security
+
+review_cadence: quarterly
+baseline_date: "2026-03-17"
+
+domains:
+  session:
+    scores:
+      code_quality: A
+      test_coverage: A
+      documentation: C
+      observability: D
+      reliability: B
+      security: B
+    gaps:
+      - "No tracing instrumentation in session use cases — operations are invisible to structured logging"
+      - "No domain-specific documentation — agent must read code to understand session lifecycle"
+      - "SessionId::From<&str> and From<String> bypass try_new validation — untrusted input could create invalid IDs"
+      - "Domain isolation: session types and usecases share flat namespace with terminal and daemon (see domains.yml)"
+    notes: >
+      Strongest domain. Clean use-case-per-operation pattern with generic
+      repository trait. Extensive mock-based unit tests covering happy paths,
+      error classification, and edge cases. The 769-line session.rs usecase
+      file includes ~450 lines of thorough tests.
+    last_reviewed: "2026-03-17"
+
+  terminal:
+    scores:
+      code_quality: B
+      test_coverage: C
+      documentation: C
+      observability: D
+      reliability: B
+      security: B
+    gaps:
+      - "Snapshot use case has only 1 test (error path); no tests for cursor/render inclusion logic"
+      - "Wait and input use cases need test coverage audit — unclear from structure alone"
+      - "No tracing instrumentation in terminal operations"
+      - "No domain-specific documentation for terminal emulation concepts (vterm, screen model, ANSI handling)"
+      - "Domain isolation: terminal types mixed with session types in domain/types.rs"
+    notes: >
+      Use case code is clean and follows the same pattern as session domain.
+      Terminal emulation infra (vterm, render, PTY) is complex and would benefit
+      from a domain guide explaining the screen model and rendering pipeline.
+      Test coverage is the main gap — the most complex domain has the fewest
+      usecase-level tests.
+    last_reviewed: "2026-03-17"
+
+  daemon:
+    scores:
+      code_quality: B
+      test_coverage: B
+      documentation: B
+      observability: C
+      reliability: B
+      security: C
+    gaps:
+      - "Daemon config lives in infra, not in a domain-owned config layer"
+      - "IPC transport has no authentication — any local process can control the daemon"
+      - "Signal handling and file locking are tested at E2E level but lack unit tests"
+      - "Observability is partial — some tracing in daemon infra but not comprehensive"
+      - "No rate limiting or request validation on JSON-RPC endpoint"
+    notes: >
+      Best-documented domain thanks to docs/ops/process-model.md and
+      cli/docs/architecture/clean_arch_target.md. Shutdown use case is
+      exemplary — idempotent, trait-based, well-tested. IPC transport is
+      functional but has security gaps appropriate for a local-first tool.
+      E2E system tests provide good daemon lifecycle coverage.
+    last_reviewed: "2026-03-17"
+
+  web-preview:
+    scores:
+      code_quality: C
+      test_coverage: D
+      documentation: D
+      observability: F
+      reliability: C
+      security: C
+    gaps:
+      - "No tests for the web UI — TypeScript code is untested"
+      - "No error reporting or logging in the web client"
+      - "No reconnection logic for WebSocket connection drops"
+      - "No documentation beyond a mention in README"
+      - "No CSP headers or XSS protection beyond CORS"
+      - "Built assets embedded at compile time — no integrity checks"
+    notes: >
+      Smallest domain (~600 LOC TypeScript). Functional live preview with
+      xterm.js rendering. Appropriate scope for an embedded UI, but the
+      complete absence of tests and observability means any regression is
+      invisible until a user reports it. Low priority given the domain's
+      size, but test coverage should not stay at D.
+    last_reviewed: "2026-03-17"
+
+# Cross-cutting quality notes:
+#
+# Error handling: A — DaemonError + thiserror + anyhow is a strong, consistent pattern.
+# Clippy enforcement: A — workspace-wide denials prevent entire categories of bugs.
+# Architecture enforcement: A — xtask validates crate-level boundaries in CI.
+# Domain isolation: F — no enforcement of boundaries between business domains within
+#   layer crates. This is the single largest quality gap across the entire codebase.
+#   See .harness/enforcement.yml for details.

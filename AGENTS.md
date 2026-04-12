@@ -1,33 +1,76 @@
-# Repository Guidelines
+# agent-tui — Agent Guide
 
-## Project Structure & Module Organization
-- `cli/`: Rust workspace for the CLI/daemon. Facade crate at `cli/crates/agent-tui/`, internal layer crates under `cli/crates/agent-tui-{common,domain,usecases,adapters,infra,app}/`, and Rust task runner at `cli/crates/xtask/`.
-- `web/`: Bun-based live preview UI. Source in `web/src/`, built assets in `web/public/`.
-- `docs/`: repository-level documentation.
-- `scripts/` and `install.sh`: release/installation helpers.
-- `skills/`: agent skill definitions and references.
+CLI tool that enables AI agents to programmatically drive terminal applications.
+Manages PTY sessions via a background daemon with JSON-RPC WebSocket API and embedded web UI.
 
-## Build, Test, and Development Commands
-Commands are managed via `just` from the repo root (it runs in `cli/`).
-- `just dev`: run the daemon in dev mode.
-- `just health`: run the CLI health check.
-- `just build` / `just build-release`: build Rust workspace (installs web deps first).
-- `just web-build`: build the web UI with Bun.
-- `just test`: run Rust tests (smoke/contract focus).
-- `just ready`: full CI-style checks (fmt, clippy, architecture, tests, version).
+## Non-Negotiable Rules
 
-## Coding Style & Naming Conventions
-- Rust: format with `rustfmt` and lint with `clippy` (`just format`, `just lint`). Follow standard Rust naming (snake_case for functions/vars, PascalCase for types).
-- TypeScript/Bun: keep code consistent with existing style; avoid hand-editing generated files in `web/public/`.
-- Keep changes minimal and cohesive; prefer small, focused modules.
+1. **Dependencies flow forward only.** `common → domain → usecases → adapters/infra → app → facade`. No reverse imports. Validated by `just boundaries` and CI.
+2. **No panics in production code.** `unwrap_used` and `expect_used` are denied workspace-wide. Use `?`, `anyhow::Context`, or `thiserror` types. Tests may unwrap.
+3. **No blocking in async context.** `std::thread::sleep`, unbounded channels, and `std::process::exit` (except `main.rs`) are banned via Clippy disallowed methods.
+4. **All errors use structured types.** Domain errors use `thiserror`; infra/app errors use `anyhow` with `.context()`. Never swallow errors silently.
+5. **Facade crate is a shell.** `cli/crates/agent-tui/` contains only `main.rs`, `lib.rs`, and `bin/*.rs`. All logic lives in layer crates.
 
-## Testing Guidelines
-- Unit/integration tests live under `cli/crates/agent-tui/tests` and module-level `#[cfg(test)]` blocks.
-- Run `just test` for local verification; use `just ready` before PRs. Optional dependency checks run if `cargo-machete` is installed.
+## Repository Map
 
-## Commit & Pull Request Guidelines
-- Commit messages generally follow a conventional pattern: `type: summary` (e.g., `feat: ...`, `fix: ...`, `chore: ...`, `refactor: ...`, `ci: ...`, `release: ...`). Keep summaries short and imperative.
-- PRs should include: a clear description, tests run, and linked issues. Add screenshots or clips for UI changes in `web/`.
+| Path | What it contains |
+|------|-----------------|
+| `ARCHITECTURE.md` | Domain boundaries, dependency graph, layer descriptions, where new code goes |
+| `docs/design-docs/` | Design history, core beliefs, architectural decisions |
+| `docs/api/` | OpenAPI + AsyncAPI specs, example clients (Rust, JS) |
+| `docs/ops/` | Process model, deployment patterns |
+| `docs/cli/` | Auto-generated CLI reference (do not hand-edit) |
+| `cli/docs/architecture/` | Clean Architecture target state and dependency matrix |
+| `cli/docs/plans/` | Historical refactor/restructure plans |
+| `.harness/` | Machine-readable harness config (domains, principles, enforcement, quality) |
+| `skills/` | Agent skill definitions and references |
 
-## Configuration Notes
-- The web server reads daemon state from `AGENT_TUI_WS_STATE` (defaults to `~/.agent-tui/api.json`). Document any new env vars you introduce.
+## Tech Stack
+
+- **Rust 1.85+** (2024 edition) — Tokio async runtime, Axum WebSocket server, Clap CLI
+- **TypeScript/Bun** — Web UI with xterm.js terminal emulator
+- **Build**: Cargo workspace (8 crates) + `just` task runner
+- **Key deps**: `portable-pty`, `tracing`, `serde`, `crossterm`
+
+## Verification
+
+Run from repo root before marking work complete:
+
+```bash
+just ready          # Full CI: fmt, clippy, architecture, tests, version check
+just test           # Fast: smoke, contract, unit tests
+just boundaries     # Architecture boundary check + dependency graph snapshot
+just lint           # Clippy with -D warnings
+just format-check   # rustfmt verification
+```
+
+For slow E2E tests (daemon lifecycle): `just test-core-e2e`
+
+## Code Organization
+
+```
+cli/crates/
+├── agent-tui/          # Facade: main.rs, bin/ entry points only
+├── agent-tui-common/   # Shared: DaemonError, error codes, colors, telemetry
+├── agent-tui-domain/   # Domain: SessionId, SessionInfo, types, domain errors
+├── agent-tui-usecases/ # Use cases: Screenshot, Input, Wait; trait ports
+├── agent-tui-adapters/ # Adapters: CLI handlers, JSON-RPC presenters, DTOs
+├── agent-tui-infra/    # Infra: PTY management, daemon, session repo, terminal
+├── agent-tui-app/      # App: composition root, handler coordination, web assets
+└── xtask/              # Build: architecture checks, CI orchestration, releases
+web/                    # Bun-based live preview UI (embedded into app crate)
+```
+
+New code goes in the **innermost layer that owns the concept**:
+- New type/model → `domain`
+- New business rule → `usecases`
+- New CLI handler or RPC presenter → `adapters`
+- New PTY/daemon/terminal concern → `infra`
+- New composition or wiring → `app`
+
+## Review Agents
+
+Three specialized agents run during code review (see `.claude/agents/`):
+- **clean-architecture-reviewer** — Dependency rule and layer compliance
+- **rust-principal-reviewer** — Design quality, correctness, complexity
+- **clean-code-reviewer** — Readability, naming, maintainability

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::fs;
@@ -81,6 +81,17 @@ struct DelayController {
     pending_cvar: Condvar,
 }
 
+fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn wait_or_recover<'a, T>(cvar: &Condvar, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
+    cvar.wait(guard)
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 impl DelayController {
     fn new() -> Self {
         Self {
@@ -93,7 +104,7 @@ impl DelayController {
     }
 
     fn register(&self, duration: Duration) -> oneshot::Receiver<()> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = lock_or_recover(&self.state);
         let target = state
             .now_ms
             .saturating_add(duration.as_millis().min(u64::MAX as u128) as u64);
@@ -106,7 +117,7 @@ impl DelayController {
     fn advance(&self, duration: Duration) {
         let mut ready = Vec::new();
         {
-            let mut state = self.state.lock().unwrap();
+            let mut state = lock_or_recover(&self.state);
             state.now_ms = state
                 .now_ms
                 .saturating_add(duration.as_millis().min(u64::MAX as u128) as u64);
@@ -127,9 +138,9 @@ impl DelayController {
     }
 
     fn wait_for_pending(&self, count: usize) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = lock_or_recover(&self.state);
         while state.pending.len() < count {
-            state = self.pending_cvar.wait(state).unwrap();
+            state = wait_or_recover(&self.pending_cvar, state);
         }
     }
 }
@@ -148,20 +159,20 @@ impl RequestCounter {
     }
 
     fn increment(&self) {
-        let mut count = self.count.lock().unwrap();
+        let mut count = lock_or_recover(&self.count);
         *count += 1;
         self.cvar.notify_all();
     }
 
     fn wait_for(&self, target: usize) {
-        let mut count = self.count.lock().unwrap();
+        let mut count = lock_or_recover(&self.count);
         while *count < target {
-            count = self.cvar.wait(count).unwrap();
+            count = wait_or_recover(&self.cvar, count);
         }
     }
 
     fn reset(&self) {
-        let mut count = self.count.lock().unwrap();
+        let mut count = lock_or_recover(&self.count);
         *count = 0;
         self.cvar.notify_all();
     }
@@ -206,7 +217,7 @@ impl MockDaemon {
         let sequence_counters = Arc::new(Mutex::new(HashMap::new()));
 
         {
-            let mut h = handlers.lock().unwrap();
+            let mut h = lock_or_recover(&handlers);
             h.insert(
                 "ping".to_string(),
                 MockResponse::Success(serde_json::json!({
@@ -363,16 +374,16 @@ impl MockDaemon {
     }
 
     pub fn set_response(&self, method: &str, response: MockResponse) {
-        let mut handlers = self.handlers.lock().unwrap();
+        let mut handlers = lock_or_recover(&self.handlers);
         handlers.insert(method.to_string(), response);
     }
 
     pub fn get_requests(&self) -> Vec<RecordedRequest> {
-        self.requests.lock().unwrap().clone()
+        lock_or_recover(&self.requests).clone()
     }
 
     pub fn clear_requests(&self) {
-        self.requests.lock().unwrap().clear();
+        lock_or_recover(&self.requests).clear();
         self.request_counter.reset();
     }
 
@@ -391,7 +402,7 @@ impl MockDaemon {
     pub fn last_request_for(&self, method: &str) -> Option<RecordedRequest> {
         self.requests
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .iter()
             .rev()
             .find(|r| r.method == method)
@@ -401,7 +412,7 @@ impl MockDaemon {
     pub fn call_count_for(&self, method: &str) -> usize {
         self.requests
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .iter()
             .filter(|r| r.method == method)
             .count()
@@ -410,7 +421,7 @@ impl MockDaemon {
     pub fn nth_call_for(&self, method: &str, n: usize) -> Option<RecordedRequest> {
         self.requests
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .iter()
             .filter(|r| r.method == method)
             .nth(n)
@@ -418,12 +429,12 @@ impl MockDaemon {
     }
 
     pub fn reset_sequence(&self, method: &str) {
-        let mut counters = self.sequence_counters.lock().unwrap();
+        let mut counters = lock_or_recover(&self.sequence_counters);
         counters.remove(method);
     }
 
     pub fn reset_all_sequences(&self) {
-        let mut counters = self.sequence_counters.lock().unwrap();
+        let mut counters = lock_or_recover(&self.sequence_counters);
         counters.clear();
     }
 
@@ -512,7 +523,7 @@ impl MockDaemon {
             };
 
             {
-                let mut reqs = requests.lock().unwrap();
+                let mut reqs = lock_or_recover(&requests);
                 reqs.push(RecordedRequest {
                     method: request.method.clone(),
                     params: request.params.clone(),
@@ -521,7 +532,7 @@ impl MockDaemon {
             request_counter.increment();
 
             let handler = {
-                let h = handlers.lock().unwrap();
+                let h = lock_or_recover(&handlers);
                 h.get(&request.method).cloned()
             };
 
@@ -561,7 +572,7 @@ impl MockDaemon {
     ) -> Option<MockResponse> {
         match handler {
             Some(MockResponse::Sequence(responses)) if !responses.is_empty() => {
-                let mut counters = sequence_counters.lock().unwrap();
+                let mut counters = lock_or_recover(sequence_counters);
                 let index = counters.entry(method.to_string()).or_insert(0);
                 let response = responses[*index % responses.len()].clone();
                 *index += 1;
@@ -587,7 +598,7 @@ impl MockDaemon {
                     result: Some(result),
                     error: None,
                 };
-                Some(serde_json::to_string(&response).unwrap())
+                Some(serde_json::to_string(&response).expect("success response should serialize"))
             }
             Some(MockResponse::Error { code, message }) => {
                 let response = Response {
@@ -600,7 +611,7 @@ impl MockDaemon {
                         data: None,
                     }),
                 };
-                Some(serde_json::to_string(&response).unwrap())
+                Some(serde_json::to_string(&response).expect("error response should serialize"))
             }
             Some(MockResponse::StructuredError {
                 code,
@@ -637,7 +648,10 @@ impl MockDaemon {
                         },
                     }),
                 };
-                Some(serde_json::to_string(&response).unwrap())
+                Some(
+                    serde_json::to_string(&response)
+                        .expect("structured error response should serialize"),
+                )
             }
             Some(MockResponse::Malformed(s)) => Some(s),
             Some(MockResponse::Hang) => {
@@ -691,7 +705,10 @@ impl MockDaemon {
                         data: None,
                     }),
                 };
-                Some(serde_json::to_string(&response).unwrap())
+                Some(
+                    serde_json::to_string(&response)
+                        .expect("method-not-found response should serialize"),
+                )
             }
         }
     }

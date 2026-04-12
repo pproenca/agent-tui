@@ -12,6 +12,8 @@ use crate::usecases::ports::SessionOps;
 pub enum WaitConditionParseError {
     #[error("condition '{0}' requires a text parameter")]
     MissingText(WaitConditionType),
+    #[error("unsupported condition '{0}'")]
+    UnsupportedCondition(String),
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +40,9 @@ impl WaitCondition {
                     WaitConditionParseError::MissingText(WaitConditionType::TextGone),
                 )
             }
+            Some(other) => Err(WaitConditionParseError::UnsupportedCondition(
+                other.as_str().to_string(),
+            )),
             None => Ok(text
                 .map(|t| WaitCondition::Text(t.to_string()))
                 .unwrap_or(WaitCondition::Stable)),
@@ -189,32 +194,35 @@ mod tests {
 
     #[test]
     fn test_wait_condition_parse_text() {
-        let cond = WaitCondition::parse(Some(WaitConditionType::Text), Some("hello")).unwrap();
+        let cond = WaitCondition::parse(Some(WaitConditionType::Text), Some("hello"))
+            .expect("text condition should parse");
         assert!(matches!(cond, WaitCondition::Text(t) if t == "hello"));
     }
 
     #[test]
     fn test_wait_condition_parse_text_gone() {
-        let cond =
-            WaitCondition::parse(Some(WaitConditionType::TextGone), Some("loading")).unwrap();
+        let cond = WaitCondition::parse(Some(WaitConditionType::TextGone), Some("loading"))
+            .expect("text_gone condition should parse");
         assert!(matches!(cond, WaitCondition::TextGone(t) if t == "loading"));
     }
 
     #[test]
     fn test_wait_condition_parse_stable() {
-        let cond = WaitCondition::parse(Some(WaitConditionType::Stable), None).unwrap();
+        let cond = WaitCondition::parse(Some(WaitConditionType::Stable), None)
+            .expect("stable condition should parse");
         assert!(matches!(cond, WaitCondition::Stable));
     }
 
     #[test]
     fn test_wait_condition_parse_none_defaults_to_text() {
-        let cond = WaitCondition::parse(None, Some("hello")).unwrap();
+        let cond =
+            WaitCondition::parse(None, Some("hello")).expect("text default condition should parse");
         assert!(matches!(cond, WaitCondition::Text(t) if t == "hello"));
     }
 
     #[test]
     fn test_wait_condition_parse_none_none_defaults_to_stable() {
-        let cond = WaitCondition::parse(None, None).unwrap();
+        let cond = WaitCondition::parse(None, None).expect("stable default condition should parse");
         assert!(matches!(cond, WaitCondition::Stable));
     }
 

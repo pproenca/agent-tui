@@ -74,7 +74,7 @@ pub trait SessionRepository: Send + Sync {
         args: &[String],
         cwd: Option<&str>,
         env: Option<&HashMap<String, String>>,
-        session_id: Option<String>,
+        session_id: Option<SessionId>,
         cols: u16,
         rows: u16,
     ) -> Result<(SessionId, u32), SessionError>;

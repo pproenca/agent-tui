@@ -110,7 +110,7 @@ impl RpcCore {
     pub fn shutdown_all_sessions(&self) {
         let sessions = self.session_manager.list();
         for info in sessions {
-            if let Err(err) = self.session_manager.kill(info.id.as_str()) {
+            if let Err(err) = self.session_manager.kill(&info.id) {
                 tracing::warn!(session_id = %info.id, error = %err, "Failed to kill session during shutdown");
             }
         }
@@ -1017,7 +1017,10 @@ mod tests {
             &[],
             None,
             None,
-            Some("timeline-session".to_string()),
+            Some(
+                crate::domain::SessionId::try_new("timeline-session")
+                    .expect("timeline session id should be valid"),
+            ),
             80,
             24,
         );
@@ -1042,7 +1045,10 @@ mod tests {
 
         let _ = handle.wait_for_event("ready", Duration::from_secs(2));
 
-        if let Ok(session) = core.session_manager.get("timeline-session") {
+        if let Ok(session) = core.session_manager.get(
+            &crate::domain::SessionId::try_new("timeline-session")
+                .expect("timeline session id should be valid"),
+        ) {
             let mut guard = session.lock().unwrap_or_else(|poison| poison.into_inner());
             let _ = guard.type_text("echo timeline\n");
         }
@@ -1075,7 +1081,10 @@ mod tests {
             &[],
             None,
             None,
-            Some("timeline-resize-session".to_string()),
+            Some(
+                crate::domain::SessionId::try_new("timeline-resize-session")
+                    .expect("timeline resize session id should be valid"),
+            ),
             80,
             24,
         );
@@ -1100,7 +1109,10 @@ mod tests {
 
         let _ = handle.wait_for_event("ready", Duration::from_secs(2));
 
-        if let Ok(session) = core.session_manager.get("timeline-resize-session") {
+        if let Ok(session) = core.session_manager.get(
+            &crate::domain::SessionId::try_new("timeline-resize-session")
+                .expect("timeline resize session id should be valid"),
+        ) {
             let mut guard = session.lock().unwrap_or_else(|poison| poison.into_inner());
             let _ = guard.resize(120, 40);
         }
@@ -1190,7 +1202,10 @@ mod tests {
             &[],
             None,
             None,
-            Some("flightdeck-new".to_string()),
+            Some(
+                crate::domain::SessionId::try_new("flightdeck-new")
+                    .expect("flightdeck session id should be valid"),
+            ),
             80,
             24,
         );

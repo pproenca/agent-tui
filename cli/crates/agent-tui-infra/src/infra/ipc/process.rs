@@ -63,9 +63,10 @@ impl ProcessController for UnixProcessController {
 }
 
 #[cfg(any(test, feature = "test-support"))]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::expect_used)]
 pub mod mock {
     use super::*;
+    use crate::common::mutex_lock_or_recover;
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -100,46 +101,46 @@ pub mod mock {
         }
 
         pub fn with_process(self, pid: u32, status: ProcessStatus) -> Self {
-            self.process_states.lock().unwrap().insert(pid, status);
+            mutex_lock_or_recover(&self.process_states).insert(pid, status);
             self
         }
 
         pub fn with_check_error(self, error: std::io::Error) -> Self {
-            *self.check_error.lock().unwrap() = Some(error);
+            *mutex_lock_or_recover(&self.check_error) = Some(error);
             self
         }
 
         pub fn with_signal_error(self, error: std::io::Error) -> Self {
-            *self.signal_error.lock().unwrap() = Some(error);
+            *mutex_lock_or_recover(&self.signal_error) = Some(error);
             self
         }
 
         pub fn signals_sent(&self) -> Vec<(u32, Signal)> {
-            self.signals_sent.lock().unwrap().clone()
+            mutex_lock_or_recover(&self.signals_sent).clone()
         }
     }
 
     impl ProcessController for MockProcessController {
         fn check_process(&self, pid: u32) -> std::io::Result<ProcessStatus> {
-            if let Some(err) = self.check_error.lock().unwrap().take() {
+            if let Some(err) = mutex_lock_or_recover(&self.check_error).take() {
                 return Err(err);
             }
             Ok(self
                 .process_states
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .get(&pid)
                 .copied()
                 .unwrap_or(ProcessStatus::NotFound))
         }
 
         fn send_signal(&self, pid: u32, signal: Signal) -> std::io::Result<()> {
-            if let Some(err) = self.signal_error.lock().unwrap().take() {
+            if let Some(err) = mutex_lock_or_recover(&self.signal_error).take() {
                 return Err(err);
             }
-            self.signals_sent.lock().unwrap().push((pid, signal));
+            mutex_lock_or_recover(&self.signals_sent).push((pid, signal));
             if self.signal_kills_process {
-                self.process_states.lock().unwrap().remove(&pid);
+                mutex_lock_or_recover(&self.process_states).remove(&pid);
             }
             Ok(())
         }
@@ -166,27 +167,38 @@ mod tests {
     #[test]
     fn test_mock_check_process_not_found() {
         let mock = MockProcessController::new();
-        assert_eq!(mock.check_process(1234).unwrap(), ProcessStatus::NotFound);
+        assert_eq!(
+            mock.check_process(1234)
+                .expect("check_process should succeed"),
+            ProcessStatus::NotFound
+        );
     }
 
     #[test]
     fn test_mock_check_process_running() {
         let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
-        assert_eq!(mock.check_process(1234).unwrap(), ProcessStatus::Running);
+        assert_eq!(
+            mock.check_process(1234)
+                .expect("check_process should succeed"),
+            ProcessStatus::Running
+        );
     }
 
     #[test]
     fn test_mock_send_signal() {
         let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
-        mock.send_signal(1234, Signal::Term).unwrap();
+        mock.send_signal(1234, Signal::Term)
+            .expect("send_signal should succeed");
         assert_eq!(mock.signals_sent(), vec![(1234, Signal::Term)]);
     }
 
     #[test]
     fn test_mock_send_multiple_signals() {
         let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
-        mock.send_signal(1234, Signal::Term).unwrap();
-        mock.send_signal(1234, Signal::Kill).unwrap();
+        mock.send_signal(1234, Signal::Term)
+            .expect("first send_signal should succeed");
+        mock.send_signal(1234, Signal::Kill)
+            .expect("second send_signal should succeed");
         assert_eq!(
             mock.signals_sent(),
             vec![(1234, Signal::Term), (1234, Signal::Kill)]

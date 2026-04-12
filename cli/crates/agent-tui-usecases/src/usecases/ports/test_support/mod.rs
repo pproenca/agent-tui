@@ -1,5 +1,5 @@
 //! Test-only mocks for use case ports.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::expect_used)]
 
 mod mock_error;
 mod mock_repository;

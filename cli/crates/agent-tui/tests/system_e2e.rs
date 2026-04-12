@@ -1,7 +1,6 @@
 #![expect(
-    clippy::unwrap_used,
     clippy::expect_used,
-    reason = "Test-only assertions use unwrap/expect for clarity."
+    reason = "Test-only assertions use expect for clarity."
 )]
 
 //! End-to-end system tests.

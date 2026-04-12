@@ -169,9 +169,15 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = SizeLimitedReader::new(buf_reader, 100);
 
-        assert_eq!(reader.read_line().unwrap(), Some("hello".to_string()));
-        assert_eq!(reader.read_line().unwrap(), Some("world".to_string()));
-        assert_eq!(reader.read_line().unwrap(), None);
+        assert_eq!(
+            reader.read_line().expect("first line should read"),
+            Some("hello".to_string())
+        );
+        assert_eq!(
+            reader.read_line().expect("second line should read"),
+            Some("world".to_string())
+        );
+        assert_eq!(reader.read_line().expect("reader should reach EOF"), None);
     }
 
     #[test]
@@ -193,7 +199,9 @@ mod tests {
         let mut reader = SizeLimitedReader::new(buf_reader, 100);
 
         assert_eq!(
-            reader.read_line().unwrap(),
+            reader
+                .read_line()
+                .expect("CRLF-terminated line should read"),
             Some("line with crlf".to_string())
         );
     }
@@ -207,7 +215,8 @@ mod tests {
         assert!(io_err.to_string().contains("I/O error"));
 
         let parse_err = TransportError::Parse(
-            serde_json::from_str::<serde_json::Value>("invalid json").unwrap_err(),
+            serde_json::from_str::<serde_json::Value>("invalid json")
+                .expect_err("invalid JSON should fail"),
         );
         assert!(parse_err.to_string().contains("Parse error"));
 
@@ -256,38 +265,47 @@ mod tests {
         use std::os::unix::net::UnixStream;
         use std::thread;
 
-        let (client_stream, server_stream) = UnixStream::pair().unwrap();
+        let (client_stream, server_stream) =
+            UnixStream::pair().expect("unix stream pair should be created");
 
         let server_handle = thread::spawn(move || {
-            let mut conn = UnixSocketConnection::new(server_stream).unwrap();
-            let request = conn.read_request().unwrap();
+            let mut conn =
+                UnixSocketConnection::new(server_stream).expect("server connection should wrap");
+            let request = conn.read_request().expect("server request should read");
             assert_eq!(request.method, "test_method");
 
-            let payload = serde_json::from_str(r#"{"ok":true}"#).unwrap();
+            let payload =
+                serde_json::from_str(r#"{"ok":true}"#).expect("response payload should parse");
             let response = RpcResponse::success(request.id, payload);
-            conn.write_response(&response).unwrap();
+            conn.write_response(&response)
+                .expect("server response should write");
         });
 
-        let mut client_stream_writer = client_stream.try_clone().unwrap();
-        let mut client_conn = UnixSocketConnection::new(client_stream).unwrap();
+        let mut client_stream_writer = client_stream
+            .try_clone()
+            .expect("client stream should clone");
+        let mut client_conn =
+            UnixSocketConnection::new(client_stream).expect("client connection should wrap");
 
         let request_json = r#"{"jsonrpc":"2.0","id":1,"method":"test_method"}"#;
-        writeln!(client_stream_writer, "{}", request_json).unwrap();
+        writeln!(client_stream_writer, "{}", request_json).expect("client request should write");
 
         let response = client_conn.read_request();
         assert!(response.is_ok() || matches!(response, Err(TransportError::Parse(_))));
 
-        server_handle.join().unwrap();
+        server_handle.join().expect("server thread should join");
     }
 
     #[test]
     fn test_unix_socket_connection_closed() {
         use std::os::unix::net::UnixStream;
 
-        let (client_stream, server_stream) = UnixStream::pair().unwrap();
+        let (client_stream, server_stream) =
+            UnixStream::pair().expect("unix stream pair should be created");
         drop(server_stream);
 
-        let mut conn = UnixSocketConnection::new(client_stream).unwrap();
+        let mut conn =
+            UnixSocketConnection::new(client_stream).expect("client connection should wrap");
         let result = conn.read_request();
         assert!(matches!(result, Err(TransportError::ConnectionClosed)));
     }
@@ -299,8 +317,14 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = SizeLimitedReader::new(buf_reader, 8);
 
-        assert_eq!(reader.read_line().unwrap(), Some("aaa".to_string()));
-        assert_eq!(reader.read_line().unwrap(), Some("bbb".to_string()));
+        assert_eq!(
+            reader.read_line().expect("first line should read"),
+            Some("aaa".to_string())
+        );
+        assert_eq!(
+            reader.read_line().expect("second line should read"),
+            Some("bbb".to_string())
+        );
         let result = reader.read_line();
         assert!(matches!(result, Err(TransportError::SizeLimit { .. })));
     }

@@ -8,8 +8,8 @@ pub use types::RpcResponse;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use serde::Deserialize;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json::json;
 
 use super::snapshot_adapters::session_info_to_json;
@@ -59,12 +59,42 @@ pub fn to_value_opt<T: Serialize>(
     value.map(serde_json::to_value).transpose()
 }
 
+#[allow(clippy::result_large_err)]
+fn deserialize_required_params<T: DeserializeOwned>(
+    request: &RpcRequest,
+) -> Result<T, RpcResponse> {
+    request
+        .params
+        .as_ref()
+        .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))
+        .and_then(|params| {
+            T::deserialize(params).map_err(|err| {
+                RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", err))
+            })
+        })
+}
+
+#[allow(clippy::result_large_err)]
+fn deserialize_optional_params<T>(request: &RpcRequest) -> Result<T, RpcResponse>
+where
+    T: DeserializeOwned + Default,
+{
+    request.params.as_ref().map_or_else(
+        || Ok(T::default()),
+        |params| {
+            T::deserialize(params).map_err(|err| {
+                RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", err))
+            })
+        },
+    )
+}
+
 pub fn parse_session_id(session: Option<String>) -> Option<SessionId> {
     session.and_then(|s| {
         if s.trim().is_empty() {
             None
         } else {
-            Some(SessionId::new(s))
+            SessionId::try_new(s).ok()
         }
     })
 }
@@ -75,7 +105,7 @@ pub fn parse_session_selector(session: Option<String>) -> Option<SessionId> {
         if trimmed.is_empty() || trimmed == "active" {
             None
         } else {
-            Some(SessionId::new(trimmed))
+            SessionId::try_new(trimmed).ok()
         }
     })
 }
@@ -109,15 +139,7 @@ pub fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
 
 #[allow(clippy::result_large_err)]
 pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse> {
-    let rpc_params: params::SpawnParams = request
-        .params
-        .as_ref()
-        .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))
-        .and_then(|p| {
-            params::SpawnParams::deserialize(p).map_err(|e| {
-                RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", e))
-            })
-        })?;
+    let rpc_params: params::SpawnParams = deserialize_required_params(request)?;
 
     let command = if rpc_params.command.is_empty() {
         "bash".to_string()
@@ -146,21 +168,17 @@ pub fn spawn_output_to_response(id: u64, output: SpawnOutput) -> RpcResponse {
     )
 }
 
-pub fn parse_snapshot_input(request: &RpcRequest) -> SnapshotInput {
-    let rpc_params: params::SnapshotParams = request
-        .params
-        .as_ref()
-        .and_then(|p| params::SnapshotParams::deserialize(p).ok())
-        .unwrap_or_default();
+pub fn parse_snapshot_input(request: &RpcRequest) -> Result<SnapshotInput, RpcResponse> {
+    let rpc_params: params::SnapshotParams = deserialize_optional_params(request)?;
 
-    SnapshotInput {
+    Ok(SnapshotInput {
         session_id: parse_session_selector(rpc_params.session),
         region: rpc_params.region,
         strip_ansi: rpc_params.strip_ansi,
         retain_ansi: rpc_params.retain_ansi,
         include_cursor: rpc_params.include_cursor,
         include_render: rpc_params.include_render || rpc_params.retain_ansi,
-    }
+    })
 }
 
 pub fn snapshot_output_to_response(
@@ -244,11 +262,7 @@ pub fn parse_keyup_input(request: &RpcRequest) -> Result<KeyupInput, RpcResponse
 
 #[allow(clippy::result_large_err)]
 pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> {
-    let rpc_params: params::WaitParams = request
-        .params
-        .as_ref()
-        .and_then(|p| params::WaitParams::deserialize(p).ok())
-        .unwrap_or_default();
+    let rpc_params: params::WaitParams = deserialize_optional_params(request)?;
 
     let condition = match rpc_params.condition.as_deref() {
         Some(raw) => Some(crate::domain::WaitConditionType::parse(raw).map_err(|e| {
@@ -305,22 +319,14 @@ pub fn sessions_output_to_response(id: u64, output: SessionsOutput) -> RpcRespon
     )
 }
 
-pub fn parse_resize_input(request: &RpcRequest) -> ResizeInput {
-    let rpc_params: params::ResizeParams = request
-        .params
-        .as_ref()
-        .and_then(|p| params::ResizeParams::deserialize(p).ok())
-        .unwrap_or(params::ResizeParams {
-            cols: 0,
-            rows: 0,
-            session: None,
-        });
+pub fn parse_resize_input(request: &RpcRequest) -> Result<ResizeInput, RpcResponse> {
+    let rpc_params: params::ResizeParams = deserialize_required_params(request)?;
 
-    ResizeInput {
+    Ok(ResizeInput {
         session_id: parse_session_selector(rpc_params.session),
         cols: rpc_params.cols,
         rows: rpc_params.rows,
-    }
+    })
 }
 
 pub fn resize_output_to_response(id: u64, output: ResizeOutput) -> RpcResponse {
@@ -351,7 +357,9 @@ pub fn restart_output_to_response(id: u64, output: RestartOutput) -> RpcResponse
 pub fn parse_attach_input(request: &RpcRequest) -> Result<AttachInput, RpcResponse> {
     let session_id = request.require_str("session")?.to_string();
     Ok(AttachInput {
-        session_id: SessionId::new(session_id),
+        session_id: SessionId::try_new(session_id).map_err(|err| {
+            RpcResponse::error(request.id, -32602, &format!("Invalid session: {}", err))
+        })?,
     })
 }
 
@@ -428,15 +436,7 @@ pub fn terminal_write_output_to_response(id: u64, output: TerminalWriteOutput) -
 
 #[allow(clippy::result_large_err)]
 pub fn parse_terminal_write_input(request: &RpcRequest) -> Result<TerminalWriteInput, RpcResponse> {
-    let rpc_params: params::PtyWriteParams = request
-        .params
-        .as_ref()
-        .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))
-        .and_then(|p| {
-            params::PtyWriteParams::deserialize(p).map_err(|e| {
-                RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", e))
-            })
-        })?;
+    let rpc_params: params::PtyWriteParams = deserialize_required_params(request)?;
 
     let data = STANDARD
         .decode(&rpc_params.data)
@@ -459,7 +459,7 @@ mod tests {
     #[test]
     fn test_parse_spawn_input_defaults() {
         let request = make_request(1, "spawn", Some(json!({})));
-        let input = parse_spawn_input(&request).unwrap();
+        let input = parse_spawn_input(&request).expect("spawn input should parse");
         assert_eq!(input.command, "bash");
         assert_eq!(input.cols, 80);
         assert_eq!(input.rows, 24);
@@ -472,16 +472,24 @@ mod tests {
             "snapshot",
             Some(json!({"retain_ansi": true, "include_cursor": true})),
         );
-        let input = parse_snapshot_input(&request);
+        let input = parse_snapshot_input(&request).expect("snapshot params should parse");
         assert!(input.retain_ansi);
         assert!(input.include_cursor);
         assert!(input.include_render);
     }
 
     #[test]
+    fn test_parse_snapshot_input_rejects_invalid_params() {
+        let request = make_request(1, "snapshot", Some(json!({"include_cursor": "yes"})));
+        let response = parse_snapshot_input(&request).expect_err("invalid params should error");
+        let value = serde_json::to_value(response).expect("response should serialize");
+        assert_eq!(value["error"]["code"], -32602);
+    }
+
+    #[test]
     fn test_snapshot_output_to_response_prefers_rendered_when_retaining_ansi() {
         let output = SnapshotOutput {
-            session_id: crate::domain::SessionId::new("session-1"),
+            session_id: crate::domain::SessionId::try_new("session-1").expect("valid session id"),
             screenshot: "plain text".to_string(),
             cursor: None,
             rendered: Some("\u{1b}[31mplain text\u{1b}[0m".to_string()),
@@ -537,30 +545,38 @@ mod tests {
             "wait",
             Some(json!({"text": "ready", "timeout_ms": 5000})),
         );
-        let input = parse_wait_input(&request).unwrap();
-        assert_eq!(input.text.unwrap(), "ready");
+        let input = parse_wait_input(&request).expect("wait input should parse");
+        assert_eq!(input.text.as_deref(), Some("ready"));
         assert_eq!(input.timeout_ms, 5000);
     }
 
     #[test]
     fn test_parse_wait_input_requires_text() {
         let request = make_request(1, "wait", Some(json!({"condition": "text"})));
-        let response = parse_wait_input(&request).unwrap_err();
-        let value = serde_json::to_value(response).unwrap();
+        let response = parse_wait_input(&request).expect_err("wait input should fail without text");
+        let value = serde_json::to_value(response).expect("response should serialize");
+        assert_eq!(value["error"]["code"], -32602);
+    }
+
+    #[test]
+    fn test_parse_wait_input_rejects_invalid_params() {
+        let request = make_request(1, "wait", Some(json!({"timeout_ms": "fast"})));
+        let response = parse_wait_input(&request).expect_err("invalid params should error");
+        let value = serde_json::to_value(response).expect("response should serialize");
         assert_eq!(value["error"]["code"], -32602);
     }
 
     #[test]
     fn test_parse_keydown_input() {
         let request = make_request(1, "keydown", Some(json!({"key": "Ctrl"})));
-        let input = parse_keydown_input(&request).unwrap();
+        let input = parse_keydown_input(&request).expect("keydown input should parse");
         assert_eq!(input.key, "Ctrl");
     }
 
     #[test]
     fn test_parse_keyup_input() {
         let request = make_request(1, "keyup", Some(json!({"key": "Ctrl"})));
-        let input = parse_keyup_input(&request).unwrap();
+        let input = parse_keyup_input(&request).expect("keyup input should parse");
         assert_eq!(input.key, "Ctrl");
     }
 
@@ -568,7 +584,15 @@ mod tests {
     fn test_parse_terminal_write_input() {
         let data = STANDARD.encode(b"hello");
         let request = make_request(1, "pty_write", Some(json!({"data": data})));
-        let input = parse_terminal_write_input(&request).unwrap();
+        let input = parse_terminal_write_input(&request).expect("pty_write input should parse");
         assert_eq!(input.data, b"hello");
+    }
+
+    #[test]
+    fn test_parse_resize_input_rejects_invalid_params() {
+        let request = make_request(1, "resize", Some(json!({"cols": "wide", "rows": 24})));
+        let response = parse_resize_input(&request).expect_err("invalid params should error");
+        let value = serde_json::to_value(response).expect("response should serialize");
+        assert_eq!(value["error"]["code"], -32602);
     }
 }

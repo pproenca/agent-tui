@@ -1,5 +1,6 @@
 //! Session identifier and terminal size types.
 
+use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
 use thiserror::Error;
@@ -22,11 +23,15 @@ impl SessionId {
         Ok(Self(id))
     }
 
-    /// Convenience constructor that panics on invalid (empty/whitespace) input.
-    /// Use `try_new()` when handling untrusted input.
-    #[allow(clippy::expect_used)]
-    pub fn new(id: impl Into<String>) -> Self {
-        Self::try_new(id).expect("SessionId must not be empty")
+    /// Unchecked constructor for trusted internal call sites that already
+    /// guarantee the invariant.
+    pub fn new_unchecked(id: impl Into<String>) -> Self {
+        let id = id.into();
+        debug_assert!(
+            !id.trim().is_empty(),
+            "SessionId::new_unchecked requires a non-empty identifier"
+        );
+        Self(id)
     }
 
     pub fn as_str(&self) -> &str {
@@ -57,15 +62,25 @@ impl AsRef<str> for SessionId {
     }
 }
 
-impl From<String> for SessionId {
-    fn from(s: String) -> Self {
-        Self::new(s)
+impl Borrow<str> for SessionId {
+    fn borrow(&self) -> &str {
+        &self.0
     }
 }
 
-impl From<&str> for SessionId {
-    fn from(s: &str) -> Self {
-        Self::new(s)
+impl TryFrom<String> for SessionId {
+    type Error = SessionIdError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+impl TryFrom<&str> for SessionId {
+    type Error = SessionIdError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_new(value)
     }
 }
 
@@ -177,32 +192,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_session_id_new() {
-        let id = SessionId::new("test123");
+    fn test_session_id_try_new() {
+        let id = SessionId::try_new("test123").expect("valid session id");
         assert_eq!(id.as_str(), "test123");
     }
 
     #[test]
     fn test_session_id_display() {
-        let id = SessionId::new("abc123");
+        let id = SessionId::try_new("abc123").expect("valid session id");
         assert_eq!(format!("{}", id), "abc123");
     }
 
     #[test]
-    fn test_session_id_from_string() {
-        let id: SessionId = "test".to_string().into();
+    fn test_session_id_try_from_string() {
+        let id = SessionId::try_from("test".to_string()).expect("valid session id");
         assert_eq!(id.as_str(), "test");
     }
 
     #[test]
-    fn test_session_id_from_str() {
-        let id: SessionId = "test".into();
+    fn test_session_id_try_from_str() {
+        let id = SessionId::try_from("test").expect("valid session id");
         assert_eq!(id.as_str(), "test");
     }
 
     #[test]
     fn test_session_id_as_ref() {
-        let id = SessionId::new("test");
+        let id = SessionId::try_new("test").expect("valid session id");
         let s: &str = id.as_ref();
         assert_eq!(s, "test");
     }
@@ -210,7 +225,7 @@ mod tests {
     #[test]
     fn test_session_info_creation() {
         let info = SessionInfo {
-            id: SessionId::new("test"),
+            id: SessionId::try_new("test").expect("valid session id"),
             command: "bash".to_string(),
             pid: 1234,
             running: true,
@@ -226,7 +241,7 @@ mod tests {
     #[test]
     fn test_session_info_is_active() {
         let running = SessionInfo {
-            id: SessionId::new("test"),
+            id: SessionId::try_new("test").expect("valid session id"),
             command: "bash".to_string(),
             pid: 1234,
             running: true,
@@ -236,7 +251,7 @@ mod tests {
         assert!(running.is_active());
 
         let stopped = SessionInfo {
-            id: SessionId::new("test2"),
+            id: SessionId::try_new("test2").expect("valid session id"),
             command: "bash".to_string(),
             pid: 1235,
             running: false,
@@ -249,12 +264,12 @@ mod tests {
     #[test]
     fn test_session_info_dimensions() {
         let info = SessionInfo {
-            id: SessionId::new("test"),
+            id: SessionId::try_new("test").expect("valid session id"),
             command: "bash".to_string(),
             pid: 1234,
             running: true,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: TerminalSize::try_new(120, 40).unwrap(),
+            size: TerminalSize::try_new(120, 40).expect("valid terminal size"),
         };
         assert_eq!(info.dimensions(), (120, 40));
         assert_eq!(info.cols(), 120);
@@ -264,7 +279,7 @@ mod tests {
     #[test]
     fn test_session_info_created_at() {
         let info = SessionInfo {
-            id: SessionId::new("test"),
+            id: SessionId::try_new("test").expect("valid session id"),
             command: "bash".to_string(),
             pid: 1234,
             running: true,
@@ -309,7 +324,7 @@ mod tests {
 
         #[test]
         fn test_session_id_preserves_value() {
-            let id = SessionId::try_new("my-session").unwrap();
+            let id = SessionId::try_new("my-session").expect("valid session id");
             assert_eq!(id.as_str(), "my-session");
         }
 
@@ -339,7 +354,7 @@ mod tests {
 
         #[test]
         fn test_error_has_message() {
-            let err = SessionId::try_new("").unwrap_err();
+            let err = SessionId::try_new("").expect_err("empty session id should be rejected");
             assert!(matches!(err, SessionIdError::Empty));
             assert!(err.to_string().contains("empty"));
         }
@@ -413,7 +428,7 @@ mod tests {
 
         #[test]
         fn test_terminal_size_as_tuple() {
-            let size = TerminalSize::try_new(120, 40).unwrap();
+            let size = TerminalSize::try_new(120, 40).expect("valid terminal size");
             assert_eq!(size.as_tuple(), (120, 40));
         }
     }

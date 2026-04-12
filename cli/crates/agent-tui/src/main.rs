@@ -1,5 +1,5 @@
 //! CLI entrypoint for agent-tui.
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+#![cfg_attr(test, allow(clippy::expect_used))]
 
 use agent_tui::Application;
 use anyhow::Result;

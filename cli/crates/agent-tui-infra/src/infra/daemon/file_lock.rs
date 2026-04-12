@@ -73,7 +73,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn temp_lock_path() -> (TempDir, PathBuf) {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("temp dir should be created");
         let path = dir.path().join("test.lock");
         (dir, path)
     }
@@ -88,17 +88,17 @@ mod tests {
     #[test]
     fn test_acquire_lock_writes_pid() {
         let (_dir, path) = temp_lock_path();
-        let _lock = LockFile::acquire(&path).unwrap();
+        let _lock = LockFile::acquire(&path).expect("lock should be acquired");
 
-        let contents = std::fs::read_to_string(&path).unwrap();
-        let pid: u32 = contents.trim().parse().unwrap();
+        let contents = std::fs::read_to_string(&path).expect("lock file should be readable");
+        let pid: u32 = contents.trim().parse().expect("pid should parse");
         assert_eq!(pid, std::process::id());
     }
 
     #[test]
     fn test_remove_lock_file() {
         let (_dir, path) = temp_lock_path();
-        std::fs::write(&path, "test").unwrap();
+        std::fs::write(&path, "test").expect("lock file should be written");
         assert!(path.exists());
 
         remove_lock_file(&path);

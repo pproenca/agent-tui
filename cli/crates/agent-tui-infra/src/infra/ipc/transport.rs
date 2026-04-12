@@ -644,8 +644,7 @@ pub fn start_daemon_background() -> Result<(), ClientError> {
 mod tests {
     #![allow(
         clippy::expect_used,
-        clippy::unwrap_used,
-        reason = "Test-only assertions use expect/unwrap for clarity."
+        reason = "Test-only assertions use expect for clarity."
     )]
 
     use super::*;

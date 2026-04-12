@@ -130,7 +130,7 @@ impl SessionOps for SessionHandleImpl {
 
     fn session_id(&self) -> SessionId {
         let session_guard = mutex_lock_or_recover(&self.inner);
-        SessionId::from(session_guard.id.as_str())
+        session_guard.id.clone()
     }
 
     fn command(&self) -> String {
@@ -157,7 +157,7 @@ impl SessionRepository for SessionManager {
         args: &[String],
         cwd: Option<&str>,
         env: Option<&HashMap<String, String>>,
-        session_id: Option<String>,
+        session_id: Option<SessionId>,
         cols: u16,
         rows: u16,
     ) -> Result<(SessionId, u32), SessionError> {
@@ -165,7 +165,7 @@ impl SessionRepository for SessionManager {
     }
 
     fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError> {
-        let session = SessionManager::get(self, session_id.as_str())?;
+        let session = SessionManager::get(self, session_id)?;
         Ok(SessionHandleImpl::new_handle(session))
     }
 
@@ -175,12 +175,12 @@ impl SessionRepository for SessionManager {
     }
 
     fn resolve(&self, session_id: Option<&SessionId>) -> Result<SessionHandle, SessionError> {
-        let session = SessionManager::resolve(self, session_id.map(|id| id.as_str()))?;
+        let session = SessionManager::resolve(self, session_id)?;
         Ok(SessionHandleImpl::new_handle(session))
     }
 
     fn set_active(&self, session_id: &SessionId) -> Result<(), SessionError> {
-        SessionManager::set_active(self, session_id.as_str())
+        SessionManager::set_active(self, session_id)
     }
 
     fn list(&self) -> Vec<SessionInfo> {
@@ -188,7 +188,7 @@ impl SessionRepository for SessionManager {
     }
 
     fn kill(&self, session_id: &SessionId) -> Result<(), SessionError> {
-        SessionManager::kill(self, session_id.as_str())
+        SessionManager::kill(self, session_id)
     }
 
     fn session_count(&self) -> usize {

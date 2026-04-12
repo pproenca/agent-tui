@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 #![allow(dead_code)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+#![cfg_attr(test, allow(clippy::expect_used))]
 
 //! Interface adapters crate.
 

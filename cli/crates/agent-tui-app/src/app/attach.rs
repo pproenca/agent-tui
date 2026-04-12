@@ -1115,7 +1115,7 @@ mod tests {
             serde_json::from_str(
                 r#"{"screenshot":"hello\nworld","cursor":{"row":1,"col":2,"visible":true}}"#,
             )
-            .unwrap(),
+            .expect("snapshot response should parse"),
         );
 
         let mut buffer = Vec::new();
@@ -1130,19 +1130,22 @@ mod tests {
             style::SetAttribute(style::Attribute::Reset),
             style::ResetColor
         )
-        .unwrap();
+        .expect("terminal prefix should render");
         let expected_prefix = String::from_utf8_lossy(&expected_prefix);
         assert!(output.contains(expected_prefix.as_ref()));
         assert!(output.contains("hello\nworld"));
         let mut expected_cursor = Vec::new();
-        queue!(expected_cursor, cursor::MoveTo(2, 1), cursor::Show).unwrap();
+        queue!(expected_cursor, cursor::MoveTo(2, 1), cursor::Show).expect("cursor should render");
         let expected_cursor = String::from_utf8_lossy(&expected_cursor);
         assert!(output.contains(expected_cursor.as_ref()));
 
         assert_eq!(client.call_count("snapshot"), 1);
         let mut params = client.params_for("snapshot");
         assert_eq!(params.len(), 1);
-        let params = params.pop().unwrap().unwrap();
+        let params = params
+            .pop()
+            .flatten()
+            .expect("snapshot params should be recorded");
         assert_eq!(params["session"], "sess1");
         assert_eq!(params["include_cursor"], true);
         assert_eq!(params["include_render"], true);
@@ -1190,20 +1193,26 @@ mod tests {
 
     #[test]
     fn test_detach_keys_from_str_default() {
-        let keys = "ctrl-p,ctrl-q".parse::<DetachKeys>().unwrap();
+        let keys = "ctrl-p,ctrl-q"
+            .parse::<DetachKeys>()
+            .expect("default detach keys should parse");
         assert_eq!(keys.bytes(), &[0x10, 0x11]);
         assert_eq!(keys.display(), "Ctrl-P Ctrl-Q");
     }
 
     #[test]
     fn test_detach_keys_from_str_none() {
-        let keys = "none".parse::<DetachKeys>().unwrap();
+        let keys = "none"
+            .parse::<DetachKeys>()
+            .expect("disabled detach keys should parse");
         assert!(keys.is_disabled());
     }
 
     #[test]
     fn test_detach_keys_invalid_token() {
-        let err = "ctrl-".parse::<DetachKeys>().unwrap_err();
+        let err = "ctrl-"
+            .parse::<DetachKeys>()
+            .expect_err("invalid detach keys should fail");
         assert!(err.contains("ctrl-"));
     }
 
@@ -1215,9 +1224,11 @@ mod tests {
                 r#"{{"event":"output","data":"{}","dropped_bytes":2}}"#,
                 payload
             ))
-            .unwrap(),
+            .expect("output event payload should parse"),
         );
-        let event = parse_stream_event(value).unwrap().unwrap();
+        let event = parse_stream_event(value)
+            .expect("output event should parse")
+            .expect("output event should be emitted");
         match event {
             AttachStreamEvent::Output {
                 data,
@@ -1233,9 +1244,12 @@ mod tests {
     #[test]
     fn test_parse_stream_event_dropped() {
         let value = RpcValue::new(
-            serde_json::from_str(r#"{"event":"dropped","dropped_bytes":128}"#).unwrap(),
+            serde_json::from_str(r#"{"event":"dropped","dropped_bytes":128}"#)
+                .expect("dropped event payload should parse"),
         );
-        let event = parse_stream_event(value).unwrap().unwrap();
+        let event = parse_stream_event(value)
+            .expect("dropped event should parse")
+            .expect("dropped event should be emitted");
         match event {
             AttachStreamEvent::Dropped(bytes) => assert_eq!(bytes, 128),
             _ => panic!("expected dropped event"),
@@ -1244,8 +1258,13 @@ mod tests {
 
     #[test]
     fn test_parse_stream_event_closed() {
-        let value = RpcValue::new(serde_json::from_str(r#"{"event":"closed"}"#).unwrap());
-        let event = parse_stream_event(value).unwrap().unwrap();
+        let value = RpcValue::new(
+            serde_json::from_str(r#"{"event":"closed"}"#)
+                .expect("closed event payload should parse"),
+        );
+        let event = parse_stream_event(value)
+            .expect("closed event should parse")
+            .expect("closed event should be emitted");
         match event {
             AttachStreamEvent::Closed => {}
             _ => panic!("expected closed event"),

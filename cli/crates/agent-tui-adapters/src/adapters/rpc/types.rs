@@ -104,8 +104,13 @@ impl RpcResponse {
     }
 
     pub fn success_json<T: Serialize>(id: u64, result: &T) -> Self {
-        let value = serde_json::to_value(result).unwrap_or_else(|_| json!({}));
-        Self::success(id, value)
+        match serde_json::to_value(result) {
+            Ok(value) => Self::success(id, value),
+            Err(err) => Self::internal_error(
+                id,
+                &format!("Internal error: failed to serialize response: {err}"),
+            ),
+        }
     }
 
     pub fn is_success(&self) -> bool {
@@ -125,6 +130,10 @@ impl RpcResponse {
         }
     }
 
+    fn internal_error(id: u64, message: &str) -> Self {
+        Self::error(id, -32603, message)
+    }
+
     pub fn error_with_context(id: u64, code: i32, message: &str, session_id: Option<&str>) -> Self {
         let data = session_id.map(|sid| json!({ "session_id": sid }));
         Self {
@@ -140,15 +149,21 @@ impl RpcResponse {
     }
 
     pub fn error_with_data(id: u64, code: i32, message: &str, error_data: ErrorData) -> Self {
-        Self {
-            _jsonrpc: "2.0".to_string(),
-            id,
-            result: None,
-            error: Some(RpcServerError {
-                code,
-                message: message.to_string(),
-                data: Some(serde_json::to_value(error_data).unwrap_or(json!({}))),
-            }),
+        match serde_json::to_value(error_data) {
+            Ok(data) => Self {
+                _jsonrpc: "2.0".to_string(),
+                id,
+                result: None,
+                error: Some(RpcServerError {
+                    code,
+                    message: message.to_string(),
+                    data: Some(data),
+                }),
+            },
+            Err(err) => Self::internal_error(
+                id,
+                &format!("Internal error: failed to serialize error payload: {err}"),
+            ),
         }
     }
 
@@ -181,6 +196,7 @@ impl RpcResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::ser::Error as _;
 
     fn make_request(params: Option<Value>) -> RpcRequest {
         RpcRequest {
@@ -232,7 +248,7 @@ mod tests {
     #[test]
     fn test_response_success_format() {
         let resp = RpcResponse::success(42, json!({"data": "test"}));
-        let json = serde_json::to_string(&resp).unwrap();
+        let json = serde_json::to_string(&resp).expect("success response should serialize");
         assert!(json.contains("\"jsonrpc\":\"2.0\""));
         assert!(json.contains("\"id\":42"));
         assert!(json.contains("\"result\""));
@@ -242,7 +258,7 @@ mod tests {
     #[test]
     fn test_response_error_format() {
         let resp = RpcResponse::error(99, -32600, "Invalid Request");
-        let json = serde_json::to_string(&resp).unwrap();
+        let json = serde_json::to_string(&resp).expect("error response should serialize");
         assert!(json.contains("\"error\""));
         assert!(json.contains("\"code\":-32600"));
         assert!(!json.contains("\"result\""));
@@ -251,8 +267,36 @@ mod tests {
     #[test]
     fn test_action_success_shorthand() {
         let resp = RpcResponse::action_success(1);
-        let json = serde_json::to_string(&resp).unwrap();
+        let json = serde_json::to_string(&resp).expect("action success should serialize");
         assert!(json.contains("\"success\":true"));
+    }
+
+    #[test]
+    fn test_success_json_returns_internal_error_when_serialization_fails() {
+        struct FailingSerialize;
+
+        impl Serialize for FailingSerialize {
+            fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                Err(S::Error::custom("boom"))
+            }
+        }
+
+        let resp = RpcResponse::success_json(7, &FailingSerialize);
+        let json_str =
+            serde_json::to_string(&resp).expect("internal error response should serialize");
+        let parsed: Value =
+            serde_json::from_str(&json_str).expect("internal error response should parse");
+
+        assert_eq!(parsed["error"]["code"], -32603);
+        assert!(
+            parsed["error"]["message"]
+                .as_str()
+                .expect("error message")
+                .contains("failed to serialize response")
+        );
     }
 
     #[test]
@@ -264,8 +308,10 @@ mod tests {
             suggestion: Some("Run 'sessions' to see active sessions.".to_string()),
         };
         let resp = RpcResponse::error_with_data(42, -32003, "Resource not found", error_data);
-        let json_str = serde_json::to_string(&resp).unwrap();
-        let parsed: Value = serde_json::from_str(&json_str).unwrap();
+        let json_str =
+            serde_json::to_string(&resp).expect("error-with-data response should serialize");
+        let parsed: Value =
+            serde_json::from_str(&json_str).expect("error-with-data response should parse");
 
         assert_eq!(parsed["error"]["code"], -32003);
         assert_eq!(parsed["error"]["data"]["category"], "not_found");
@@ -283,8 +329,8 @@ mod tests {
             None,
             Some("Try again".to_string()),
         );
-        let json_str = serde_json::to_string(&resp).unwrap();
-        let parsed: Value = serde_json::from_str(&json_str).unwrap();
+        let json_str = serde_json::to_string(&resp).expect("domain error should serialize");
+        let parsed: Value = serde_json::from_str(&json_str).expect("domain error should parse");
 
         assert_eq!(parsed["error"]["data"]["retryable"], true);
     }
@@ -299,8 +345,10 @@ mod tests {
             Some(json!({"key": "BadKey"})),
             None,
         );
-        let json_str = serde_json::to_string(&resp).unwrap();
-        let parsed: Value = serde_json::from_str(&json_str).unwrap();
+        let json_str =
+            serde_json::to_string(&resp).expect("non-retryable domain error should serialize");
+        let parsed: Value =
+            serde_json::from_str(&json_str).expect("non-retryable domain error should parse");
 
         assert_eq!(parsed["error"]["data"]["retryable"], false);
     }

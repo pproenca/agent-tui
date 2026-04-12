@@ -695,11 +695,11 @@ pub fn start_daemon() -> Result<(), DaemonError> {
 mod tests {
     #![allow(
         clippy::expect_used,
-        clippy::unwrap_used,
-        reason = "Test-only assertions use expect/unwrap for clarity."
+        reason = "Test-only assertions use expect for clarity."
     )]
 
     use super::*;
+    use crate::common::mutex_lock_or_recover;
     use crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier;
     use std::sync::mpsc;
 
@@ -726,7 +726,7 @@ mod tests {
 
         let deadline = Instant::now() + Duration::from_secs(1);
         loop {
-            if !server.active_fds.lock().unwrap().is_empty() {
+            if !mutex_lock_or_recover(&server.active_fds).is_empty() {
                 break;
             }
             if Instant::now() >= deadline {
@@ -760,7 +760,7 @@ mod tests {
         server.register_stream_thread(handle);
         server.join_stream_threads(Duration::from_secs(1));
 
-        assert!(server.stream_threads.lock().unwrap().is_empty());
+        assert!(mutex_lock_or_recover(&server.stream_threads).is_empty());
     }
 
     #[test]
@@ -785,6 +785,6 @@ mod tests {
             start.elapsed() < Duration::from_millis(500),
             "stream join should remain bounded on timeout"
         );
-        assert!(server.stream_threads.lock().unwrap().is_empty());
+        assert!(mutex_lock_or_recover(&server.stream_threads).is_empty());
     }
 }

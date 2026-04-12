@@ -154,24 +154,7 @@ impl<R: SessionRepository> RestartUseCaseImpl<R> {
 
 impl<R: SessionRepository> RestartUseCase for RestartUseCaseImpl<R> {
     fn execute(&self, input: SessionInput) -> Result<RestartOutput, SessionError> {
-        let session = self.repository.resolve(input.session_id.as_ref())?;
-        let old_session_id = session.session_id();
-        let command = session.command();
-        let (cols, rows) = session.size();
-
-        self.repository.kill(&old_session_id)?;
-
-        let args: Vec<String> = Vec::new();
-        let (new_session_id, pid) = self
-            .repository
-            .spawn(&command, &args, None, None, None, cols, rows)?;
-
-        Ok(RestartOutput {
-            old_session_id,
-            new_session_id,
-            command,
-            pid,
-        })
+        self.repository.restart(input.session_id.as_ref())
     }
 }
 

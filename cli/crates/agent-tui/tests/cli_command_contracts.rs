@@ -131,7 +131,7 @@ impl StandaloneEnv {
         let _ = StdCommand::new(assert_cmd::cargo::cargo_bin!("agent-tui"))
             .env("AGENT_TUI_SOCKET", &self.socket_path)
             .env("AGENT_TUI_WS_STATE", &self.ws_state_path)
-            .args(["daemon", "stop", "--force"])
+            .args(["daemon", "stop", "--force", "--yes"])
             .output();
     }
 }
@@ -224,7 +224,7 @@ fn rpc_contract_matrix_covers_full_working_surface() {
             setup: no_setup,
         },
         CommandCase {
-            args: &["restart"],
+            args: &["restart", "--yes"],
             expected_method: "restart",
             setup: no_setup,
         },
@@ -269,7 +269,7 @@ fn rpc_contract_matrix_covers_full_working_surface() {
             setup: no_setup,
         },
         CommandCase {
-            args: &["kill"],
+            args: &["kill", "--yes"],
             expected_method: "kill",
             setup: no_setup,
         },
@@ -309,12 +309,12 @@ fn rpc_contract_matrix_covers_full_working_surface() {
             setup: setup_running_session,
         },
         CommandCase {
-            args: &["sessions", "cleanup"],
+            args: &["sessions", "cleanup", "--yes"],
             expected_method: "sessions",
             setup: setup_mixed_sessions,
         },
         CommandCase {
-            args: &["sessions", "cleanup", "--all"],
+            args: &["sessions", "cleanup", "--all", "--yes"],
             expected_method: "sessions",
             setup: setup_mixed_sessions,
         },
@@ -335,8 +335,27 @@ fn rpc_contract_matrix_covers_full_working_surface() {
 fn sessions_cleanup_kills_stopped_sessions() {
     let harness = TestHarness::new();
     setup_mixed_sessions(&harness);
-    harness.run(&["sessions", "cleanup"]).success();
+    harness.run(&["sessions", "cleanup", "--yes"]).success();
     harness.assert_method_called("kill");
+}
+
+#[test]
+fn type_dash_reads_from_stdin() {
+    let harness = TestHarness::new();
+
+    harness
+        .cli_command()
+        .args(["type", "-"])
+        .write_stdin("hello from stdin")
+        .assert()
+        .success();
+
+    harness.assert_method_called_with(
+        "type",
+        json!({
+            "text": "hello from stdin"
+        }),
+    );
 }
 
 #[test]
@@ -349,7 +368,7 @@ fn wait_assert_returns_non_zero_on_timeout() {
             "elapsed_ms": 30000
         })),
     );
-    harness.run(&["wait", "--assert", "never"]).code(1);
+    harness.run(&["wait", "--assert", "never"]).code(75);
     harness.assert_method_called("wait");
 }
 
@@ -398,7 +417,7 @@ fn standalone_version_uses_local_daemon_when_ws_transport_selected() {
         "version should ignore remote ws transport for local daemon inspection"
     );
 
-    env.run(&["daemon", "stop", "--force"]).success();
+    env.run(&["daemon", "stop", "--force", "--yes"]).success();
 }
 
 #[test]
@@ -407,21 +426,25 @@ fn standalone_daemon_commands_contract() {
 
     env.run(&["daemon", "start"])
         .success()
-        .stdout(predicate::str::contains("Daemon started in background"));
+        .stdout(predicate::str::contains("Daemon is running"));
+
+    env.run(&["--format", "json", "daemon", "start"])
+        .success()
+        .stdout(predicate::str::contains("\"running\": true"));
 
     env.run(&["--format", "json", "daemon", "status"])
         .success()
         .stdout(predicate::str::contains("\"running\": true"));
 
-    env.run(&["daemon", "stop", "--force"]).success().stdout(
+    env.run(&["daemon", "stop", "--force", "--yes"]).success().stdout(
         predicate::str::contains("Daemon stopped").or(predicate::str::contains("already stopped")),
     );
 
-    env.run(&["daemon", "restart"])
+    env.run(&["daemon", "restart", "--yes"])
         .success()
         .stdout(predicate::str::contains("Daemon restarted"));
 
-    env.run(&["daemon", "stop", "--force"]).success();
+    env.run(&["daemon", "stop", "--force", "--yes"]).success();
 }
 
 #[test]
@@ -432,7 +455,7 @@ fn standalone_daemon_stop_uses_local_daemon_when_ws_transport_selected() {
     env.cli_command()
         .env("AGENT_TUI_TRANSPORT", "ws")
         .env("AGENT_TUI_WS_ADDR", "ws://127.0.0.1:9/ws")
-        .args(["daemon", "stop"])
+        .args(["daemon", "stop", "--yes"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Daemon stopped"));
@@ -478,7 +501,7 @@ fn standalone_live_status_and_stop_contract() {
     env.run(&["live", "stop"])
         .success()
         .stdout(predicate::str::contains(
-            "Live preview is served by the daemon; run 'agent-tui daemon stop' to stop.",
+            "Live preview is served by the daemon; run 'agent-tui daemon stop --yes' to stop.",
         ));
 }
 
@@ -508,6 +531,30 @@ fn help_entrypoints_remain_valid() {
 
     for args in help_cases {
         env.run(args).success();
+    }
+}
+
+#[test]
+fn leaf_help_examples_contract() {
+    let env = StandaloneEnv::new();
+    let example_cases: &[&[&str]] = &[
+        &["sessions", "list", "--help"],
+        &["sessions", "show", "--help"],
+        &["sessions", "attach", "--help"],
+        &["sessions", "switch", "--help"],
+        &["sessions", "cleanup", "--help"],
+        &["live", "start", "--help"],
+        &["live", "stop", "--help"],
+        &["live", "status", "--help"],
+        &["daemon", "--help"],
+        &["daemon", "status", "--help"],
+        &["daemon", "restart", "--help"],
+    ];
+
+    for args in example_cases {
+        env.run(args)
+            .success()
+            .stdout(predicate::str::contains("EXAMPLES:"));
     }
 }
 

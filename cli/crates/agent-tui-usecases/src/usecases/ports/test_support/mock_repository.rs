@@ -7,6 +7,7 @@ use std::sync::atomic::Ordering;
 
 use super::mock_error::MockError;
 use crate::common::mutex_lock_or_recover;
+use crate::domain::RestartOutput;
 use crate::domain::SessionId;
 use crate::domain::SessionInfo;
 use crate::usecases::ports::SessionError;
@@ -20,10 +21,12 @@ pub struct MockSessionRepository {
     kill_error: Option<MockError>,
     get_error: Option<MockError>,
     set_active_error: Option<MockError>,
+    restart_error: Option<MockError>,
     sessions_list: Vec<SessionInfo>,
     active_id: Option<SessionId>,
     session_count: usize,
     spawn_result: Option<(SessionId, u32)>,
+    restart_result: Option<RestartOutput>,
     session_handle: Option<SessionHandle>,
 
     spawn_calls: AtomicUsize,
@@ -31,6 +34,7 @@ pub struct MockSessionRepository {
     kill_calls: AtomicUsize,
     get_calls: AtomicUsize,
     set_active_calls: AtomicUsize,
+    restart_calls: AtomicUsize,
     killed_sessions: Mutex<Vec<String>>,
     activated_sessions: Mutex<Vec<String>>,
     spawn_params: Mutex<Vec<SpawnParams>>,
@@ -70,6 +74,10 @@ impl MockSessionRepository {
 
     pub fn set_active_call_count(&self) -> usize {
         self.set_active_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn restart_call_count(&self) -> usize {
+        self.restart_calls.load(Ordering::SeqCst)
     }
 
     pub fn killed_sessions(&self) -> Vec<String> {
@@ -182,6 +190,34 @@ impl SessionRepository for MockSessionRepository {
         Ok(())
     }
 
+    fn restart(&self, session_id: Option<&SessionId>) -> Result<RestartOutput, SessionError> {
+        self.restart_calls.fetch_add(1, Ordering::SeqCst);
+
+        if let Some(ref err) = self.restart_error {
+            return Err(err.to_session_error());
+        }
+
+        if let Some(ref err) = self.resolve_error {
+            return Err(err.to_session_error());
+        }
+
+        if let Some(ref result) = self.restart_result {
+            return Ok(result.clone());
+        }
+
+        let old_session_id = match session_id.cloned().or_else(|| self.active_id.clone()) {
+            Some(id) => id,
+            None => return Err(SessionError::NoActiveSession),
+        };
+
+        Ok(RestartOutput {
+            old_session_id,
+            new_session_id: SessionId::new_unchecked("restarted-session"),
+            command: "bash".to_string(),
+            pid: 42,
+        })
+    }
+
     fn session_count(&self) -> usize {
         self.session_count
     }
@@ -216,6 +252,29 @@ impl MockSessionRepositoryBuilder {
             SessionId::try_new(session_id.into()).expect("builder session id should be valid"),
             pid,
         ));
+        self
+    }
+
+    pub fn with_restart_result(
+        mut self,
+        old_session_id: impl Into<String>,
+        new_session_id: impl Into<String>,
+        command: impl Into<String>,
+        pid: u32,
+    ) -> Self {
+        self.repo.restart_result = Some(RestartOutput {
+            old_session_id: SessionId::try_new(old_session_id.into())
+                .expect("builder old session id should be valid"),
+            new_session_id: SessionId::try_new(new_session_id.into())
+                .expect("builder new session id should be valid"),
+            command: command.into(),
+            pid,
+        });
+        self
+    }
+
+    pub fn with_restart_error(mut self, error: MockError) -> Self {
+        self.repo.restart_error = Some(error);
         self
     }
 

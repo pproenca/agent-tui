@@ -57,6 +57,7 @@ use crate::usecases::ports::StreamWaiterHandle;
 
 use super::pty_session::PtySession;
 use crate::infra::daemon::TerminalState;
+use crate::domain::RestartOutput;
 
 pub use crate::domain::session_types::SessionId;
 pub use crate::domain::session_types::SessionInfo;
@@ -74,6 +75,14 @@ const STARTUP_PID_START_TOLERANCE_SECS: i64 = 30;
 
 pub fn generate_session_id() -> SessionId {
     SessionId::new_unchecked(Uuid::new_v4().to_string()[..8].to_string())
+}
+
+#[derive(Debug, Clone)]
+struct SessionLaunchSpec {
+    command: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+    env: Option<HashMap<String, String>>,
 }
 
 struct StreamState {
@@ -584,6 +593,7 @@ pub struct Session {
     pub id: SessionId,
     pub command: String,
     pub created_at: DateTime<Utc>,
+    launch: SessionLaunchSpec,
     pty: PtySession,
     terminal: TerminalState,
     held_modifiers: ModifierState,
@@ -596,14 +606,21 @@ pub struct Session {
 }
 
 impl Session {
-    fn new(id: SessionId, command: String, pty: PtyHandle, cols: u16, rows: u16) -> Self {
+    fn new(
+        id: SessionId,
+        launch: SessionLaunchSpec,
+        pty: PtyHandle,
+        cols: u16,
+        rows: u16,
+    ) -> Self {
         let stream = Arc::new(StreamBuffer::new(STREAM_MAX_BUFFER_BYTES));
         let mut pty = PtySession::new(pty);
         let pty_rx = pty.take_read_rx();
         Self {
             id,
-            command,
+            command: launch.command.clone(),
             created_at: Utc::now(),
+            launch,
             pty,
             terminal: TerminalState::new(cols, rows),
             held_modifiers: ModifierState::default(),
@@ -631,6 +648,10 @@ impl Session {
 
     pub fn size(&self) -> (u16, u16) {
         self.terminal.size()
+    }
+
+    fn launch_spec(&self) -> SessionLaunchSpec {
+        self.launch.clone()
     }
 
     pub fn request_flush(&self) -> Option<channel::Receiver<()>> {
@@ -836,6 +857,33 @@ impl SessionManager {
         }
     }
 
+    fn next_session_id(&self) -> SessionId {
+        loop {
+            let candidate = generate_session_id();
+            let sessions = rwlock_read_or_recover(&self.sessions);
+            if !sessions.contains_key(&candidate) {
+                return candidate;
+            }
+        }
+    }
+
+    fn persisted_session(
+        session_id: &SessionId,
+        command: &str,
+        pid: u32,
+        cols: u16,
+        rows: u16,
+    ) -> PersistedSession {
+        PersistedSession {
+            id: session_id.to_string(),
+            command: command.to_string(),
+            pid,
+            created_at: Utc::now().to_rfc3339(),
+            cols,
+            rows,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         &self,
@@ -861,24 +909,29 @@ impl SessionManager {
             }
         }
 
-        let id = session_id.unwrap_or_else(generate_session_id);
+        let id = session_id.unwrap_or_else(|| self.next_session_id());
+        let launch = SessionLaunchSpec {
+            command: command.to_string(),
+            args: args.to_vec(),
+            cwd: cwd.map(str::to_string),
+            env: env.cloned(),
+        };
 
-        let pty = PtyHandle::spawn(command, args, cwd, env, cols, rows)
+        let pty = PtyHandle::spawn(
+            &launch.command,
+            &launch.args,
+            launch.cwd.as_deref(),
+            launch.env.as_ref(),
+            cols,
+            rows,
+        )
             .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
         let pid = pty.pid().unwrap_or(0);
 
-        let session = Session::new(id.clone(), command.to_string(), pty, cols, rows);
+        let session = Session::new(id.clone(), launch.clone(), pty, cols, rows);
         let session = Arc::new(Mutex::new(session));
 
-        let created_at = Utc::now().to_rfc3339();
-        let persisted = PersistedSession {
-            id: id.to_string(),
-            command: command.to_string(),
-            pid,
-            created_at,
-            cols,
-            rows,
-        };
+        let persisted = Self::persisted_session(&id, &launch.command, pid, cols, rows);
 
         {
             let mut sessions = rwlock_write_or_recover(&self.sessions);
@@ -959,6 +1012,93 @@ impl SessionManager {
         let mut active = rwlock_write_or_recover(&self.active_session);
         *active = Some(session_id.clone());
         Ok(())
+    }
+
+    pub fn restart(&self, session_id: Option<&SessionId>) -> Result<RestartOutput, SessionError> {
+        let session = self.resolve(session_id)?;
+        let (old_session_id, launch, cols, rows) = {
+            let sess = mutex_lock_or_recover(&session);
+            let (cols, rows) = sess.size();
+            (sess.id.clone(), sess.launch_spec(), cols, rows)
+        };
+
+        let new_session_id = self.next_session_id();
+        let mut replacement_pty = PtyHandle::spawn(
+            &launch.command,
+            &launch.args,
+            launch.cwd.as_deref(),
+            launch.env.as_ref(),
+            cols,
+            rows,
+        )
+        .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
+        let pid = replacement_pty.pid().unwrap_or(0);
+
+        let old_join = {
+            let mut sess = mutex_lock_or_recover(&session);
+            let join = sess.shutdown_pump();
+            if let Err(err) = sess.kill() {
+                drop(sess);
+                if let Some(join) = join {
+                    let _ = join.join();
+                }
+                let _ = replacement_pty.kill();
+                return Err(err);
+            }
+            join
+        };
+        if let Some(join) = old_join {
+            let _ = join.join();
+        }
+
+        let new_session = Arc::new(Mutex::new(Session::new(
+            new_session_id.clone(),
+            launch.clone(),
+            replacement_pty,
+            cols,
+            rows,
+        )));
+        let thread_name = format!("session-pump-{}", new_session_id.as_str());
+        let (pump_tx, pump_join) = spawn_pump(Arc::clone(&new_session), thread_name);
+        {
+            let mut sess = mutex_lock_or_recover(&new_session);
+            sess.attach_pump(pump_tx, pump_join);
+        }
+
+        {
+            let mut sessions = rwlock_write_or_recover(&self.sessions);
+            if sessions.remove(&old_session_id).is_none() {
+                drop(sessions);
+                let join = { mutex_lock_or_recover(&new_session).shutdown_pump() };
+                let _ = mutex_lock_or_recover(&new_session).kill();
+                if let Some(join) = join {
+                    let _ = join.join();
+                }
+                return Err(SessionError::NotFound(old_session_id.to_string()));
+            }
+            sessions.insert(new_session_id.clone(), Arc::clone(&new_session));
+        }
+
+        {
+            let mut active = rwlock_write_or_recover(&self.active_session);
+            *active = Some(new_session_id.clone());
+        }
+
+        if let Err(e) = self.persistence.remove_session(&old_session_id) {
+            warn!(session_id = %old_session_id, error = %e, "Failed to remove session from persistence");
+        }
+
+        let persisted = Self::persisted_session(&new_session_id, &launch.command, pid, cols, rows);
+        if let Err(e) = self.persistence.add_session(persisted) {
+            warn!(session_id = %new_session_id, error = %e, "Failed to persist restarted session metadata");
+        }
+
+        Ok(RestartOutput {
+            old_session_id,
+            new_session_id,
+            command: launch.command,
+            pid,
+        })
     }
 
     pub fn list(&self) -> Vec<SessionInfo> {

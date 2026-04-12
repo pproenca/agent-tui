@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::io::IsTerminal;
+use std::io::Read;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -79,6 +80,138 @@ fn client_error_view(error: &ClientError) -> ClientErrorView {
     }
 }
 
+fn structured_cli_error(
+    format: OutputFormat,
+    exit_code: i32,
+    message: impl Into<String>,
+    category: &'static str,
+    suggestion: Option<String>,
+    context: Option<serde_json::Value>,
+) -> CliError {
+    let message = message.into();
+    let mut output = serde_json::json!({
+        "code": exit_code,
+        "message": message.clone(),
+        "category": category,
+        "retryable": false,
+    });
+    if let Some(context) = context {
+        output["context"] = context;
+    }
+    if let Some(suggestion) = suggestion.as_deref() {
+        output["suggestion"] = serde_json::json!(suggestion);
+    }
+    CliError::new(
+        format,
+        message,
+        Some(serde_json::to_string_pretty(&output).unwrap_or_default()),
+        exit_code,
+    )
+}
+
+fn usage_cli_error(
+    format: OutputFormat,
+    message: impl Into<String>,
+    suggestion: Option<String>,
+    context: Option<serde_json::Value>,
+) -> CliError {
+    structured_cli_error(
+        format,
+        super::exit_codes::USAGE,
+        message,
+        "invalid_input",
+        suggestion,
+        context,
+    )
+}
+
+fn unavailable_cli_error(
+    format: OutputFormat,
+    message: impl Into<String>,
+    suggestion: Option<String>,
+    context: Option<serde_json::Value>,
+) -> CliError {
+    structured_cli_error(
+        format,
+        super::exit_codes::UNAVAILABLE,
+        message,
+        "not_found",
+        suggestion,
+        context,
+    )
+}
+
+fn timeout_cli_error(
+    format: OutputFormat,
+    message: impl Into<String>,
+    suggestion: Option<String>,
+    context: Option<serde_json::Value>,
+) -> CliError {
+    structured_cli_error(
+        format,
+        super::exit_codes::TEMPFAIL,
+        message,
+        "timeout",
+        suggestion,
+        context,
+    )
+}
+
+fn confirmation_required_cli_error(format: OutputFormat) -> CliError {
+    usage_cli_error(
+        format,
+        "Confirmation required. Re-run with --yes to perform the action or --dry-run to preview it.",
+        Some("Add --yes to proceed or --dry-run to preview the change.".to_string()),
+        None,
+    )
+}
+
+fn confirmation_cancelled_cli_error(format: OutputFormat) -> CliError {
+    structured_cli_error(
+        format,
+        super::exit_codes::GENERAL_ERROR,
+        "Cancelled at confirmation prompt.",
+        "external",
+        None,
+        None,
+    )
+}
+
+fn confirm_destructive_action(
+    format: OutputFormat,
+    no_input: bool,
+    yes: bool,
+    prompt: &str,
+) -> Result<()> {
+    if yes {
+        return Ok(());
+    }
+
+    let stdin_tty = io::stdin().is_terminal();
+    let stdout_tty = io::stdout().is_terminal();
+    if no_input || !stdin_tty || !stdout_tty {
+        return Err(confirmation_required_cli_error(format).into());
+    }
+
+    if crate::app::prompt_yes_no(prompt, false)? {
+        Ok(())
+    } else {
+        Err(confirmation_cancelled_cli_error(format).into())
+    }
+}
+
+fn selected_session_label(session: Option<&str>) -> String {
+    session
+        .map(|id| format!("session {}", Colors::session_id(id)))
+        .unwrap_or_else(|| "the current session".to_string())
+}
+
+fn selected_session_plain_label(session: Option<&str>) -> String {
+    session
+        .map(|id| format!("session {id}"))
+        .unwrap_or_else(|| "the current session".to_string())
+}
+
 macro_rules! key_handler {
     ($name:ident, $method:literal, $success:expr) => {
         pub(crate) fn $name<C: DaemonClient>(
@@ -119,17 +252,24 @@ pub(crate) struct HandlerContext<'a, C: DaemonClient> {
     pub client: &'a mut C,
     pub session: Option<String>,
     pub format: OutputFormat,
+    pub no_input: bool,
     presenter: Box<dyn Presenter>,
     current_dir_override: Option<PathBuf>,
 }
 
 impl<'a, C: DaemonClient> HandlerContext<'a, C> {
-    pub fn new(client: &'a mut C, session: Option<String>, format: OutputFormat) -> Self {
+    pub fn new(
+        client: &'a mut C,
+        session: Option<String>,
+        format: OutputFormat,
+        no_input: bool,
+    ) -> Self {
         let presenter = create_presenter(&format);
         Self {
             client,
             session,
             format,
+            no_input,
             presenter,
             current_dir_override: None,
         }
@@ -327,6 +467,26 @@ pub(crate) fn handle_type<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     text: String,
 ) -> HandlerResult {
+    let text = if text == "-" {
+        if io::stdin().is_terminal() {
+            return Err(usage_cli_error(
+                ctx.format,
+                "Refusing to read `type -` from a TTY stdin.",
+                Some("Pipe text into stdin or pass the literal text argument directly.".to_string()),
+                None,
+            )
+            .into());
+        }
+
+        let mut buffer = String::new();
+        io::stdin()
+            .read_to_string(&mut buffer)
+            .context("failed to read text payload from stdin for `type -`")?;
+        buffer
+    } else {
+        text
+    };
+
     let params = params::TypeParams {
         text,
         session: ctx.session.clone(),
@@ -424,11 +584,11 @@ pub(crate) fn handle_wait<C: DaemonClient>(
     let wait_result = WaitResult::from_json(&result);
 
     if assert && !wait_result.found {
-        return Err(CliError::new(
+        return Err(timeout_cli_error(
             ctx.format,
-            "Wait condition not met within timeout",
-            Some(result.to_pretty_json()),
-            super::exit_codes::GENERAL_ERROR,
+            "Wait condition not met within timeout.",
+            Some("Increase --timeout or verify that the expected UI state can appear before asserting.".to_string()),
+            Some(serde_json::to_value(result.as_ref())?),
         )
         .into());
     }
@@ -440,7 +600,41 @@ pub(crate) fn handle_wait<C: DaemonClient>(
     Ok(())
 }
 
-pub(crate) fn handle_kill<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_kill<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    dry_run: bool,
+    yes: bool,
+) -> HandlerResult {
+    let target = selected_session_plain_label(ctx.session.as_deref());
+    if dry_run {
+        #[derive(Serialize)]
+        struct KillPreview<'a> {
+            action: &'static str,
+            dry_run: bool,
+            target: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            session_id: Option<&'a str>,
+        }
+
+        let output = KillPreview {
+            action: "kill",
+            dry_run: true,
+            target: &target,
+            session_id: ctx.session.as_deref(),
+        };
+
+        return ctx.output_json_or(&RpcValue::new(serde_json::to_value(output)?), || {
+            println!("Would kill {}.", selected_session_label(ctx.session.as_deref()));
+        });
+    }
+
+    confirm_destructive_action(
+        ctx.format,
+        ctx.no_input,
+        yes,
+        &format!("Kill {}?", target),
+    )?;
+
     let params = params::SessionParams {
         session: ctx.session.clone(),
     };
@@ -451,7 +645,44 @@ pub(crate) fn handle_kill<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> Handl
     })
 }
 
-pub(crate) fn handle_restart<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> HandlerResult {
+pub(crate) fn handle_restart<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    dry_run: bool,
+    yes: bool,
+) -> HandlerResult {
+    let target = selected_session_plain_label(ctx.session.as_deref());
+    if dry_run {
+        #[derive(Serialize)]
+        struct RestartPreview<'a> {
+            action: &'static str,
+            dry_run: bool,
+            target: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            session_id: Option<&'a str>,
+        }
+
+        let output = RestartPreview {
+            action: "restart",
+            dry_run: true,
+            target: &target,
+            session_id: ctx.session.as_deref(),
+        };
+
+        return ctx.output_json_or(&RpcValue::new(serde_json::to_value(output)?), || {
+            println!(
+                "Would restart {}.",
+                selected_session_label(ctx.session.as_deref())
+            );
+        });
+    }
+
+    confirm_destructive_action(
+        ctx.format,
+        ctx.no_input,
+        yes,
+        &format!("Restart {}?", target),
+    )?;
+
     let params = params::SessionParams {
         session: ctx.session.clone(),
     };
@@ -532,12 +763,28 @@ pub(crate) fn handle_session_show<C: DaemonClient>(
     let sessions = result
         .get("sessions")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| anyhow::anyhow!("Invalid sessions response"))?;
+        .ok_or_else(|| {
+            structured_cli_error(
+                ctx.format,
+                super::exit_codes::GENERAL_ERROR,
+                "Invalid sessions response.",
+                "internal",
+                Some("Run `agent-tui sessions --json` to inspect the raw session payload.".to_string()),
+                None,
+            )
+        })?;
 
     let session = sessions
         .iter()
         .find(|session| session.str_or("id", "") == session_id.as_str())
-        .ok_or_else(|| anyhow::anyhow!("Session not found: {}", session_id))?;
+        .ok_or_else(|| {
+            unavailable_cli_error(
+                ctx.format,
+                format!("Session not found: {}", session_id),
+                Some("Run `agent-tui sessions list` to discover valid session ids.".to_string()),
+                Some(serde_json::json!({ "session_id": session_id })),
+            )
+        })?;
 
     match ctx.format {
         OutputFormat::Json => {
@@ -612,9 +859,16 @@ pub(crate) fn resolve_attach_session_id<C: DaemonClient>(
         return Ok(active.to_string());
     }
 
-    Err(anyhow::anyhow!(
-        "No active session to attach. Use 'agent-tui sessions list' then 'agent-tui sessions switch <id>' or pass --session."
-    ))
+    Err(unavailable_cli_error(
+        ctx.format,
+        "No active session to attach.",
+        Some(
+            "Run `agent-tui sessions list`, then `agent-tui sessions switch <id>`, or pass --session."
+                .to_string(),
+        ),
+        None,
+    )
+    .into())
 }
 
 pub(crate) fn handle_session_switch<C: DaemonClient>(
@@ -754,7 +1008,9 @@ pub(crate) fn handle_live_stop_standalone(format: OutputFormat) -> HandlerResult
 
             let output = LiveStopOutput {
                 stopped: false,
-                reason: "live preview is served by the daemon; stop the daemon to stop".to_string(),
+                reason:
+                    "live preview is served by the daemon; run `agent-tui daemon stop --yes` to stop it."
+                        .to_string(),
                 ui: ui_payload,
             };
             if let Some(err) = ui_error {
@@ -787,7 +1043,9 @@ pub(crate) fn handle_live_stop_standalone(format: OutputFormat) -> HandlerResult
                     );
                 }
             }
-            println!("Live preview is served by the daemon; run 'agent-tui daemon stop' to stop.");
+            println!(
+                "Live preview is served by the daemon; run 'agent-tui daemon stop --yes' to stop."
+            );
         }
     }
     if let Some(err) = ui_error {
@@ -1034,6 +1292,224 @@ pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
                 println!("  Daemon version: {}", daemon_version);
                 println!("  Daemon commit: {}", daemon_commit);
             }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_daemon_start_standalone(format: OutputFormat) -> HandlerResult {
+    match UnixSocketClient::connect_local() {
+        Ok(_) => return handle_daemon_status_standalone(format),
+        Err(ClientError::DaemonNotRunning) => {}
+        Err(err) => return Err(err.into()),
+    }
+
+    match start_daemon_background() {
+        Ok(()) => handle_daemon_status_standalone(format),
+        Err(ClientError::DaemonNotRunning) => Err(structured_cli_error(
+            format,
+            super::exit_codes::GENERAL_ERROR,
+            "Daemon failed to start in background.",
+            "external",
+            Some(
+                "Inspect the daemon log or rerun `agent-tui daemon run` for foreground diagnostics."
+                    .to_string(),
+            ),
+            None,
+        )
+        .into()),
+        Err(err) => Err(err.into()),
+    }
+}
+
+pub(crate) fn handle_daemon_stop_standalone(
+    format: OutputFormat,
+    force: bool,
+    dry_run: bool,
+    yes: bool,
+    no_input: bool,
+) -> HandlerResult {
+    let ws_state = read_ws_state_running(&ws_state_path());
+    let pid = daemon_pid(ws_state.as_ref());
+
+    if dry_run {
+        #[derive(Serialize)]
+        struct DaemonStopPreview {
+            action: &'static str,
+            dry_run: bool,
+            force: bool,
+            running: bool,
+            would_change: bool,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pid: Option<u32>,
+        }
+
+        let output = DaemonStopPreview {
+            action: "daemon_stop",
+            dry_run: true,
+            force,
+            running: pid.is_some(),
+            would_change: pid.is_some(),
+            pid,
+        };
+        match format {
+            OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&output)?),
+            OutputFormat::Text => {
+                if let Some(pid) = pid {
+                    println!("Would stop daemon (pid {pid}).");
+                } else {
+                    println!("Daemon is not running; nothing would change.");
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    if let Some(pid) = pid {
+        let prompt = if force {
+            format!("Force-stop daemon (pid {pid})?")
+        } else {
+            format!("Stop daemon (pid {pid})?")
+        };
+        confirm_destructive_action(format, no_input, yes, &prompt)?;
+    }
+
+    match stop_daemon_core(force)? {
+        StopResult::Stopped { pid, warnings } => match format {
+            OutputFormat::Json => {
+                #[derive(Serialize)]
+                struct DaemonStopOutput {
+                    action: &'static str,
+                    running: bool,
+                    changed: bool,
+                    force: bool,
+                    pid: u32,
+                    warnings: Vec<String>,
+                }
+
+                let output = DaemonStopOutput {
+                    action: "daemon_stop",
+                    running: false,
+                    changed: true,
+                    force,
+                    pid,
+                    warnings,
+                };
+                println!("{}", serde_json::to_string_pretty(&output)?);
+            }
+            OutputFormat::Text => {
+                for warning in &warnings {
+                    eprintln!("{}", Colors::warning(warning));
+                }
+                create_presenter(&format).present_success("Daemon stopped", None);
+            }
+        },
+        StopResult::AlreadyStopped => match format {
+            OutputFormat::Json => {
+                #[derive(Serialize)]
+                struct DaemonStopOutput {
+                    action: &'static str,
+                    running: bool,
+                    changed: bool,
+                    force: bool,
+                    warnings: Vec<String>,
+                }
+
+                let output = DaemonStopOutput {
+                    action: "daemon_stop",
+                    running: false,
+                    changed: false,
+                    force,
+                    warnings: Vec::new(),
+                };
+                println!("{}", serde_json::to_string_pretty(&output)?);
+            }
+            OutputFormat::Text => println!("Daemon is not running (already stopped)"),
+        },
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_daemon_restart_standalone(
+    format: OutputFormat,
+    dry_run: bool,
+    yes: bool,
+    no_input: bool,
+) -> HandlerResult {
+    let ws_state = read_ws_state_running(&ws_state_path());
+    let pid = daemon_pid(ws_state.as_ref());
+    let was_running = pid.is_some();
+
+    if dry_run {
+        #[derive(Serialize)]
+        struct DaemonRestartPreview {
+            action: &'static str,
+            dry_run: bool,
+            running: bool,
+            would_change: bool,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pid: Option<u32>,
+        }
+
+        let output = DaemonRestartPreview {
+            action: "daemon_restart",
+            dry_run: true,
+            running: was_running,
+            would_change: true,
+            pid,
+        };
+        match format {
+            OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&output)?),
+            OutputFormat::Text => {
+                if let Some(pid) = pid {
+                    println!("Would restart daemon (pid {pid}).");
+                } else {
+                    println!("Would start the daemon.");
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    if was_running {
+        confirm_destructive_action(
+            format,
+            no_input,
+            yes,
+            "Restart daemon and terminate active sessions?",
+        )?;
+    }
+
+    if let OutputFormat::Text = format {
+        create_presenter(&format).present_info("Restarting daemon...");
+    }
+
+    let warnings = restart_daemon_core()?;
+    match format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            struct DaemonRestartOutput {
+                action: &'static str,
+                running: bool,
+                changed: bool,
+                was_running: bool,
+                warnings: Vec<String>,
+            }
+
+            let output = DaemonRestartOutput {
+                action: "daemon_restart",
+                running: true,
+                changed: true,
+                was_running,
+                warnings,
+            };
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        OutputFormat::Text => {
+            for warning in &warnings {
+                eprintln!("{}", Colors::warning(warning));
+            }
+            create_presenter(&format).present_success("Daemon restarted", None);
         }
     }
     Ok(())
@@ -1555,6 +2031,8 @@ fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<()> {
 pub(crate) fn handle_cleanup<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     all: bool,
+    dry_run: bool,
+    yes: bool,
 ) -> HandlerResult {
     use crate::adapters::presenter::CleanupFailure;
     use crate::adapters::presenter::CleanupResult;
@@ -1562,15 +2040,63 @@ pub(crate) fn handle_cleanup<C: DaemonClient>(
     let sessions_result = call_no_params(ctx.client, "sessions")?;
     let sessions = sessions_result.get("sessions").and_then(|v| v.as_array());
 
+    let target_ids: Vec<String> = if let Some(sessions) = sessions {
+        sessions
+            .iter()
+            .filter(|session| all || !session.bool_or("running", false))
+            .filter_map(|session| session.get("id").and_then(|v| v.as_str()))
+            .map(ToOwned::to_owned)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    if dry_run {
+        #[derive(Serialize)]
+        struct CleanupPreview<'a> {
+            action: &'static str,
+            dry_run: bool,
+            all: bool,
+            sessions_cleaned: usize,
+            session_ids: &'a [String],
+        }
+
+        let output = CleanupPreview {
+            action: "sessions_cleanup",
+            dry_run: true,
+            all,
+            sessions_cleaned: target_ids.len(),
+            session_ids: &target_ids,
+        };
+
+        return ctx.output_json_or(&RpcValue::new(serde_json::to_value(output)?), || {
+            if target_ids.is_empty() {
+                println!("No sessions would be cleaned.");
+            } else {
+                println!("Would clean up {} session(s):", target_ids.len());
+                for id in &target_ids {
+                    println!("  {}", Colors::session_id(id));
+                }
+            }
+        });
+    }
+
+    if !target_ids.is_empty() {
+        let prompt = if all {
+            format!("Clean up {} session(s), including running sessions?", target_ids.len())
+        } else {
+            format!("Clean up {} stopped/orphaned session(s)?", target_ids.len())
+        };
+        confirm_destructive_action(ctx.format, ctx.no_input, yes, &prompt)?;
+    }
+
     let mut cleaned = 0;
     let mut failures: Vec<CleanupFailure> = Vec::new();
 
     if let Some(sessions) = sessions {
         for session in sessions.iter() {
-            let id = session.get("id").and_then(|v| v.as_str());
-            let should_cleanup = all || !session.bool_or("running", false);
-            if should_cleanup {
-                if let Some(id) = id {
+            if let Some(id) = session.get("id").and_then(|v| v.as_str()) {
+                if target_ids.iter().any(|candidate| candidate == id) {
                     let params = params::SessionParams {
                         session: Some(id.to_string()),
                     };
@@ -1714,6 +2240,7 @@ pub(crate) fn handle_attach<C: DaemonClient>(
 
 pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
     let vars = [
+        ("AGENT_TUI_NO_INPUT", std::env::var("AGENT_TUI_NO_INPUT").ok()),
         (
             "AGENT_TUI_TRANSPORT",
             std::env::var("AGENT_TUI_TRANSPORT").ok(),
@@ -2275,6 +2802,7 @@ mod tests {
             client: &mut client,
             session: None,
             format: OutputFormat::Json,
+            no_input: false,
             presenter: Box::new(presenter),
             current_dir_override: Some(expected_cwd.clone()),
         };
@@ -2308,6 +2836,7 @@ mod tests {
             client: &mut client,
             session: None,
             format: OutputFormat::Json,
+            no_input: false,
             presenter: Box::new(presenter),
             current_dir_override: None,
         };

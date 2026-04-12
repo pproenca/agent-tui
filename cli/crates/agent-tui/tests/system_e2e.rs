@@ -119,11 +119,15 @@ mod e2e {
         let live_status = run_json(&harness, &["--format", "json", "live", "status"]);
         assert_eq!(live_status["running"].as_bool(), Some(true));
 
-        harness.run(&["--session", &session_1, "kill"]).success();
-        harness.run(&["--session", &session_2, "kill"]).success();
+        harness
+            .run(&["--session", &session_1, "kill", "--yes"])
+            .success();
+        harness
+            .run(&["--session", &session_2, "kill", "--yes"])
+            .success();
 
         harness
-            .run(&["--no-color", "daemon", "stop"])
+            .run(&["--no-color", "daemon", "stop", "--yes"])
             .success()
             .stdout(
                 predicate::str::contains("Daemon stopped")
@@ -176,7 +180,9 @@ mod e2e {
             "attach output must include detach confirmation"
         );
 
-        harness.run(&["--session", &session_id, "kill"]).success();
+        harness
+            .run(&["--session", &session_id, "kill", "--yes"])
+            .success();
     }
 
     #[test]
@@ -214,6 +220,8 @@ mod e2e {
             "attach output must include detach confirmation"
         );
 
-        harness.run(&["--session", &session_id, "kill"]).success();
+        harness
+            .run(&["--session", &session_id, "kill", "--yes"])
+            .success();
     }
 }

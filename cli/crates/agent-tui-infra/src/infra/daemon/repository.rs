@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 use crate::common::mutex_lock_or_recover;
 use crate::domain::core::CursorPosition;
+use crate::domain::RestartOutput;
 use crate::usecases::ports::LivePreviewSnapshot;
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionHandle;
@@ -189,6 +190,10 @@ impl SessionRepository for SessionManager {
 
     fn kill(&self, session_id: &SessionId) -> Result<(), SessionError> {
         SessionManager::kill(self, session_id)
+    }
+
+    fn restart(&self, session_id: Option<&SessionId>) -> Result<RestartOutput, SessionError> {
+        SessionManager::restart(self, session_id)
     }
 
     fn session_count(&self) -> usize {

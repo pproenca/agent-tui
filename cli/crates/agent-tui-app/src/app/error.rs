@@ -48,6 +48,10 @@ impl CliError {
     }
 }
 
+#[derive(Debug, Error)]
+#[error("Daemon is not running")]
+pub(crate) struct DaemonNotRunningError;
+
 impl AttachError {
     pub fn code(&self) -> i32 {
         match self {

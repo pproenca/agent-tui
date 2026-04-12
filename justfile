@@ -12,7 +12,7 @@ default:
 # Primary commands (DHH-style: a short, opinionated list)
 # Start the daemon in dev mode.
 dev:
-    cargo run -p agent-tui -- daemon
+    cargo run -p agent-tui -- daemon run
 
 # Run CI checks (format, clippy, architecture, tests, version).
 ready:

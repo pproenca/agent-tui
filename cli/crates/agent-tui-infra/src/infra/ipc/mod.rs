@@ -26,4 +26,5 @@ pub use process::ProcessStatus;
 pub use process::Signal;
 pub use process::UnixProcessController;
 pub use socket::socket_path;
+pub use transport::daemon_uses_client_working_directory;
 pub use transport::start_daemon_background;

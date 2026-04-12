@@ -123,6 +123,54 @@ fn smoke_screenshot_text() {
 }
 
 #[test]
+fn smoke_screenshot_retain_ansi_uses_rendered_output() {
+    let harness = TestHarness::new();
+
+    harness.set_success_response(
+        "snapshot",
+        json!({
+            "session_id": TEST_SESSION_ID,
+            "screenshot": "Red text\n",
+            "rendered": "\u{001b}[31mRed text\u{001b}[0m\n"
+        }),
+    );
+
+    harness
+        .run(&["--no-color", "screenshot", "--retain-ansi"])
+        .success()
+        .stdout(predicate::str::contains("\u{1b}[31mRed text\u{1b}[0m"));
+
+    harness.assert_method_called_with(
+        "snapshot",
+        json!({
+            "retain_ansi": true,
+            "include_render": true
+        }),
+    );
+}
+
+#[test]
+fn smoke_run_uses_invocation_working_directory_by_default() {
+    let harness = TestHarness::new();
+    let temp_dir = TempDir::new_in("/tmp").expect("Failed to create temp dir");
+    let expected_cwd = std::fs::canonicalize(temp_dir.path()).expect("canonical temp dir");
+
+    harness
+        .cli_command()
+        .current_dir(temp_dir.path())
+        .args(["run", "bash"])
+        .assert()
+        .success();
+
+    harness.assert_method_called_with(
+        "spawn",
+        json!({
+            "cwd": expected_cwd.display().to_string()
+        }),
+    );
+}
+
+#[test]
 fn smoke_run_spawns_session() {
     let harness = TestHarness::new();
 

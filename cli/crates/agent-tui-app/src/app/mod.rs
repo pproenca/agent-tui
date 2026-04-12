@@ -631,8 +631,9 @@ impl Application {
             Commands::Screenshot {
                 region,
                 strip_ansi,
+                retain_ansi,
                 include_cursor,
-            } => handlers::handle_snapshot(ctx, region, strip_ansi, include_cursor)?,
+            } => handlers::handle_snapshot(ctx, region, strip_ansi, retain_ansi, include_cursor)?,
 
             Commands::Resize { cols, rows } => handlers::handle_resize(ctx, cols, rows)?,
             Commands::Restart => handlers::handle_restart(ctx)?,

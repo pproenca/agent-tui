@@ -1634,6 +1634,7 @@ impl SessionPersistence {
                     reap_child_if_any(session.pid);
                     if !is_process_running(session.pid) {
                         cleaned += 1;
+                        removed_session_ids.push(session.id);
                         continue;
                     }
 
@@ -2815,5 +2816,109 @@ mod tests {
 
         let sessions = persistence.load();
         assert!(sessions.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_cleanup_stale_sessions_appends_remove_events_when_unknown_records_exist() {
+        let _env_lock = env_lock();
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        use std::os::unix::process::CommandExt;
+        use std::process::Command;
+
+        let temp_home = tempdir().expect("temp dir should be created");
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg("sleep 10");
+        // SAFETY: pre-exec runs in the child before exec.
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+
+        let mut child = cmd.spawn().expect("failed to spawn test child");
+        let pid = child.id();
+        assert!(pid > 0);
+
+        let persistence = SessionPersistence::new();
+        persistence
+            .add_session(PersistedSession {
+                id: "orphan".to_string(),
+                command: "sleep".to_string(),
+                pid,
+                created_at: Utc::now().to_rfc3339(),
+                cols: 80,
+                rows: 24,
+            })
+            .expect("failed to persist session");
+
+        let log_path = temp_home.path().join(".agent-tui").join("sessions.jsonl");
+        let mut log = OpenOptions::new()
+            .append(true)
+            .open(&log_path)
+            .expect("open session log");
+        writeln!(
+            log,
+            "{}",
+            serde_json::to_string(&serde_json::json!({
+                "type": "future_event",
+                "payload": "preserve-me",
+            }))
+            .expect("serialize future event")
+        )
+        .expect("append future event");
+        drop(log);
+
+        let cleaned = persistence
+            .cleanup_stale_sessions()
+            .expect("cleanup should succeed");
+        assert_eq!(cleaned, 1);
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while is_process_running(pid) && Instant::now() < deadline {
+            std::thread::park_timeout(Duration::from_millis(25));
+        }
+
+        if is_process_running(pid) {
+            let pid_t: libc::pid_t = pid.try_into().unwrap_or(0);
+            if pid_t > 0 {
+                // SAFETY: negative pid targets the process group for cleanup.
+                unsafe {
+                    libc::kill(-pid_t, libc::SIGKILL);
+                }
+            }
+        }
+
+        let _ = child.wait();
+
+        let sessions = persistence.load();
+        assert!(
+            sessions.is_empty(),
+            "cleaned session should not remain persisted"
+        );
+
+        let log_contents = fs::read_to_string(&log_path).expect("read session log");
+        assert!(
+            log_contents.contains("\"type\":\"future_event\""),
+            "cleanup should preserve unknown records"
+        );
+        assert!(
+            log_contents.contains("\"type\":\"remove\""),
+            "cleanup should append a remove event for cleaned sessions"
+        );
+        assert!(
+            log_contents.contains("\"session_id\":\"orphan\""),
+            "cleanup should record which session was removed"
+        );
     }
 }

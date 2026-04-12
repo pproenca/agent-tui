@@ -80,6 +80,20 @@ fn client_error_view(error: &ClientError) -> ClientErrorView {
     }
 }
 
+fn can_autostart_after_local_connect_error(error: &ClientError) -> bool {
+    match error {
+        ClientError::DaemonNotRunning => true,
+        ClientError::ConnectionFailed(io_err) => matches!(
+            io_err.kind(),
+            io::ErrorKind::ConnectionRefused
+                | io::ErrorKind::ConnectionAborted
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::NotFound
+        ),
+        _ => false,
+    }
+}
+
 fn structured_cli_error(
     format: OutputFormat,
     exit_code: i32,
@@ -1301,28 +1315,75 @@ pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
 }
 
 pub(crate) fn handle_daemon_start_standalone(format: OutputFormat) -> HandlerResult {
-    match UnixSocketClient::connect_local() {
-        Ok(_) => return handle_daemon_status_standalone(format),
-        Err(ClientError::DaemonNotRunning) => {}
+    let changed = match UnixSocketClient::connect_local() {
+        Ok(_) => false,
+        Err(err) if can_autostart_after_local_connect_error(&err) => {
+            match start_daemon_background() {
+                Ok(()) => true,
+                Err(ClientError::DaemonNotRunning) => {
+                    return Err(structured_cli_error(
+                        format,
+                        super::exit_codes::GENERAL_ERROR,
+                        "Daemon failed to start in background.",
+                        "external",
+                        Some(
+                            "Inspect the daemon log or rerun `agent-tui daemon run` for foreground diagnostics."
+                                .to_string(),
+                        ),
+                        None,
+                    )
+                    .into());
+                }
+                Err(err) => return Err(err.into()),
+            }
+        }
         Err(err) => return Err(err.into()),
+    };
+
+    let ws_state = read_ws_state_running(&ws_state_path());
+    let pid = daemon_pid(ws_state.as_ref());
+
+    match format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            struct DaemonStartOutput {
+                action: &'static str,
+                running: bool,
+                changed: bool,
+                socket_path: String,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                pid: Option<u32>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                listen: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                ws_url: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                ui_url: Option<String>,
+            }
+
+            let output = DaemonStartOutput {
+                action: "daemon_start",
+                running: true,
+                changed,
+                socket_path: socket_path().display().to_string(),
+                pid,
+                listen: ws_state.as_ref().map(|state| state.listen.clone()),
+                ws_url: ws_state.as_ref().map(|state| state.ws_url.clone()),
+                ui_url: ws_state.as_ref().map(WsState::resolved_ui_url),
+            };
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        OutputFormat::Text => {
+            let message = if changed {
+                "Daemon started"
+            } else {
+                "Daemon already running"
+            };
+            create_presenter(&format).present_success(message, None);
+        }
     }
 
-    match start_daemon_background() {
-        Ok(()) => handle_daemon_status_standalone(format),
-        Err(ClientError::DaemonNotRunning) => Err(structured_cli_error(
-            format,
-            super::exit_codes::GENERAL_ERROR,
-            "Daemon failed to start in background.",
-            "external",
-            Some(
-                "Inspect the daemon log or rerun `agent-tui daemon run` for foreground diagnostics."
-                    .to_string(),
-            ),
-            None,
-        )
-        .into()),
-        Err(err) => Err(err.into()),
-    }
+    Ok(())
 }
 
 pub(crate) fn handle_daemon_stop_standalone(
@@ -2463,26 +2524,27 @@ pub(crate) fn restart_daemon_core() -> Result<Vec<String>> {
     use crate::infra::ipc::get_daemon_pid;
     use crate::infra::ipc::start_daemon_background;
 
-    let mut warnings = Vec::new();
     let pid = match get_daemon_pid() {
         PidLookupResult::Found(pid) => Some(pid),
         PidLookupResult::NotRunning => None,
         PidLookupResult::Error(msg) => {
-            warnings.push(format!("Could not read daemon PID: {}", msg));
-            None
+            return Err(anyhow::Error::new(ClientError::SignalFailed {
+                pid: 0,
+                message: msg,
+                source: None,
+            }));
         }
     };
 
     let controller = UnixProcessController;
     let get_pid = move || pid;
-    let mut restart_warnings = daemon_lifecycle::restart_daemon(
+    let restart_warnings = daemon_lifecycle::restart_daemon(
         &controller,
         get_pid,
         &socket_path(),
         start_daemon_background,
     )?;
-    warnings.append(&mut restart_warnings);
-    Ok(warnings)
+    Ok(restart_warnings)
 }
 
 /// Core daemon stop logic that doesn't require an active client connection.
@@ -2919,6 +2981,52 @@ mod tests {
         let params = WaitParams::default();
         let cond = resolve_wait_condition(&params);
         assert_eq!(cond, None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn daemon_start_standalone_recovers_from_stale_local_socket() {
+        use std::os::unix::net::UnixListener;
+        use std::sync::atomic::Ordering;
+
+        let _env = env_lock();
+        let temp = TempDir::new_in("/tmp").expect("tempdir");
+        let socket = temp.path().join("daemon.sock");
+        let _socket_guard = EnvVarGuard::set("AGENT_TUI_SOCKET", socket.display().to_string());
+
+        let listener = UnixListener::bind(&socket).expect("bind stale socket");
+        drop(listener);
+
+        crate::infra::ipc::transport::USE_DAEMON_START_STUB.store(true, Ordering::SeqCst);
+        let result = handle_daemon_start_standalone(OutputFormat::Json);
+        crate::infra::ipc::transport::USE_DAEMON_START_STUB.store(false, Ordering::SeqCst);
+        crate::infra::ipc::transport::clear_test_listener();
+
+        assert!(
+            result.is_ok(),
+            "daemon start should recover from stale socket"
+        );
+    }
+
+    #[test]
+    fn restart_daemon_core_errors_on_invalid_pid_lock() {
+        let _env = env_lock();
+        let temp = TempDir::new_in("/tmp").expect("tempdir");
+        let socket = temp.path().join("daemon.sock");
+        let lock = socket.with_extension("lock");
+        let _socket_guard = EnvVarGuard::set("AGENT_TUI_SOCKET", socket.display().to_string());
+        fs::write(&lock, "not-a-pid").expect("write invalid lock");
+
+        let err = restart_daemon_core().expect_err("restart should fail on invalid pid lock");
+        let client_error = err
+            .downcast_ref::<ClientError>()
+            .expect("restart error should preserve client error");
+
+        assert!(matches!(
+            client_error,
+            ClientError::SignalFailed { pid: 0, message, .. }
+            if message.contains("invalid PID")
+        ));
     }
 
     #[test]

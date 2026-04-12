@@ -287,14 +287,13 @@ impl PtyHandle {
             }
         }
 
-        if total == 0
-            && self.read_closed
-            && let Some(error) = self.read_error.take()
-        {
-            return Err(PtyError::Read {
-                reason: error,
-                source: None,
-            });
+        if total == 0 && self.read_closed {
+            if let Some(error) = self.read_error.take() {
+                return Err(PtyError::Read {
+                    reason: error,
+                    source: None,
+                });
+            }
         }
 
         Ok(total)

@@ -102,11 +102,11 @@ impl RealTestHarness {
             thread::park_timeout(Duration::from_millis(50));
         }
 
-        if !self.is_daemon_exited()
-            && let Some(child) = self.daemon.as_mut()
-        {
-            let _ = child.kill();
-            let _ = child.wait();
+        if !self.is_daemon_exited() {
+            if let Some(child) = self.daemon.as_mut() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
         }
     }
 }

@@ -57,7 +57,7 @@ impl Serialize for RpcValue {
     }
 }
 
-impl<'a> Serialize for RpcValueRef<'a> {
+impl Serialize for RpcValueRef<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,

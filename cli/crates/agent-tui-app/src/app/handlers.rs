@@ -120,6 +120,7 @@ pub(crate) struct HandlerContext<'a, C: DaemonClient> {
     pub session: Option<String>,
     pub format: OutputFormat,
     presenter: Box<dyn Presenter>,
+    current_dir_override: Option<PathBuf>,
 }
 
 impl<'a, C: DaemonClient> HandlerContext<'a, C> {
@@ -130,11 +131,20 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
             session,
             format,
             presenter,
+            current_dir_override: None,
         }
     }
 
     pub fn presenter(&self) -> &dyn Presenter {
         self.presenter.as_ref()
+    }
+
+    fn effective_current_dir(&self) -> std::io::Result<PathBuf> {
+        if let Some(path) = &self.current_dir_override {
+            Ok(path.clone())
+        } else {
+            std::env::current_dir()
+        }
     }
 
     pub fn output_success_result(
@@ -223,7 +233,7 @@ pub(crate) fn handle_spawn<C: DaemonClient>(
     let cwd = match cwd {
         Some(path) => Some(path.to_string_lossy().into_owned()),
         None if daemon_uses_client_working_directory() => Some(
-            std::env::current_dir()
+            ctx.effective_current_dir()
                 .context("failed to resolve current working directory for run command")?
                 .to_string_lossy()
                 .into_owned(),
@@ -2042,8 +2052,6 @@ mod tests {
     use crate::test_support::env_lock;
     use std::cell::RefCell;
     use std::fs;
-    use std::path::Path;
-    use std::path::PathBuf;
     use std::rc::Rc;
     use std::sync::Mutex;
     use tempfile::TempDir;
@@ -2083,24 +2091,6 @@ mod tests {
                     std::env::remove_var(self.key);
                 }
             }
-        }
-    }
-
-    struct CurrentDirGuard {
-        previous: PathBuf,
-    }
-
-    impl CurrentDirGuard {
-        fn change_to(path: &Path) -> Self {
-            let previous = std::env::current_dir().expect("capture current directory");
-            std::env::set_current_dir(path).expect("set current directory");
-            Self { previous }
-        }
-    }
-
-    impl Drop for CurrentDirGuard {
-        fn drop(&mut self) {
-            std::env::set_current_dir(&self.previous).expect("restore current directory");
         }
     }
 
@@ -2274,7 +2264,6 @@ mod tests {
         let _transport_guard = EnvVarGuard::set("AGENT_TUI_TRANSPORT", "unix");
         let temp_dir = TempDir::new_in("/tmp").expect("tempdir");
         let expected_cwd = fs::canonicalize(temp_dir.path()).expect("canonical temp dir");
-        let _cwd_guard = CurrentDirGuard::change_to(temp_dir.path());
 
         let mut client = MockClient::new();
         client.set_response(
@@ -2291,6 +2280,7 @@ mod tests {
             session: None,
             format: OutputFormat::Json,
             presenter: Box::new(presenter),
+            current_dir_override: Some(expected_cwd.clone()),
         };
 
         handle_spawn(&mut ctx, "bash".to_string(), Vec::new(), None, 120, 40)
@@ -2307,8 +2297,6 @@ mod tests {
     fn handle_spawn_omits_default_cwd_for_websocket_transport() {
         let _env = env_lock();
         let _transport_guard = EnvVarGuard::set("AGENT_TUI_TRANSPORT", "ws");
-        let temp_dir = TempDir::new_in("/tmp").expect("tempdir");
-        let _cwd_guard = CurrentDirGuard::change_to(temp_dir.path());
 
         let mut client = MockClient::new();
         client.set_response(
@@ -2325,6 +2313,7 @@ mod tests {
             session: None,
             format: OutputFormat::Json,
             presenter: Box::new(presenter),
+            current_dir_override: None,
         };
 
         handle_spawn(&mut ctx, "bash".to_string(), Vec::new(), None, 120, 40)

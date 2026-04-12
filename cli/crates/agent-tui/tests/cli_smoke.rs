@@ -122,7 +122,7 @@ fn smoke_screenshot_text() {
 }
 
 #[test]
-fn smoke_screenshot_retain_ansi_uses_rendered_output() {
+fn smoke_screenshot_defaults_to_rendered_output() {
     let harness = TestHarness::new();
 
     harness.set_success_response(
@@ -130,12 +130,13 @@ fn smoke_screenshot_retain_ansi_uses_rendered_output() {
         json!({
             "session_id": TEST_SESSION_ID,
             "screenshot": "Red text\n",
-            "rendered": "\u{001b}[31mRed text\u{001b}[0m\n"
+            "rendered": "\u{001b}[31mRed text                                    \u{001b}[0m\n\n",
+            "compact_rendered": "\u{001b}[31mRed text\u{001b}[0m\n"
         }),
     );
 
     harness
-        .run(&["--no-color", "screenshot", "--retain-ansi"])
+        .run(&["--no-color", "screenshot"])
         .success()
         .stdout(predicate::str::contains("\u{1b}[31mRed text\u{1b}[0m"));
 

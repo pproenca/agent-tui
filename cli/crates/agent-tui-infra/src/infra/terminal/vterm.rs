@@ -29,6 +29,12 @@ pub struct ScreenBuffer {
     pub cells: Vec<Vec<Cell>>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct TrimmedScreenBuffer<'a> {
+    pub rows: Vec<&'a [Cell]>,
+    pub total_trimmed_chars: usize,
+}
+
 impl ScreenGrid for ScreenBuffer {
     fn rows(&self) -> usize {
         self.cells.len()
@@ -43,6 +49,35 @@ impl ScreenGrid for ScreenBuffer {
             .get(row)
             .and_then(|r| r.get(col))
             .map(|c| (c.char, c.style))
+    }
+}
+
+impl ScreenBuffer {
+    pub(crate) fn trimmed_rows(&self) -> Option<TrimmedScreenBuffer<'_>> {
+        let mut rows = Vec::with_capacity(self.cells.len());
+        let mut last_non_empty_row = None;
+        let mut total_trimmed_chars = 0usize;
+
+        for (row_idx, row) in self.cells.iter().enumerate() {
+            let trimmed_len = row
+                .iter()
+                .rposition(|cell| !cell.char.is_whitespace())
+                .map(|idx| idx + 1)
+                .unwrap_or(0);
+            if trimmed_len > 0 {
+                last_non_empty_row = Some(row_idx);
+                total_trimmed_chars += trimmed_len;
+            }
+            rows.push(&row[..trimmed_len]);
+        }
+
+        let rendered_rows = last_non_empty_row.map(|row_idx| row_idx + 1)?;
+        rows.truncate(rendered_rows);
+
+        Some(TrimmedScreenBuffer {
+            rows,
+            total_trimmed_chars,
+        })
     }
 }
 
@@ -100,37 +135,19 @@ impl VirtualTerminal {
 
     pub fn screen_text(&self) -> String {
         let buffer = self.screen_buffer();
-        let mut trimmed_lengths = Vec::with_capacity(buffer.cells.len());
-        let mut last_non_empty_row = None;
-        let mut total_trimmed_chars = 0usize;
-
-        for (row_idx, row) in buffer.cells.iter().enumerate() {
-            let trimmed_len = row
-                .iter()
-                .rposition(|cell| !cell.char.is_whitespace())
-                .map(|idx| idx + 1)
-                .unwrap_or(0);
-            if trimmed_len > 0 {
-                last_non_empty_row = Some(row_idx);
-                total_trimmed_chars += trimmed_len;
-            }
-            trimmed_lengths.push(trimmed_len);
-        }
-
-        let Some(last_row) = last_non_empty_row else {
+        let Some(trimmed) = buffer.trimmed_rows() else {
             return String::new();
         };
 
-        let rendered_rows = last_row + 1;
-        let mut output =
-            String::with_capacity(total_trimmed_chars + rendered_rows.saturating_sub(1));
+        let mut output = String::with_capacity(
+            trimmed.total_trimmed_chars + trimmed.rows.len().saturating_sub(1),
+        );
 
-        for (row_idx, row) in buffer.cells.iter().take(rendered_rows).enumerate() {
+        for (row_idx, row) in trimmed.rows.iter().enumerate() {
             if row_idx > 0 {
                 output.push('\n');
             }
-            let trimmed_len = trimmed_lengths[row_idx];
-            for cell in row.iter().take(trimmed_len) {
+            for cell in row.iter() {
                 output.push(cell.char);
             }
         }

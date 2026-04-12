@@ -124,6 +124,10 @@ mod tests {
             String::new()
         }
 
+        fn screen_render_compact(&self) -> String {
+            String::new()
+        }
+
         fn terminal_write(&self, _data: &[u8]) -> Result<(), SessionError> {
             Ok(())
         }

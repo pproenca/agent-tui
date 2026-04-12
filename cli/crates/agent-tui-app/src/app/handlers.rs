@@ -423,13 +423,14 @@ pub(crate) fn handle_snapshot<C: DaemonClient>(
     retain_ansi: bool,
     include_cursor: bool,
 ) -> HandlerResult {
+    let preserve_ansi = retain_ansi || !strip_ansi;
     let rpc_params = params::SnapshotParams {
         session: ctx.session.clone(),
         region,
         strip_ansi,
-        retain_ansi,
+        retain_ansi: preserve_ansi,
         include_cursor,
-        include_render: retain_ansi,
+        include_render: preserve_ansi,
     };
     let result = call_with_params(ctx.client, "snapshot", rpc_params)?;
 
@@ -439,10 +440,11 @@ pub(crate) fn handle_snapshot<C: DaemonClient>(
         }
         OutputFormat::Text => {
             println!("{}", Colors::bold("Screenshot:"));
-            let screen = if retain_ansi {
+            let screen = if preserve_ansi {
                 result
-                    .get("rendered")
+                    .get("compact_rendered")
                     .and_then(|v| v.as_str())
+                    .or_else(|| result.get("rendered").and_then(|v| v.as_str()))
                     .or_else(|| result.get("screenshot").and_then(|v| v.as_str()))
             } else {
                 result.get("screenshot").and_then(|v| v.as_str())

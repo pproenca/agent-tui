@@ -43,6 +43,7 @@ pub trait SessionOps: Send + Sync {
     fn update(&self) -> Result<(), SessionError>;
     fn screen_text(&self) -> String;
     fn screen_render(&self) -> String;
+    fn screen_render_compact(&self) -> String;
     fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError>;
     fn terminal_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError>;
     fn stream_read(

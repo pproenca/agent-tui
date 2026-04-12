@@ -191,9 +191,11 @@ pub fn snapshot_output_to_response(
     use crate::common::strip_ansi_codes;
 
     let rendered = output.rendered;
+    let compact_rendered = output.compact_rendered;
     let screenshot = if retain_ansi {
-        rendered
+        compact_rendered
             .clone()
+            .or(rendered.clone())
             .unwrap_or_else(|| output.screenshot.clone())
     } else if strip_ansi {
         strip_ansi_codes(&output.screenshot)
@@ -216,6 +218,9 @@ pub fn snapshot_output_to_response(
 
     if let Some(rendered) = rendered {
         result["rendered"] = json!(rendered);
+    }
+    if let Some(compact_rendered) = compact_rendered {
+        result["compact_rendered"] = json!(compact_rendered);
     }
 
     RpcResponse::success(id, result)
@@ -497,6 +502,7 @@ mod tests {
             screenshot: "plain text".to_string(),
             cursor: None,
             rendered: Some("\u{1b}[31mplain text\u{1b}[0m".to_string()),
+            compact_rendered: Some("\u{1b}[31mplain text\u{1b}[0m".to_string()),
         };
 
         let response = snapshot_output_to_response(1, output, false, true);
@@ -508,6 +514,10 @@ mod tests {
         );
         assert_eq!(
             value["result"]["rendered"],
+            json!("\u{1b}[31mplain text\u{1b}[0m")
+        );
+        assert_eq!(
+            value["result"]["compact_rendered"],
             json!("\u{1b}[31mplain text\u{1b}[0m")
         );
     }

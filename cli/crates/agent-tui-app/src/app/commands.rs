@@ -60,7 +60,7 @@ EXAMPLES:
     agent-tui run "npx create-next-app"
     agent-tui screenshot
     agent-tui type "my-project"         # Type text
-    agent-tui press Enter                 # Press Enter key
+    agent-tui press Ctrl+M              # Submit the current input
     agent-tui wait "success"
     agent-tui kill
 
@@ -223,8 +223,8 @@ View the current screenshot state.
 Returns the current terminal screenshot content.")]
     #[command(after_long_help = "\
 EXAMPLES:
-    agent-tui screenshot              # Just the screenshot
-    agent-tui screenshot --retain-ansi # Preserve terminal colors/styles
+    agent-tui screenshot               # Screenshot with terminal colors/styles
+    agent-tui screenshot --retain-ansi # Explicitly preserve terminal colors/styles
     agent-tui screenshot --strip-ansi  # Plain text without colors")]
     Screenshot {
         /// Limit capture to a named region (if supported)
@@ -235,7 +235,7 @@ EXAMPLES:
         #[arg(long, conflicts_with = "retain_ansi", help_heading = "Output Options")]
         strip_ansi: bool,
 
-        /// Preserve ANSI color/style codes in output
+        /// Preserve ANSI color/style codes in output (default)
         #[arg(long, conflicts_with = "strip_ansi", help_heading = "Output Options")]
         retain_ansi: bool,
 
@@ -1514,5 +1514,15 @@ mod tests {
         let mut cmd = Cli::command();
         cmd = cmd.color(ColorChoice::Never);
         let _ = cmd.render_long_help().to_string();
+    }
+
+    #[test]
+    fn test_cli_long_help_avoids_press_any_key_phrasing() {
+        let mut cmd = Cli::command();
+        cmd = cmd.color(ColorChoice::Never);
+        let help = cmd.render_long_help().to_string().to_ascii_lowercase();
+
+        assert!(!help.contains("press enter"));
+        assert!(!help.contains("press any"));
     }
 }

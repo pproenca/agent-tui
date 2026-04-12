@@ -68,6 +68,11 @@ impl SessionOps for SessionHandleImpl {
         session_guard.screen_render()
     }
 
+    fn screen_render_compact(&self) -> String {
+        let session_guard = mutex_lock_or_recover(&self.inner);
+        session_guard.screen_render_compact()
+    }
+
     fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError> {
         let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.pty_write(data)

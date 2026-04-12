@@ -83,6 +83,10 @@ impl SessionOps for MockSession {
         self.screen_text.clone()
     }
 
+    fn screen_render_compact(&self) -> String {
+        self.screen_text.clone()
+    }
+
     fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError> {
         if let Some(ref err) = self.terminal_write_error {
             Err(SessionError::Terminal(TerminalError::Write {

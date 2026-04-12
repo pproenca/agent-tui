@@ -12,7 +12,7 @@ pub fn socket_path() -> PathBuf {
 
     let path = std::env::var("XDG_RUNTIME_DIR")
         .map(|dir| PathBuf::from(dir).join("agent-tui.sock"))
-        .unwrap_or_else(|_| PathBuf::from("/tmp/agent-tui.sock"));
+        .unwrap_or_else(|_| std::env::temp_dir().join("agent-tui.sock"));
     debug!(socket = %path.display(), "Resolved socket path");
     path
 }

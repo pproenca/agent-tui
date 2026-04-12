@@ -37,10 +37,10 @@ use crate::adapters::presenter::create_presenter;
 use crate::app::attach::AttachError;
 use crate::app::commands::Cli;
 use crate::app::commands::Commands;
+use crate::app::commands::CompletionShell;
 use crate::app::commands::DaemonCommand;
 use crate::app::commands::LiveCommand;
 use crate::app::commands::LiveStartArgs;
-use crate::app::commands::Shell;
 use crate::app::error::DaemonNotRunningError;
 use crate::app::handlers::HandlerContext;
 
@@ -84,7 +84,7 @@ enum InstallOutcome {
 }
 
 fn handle_completions_command(
-    shell: Option<Shell>,
+    shell: Option<CompletionShell>,
     print: bool,
     install: bool,
     yes: bool,
@@ -103,7 +103,12 @@ fn handle_completions_command(
             anyhow::anyhow!("Shell not specified. Use one of: {}", supported_shells())
         })?;
         let mut cmd = Cli::command();
-        generate(shell, &mut cmd, PROGRAM_NAME, &mut io::stdout());
+        generate(
+            shell.clap_shell(),
+            &mut cmd,
+            PROGRAM_NAME,
+            &mut io::stdout(),
+        );
         return Ok(());
     }
 
@@ -119,7 +124,7 @@ fn handle_completions_command(
     Ok(())
 }
 
-fn run_completions_wizard(shell: Shell, install: bool, yes: bool) -> Result<()> {
+fn run_completions_wizard(shell: CompletionShell, install: bool, yes: bool) -> Result<()> {
     println!("{}", Colors::bold("Shell completions"));
     println!("Detected shell: {}", shell_label(shell));
     println!();
@@ -134,7 +139,7 @@ fn run_completions_wizard(shell: Shell, install: bool, yes: bool) -> Result<()> 
         return Ok(());
     };
 
-    if matches!(shell, Shell::Bash | Shell::Zsh) {
+    if matches!(shell, CompletionShell::Bash | CompletionShell::Zsh) {
         println!(
             "{} install a static completion file (not required if you use the line above).",
             Colors::dim("Optional:")
@@ -196,7 +201,7 @@ fn run_completions_wizard(shell: Shell, install: bool, yes: bool) -> Result<()> 
 }
 
 fn supported_shells() -> &'static str {
-    "bash, zsh, fish, powershell, elvish"
+    "bash, zsh, fish, elvish"
 }
 
 fn print_shell_detection_help() {
@@ -205,10 +210,10 @@ fn print_shell_detection_help() {
     println!("Supported shells: {}", supported_shells());
 }
 
-fn print_install_guidance(shell: Shell) {
+fn print_install_guidance(shell: CompletionShell) {
     println!("{}", Colors::bold("Recommended setup:"));
     match shell {
-        Shell::Bash => {
+        CompletionShell::Bash => {
             println!("Add this to ~/.bashrc:");
             println!("  source <(agent-tui completions bash --print)");
             println!(
@@ -216,7 +221,7 @@ fn print_install_guidance(shell: Shell) {
                 Colors::dim("This keeps completions in sync with your installed agent-tui.")
             );
         }
-        Shell::Zsh => {
+        CompletionShell::Zsh => {
             println!("Add this to ~/.zshrc:");
             println!("  source <(agent-tui completions zsh --print)");
             println!(
@@ -224,15 +229,7 @@ fn print_install_guidance(shell: Shell) {
                 Colors::dim("This keeps completions in sync with your installed agent-tui.")
             );
         }
-        Shell::PowerShell => {
-            println!("Add this to $PROFILE:");
-            println!("  agent-tui completions powershell --print | Out-String | Invoke-Expression");
-            println!(
-                "{}",
-                Colors::dim("This keeps completions in sync with your installed agent-tui.")
-            );
-        }
-        Shell::Fish => {
+        CompletionShell::Fish => {
             println!("Install a completion file (fish loads it automatically):");
             println!(
                 "  agent-tui completions fish --print > ~/.config/fish/completions/agent-tui.fish"
@@ -242,7 +239,7 @@ fn print_install_guidance(shell: Shell) {
                 Colors::dim("Re-run this after upgrading agent-tui to refresh the file.")
             );
         }
-        Shell::Elvish => {
+        CompletionShell::Elvish => {
             println!("Install a completion file:");
             println!("  agent-tui completions elvish --print > ~/.elvish/lib/agent-tui.elv");
             println!(
@@ -250,22 +247,16 @@ fn print_install_guidance(shell: Shell) {
                 Colors::dim("Re-run this after upgrading agent-tui to refresh the file.")
             );
         }
-        _ => {
-            println!("Run: {} completions <shell> --print", PROGRAM_NAME);
-            println!("Known shells: {}", supported_shells());
-        }
     }
     println!();
 }
 
-fn resolve_shell(shell: Option<Shell>) -> Option<Shell> {
+fn resolve_shell(shell: Option<CompletionShell>) -> Option<CompletionShell> {
     shell.or_else(detect_shell_from_env)
 }
 
-fn detect_shell_from_env() -> Option<Shell> {
-    let env_shell = std::env::var("SHELL")
-        .ok()
-        .or_else(|| std::env::var("COMSPEC").ok())?;
+fn detect_shell_from_env() -> Option<CompletionShell> {
+    let env_shell = std::env::var("SHELL").ok()?;
     let name = std::path::Path::new(&env_shell)
         .file_name()
         .and_then(|s| s.to_str())
@@ -274,67 +265,52 @@ fn detect_shell_from_env() -> Option<Shell> {
     shell_from_name(&name)
 }
 
-fn shell_from_name(name: &str) -> Option<Shell> {
+fn shell_from_name(name: &str) -> Option<CompletionShell> {
     if name.contains("bash") {
-        Some(Shell::Bash)
+        Some(CompletionShell::Bash)
     } else if name.contains("zsh") {
-        Some(Shell::Zsh)
+        Some(CompletionShell::Zsh)
     } else if name.contains("fish") {
-        Some(Shell::Fish)
-    } else if name.contains("pwsh") || name.contains("powershell") {
-        Some(Shell::PowerShell)
+        Some(CompletionShell::Fish)
     } else if name.contains("elvish") {
-        Some(Shell::Elvish)
+        Some(CompletionShell::Elvish)
     } else {
         None
     }
 }
 
-fn shell_label(shell: Shell) -> &'static str {
+fn shell_label(shell: CompletionShell) -> &'static str {
     match shell {
-        Shell::Bash => "bash",
-        Shell::Zsh => "zsh",
-        Shell::Fish => "fish",
-        Shell::PowerShell => "powershell",
-        Shell::Elvish => "elvish",
-        _ => "unknown",
+        CompletionShell::Bash => "bash",
+        CompletionShell::Zsh => "zsh",
+        CompletionShell::Fish => "fish",
+        CompletionShell::Elvish => "elvish",
     }
 }
 
-fn default_completion_path(shell: Shell) -> Option<PathBuf> {
+fn default_completion_path(shell: CompletionShell) -> Option<PathBuf> {
     let home = home_dir()?;
     match shell {
-        Shell::Bash => Some(home.join(".bash_completion.d").join("agent-tui")),
-        Shell::Zsh => Some(home.join(".zsh").join("completions").join("_agent-tui")),
-        Shell::Fish => Some(
+        CompletionShell::Bash => Some(home.join(".bash_completion.d").join("agent-tui")),
+        CompletionShell::Zsh => Some(home.join(".zsh").join("completions").join("_agent-tui")),
+        CompletionShell::Fish => Some(
             home.join(".config")
                 .join("fish")
                 .join("completions")
                 .join("agent-tui.fish"),
         ),
-        Shell::Elvish => Some(home.join(".elvish").join("lib").join("agent-tui.elv")),
-        Shell::PowerShell => None,
-        _ => None,
+        CompletionShell::Elvish => Some(home.join(".elvish").join("lib").join("agent-tui.elv")),
     }
 }
 
 fn home_dir() -> Option<PathBuf> {
-    if let Ok(home) = std::env::var("HOME") {
-        return Some(PathBuf::from(home));
-    }
-    if let Ok(home) = std::env::var("USERPROFILE") {
-        return Some(PathBuf::from(home));
-    }
-    match (std::env::var("HOMEDRIVE"), std::env::var("HOMEPATH")) {
-        (Ok(drive), Ok(path)) => Some(PathBuf::from(format!("{}{}", drive, path))),
-        _ => None,
-    }
+    std::env::var("HOME").ok().map(PathBuf::from)
 }
 
-fn generate_completions_bytes(shell: Shell) -> Result<Vec<u8>> {
+fn generate_completions_bytes(shell: CompletionShell) -> Result<Vec<u8>> {
     let mut cmd = Cli::command();
     let mut out = Vec::new();
-    generate(shell, &mut cmd, PROGRAM_NAME, &mut out);
+    generate(shell.clap_shell(), &mut cmd, PROGRAM_NAME, &mut out);
     Ok(out)
 }
 
@@ -401,15 +377,15 @@ fn print_install_outcome(outcome: InstallOutcome) {
     }
 }
 
-fn print_static_install_note(shell: Shell) {
+fn print_static_install_note(shell: CompletionShell) {
     match shell {
-        Shell::Bash => println!(
+        CompletionShell::Bash => println!(
             "{}",
             Colors::dim(
                 "Note: ensure your shell loads ~/.bash_completion.d (or source the file in ~/.bashrc)."
             )
         ),
-        Shell::Zsh => println!(
+        CompletionShell::Zsh => println!(
             "{}",
             Colors::dim("Note: ensure ~/.zsh/completions is in $fpath and compinit is enabled.")
         ),

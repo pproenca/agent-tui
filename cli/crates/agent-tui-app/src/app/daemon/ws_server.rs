@@ -673,8 +673,10 @@ fn write_state_file(
 }
 
 fn default_state_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".agent-tui").join("api.json")
+    let home = std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir());
+    home.join(".agent-tui").join("api.json")
 }
 
 #[cfg(test)]

@@ -1,6 +1,11 @@
 #![expect(clippy::print_stdout, reason = "xtask is a CLI orchestrator")]
 #![expect(clippy::print_stderr, reason = "xtask is a CLI orchestrator")]
 
+#[cfg(not(unix))]
+compile_error!(
+    "agent-tui build and release tooling is Unix-only. Run xtask from Linux, macOS, or another Unix-like environment."
+);
+
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
@@ -749,20 +754,7 @@ fn has_command(name: &str) -> bool {
         return false;
     };
 
-    let exts = if cfg!(windows) {
-        env::var("PATHEXT")
-            .ok()
-            .map(|value| {
-                value
-                    .split(';')
-                    .filter(|item| !item.is_empty())
-                    .map(std::string::ToString::to_string)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_else(|| vec![".EXE".to_string(), ".CMD".to_string(), ".BAT".to_string()])
-    } else {
-        vec![String::new()]
-    };
+    let exts = [String::new()];
 
     env::split_paths(&path_os).any(|dir| {
         exts.iter().any(|ext| {
@@ -1253,16 +1245,16 @@ fn sha256_file(path: &Path) -> Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn make_executable(path: &Path) -> Result<()> {
+fn make_executable(_path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut permissions = fs::metadata(path)
-            .with_context(|| format!("failed to read metadata {}", path.display()))?
+        let mut permissions = fs::metadata(_path)
+            .with_context(|| format!("failed to read metadata {}", _path.display()))?
             .permissions();
         permissions.set_mode(0o755);
-        fs::set_permissions(path, permissions)
-            .with_context(|| format!("failed to chmod {}", path.display()))?;
+        fs::set_permissions(_path, permissions)
+            .with_context(|| format!("failed to chmod {}", _path.display()))?;
     }
     Ok(())
 }

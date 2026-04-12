@@ -1145,7 +1145,7 @@ impl SessionPersistence {
         }
         let home = std::env::var("HOME")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/tmp"));
+            .unwrap_or_else(|_| std::env::temp_dir());
         let dir = home.join(".agent-tui");
         dir.join("sessions.jsonl")
     }

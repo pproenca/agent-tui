@@ -39,14 +39,14 @@ impl DaemonError {
     pub fn suggestion(&self) -> String {
         match self {
             DaemonError::SocketBind { .. } => {
-                "Check if the socket directory is writable. Try: rm /tmp/agent-tui.sock".to_string()
+                "Check that the Unix socket directory is writable. Inspect the active socket path with 'agent-tui env' and remove any stale socket file.".to_string()
             }
             DaemonError::AlreadyRunning => {
                 "Another daemon is running. Use 'agent-tui sessions' to connect or kill existing daemon."
                     .to_string()
             }
             DaemonError::LockFailed { .. } => {
-                "Lock file issue. Try removing the lock file: rm /tmp/agent-tui.sock.lock".to_string()
+                "Lock file issue. Inspect the active socket path with 'agent-tui env' and remove the matching stale .lock file if needed.".to_string()
             }
             DaemonError::SignalSetup(_) => {
                 "Signal handler setup failed. Check system signal configuration.".to_string()

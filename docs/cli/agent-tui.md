@@ -10,6 +10,9 @@ Drive TUI (text UI) applications programmatically or interactively.
 Common flow: run -> screenshot -> press/type/scroll -> wait -> kill.
 Use --format json for automation-friendly output.
 
+Supported platforms: Unix-like systems only (Linux, macOS, and environments
+with PTYs, Unix domain sockets, and POSIX signals).
+
 Usage: agent-tui [OPTIONS] <COMMAND>
 
 Commands:
@@ -104,6 +107,11 @@ EXAMPLES:
     # Scroll using directional terminal input
     agent-tui scroll down
     agent-tui scroll up 5
+
+PLATFORM SUPPORT:
+    Supported: Linux, macOS, and other Unix-like systems with PTYs,
+    Unix domain sockets, and POSIX signals.
+    Unsupported: Windows and non-Unix runtimes.
 ```
 
 ## `agent-tui run`
@@ -1359,7 +1367,7 @@ EXAMPLES:
 ## `agent-tui completions`
 
 ```text
-Generate or install shell completions for bash, zsh, fish, powershell, or elvish.
+Generate or install shell completions for bash, zsh, fish, or elvish.
 
 Runs an interactive setup by default (auto-detects your shell) and checks
 whether your installed completions are up-to-date. Use --print to output the
@@ -1369,7 +1377,7 @@ Usage: completions [OPTIONS] [SHELL]
 
 Arguments:
   [SHELL]
-          [possible values: bash, elvish, fish, powershell, zsh]
+          [possible values: bash, zsh, fish, elvish]
 
 Options:
       --print
@@ -1422,8 +1430,8 @@ INSTALLATION:
     # Fish - run once
     agent-tui completions fish --print > ~/.config/fish/completions/agent-tui.fish
 
-    # PowerShell - add to $PROFILE
-    agent-tui completions powershell --print | Out-String | Invoke-Expression
+    # Elvish - run once
+    agent-tui completions elvish --print > ~/.elvish/lib/agent-tui.elv
 ```
 
 ## `agent-tui help`

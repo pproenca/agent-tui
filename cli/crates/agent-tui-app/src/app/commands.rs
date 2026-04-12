@@ -6,7 +6,6 @@ use clap::Parser;
 use clap::Subcommand;
 use clap::ValueEnum;
 use clap::ValueHint;
-pub use clap_complete::Shell;
 use std::path::PathBuf;
 
 pub use crate::adapters::presenter::OutputFormat;
@@ -19,7 +18,10 @@ const LONG_ABOUT: &str = "\
 Drive TUI (text UI) applications programmatically or interactively.\n\
 \n\
 Common flow: run -> screenshot -> press/type/scroll -> wait -> kill.\n\
-Use --format json for automation-friendly output.";
+Use --format json for automation-friendly output.\n\
+\n\
+Supported platforms: Unix-like systems only (Linux, macOS, and environments\n\
+with PTYs, Unix domain sockets, and POSIX signals).";
 
 const AFTER_LONG_HELP: &str = r#"WORKFLOW:
     1. Run a TUI application
@@ -70,7 +72,31 @@ EXAMPLES:
     agent-tui scroll down
     agent-tui scroll up 5
 
+PLATFORM SUPPORT:
+    Supported: Linux, macOS, and other Unix-like systems with PTYs,
+    Unix domain sockets, and POSIX signals.
+    Unsupported: Windows and non-Unix runtimes.
+
     "#;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CompletionShell {
+    Bash,
+    Zsh,
+    Fish,
+    Elvish,
+}
+
+impl CompletionShell {
+    pub const fn clap_shell(self) -> clap_complete::Shell {
+        match self {
+            Self::Bash => clap_complete::Shell::Bash,
+            Self::Zsh => clap_complete::Shell::Zsh,
+            Self::Fish => clap_complete::Shell::Fish,
+            Self::Elvish => clap_complete::Shell::Elvish,
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "agent-tui")]
@@ -408,7 +434,7 @@ EXAMPLES:
     Env,
     /// Generate or install shell completions
     #[command(long_about = "\
-Generate or install shell completions for bash, zsh, fish, powershell, or elvish.
+Generate or install shell completions for bash, zsh, fish, or elvish.
 
 Runs an interactive setup by default (auto-detects your shell) and checks
 whether your installed completions are up-to-date. Use --print to output the
@@ -430,11 +456,11 @@ INSTALLATION:
     # Fish - run once
     agent-tui completions fish --print > ~/.config/fish/completions/agent-tui.fish
 
-    # PowerShell - add to $PROFILE
-    agent-tui completions powershell --print | Out-String | Invoke-Expression")]
+    # Elvish - run once
+    agent-tui completions elvish --print > ~/.elvish/lib/agent-tui.elv")]
     Completions {
         #[arg(value_enum, value_name = "SHELL")]
-        shell: Option<Shell>,
+        shell: Option<CompletionShell>,
         /// Print the completion script to stdout
         #[arg(long, conflicts_with = "install")]
         print: bool,
@@ -1021,7 +1047,7 @@ mod tests {
         let Commands::Completions { shell, .. } = cli.command else {
             panic!("Expected Completions command, got {:?}", cli.command);
         };
-        assert!(matches!(shell, Some(Shell::Bash)));
+        assert!(matches!(shell, Some(CompletionShell::Bash)));
     }
 
     #[test]
@@ -1030,7 +1056,7 @@ mod tests {
         let Commands::Completions { shell, .. } = cli.command else {
             panic!("Expected Completions command, got {:?}", cli.command);
         };
-        assert!(matches!(shell, Some(Shell::Fish)));
+        assert!(matches!(shell, Some(CompletionShell::Fish)));
     }
 
     #[test]

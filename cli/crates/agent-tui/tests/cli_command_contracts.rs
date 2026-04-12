@@ -365,7 +365,7 @@ fn standalone_version_env_and_completions_contract() {
         .success()
         .stdout(predicate::str::contains("\"environment\""));
 
-    for shell in ["bash", "zsh", "fish", "powershell", "elvish"] {
+    for shell in ["bash", "zsh", "fish", "elvish"] {
         env.run(&["completions", "--print", shell])
             .success()
             .stdout(predicate::str::is_empty().not());

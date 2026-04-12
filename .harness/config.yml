@@ -1,0 +1,28 @@
+version: "1.0"
+name: agent-tui
+created: "2026-03-17"
+updated: "2026-03-17"
+
+tech_stack:
+  languages:
+    - rust
+    - typescript
+  frameworks:
+    - tokio
+    - axum
+    - clap
+    - xterm.js
+  build:
+    - cargo
+    - just
+    - bun
+  test:
+    - cargo-test
+    - assert_cmd
+    - predicates
+
+harness_components:
+  - knowledge
+  - architecture
+  - enforcement
+  - quality

@@ -1,0 +1,187 @@
+version: "1.0"
+
+# TARGET architecture: vertical business domains, each owning its full stack.
+#
+# CURRENT state: the codebase is organized by horizontal Clean Architecture layers
+# (one crate per layer). Code for all business domains is co-located within each
+# layer crate. Enforcement will surface these violations — each domain's files are
+# scattered across shared horizontal crates instead of owning their own vertical path.
+
+layer_order:
+  - types         # Domain types, value objects, errors
+  - config        # Configuration and environment
+  - service       # Business logic, orchestration, trait ports
+  - adapters      # CLI handlers, RPC presenters, request/response DTOs
+  - infra         # External integrations: PTY, IPC, terminal emulation
+  - runtime       # Composition, wiring, startup coordination
+  - ui            # User-facing interface
+
+dependency_rule: forward_only
+
+cross_cutting:
+  - name: error-handling
+    description: >
+      DaemonError with ErrorCategory for structured error propagation.
+      Domain errors use thiserror. Infra/app errors use anyhow with .context().
+    entry_point: agent-tui-common
+
+  - name: structured-logging
+    description: >
+      tracing crate for spans and events. JSON output via tracing-subscriber.
+      Telemetry helpers centralized in common crate.
+    entry_point: agent-tui-common
+
+  - name: serialization
+    description: >
+      serde derives on domain types. JSON-RPC formatting in adapters.
+      All API contracts use serde_json.
+    entry_point: workspace dependency (serde, serde_json)
+
+  - name: async-runtime
+    description: >
+      Tokio full-featured runtime. Configured in app/facade crate.
+      Bounded channels only (unbounded channels banned via Clippy).
+    entry_point: agent-tui-app
+
+  - name: rpc-transport
+    description: >
+      Axum-based JSON-RPC over WebSocket. Router and middleware live in adapters.
+      Protocol types (RpcRequest, RpcResponse) shared across domains.
+    entry_point: agent-tui-adapters
+
+domains:
+  - name: session
+    description: >
+      PTY session lifecycle: create, list, destroy, and spawn management.
+      The core resource that all other domains operate on.
+    # TARGET: session/ vertical slice owning its full stack.
+    # CURRENT: files scattered across horizontal crates.
+    current_paths:
+      types:
+        - cli/crates/agent-tui-domain/src/domain/session_types.rs
+        - cli/crates/agent-tui-domain/src/domain/types.rs  # SessionId, SessionInfo
+      service:
+        - cli/crates/agent-tui-usecases/src/usecases/session.rs
+        - cli/crates/agent-tui-usecases/src/usecases/spawn_error.rs
+        - cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs
+      adapters:
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs
+      infra:
+        - cli/crates/agent-tui-infra/src/infra/daemon/session.rs
+        - cli/crates/agent-tui-infra/src/infra/daemon/repository.rs
+        - cli/crates/agent-tui-infra/src/infra/daemon/pty_session.rs
+    providers:
+      - error-handling
+      - structured-logging
+      - async-runtime
+
+  - name: terminal
+    description: >
+      Terminal interaction: screenshot capture, keyboard/text input, and
+      wait conditions (text match, screen stability). Operates on sessions
+      owned by the session domain.
+    current_paths:
+      types:
+        - cli/crates/agent-tui-domain/src/domain/types.rs  # WaitCondition, ScreenContent
+        - cli/crates/agent-tui-domain/src/domain/core/screen.rs
+        - cli/crates/agent-tui-domain/src/domain/core/style.rs
+      service:
+        - cli/crates/agent-tui-usecases/src/usecases/snapshot.rs
+        - cli/crates/agent-tui-usecases/src/usecases/input.rs
+        - cli/crates/agent-tui-usecases/src/usecases/wait.rs
+        - cli/crates/agent-tui-usecases/src/usecases/wait_condition.rs
+        - cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs
+      adapters:
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/snapshot.rs
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/input.rs
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/wait.rs
+        - cli/crates/agent-tui-adapters/src/adapters/snapshot_adapters.rs
+      infra:
+        - cli/crates/agent-tui-infra/src/infra/terminal/pty.rs
+        - cli/crates/agent-tui-infra/src/infra/terminal/render.rs
+        - cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs
+        - cli/crates/agent-tui-infra/src/infra/terminal/error.rs
+        - cli/crates/agent-tui-infra/src/infra/daemon/terminal_state.rs
+    providers:
+      - error-handling
+      - structured-logging
+      - serialization
+
+  - name: daemon
+    description: >
+      Background daemon lifecycle: start, stop, health checks, signal handling,
+      file locking, and IPC transport (Unix socket client/server).
+    current_paths:
+      config:
+        - cli/crates/agent-tui-infra/src/infra/daemon/config.rs
+      service:
+        - cli/crates/agent-tui-usecases/src/usecases/shutdown.rs
+        - cli/crates/agent-tui-usecases/src/usecases/diagnostics.rs
+        - cli/crates/agent-tui-usecases/src/usecases/ports/shutdown_notifier.rs
+        - cli/crates/agent-tui-usecases/src/usecases/ports/clock.rs
+      adapters:
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/diagnostics.rs
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/router.rs
+        - cli/crates/agent-tui-adapters/src/adapters/daemon/usecase_container.rs
+      infra:
+        - cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs
+        - cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs
+        - cli/crates/agent-tui-infra/src/infra/daemon/lock_helpers.rs
+        - cli/crates/agent-tui-infra/src/infra/ipc/client.rs
+        - cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs
+        - cli/crates/agent-tui-infra/src/infra/ipc/socket.rs
+        - cli/crates/agent-tui-infra/src/infra/ipc/transport.rs
+        - cli/crates/agent-tui-infra/src/infra/ipc/process.rs
+        - cli/crates/agent-tui-infra/src/infra/ipc/polling.rs
+        - cli/crates/agent-tui-infra/src/infra/ipc/error.rs
+      runtime:
+        - cli/crates/agent-tui-app/src/  # daemon startup, composition
+    providers:
+      - error-handling
+      - structured-logging
+      - async-runtime
+
+  - name: web-preview
+    description: >
+      Live terminal preview UI. Bun-based TypeScript app using xterm.js.
+      Connects to daemon via WebSocket for real-time session rendering.
+      Built assets embedded into agent-tui-app at compile time.
+    current_paths:
+      types:
+        - web/src/  # TypeScript view models
+      ui:
+        - web/src/  # HTML, CSS, xterm.js rendering
+        - web/public/  # Built assets
+    providers:
+      - serialization
+
+# ENFORCEMENT NOTES:
+#
+# The current codebase organizes code by horizontal Clean Architecture layers:
+#   agent-tui-common → agent-tui-domain → agent-tui-usecases →
+#   agent-tui-adapters / agent-tui-infra → agent-tui-app → agent-tui (facade)
+#
+# This means each layer crate is a shared bucket containing code for ALL domains.
+# For example, agent-tui-domain contains session types AND terminal types AND
+# daemon types — three different business domains in one crate.
+#
+# Expected enforcement violations:
+# 1. Domain types for session, terminal, and daemon are co-located in agent-tui-domain
+# 2. Use cases for all domains share agent-tui-usecases with no internal boundary
+# 3. Adapters for all domains share agent-tui-adapters
+# 4. Infra implementations for all domains share agent-tui-infra
+# 5. No domain-level module boundary prevents cross-domain coupling within a crate
+#
+# The forward-only dependency direction IS enforced (by Cargo). What is NOT enforced
+# is domain isolation within each layer crate. An agent working on session usecases
+# can freely import terminal usecases — there is no boundary preventing this.
+#
+# Current Cargo dependency matrix (still valid, still enforced):
+#   agent-tui-common    → (none)
+#   agent-tui-domain    → common
+#   agent-tui-usecases  → domain, common
+#   agent-tui-adapters  → usecases, domain, common
+#   agent-tui-infra     → usecases, domain, common
+#   agent-tui-app       → adapters, infra, usecases, domain, common
+#   agent-tui (facade)  → app only
+#   xtask               → (external only)

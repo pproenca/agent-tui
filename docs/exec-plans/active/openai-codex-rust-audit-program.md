@@ -9,7 +9,8 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - [x] (2026-04-12 22:03Z) Create the persistent audit artifacts: plan, matrix, and findings ledger.
 - [x] (2026-04-12 22:03Z) Complete the workspace and architecture tranche (`A08`) and record findings.
 - [x] (2026-04-12 22:06Z) Complete the domain invariants tranche (`A01`) and record findings.
-- [ ] Complete the error-boundary tranche (`A02`) and record findings.
+- [x] (2026-04-12 22:07Z) Complete the error-boundary tranche (`A02`) and record findings.
+- [x] (2026-04-12 22:12Z) Complete the test harness tranche (`A10`) and record findings.
 - [ ] Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
 - [ ] Close the plan by filling the retrospective and moving it to `completed/`.
 
@@ -18,12 +19,14 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-12 22:00Z` The repository does not currently contain `/Users/pedroproenca/Documents/Projects/agent-tui/docs/PLANS.md` or `/Users/pedroproenca/Documents/Projects/agent-tui/docs/exec-plans/`, so this plan uses the `exec-plan` skill's required structure directly instead of inheriting a local template.
 - `2026-04-12 22:03Z` The first matrix draft undercounted the perimeter because it omitted non-`src` audit targets such as `build.rs`, workspace manifests, API specs, and Rust-to-web boundary files. The corrected baseline is `130` targets and `7,800` audit cells.
 - `2026-04-12 22:06Z` The domain already contains a strong `TerminalSize` invariant type, but spawn and resize request DTOs still move raw `u16` dimensions through the boundary, which means the invariant is not actually enforced at all entry points.
+- `2026-04-12 22:12Z` The transport-test surface is stronger than expected because `MockDaemon` drives the real Unix-socket JSON-RPC protocol and can inject malformed frames, but the broader suite still has `50` inline `#[cfg(test)]` modules, zero sibling `#[path]` test stubs, and no snapshot-testing dependency.
 
 ## Decision Log
 
 - `2026-04-12 22:00Z` Use a generated TSV matrix for the file-by-rule audit cells instead of a Markdown table because the state space is too large for manual editing and needs deterministic regeneration.
 - `2026-04-12 22:00Z` Treat the existing audit inventory at `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` as the coverage perimeter and audit-unit registry rather than duplicating that taxonomy in this plan.
 - `2026-04-12 22:03Z` Expand the matrix perimeter beyond Rust `src/**/*.rs` to include manifests, `build.rs`, API specs, and Rust-to-web contract files because those artifacts materially affect the skill's `workspace`, `proto`, and `tui` audit categories.
+- `2026-04-12 22:12Z` Treat the skill's `wiremock` and SSE testing rule as a transport-agnostic requirement for real wire-level fakes, because this repository's runtime boundary is Unix socket JSON-RPC and WebSocket rather than outbound HTTP SSE.
 
 ## Outcomes & Retrospective
 

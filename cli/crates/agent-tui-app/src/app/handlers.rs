@@ -2164,18 +2164,20 @@ pub(crate) fn handle_cleanup<C: DaemonClient>(
 
     if let Some(sessions) = sessions {
         for session in sessions.iter() {
-            if let Some(id) = session.get("id").and_then(|v| v.as_str()) {
-                if target_ids.iter().any(|candidate| candidate == id) {
-                    let params = params::SessionParams {
-                        session: Some(id.to_string()),
-                    };
-                    match call_with_params(ctx.client, "kill", params) {
-                        Ok(_) => cleaned += 1,
-                        Err(e) => failures.push(CleanupFailure {
-                            session_id: id.to_string(),
-                            error: e.to_string(),
-                        }),
-                    }
+            if let Some(id) = session
+                .get("id")
+                .and_then(|v| v.as_str())
+                .filter(|id| target_ids.iter().any(|candidate| candidate == id))
+            {
+                let params = params::SessionParams {
+                    session: Some(id.to_string()),
+                };
+                match call_with_params(ctx.client, "kill", params) {
+                    Ok(_) => cleaned += 1,
+                    Err(e) => failures.push(CleanupFailure {
+                        session_id: id.to_string(),
+                        error: e.to_string(),
+                    }),
                 }
             }
         }
@@ -2576,14 +2578,16 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
 
     if !force {
         // Try graceful RPC shutdown first (needs connection but doesn't auto-start)
-        if let Ok(mut client) = UnixSocketClient::connect_local() {
-            if let Ok(result) = daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket) {
-                remove_ws_state_file();
-                return Ok(StopResult::Stopped {
-                    pid,
-                    warnings: result.warnings,
-                });
-            }
+        let rpc_stop_result = match UnixSocketClient::connect_local() {
+            Ok(mut client) => daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket).ok(),
+            Err(_) => None,
+        };
+        if let Some(result) = rpc_stop_result {
+            remove_ws_state_file();
+            return Ok(StopResult::Stopped {
+                pid,
+                warnings: result.warnings,
+            });
         }
     }
 

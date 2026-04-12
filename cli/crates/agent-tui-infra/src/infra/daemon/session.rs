@@ -1170,11 +1170,11 @@ impl SessionManager {
             warn!(session_id = %session_id, error = %e, "Failed to remove session from persistence");
         }
 
-        if was_active {
-            if let Some((fallback_id, _fallback_session)) = self.most_recent_running_session() {
-                let mut active = rwlock_write_or_recover(&self.active_session);
-                *active = Some(fallback_id);
-            }
+        if let (true, Some((fallback_id, _fallback_session))) =
+            (was_active, self.most_recent_running_session())
+        {
+            let mut active = rwlock_write_or_recover(&self.active_session);
+            *active = Some(fallback_id);
         }
 
         Ok(())
@@ -1939,12 +1939,11 @@ fn verify_persisted_session_identity(session: &PersistedSession) -> ProcessIdent
         return ProcessIdentity::Mismatch;
     }
 
-    if let (Some(cmdline), Some(expected)) =
-        (info.cmdline.as_ref(), expected_command(&session.command))
-    {
-        if !cmdline.contains(expected) {
-            return ProcessIdentity::Unknown;
-        }
+    if matches!(
+        (info.cmdline.as_ref(), expected_command(&session.command)),
+        (Some(cmdline), Some(expected)) if !cmdline.contains(expected)
+    ) {
+        return ProcessIdentity::Unknown;
     }
 
     ProcessIdentity::Match

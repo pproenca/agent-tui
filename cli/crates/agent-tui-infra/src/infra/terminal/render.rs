@@ -59,14 +59,16 @@ fn render_rows<'a>(rows: impl IntoIterator<Item = &'a [Cell]>) -> String {
         }
 
         if rows.peek().is_some() {
-            if let Err(err) = queue!(out, style::Print("\r\n")) {
+            let newline_result = queue!(out, style::Print("\r\n"));
+            if let Err(err) = newline_result {
                 debug!(error = %err, "Failed to write terminal newline");
             }
         }
     }
 
     if current_style.is_some() {
-        if let Err(err) = queue!(out, style::SetAttribute(style::Attribute::Reset)) {
+        let reset_result = queue!(out, style::SetAttribute(style::Attribute::Reset));
+        if let Err(err) = reset_result {
             debug!(error = %err, "Failed to reset terminal style");
         }
     }

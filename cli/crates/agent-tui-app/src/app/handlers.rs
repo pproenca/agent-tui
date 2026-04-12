@@ -1756,18 +1756,24 @@ struct WsState {
 
 impl WsState {
     fn resolved_ui_url(&self) -> String {
-        if let Some(url) = self.ui_url.as_ref() {
-            if !url.trim().is_empty() {
-                return url.trim().to_string();
-            }
+        if let Some(url) = self
+            .ui_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+        {
+            return url.to_string();
         }
-        if let Some(http_url) = self.http_url.as_ref() {
-            if !http_url.trim().is_empty() {
-                if http_url.ends_with('/') {
-                    return format!("{http_url}ui");
-                }
-                return format!("{http_url}/ui");
+        if let Some(http_url) = self
+            .http_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|http_url| !http_url.is_empty())
+        {
+            if http_url.ends_with('/') {
+                return format!("{http_url}ui");
             }
+            return format!("{http_url}/ui");
         }
         if let Ok(ws_url) = url::Url::parse(&self.ws_url) {
             let scheme = if ws_url.scheme() == "wss" {
@@ -1901,10 +1907,9 @@ fn parse_port_from_url(url: &str) -> Option<u16> {
 }
 
 fn resolve_ui_status() -> UiStatus {
-    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL") {
-        if !url.trim().is_empty() {
-            return UiStatus::External(url);
-        }
+    match std::env::var("AGENT_TUI_UI_URL") {
+        Ok(url) if !url.trim().is_empty() => return UiStatus::External(url),
+        _ => {}
     }
     match read_ui_state_running(&ui_state_path()) {
         Some(state) => UiStatus::Running(state),
@@ -1914,14 +1919,15 @@ fn resolve_ui_status() -> UiStatus {
 
 fn remove_ws_state_file() {
     let state_path = ws_state_path();
-    if let Err(err) = std::fs::remove_file(&state_path) {
-        if err.kind() != std::io::ErrorKind::NotFound {
+    match std::fs::remove_file(&state_path) {
+        Err(err) if err.kind() != std::io::ErrorKind::NotFound => {
             warn!(
                 path = %state_path.display(),
                 error = %err,
                 "Failed to remove WS state file"
             );
         }
+        _ => {}
     }
 }
 
@@ -1974,10 +1980,9 @@ fn stop_ui_server_with_controller_and_timeouts<C: ProcessController>(
     term_timeout: Duration,
     kill_timeout: Duration,
 ) -> Result<StopUiResult> {
-    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL") {
-        if !url.trim().is_empty() {
-            return Ok(StopUiResult::External);
-        }
+    match std::env::var("AGENT_TUI_UI_URL") {
+        Ok(url) if !url.trim().is_empty() => return Ok(StopUiResult::External),
+        _ => {}
     }
 
     let state_path = ui_state_path();

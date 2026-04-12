@@ -102,7 +102,7 @@ EXAMPLES:
     agent-tui run "npx create-next-app"
     agent-tui screenshot
     agent-tui type "my-project"         # Type text
-    agent-tui press Enter                 # Press Enter key
+    agent-tui press Ctrl+M              # Submit the current input
     agent-tui wait "success"
     agent-tui kill
 
@@ -218,7 +218,7 @@ Output Options:
           Strip ANSI color codes from output
 
       --retain-ansi
-          Preserve ANSI color/style codes in output
+          Preserve ANSI color/style codes in output (default)
 
       --include-cursor
           Include cursor position in output
@@ -248,8 +248,8 @@ Interaction Options:
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
-    agent-tui screenshot              # Just the screenshot
-    agent-tui screenshot --retain-ansi # Preserve terminal colors/styles
+    agent-tui screenshot               # Screenshot with terminal colors/styles
+    agent-tui screenshot --retain-ansi # Explicitly preserve terminal colors/styles
     agent-tui screenshot --strip-ansi  # Plain text without colors
 ```
 

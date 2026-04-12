@@ -464,10 +464,8 @@ fn start_daemon_background_stub() -> Result<(), ClientError> {
 }
 
 pub fn clear_test_listener() {
-    if let Some(holder) = TEST_LISTENER.get() {
-        if let Ok(mut guard) = holder.lock() {
-            guard.take();
-        }
+    if let Some(mut guard) = TEST_LISTENER.get().and_then(|holder| holder.lock().ok()) {
+        guard.take();
     }
 }
 

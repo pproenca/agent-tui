@@ -254,12 +254,12 @@ jobs:
       - name: Build core runtime command E2E binary
         working-directory: cli
         run: |
-          cargo test -p agent-tui --features slow-tests --test system_e2e --no-run
+          cargo test -p agent-tui --test system_e2e --no-run
 
       - name: Run core runtime command E2E suite
         working-directory: cli
         run: |
-          timeout 60s cargo test -p agent-tui --features slow-tests --test system_e2e
+          timeout 60s cargo test -p agent-tui --test system_e2e
 
   publish-check:
     name: Publish Dry-Run

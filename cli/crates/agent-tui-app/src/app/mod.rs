@@ -9,6 +9,7 @@ use clap::CommandFactory;
 use clap::Parser;
 use clap_complete::generate;
 use serde::Serialize;
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::io::IsTerminal;
@@ -453,21 +454,39 @@ pub(crate) fn prompt_yes_no(prompt: &str, default_yes: bool) -> io::Result<bool>
 
 pub struct Application;
 
+enum ParsedCli {
+    Ready(Cli),
+    Exit(i32),
+}
+
 impl Application {
     pub fn new() -> Self {
         Self
     }
 
     pub fn run(&self) -> Result<i32> {
-        let exit_code = match self.execute() {
+        let cli = match self.parse_cli() {
+            ParsedCli::Ready(cli) => cli,
+            ParsedCli::Exit(code) => return Ok(code),
+        };
+
+        let exit_code = match self.execute_with_cli(cli) {
             Ok(()) => exit_codes::SUCCESS,
             Err(e) => self.handle_error(e),
         };
         Ok(exit_code)
     }
 
-    fn execute(&self) -> Result<()> {
-        let cli = Cli::parse();
+    fn parse_cli(&self) -> ParsedCli {
+        let raw_args: Vec<OsString> = std::env::args_os().collect();
+
+        match Cli::try_parse_from(raw_args.clone()) {
+            Ok(cli) => ParsedCli::Ready(cli),
+            Err(err) => ParsedCli::Exit(render_parse_error(err, &raw_args)),
+        }
+    }
+
+    fn execute_with_cli(&self, cli: Cli) -> Result<()> {
         let _telemetry = telemetry::init_tracing("warn");
         color_init(cli.no_color);
         let format = cli.effective_format();
@@ -914,6 +933,75 @@ impl Default for Application {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn render_parse_error(err: clap::Error, raw_args: &[OsString]) -> i32 {
+    let kind = err.kind();
+    let uses_stderr = !matches!(
+        kind,
+        clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
+    );
+    let exit_code = err.exit_code();
+
+    if uses_stderr {
+        eprint!("{err}");
+    } else {
+        print!("{err}");
+    }
+
+    if uses_stderr && parse_error_needs_example(kind) {
+        eprintln!("Example:");
+        eprintln!("  {}", parse_error_example(raw_args));
+    }
+
+    exit_code
+}
+
+fn parse_error_needs_example(kind: clap::error::ErrorKind) -> bool {
+    matches!(
+        kind,
+        clap::error::ErrorKind::ArgumentConflict
+            | clap::error::ErrorKind::InvalidSubcommand
+            | clap::error::ErrorKind::InvalidValue
+            | clap::error::ErrorKind::MissingRequiredArgument
+            | clap::error::ErrorKind::MissingSubcommand
+            | clap::error::ErrorKind::NoEquals
+            | clap::error::ErrorKind::TooFewValues
+            | clap::error::ErrorKind::TooManyValues
+            | clap::error::ErrorKind::UnknownArgument
+            | clap::error::ErrorKind::ValueValidation
+            | clap::error::ErrorKind::WrongNumberOfValues
+    )
+}
+
+fn parse_error_example(raw_args: &[OsString]) -> String {
+    let command_path = parse_error_command_path(raw_args);
+    if command_path.is_empty() {
+        format!("{PROGRAM_NAME} --help")
+    } else {
+        format!("{PROGRAM_NAME} {} --help", command_path.join(" "))
+    }
+}
+
+fn parse_error_command_path(raw_args: &[OsString]) -> Vec<String> {
+    let mut command = Cli::command();
+    let mut path = Vec::new();
+
+    for arg in raw_args.iter().skip(1) {
+        let token = arg.to_string_lossy();
+        if token.is_empty() || token == "--" || token.starts_with('-') {
+            break;
+        }
+
+        let Some(subcommand) = command.find_subcommand(token.as_ref()) else {
+            break;
+        };
+
+        path.push(token.into_owned());
+        command = subcommand.clone();
+    }
+
+    path
 }
 
 fn exit_code_for_client_error(error: &ClientError) -> i32 {

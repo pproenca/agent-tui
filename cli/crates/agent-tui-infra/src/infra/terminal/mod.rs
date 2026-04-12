@@ -11,6 +11,7 @@ pub use pty::PtyHandle;
 pub(crate) use pty::ReadEvent;
 pub use pty::key_to_escape_sequence;
 pub use render::render_screen;
+pub use render::render_screen_trimmed;
 pub use vterm::CursorPosition;
 pub use vterm::ScreenBuffer;
 pub use vterm::VirtualTerminal;

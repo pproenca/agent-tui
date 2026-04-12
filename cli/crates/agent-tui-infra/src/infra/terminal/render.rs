@@ -9,16 +9,30 @@ use tracing::debug;
 use super::CellStyle;
 use super::Color;
 use super::ScreenBuffer;
+use super::vterm::Cell;
 
 pub fn render_screen(buffer: &ScreenBuffer) -> String {
-    if buffer.cells.is_empty() {
+    render_rows(buffer.cells.iter().map(Vec::as_slice))
+}
+
+pub fn render_screen_trimmed(buffer: &ScreenBuffer) -> String {
+    let Some(trimmed) = buffer.trimmed_rows() else {
+        return String::new();
+    };
+
+    render_rows(trimmed.rows)
+}
+
+fn render_rows<'a>(rows: impl IntoIterator<Item = &'a [Cell]>) -> String {
+    let mut rows = rows.into_iter().peekable();
+    if rows.peek().is_none() {
         return String::new();
     }
 
     let mut out = Vec::new();
     let mut current_style: Option<&CellStyle> = None;
 
-    for (row_idx, row) in buffer.cells.iter().enumerate() {
+    while let Some(row) = rows.next() {
         let mut col = 0;
         while col < row.len() {
             let style = &row[col].style;
@@ -44,10 +58,16 @@ pub fn render_screen(buffer: &ScreenBuffer) -> String {
             col = run_end;
         }
 
-        if row_idx + 1 < buffer.cells.len() {
+        if rows.peek().is_some() {
             if let Err(err) = queue!(out, style::Print("\r\n")) {
                 debug!(error = %err, "Failed to write terminal newline");
             }
+        }
+    }
+
+    if current_style.is_some() {
+        if let Err(err) = queue!(out, style::SetAttribute(style::Attribute::Reset)) {
+            debug!(error = %err, "Failed to reset terminal style");
         }
     }
 
@@ -84,5 +104,55 @@ fn to_crossterm_color(color: Color) -> style::Color {
         Color::Default => style::Color::Reset,
         Color::Indexed(idx) => style::Color::AnsiValue(idx),
         Color::Rgb(r, g, b) => style::Color::Rgb { r, g, b },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::strip_ansi_codes;
+
+    fn plain_cell(ch: char) -> Cell {
+        Cell {
+            char: ch,
+            style: CellStyle::default(),
+        }
+    }
+
+    #[test]
+    fn render_screen_trimmed_drops_trailing_spaces_and_blank_rows() {
+        let buffer = ScreenBuffer {
+            cells: vec![
+                vec![plain_cell('A'), plain_cell(' '), plain_cell(' ')],
+                vec![plain_cell(' ')],
+                vec![plain_cell('B'), plain_cell(' '), plain_cell(' ')],
+                vec![plain_cell(' ')],
+                vec![plain_cell(' '), plain_cell(' ')],
+            ],
+        };
+
+        let rendered = render_screen_trimmed(&buffer);
+
+        assert_eq!(strip_ansi_codes(&rendered).replace("\r\n", "\n"), "A\n\nB");
+    }
+
+    #[test]
+    fn render_screen_trimmed_resets_styles_at_end() {
+        let buffer = ScreenBuffer {
+            cells: vec![vec![Cell {
+                char: 'X',
+                style: CellStyle {
+                    bold: true,
+                    ..CellStyle::default()
+                },
+            }]],
+        };
+
+        let rendered = render_screen_trimmed(&buffer);
+
+        assert!(
+            rendered.ends_with("\u{1b}[0m"),
+            "expected trailing style reset, got {rendered:?}"
+        );
     }
 }

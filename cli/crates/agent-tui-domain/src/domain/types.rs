@@ -104,6 +104,7 @@ pub struct SnapshotOutput {
     pub screenshot: String,
     pub cursor: Option<CursorPosition>,
     pub rendered: Option<String>,
+    pub compact_rendered: Option<String>,
 }
 
 #[derive(Debug, Clone)]

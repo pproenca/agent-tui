@@ -41,12 +41,18 @@ impl<R: SessionRepository> SnapshotUseCase for SnapshotUseCaseImpl<R> {
         } else {
             None
         };
+        let compact_rendered = if input.include_render {
+            Some(session.screen_render_compact())
+        } else {
+            None
+        };
 
         Ok(SnapshotOutput {
             session_id,
             screenshot,
             cursor,
             rendered,
+            compact_rendered,
         })
     }
 }

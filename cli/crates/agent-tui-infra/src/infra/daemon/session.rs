@@ -49,6 +49,7 @@ use crate::infra::terminal::PtyHandle;
 use crate::infra::terminal::ReadEvent;
 use crate::infra::terminal::key_to_escape_sequence;
 use crate::infra::terminal::render_screen;
+use crate::infra::terminal::render_screen_trimmed;
 use crate::usecases::ports::LivePreviewSnapshot;
 use crate::usecases::ports::StreamCursor;
 use crate::usecases::ports::StreamRead;
@@ -665,6 +666,11 @@ impl Session {
     pub fn screen_render(&self) -> String {
         let buffer = self.terminal.screen_buffer();
         render_screen(&buffer)
+    }
+
+    pub fn screen_render_compact(&self) -> String {
+        let buffer = self.terminal.screen_buffer();
+        render_screen_trimmed(&buffer)
     }
 
     pub fn cursor(&self) -> CursorPosition {

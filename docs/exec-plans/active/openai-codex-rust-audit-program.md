@@ -11,6 +11,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - [x] (2026-04-12 22:06Z) Complete the domain invariants tranche (`A01`) and record findings.
 - [x] (2026-04-12 22:07Z) Complete the error-boundary tranche (`A02`) and record findings.
 - [x] (2026-04-12 22:12Z) Complete the test harness tranche (`A10`) and record findings.
+- [x] (2026-04-12 22:19Z) Complete the session spawn and initial run tranche (`F01`) and record findings.
 - [ ] Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
 - [ ] Close the plan by filling the retrospective and moving it to `completed/`.
 
@@ -20,6 +21,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-12 22:03Z` The first matrix draft undercounted the perimeter because it omitted non-`src` audit targets such as `build.rs`, workspace manifests, API specs, and Rust-to-web boundary files. The corrected baseline is `130` targets and `7,800` audit cells.
 - `2026-04-12 22:06Z` The domain already contains a strong `TerminalSize` invariant type, but spawn and resize request DTOs still move raw `u16` dimensions through the boundary, which means the invariant is not actually enforced at all entry points.
 - `2026-04-12 22:12Z` The transport-test surface is stronger than expected because `MockDaemon` drives the real Unix-socket JSON-RPC protocol and can inject malformed frames, but the broader suite still has `50` inline `#[cfg(test)]` modules, zero sibling `#[path]` test stubs, and no snapshot-testing dependency.
+- `2026-04-12 22:19Z` The public OpenAPI and AsyncAPI specs do not describe the JSON-RPC `spawn` contract, so the `F01` env-propagation audit had to treat the Rust adapter boundary as the authoritative interface rather than checking a versioned external spec.
 
 ## Decision Log
 
@@ -27,6 +29,8 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-12 22:00Z` Treat the existing audit inventory at `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` as the coverage perimeter and audit-unit registry rather than duplicating that taxonomy in this plan.
 - `2026-04-12 22:03Z` Expand the matrix perimeter beyond Rust `src/**/*.rs` to include manifests, `build.rs`, API specs, and Rust-to-web contract files because those artifacts materially affect the skill's `workspace`, `proto`, and `tui` audit categories.
 - `2026-04-12 22:12Z` Treat the skill's `wiremock` and SSE testing rule as a transport-agnostic requirement for real wire-level fakes, because this repository's runtime boundary is Unix socket JSON-RPC and WebSocket rather than outbound HTTP SSE.
+- `2026-04-12 22:19Z` Record the missing request-scoped env propagation in `F01` under `sandbox-env-clear-pre-exec` even though `agent-tui run` is not a codex-style sandbox, because the audit inventory explicitly requires cwd/env propagation review for the spawn path.
+- `2026-04-12 22:19Z` Queue `F05` before `A03` after `F01` because the still-open terminal-size invariant gap feeds directly into resize and reflow behavior, while `A03` can then revisit persistence semantics shared by both flows.
 
 ## Outcomes & Retrospective
 

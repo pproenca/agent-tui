@@ -1152,6 +1152,30 @@ mod tests {
     }
 
     #[test]
+    fn test_render_initial_screen_prefers_full_rendered_snapshot() {
+        let mut client = MockClient::new_strict();
+        client.set_response(
+            "snapshot",
+            serde_json::from_str(
+                r#"{
+                    "screenshot":"hello\nworld",
+                    "rendered":"hello     \nworld",
+                    "compact_rendered":"hello\nworld",
+                    "cursor":{"row":1,"col":2,"visible":true}
+                }"#,
+            )
+            .expect("snapshot response should parse"),
+        );
+
+        let mut buffer = Vec::new();
+        render_initial_screen(&mut client, "sess1", &mut buffer);
+
+        let output = String::from_utf8_lossy(&buffer);
+        assert!(output.contains("hello     \nworld"));
+        assert!(!output.contains("hello\nworld"));
+    }
+
+    #[test]
     fn test_detach_detector_ctrl_p_ctrl_q_detaches() {
         let detach_keys = DetachKeys::default();
         let mut detector = DetachDetector::new(&detach_keys);

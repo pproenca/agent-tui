@@ -562,6 +562,16 @@ fn leaf_help_examples_contract() {
 }
 
 #[test]
+fn invalid_flag_errors_include_example_invocation() {
+    let env = StandaloneEnv::new();
+    env.run(&["version", "--definitely-not-a-real-flag-xyz123"])
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("Example:"))
+        .stderr(predicate::str::contains("agent-tui version --help"));
+}
+
+#[test]
 fn global_flags_contract() {
     let harness = TestHarness::new();
 

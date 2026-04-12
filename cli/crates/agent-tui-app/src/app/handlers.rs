@@ -10,6 +10,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -23,9 +25,12 @@ use crate::adapters::rpc::params;
 use crate::common::Colors;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::DaemonClient;
+use crate::infra::ipc::PidLookupResult;
 use crate::infra::ipc::ProcessController;
 use crate::infra::ipc::Signal;
 use crate::infra::ipc::UnixProcessController;
+use crate::infra::ipc::UnixSocketClient;
+use crate::infra::ipc::get_daemon_pid;
 use crate::infra::ipc::socket_path;
 
 use crate::adapters::presenter::ClientErrorView;
@@ -34,13 +39,34 @@ use crate::adapters::presenter::create_presenter;
 use crate::app::attach::DetachKeys;
 use crate::app::commands::LiveStartArgs;
 use crate::app::commands::OutputFormat;
+use crate::app::commands::ScrollDirection;
 use crate::app::commands::WaitParams;
 use crate::app::error::AttachError;
 use crate::app::error::CliError;
+use crate::app::error::DaemonNotRunningError;
 use crate::app::rpc_client::call_no_params;
 use crate::app::rpc_client::call_with_params;
 
 pub(crate) type HandlerResult = Result<()>;
+
+fn format_elapsed_secs(elapsed_secs: u64) -> String {
+    let mins = elapsed_secs / 60;
+    let hours = mins / 60;
+    if hours > 0 {
+        format!("{hours}h {}m {}s", mins % 60, elapsed_secs % 60)
+    } else if mins > 0 {
+        format!("{mins}m {}s", elapsed_secs % 60)
+    } else {
+        format!("{elapsed_secs}s")
+    }
+}
+
+fn daemon_pid(ws_state: Option<&WsState>) -> Option<u32> {
+    match get_daemon_pid() {
+        PidLookupResult::Found(pid) => Some(pid),
+        PidLookupResult::NotRunning | PidLookupResult::Error(_) => ws_state.map(|state| state.pid),
+    }
+}
 
 fn client_error_view(error: &ClientError) -> ClientErrorView {
     ClientErrorView {
@@ -276,6 +302,71 @@ pub(crate) fn handle_type<C: DaemonClient>(
     };
     let result = call_with_params(ctx.client, "type", params)?;
     ctx.output_success_and_ok(&result, "Text typed", "Type failed")
+}
+
+pub(crate) fn handle_scroll<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    direction: ScrollDirection,
+    amount: u16,
+) -> HandlerResult {
+    const SCROLL_INTER_STEP_DELAY_MS: u64 = 50;
+
+    let key = match direction {
+        ScrollDirection::Up => "ArrowUp",
+        ScrollDirection::Down => "ArrowDown",
+        ScrollDirection::Left => "ArrowLeft",
+        ScrollDirection::Right => "ArrowRight",
+    };
+
+    for step in 0..amount {
+        let params = params::KeyParams {
+            key: key.to_string(),
+            session: ctx.session.clone(),
+        };
+        let result = call_with_params(ctx.client, "keystroke", params)?;
+        let success = result.bool_or("success", false);
+        if !success {
+            let message = result.str_or("message", "Unknown error");
+            return Err(CliError::new(
+                ctx.format,
+                format!("scroll failed: {message}"),
+                Some(result.to_pretty_json()),
+                super::exit_codes::GENERAL_ERROR,
+            )
+            .into());
+        }
+
+        if step + 1 < amount {
+            std::thread::park_timeout(Duration::from_millis(SCROLL_INTER_STEP_DELAY_MS));
+        }
+    }
+
+    match ctx.format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            struct ScrollOutput<'a> {
+                success: bool,
+                direction: &'a str,
+                amount: u16,
+            }
+
+            let output = ScrollOutput {
+                success: true,
+                direction: direction.as_str(),
+                amount,
+            };
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        OutputFormat::Text => {
+            if amount == 1 {
+                println!("Scrolled {}", direction.as_str());
+            } else {
+                println!("Scrolled {} {} steps", direction.as_str(), amount);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub(crate) fn handle_wait<C: DaemonClient>(
@@ -899,6 +990,166 @@ pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
             }
         }
     }
+    Ok(())
+}
+
+pub(crate) fn handle_daemon_status_standalone(format: OutputFormat) -> HandlerResult {
+    let cli_version = env!("AGENT_TUI_VERSION");
+    let cli_commit = env!("AGENT_TUI_GIT_SHA");
+    let ws_state = read_ws_state_running(&ws_state_path());
+
+    let mut client = match UnixSocketClient::connect_local() {
+        Ok(client) => client,
+        Err(ClientError::DaemonNotRunning) => {
+            match format {
+                OutputFormat::Json => {
+                    #[derive(Serialize)]
+                    struct DaemonStatusOutput {
+                        running: bool,
+                        socket_path: String,
+                        cli_version: &'static str,
+                        cli_commit: &'static str,
+                    }
+
+                    let output = DaemonStatusOutput {
+                        running: false,
+                        socket_path: socket_path().display().to_string(),
+                        cli_version,
+                        cli_commit,
+                    };
+                    println!("{}", serde_json::to_string_pretty(&output)?);
+                }
+                OutputFormat::Text => {
+                    println!("Daemon is not running");
+                    println!("  Socket: {}", socket_path().display());
+                    println!("  CLI version: {}", cli_version);
+                    println!("  CLI commit: {}", cli_commit);
+                }
+            }
+            return Err(DaemonNotRunningError.into());
+        }
+        Err(err) => return Err(err.into()),
+    };
+
+    let version = call_no_params(&mut client, "version")?;
+    let session_count = call_no_params(&mut client, "sessions")
+        .ok()
+        .and_then(|result| {
+            result
+                .get("sessions")
+                .and_then(|sessions| sessions.as_array())
+                .map(|sessions| sessions.iter().count() as u64)
+        });
+
+    let daemon_version = version.str_or("daemon_version", "unknown").to_string();
+    let daemon_commit = version.str_or("daemon_commit", "unknown").to_string();
+    let pid = daemon_pid(ws_state.as_ref());
+    let uptime = ws_state.as_ref().and_then(|state| {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
+        Some(format_elapsed_secs(
+            now.saturating_sub(state.started_at.unwrap_or(now)),
+        ))
+    });
+    let version_mismatch = daemon_version != cli_version;
+
+    match format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            struct WsStatusOutput {
+                running: bool,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                pid: Option<u32>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                listen: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                ws_url: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                ui_url: Option<String>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                started_at: Option<u64>,
+            }
+
+            #[derive(Serialize)]
+            struct DaemonStatusOutput {
+                running: bool,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                pid: Option<u32>,
+                socket_path: String,
+                cli_version: &'static str,
+                cli_commit: &'static str,
+                daemon_version: String,
+                daemon_commit: String,
+                version_mismatch: bool,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                session_count: Option<u64>,
+                ws: WsStatusOutput,
+            }
+
+            let output = DaemonStatusOutput {
+                running: true,
+                pid,
+                socket_path: socket_path().display().to_string(),
+                cli_version,
+                cli_commit,
+                daemon_version,
+                daemon_commit,
+                version_mismatch,
+                session_count,
+                ws: match ws_state {
+                    Some(state) => {
+                        let ui_url = state.resolved_ui_url();
+                        WsStatusOutput {
+                            running: true,
+                            pid: Some(state.pid),
+                            listen: Some(state.listen),
+                            ws_url: Some(state.ws_url),
+                            ui_url: Some(ui_url),
+                            started_at: state.started_at,
+                        }
+                    }
+                    None => WsStatusOutput {
+                        running: false,
+                        pid: None,
+                        listen: None,
+                        ws_url: None,
+                        ui_url: None,
+                        started_at: None,
+                    },
+                },
+            };
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        OutputFormat::Text => {
+            if let Some(pid) = pid {
+                println!("Daemon is running (pid {pid})");
+            } else {
+                println!("Daemon is running");
+            }
+            println!("  Socket: {}", socket_path().display());
+            println!("  CLI version: {}", cli_version);
+            println!("  CLI commit: {}", cli_commit);
+            println!("  Daemon version: {}", daemon_version);
+            println!("  Daemon commit: {}", daemon_commit);
+            if version_mismatch {
+                println!(
+                    "  Version status: {}",
+                    Colors::warning("CLI/daemon mismatch")
+                );
+            }
+            if let Some(session_count) = session_count {
+                println!("  Sessions: {}", session_count);
+            }
+            if let Some(uptime) = uptime {
+                println!("  Uptime: {}", uptime);
+            }
+            if let Some(state) = ws_state {
+                println!("  Listen: {}", state.listen);
+                println!("  WS: {}", state.ws_url);
+                println!("  UI: {}", state.resolved_ui_url());
+            }
+        }
+    }
+
     Ok(())
 }
 

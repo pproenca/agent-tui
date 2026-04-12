@@ -24,6 +24,7 @@ use crate::infra::ipc::error::ClientError;
 use crate::infra::ipc::socket::socket_path;
 use crate::infra::ipc::transport::ClientConnection;
 use crate::infra::ipc::transport::IpcTransport;
+use crate::infra::ipc::transport::UnixSocketTransport;
 use crate::infra::ipc::transport::default_transport;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -136,6 +137,10 @@ pub struct UnixSocketClient {
 impl UnixSocketClient {
     pub fn connect() -> Result<Self, ClientError> {
         Self::connect_with_transport(default_transport())
+    }
+
+    pub fn connect_local() -> Result<Self, ClientError> {
+        Self::connect_with_transport(std::sync::Arc::new(UnixSocketTransport))
     }
 
     pub(crate) fn connect_with_transport(

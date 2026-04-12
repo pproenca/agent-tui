@@ -172,7 +172,9 @@ fn command_paths_match_expected_matrix() {
         "completions".to_string(),
         "daemon".to_string(),
         "daemon restart".to_string(),
+        "daemon run".to_string(),
         "daemon start".to_string(),
+        "daemon status".to_string(),
         "daemon stop".to_string(),
         "env".to_string(),
         "kill".to_string(),
@@ -185,6 +187,7 @@ fn command_paths_match_expected_matrix() {
         "restart".to_string(),
         "run".to_string(),
         "screenshot".to_string(),
+        "scroll".to_string(),
         "sessions".to_string(),
         "sessions attach".to_string(),
         "sessions cleanup".to_string(),
@@ -244,6 +247,11 @@ fn rpc_contract_matrix_covers_full_working_surface() {
         CommandCase {
             args: &["type", "hello"],
             expected_method: "type",
+            setup: no_setup,
+        },
+        CommandCase {
+            args: &["scroll", "down", "3"],
+            expected_method: "keystroke",
             setup: no_setup,
         },
         CommandCase {
@@ -375,6 +383,10 @@ fn standalone_daemon_commands_contract() {
     env.run(&["daemon", "start"])
         .success()
         .stdout(predicate::str::contains("Daemon started in background"));
+
+    env.run(&["--format", "json", "daemon", "status"])
+        .success()
+        .stdout(predicate::str::contains("\"running\": true"));
 
     env.run(&["daemon", "stop", "--force"]).success().stdout(
         predicate::str::contains("Daemon stopped").or(predicate::str::contains("already stopped")),

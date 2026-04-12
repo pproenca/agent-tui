@@ -41,19 +41,32 @@ use crate::app::commands::DaemonCommand;
 use crate::app::commands::LiveCommand;
 use crate::app::commands::LiveStartArgs;
 use crate::app::commands::Shell;
+use crate::app::error::DaemonNotRunningError;
 use crate::app::handlers::HandlerContext;
 
 const PROGRAM_NAME: &str = "agent-tui";
 
-/// Exit codes following sysexits.h conventions.
+/// Exit codes following sysexits.h and LSB init script conventions.
 mod exit_codes {
     pub const SUCCESS: i32 = 0;
     pub const GENERAL_ERROR: i32 = 1;
+    pub const NOT_RUNNING: i32 = 3;
     pub const USAGE: i32 = 64;
     pub const UNAVAILABLE: i32 = 69;
     pub const CANTCREAT: i32 = 73;
     pub const IOERR: i32 = 74;
     pub const TEMPFAIL: i32 = 75;
+}
+
+fn daemon_start_requests_foreground() -> bool {
+    std::env::var("AGENT_TUI_DAEMON_FOREGROUND")
+        .ok()
+        .is_some_and(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -482,21 +495,20 @@ impl Application {
     fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool> {
         match &cli.command {
             Commands::Daemon(DaemonCommand::Start {}) => {
-                let run_foreground = std::env::var("AGENT_TUI_DAEMON_FOREGROUND")
-                    .ok()
-                    .map(|value| {
-                        matches!(
-                            value.trim().to_ascii_lowercase().as_str(),
-                            "1" | "true" | "yes" | "on"
-                        )
-                    })
-                    .unwrap_or(false);
-                if run_foreground {
+                if daemon_start_requests_foreground() {
                     crate::app::daemon::start_daemon()?;
                 } else {
                     crate::infra::ipc::start_daemon_background()?;
                     println!("Daemon started in background");
                 }
+                Ok(true)
+            }
+            Commands::Daemon(DaemonCommand::Run) => {
+                crate::app::daemon::start_daemon()?;
+                Ok(true)
+            }
+            Commands::Daemon(DaemonCommand::Status) => {
+                handlers::handle_daemon_status_standalone(cli.effective_format())?;
                 Ok(true)
             }
             Commands::Daemon(DaemonCommand::Stop { force }) => {
@@ -601,6 +613,8 @@ impl Application {
         match command {
             Commands::Daemon(daemon_cmd) => match daemon_cmd {
                 DaemonCommand::Start { .. } => unreachable!("Handled in standalone"),
+                DaemonCommand::Run => unreachable!("Handled in standalone"),
+                DaemonCommand::Status => unreachable!("Handled in standalone"),
                 DaemonCommand::Stop { .. } => unreachable!("Handled in standalone"),
                 DaemonCommand::Restart => unreachable!("Handled in standalone"),
             },
@@ -685,6 +699,9 @@ impl Application {
             }
 
             Commands::Type { text } => handlers::handle_type(ctx, text)?,
+            Commands::Scroll { direction, amount } => {
+                handlers::handle_scroll(ctx, direction, amount)?
+            }
 
             Commands::Wait { params } => handlers::handle_wait(ctx, params)?,
             Commands::Kill => handlers::handle_kill(ctx)?,
@@ -725,6 +742,10 @@ impl Application {
     }
 
     fn handle_error(&self, e: anyhow::Error) -> i32 {
+        if find_error::<DaemonNotRunningError>(&e).is_some() {
+            return exit_codes::NOT_RUNNING;
+        }
+
         if let Some(cli_error) = find_error::<crate::app::error::CliError>(&e) {
             print_cli_error(cli_error);
             return cli_error.exit_code;
@@ -794,6 +815,9 @@ impl Application {
 
 impl Application {
     fn wrap_error(&self, error: anyhow::Error, format: OutputFormat) -> anyhow::Error {
+        if find_error::<DaemonNotRunningError>(&error).is_some() {
+            return error;
+        }
         if find_error::<crate::app::error::CliError>(&error).is_some() {
             return error;
         }
@@ -917,6 +941,15 @@ mod tests {
         }
 
         impl EnvVarGuard {
+            fn set(key: &'static str, value: &str) -> Self {
+                let prev = env::var(key).ok();
+                // SAFETY: Test-only environment override.
+                unsafe {
+                    env::set_var(key, value);
+                }
+                Self { key, prev }
+            }
+
             fn set_path(key: &'static str, value: &Path) -> Self {
                 let prev = env::var(key).ok();
                 // SAFETY: Test-only environment override.
@@ -1029,6 +1062,52 @@ mod tests {
             crate::infra::ipc::transport::USE_DAEMON_START_STUB
                 .store(false, std::sync::atomic::Ordering::SeqCst);
             crate::infra::ipc::transport::clear_test_listener();
+        }
+
+        #[test]
+        fn handle_standalone_commands_routes_daemon_status_without_autostart() {
+            let _env_lock = env_lock();
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
+
+            let app = Application::new();
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Status));
+
+            let result = app.handle_standalone_commands(&cli);
+            let err = result.expect_err("daemon status should report not running");
+            assert!(
+                err.downcast_ref::<DaemonNotRunningError>().is_some(),
+                "daemon status should map to daemon-not-running exit handling"
+            );
+            assert!(
+                !socket_path.exists(),
+                "daemon status must not autostart daemon or create socket"
+            );
+        }
+
+        #[test]
+        fn handle_standalone_commands_routes_daemon_status_locally_when_ws_transport_selected() {
+            let _env_lock = env_lock();
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
+            let _transport_guard = EnvVarGuard::set("AGENT_TUI_TRANSPORT", "ws");
+            let _ws_addr_guard = EnvVarGuard::set("AGENT_TUI_WS_ADDR", "ws://127.0.0.1:9/ws");
+
+            let app = Application::new();
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Status));
+
+            let result = app.handle_standalone_commands(&cli);
+            let err = result.expect_err("daemon status should still inspect the local daemon");
+            assert!(
+                err.downcast_ref::<DaemonNotRunningError>().is_some(),
+                "daemon status should ignore websocket transport selection"
+            );
+            assert!(
+                !socket_path.exists(),
+                "daemon status must not create a local socket when daemon is not running"
+            );
         }
 
         #[test]
@@ -1145,6 +1224,20 @@ mod tests {
                 !ws_state.exists(),
                 "WS state file should be cleaned on successful stop path"
             );
+        }
+
+        #[test]
+        fn handle_error_returns_not_running_exit_code() {
+            let app = Application::new();
+            let exit_code = app.handle_error(anyhow::Error::new(DaemonNotRunningError));
+            assert_eq!(exit_code, exit_codes::NOT_RUNNING);
+        }
+
+        #[test]
+        fn daemon_start_requests_foreground_accepts_truthy_values() {
+            let _env_lock = env_lock();
+            let _foreground_guard = EnvVarGuard::set("AGENT_TUI_DAEMON_FOREGROUND", "true");
+            assert!(daemon_start_requests_foreground());
         }
     }
 }

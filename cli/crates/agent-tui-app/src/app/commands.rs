@@ -4,6 +4,7 @@ use clap::ArgGroup;
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
+use clap::ValueEnum;
 use clap::ValueHint;
 pub use clap_complete::Shell;
 use std::path::PathBuf;
@@ -17,13 +18,13 @@ const AFTER_HELP: &str =
 const LONG_ABOUT: &str = "\
 Drive TUI (text UI) applications programmatically or interactively.\n\
 \n\
-Common flow: run -> screenshot -> press/type -> wait -> kill.\n\
+Common flow: run -> screenshot -> press/type/scroll -> wait -> kill.\n\
 Use --format json for automation-friendly output.";
 
 const AFTER_LONG_HELP: &str = r#"WORKFLOW:
     1. Run a TUI application
     2. View the screenshot
-    3. Interact with keys/text
+    3. Interact with keys/text or scroll
     4. Wait for UI changes
     5. Kill the session when done
 
@@ -35,7 +36,6 @@ CONFIGURATION:
     AGENT_TUI_TRANSPORT         IPC transport (unix or ws; default: unix)
     AGENT_TUI_WS_ADDR           Remote WS-RPC target when transport is ws (e.g. ws://host:port/ws)
     AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-Q)
-    AGENT_TUI_DAEMON_FOREGROUND Run daemon start in foreground (internal)
     AGENT_TUI_WS_LISTEN         Daemon WS bind address (default: 127.0.0.1:0)
     AGENT_TUI_WS_ALLOW_REMOTE   Allow non-loopback WS bind (default: false)
     AGENT_TUI_WS_STATE          Daemon WS state file path (default: ~/.agent-tui/api.json)
@@ -65,6 +65,10 @@ EXAMPLES:
     agent-tui run htop
     agent-tui press F10
     agent-tui press ArrowDown ArrowDown Enter
+
+    # Scroll using directional terminal input
+    agent-tui scroll down
+    agent-tui scroll up 5
 
     "#;
 
@@ -255,6 +259,30 @@ EXAMPLES:
         /// Text to type
         #[arg(value_name = "TEXT", allow_hyphen_values = true)]
         text: String,
+    },
+
+    /// Scroll using repeated directional terminal input
+    #[command(long_about = "\
+Send repeated directional input to the terminal.
+
+This is a thin convenience wrapper over terminal keys:
+    up    -> ArrowUp
+    down  -> ArrowDown
+    left  -> ArrowLeft
+    right -> ArrowRight")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui scroll down
+    agent-tui scroll up 10
+    agent-tui scroll right 3")]
+    Scroll {
+        /// Direction to move
+        #[arg(value_enum, value_name = "DIRECTION")]
+        direction: ScrollDirection,
+
+        /// Number of steps to send
+        #[arg(default_value_t = 1, value_name = "AMOUNT")]
+        amount: u16,
     },
 
     /// Wait for text or screenshot stability
@@ -485,11 +513,25 @@ pub enum DaemonCommand {
     #[command(long_about = "\
 Start the daemon process.
 
-Starts the daemon in the background.")]
+Starts the daemon in the background. Use `daemon run` to keep it in the
+foreground.")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui daemon start              # Start in background")]
     Start {},
+
+    /// Run the daemon in the foreground
+    #[command(long_about = "\
+Run the daemon in the foreground.
+
+This is the UNIX-style form for supervisors and local debugging when you want
+the daemon attached to the current process instead of forking to the
+background.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui daemon run
+    AGENT_TUI_WS_LISTEN=0.0.0.0:8080 agent-tui daemon run")]
+    Run,
 
     /// Stop the running daemon
     #[command(long_about = "\
@@ -508,6 +550,18 @@ EXAMPLES:
         force: bool,
     },
 
+    /// Show daemon status
+    #[command(long_about = "\
+Show daemon status.
+
+Reports whether the daemon is running, its PID, versions, and any discovered
+WS/UI endpoints.
+
+EXIT CODES (LSB init script conventions):
+    0 - Daemon is running
+    3 - Daemon is not running")]
+    Status,
+
     /// Restart the daemon
     #[command(long_about = "\
 Restart the daemon.
@@ -517,6 +571,25 @@ the agent-tui binary to ensure the daemon is running the new version.
 
 All active sessions will be terminated during restart.")]
     Restart,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ScrollDirection {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl ScrollDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Up => "up",
+            Self::Down => "down",
+            Self::Left => "left",
+            Self::Right => "right",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Args)]
@@ -979,6 +1052,12 @@ mod tests {
     }
 
     #[test]
+    fn test_daemon_run() {
+        let cli = Cli::parse_from(["agent-tui", "daemon", "run"]);
+        assert!(matches!(cli.command, Commands::Daemon(DaemonCommand::Run)));
+    }
+
+    #[test]
     fn test_daemon_stop_default() {
         let cli = Cli::parse_from(["agent-tui", "daemon", "stop"]);
         let Commands::Daemon(DaemonCommand::Stop { force }) = cli.command else {
@@ -1002,6 +1081,15 @@ mod tests {
         assert!(matches!(
             cli.command,
             Commands::Daemon(DaemonCommand::Restart)
+        ));
+    }
+
+    #[test]
+    fn test_daemon_status() {
+        let cli = Cli::parse_from(["agent-tui", "daemon", "status"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Daemon(DaemonCommand::Status)
         ));
     }
 
@@ -1147,6 +1235,26 @@ mod tests {
             panic!("Expected Type command, got {:?}", cli.command);
         };
         assert_eq!(text, "Hello, World!");
+    }
+
+    #[test]
+    fn test_scroll_command_default_amount() {
+        let cli = Cli::parse_from(["agent-tui", "scroll", "down"]);
+        let Commands::Scroll { direction, amount } = cli.command else {
+            panic!("Expected Scroll command, got {:?}", cli.command);
+        };
+        assert!(matches!(direction, ScrollDirection::Down));
+        assert_eq!(amount, 1);
+    }
+
+    #[test]
+    fn test_scroll_command_custom_amount() {
+        let cli = Cli::parse_from(["agent-tui", "scroll", "up", "5"]);
+        let Commands::Scroll { direction, amount } = cli.command else {
+            panic!("Expected Scroll command, got {:?}", cli.command);
+        };
+        assert!(matches!(direction, ScrollDirection::Up));
+        assert_eq!(amount, 5);
     }
 
     #[test]

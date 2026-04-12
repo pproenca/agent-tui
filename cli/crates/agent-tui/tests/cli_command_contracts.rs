@@ -426,7 +426,7 @@ fn standalone_daemon_commands_contract() {
 
     env.run(&["daemon", "start"])
         .success()
-        .stdout(predicate::str::contains("Daemon is running"));
+        .stdout(predicate::str::contains("Daemon started"));
 
     env.run(&["--format", "json", "daemon", "start"])
         .success()

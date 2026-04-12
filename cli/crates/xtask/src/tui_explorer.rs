@@ -258,14 +258,15 @@ struct RawCommandOutput {
 
 impl AgentTuiRunner {
     fn new(root: &Path) -> Self {
-        if let Ok(bin) = env::var("AGENT_TUI_BIN") {
-            if !bin.trim().is_empty() {
+        match env::var("AGENT_TUI_BIN") {
+            Ok(bin) if !bin.trim().is_empty() => {
                 return Self {
                     executable: bin,
                     base_args: Vec::new(),
                     command_cwd: None,
                 };
             }
+            _ => {}
         }
 
         let cli_manifest = root.join("Cargo.toml");
@@ -863,12 +864,13 @@ fn validate_frontmatter(frontmatter: &BTreeMap<String, Value>) -> Result<(), Exp
         }
     }
 
-    if let Some(cwd) = frontmatter.get("cwd") {
-        if !cwd.is_null() && cwd.as_str().is_none() {
+    match frontmatter.get("cwd") {
+        Some(cwd) if !cwd.is_null() && cwd.as_str().is_none() => {
             return Err(ExplorerError::spec(
                 "frontmatter 'cwd' must be a string when present",
             ));
         }
+        _ => {}
     }
 
     Ok(())
@@ -1218,8 +1220,8 @@ fn discover_with_runner<R: Runner>(
         }
         visited_hashes.insert(state_hash);
 
-        if !path.is_empty() {
-            if let Some(anchor) = anchor {
+        match anchor {
+            Some(anchor) if !path.is_empty() => {
                 let mut steps = Vec::new();
                 for action in &path {
                     steps.extend(steps_for_action(action));
@@ -1230,6 +1232,7 @@ fn discover_with_runner<R: Runner>(
                     steps,
                 });
             }
+            _ => {}
         }
 
         if path.len() >= config.max_depth {

@@ -168,6 +168,7 @@ pub fn spawn_output_to_response(id: u64, output: SpawnOutput) -> RpcResponse {
     )
 }
 
+#[allow(clippy::result_large_err)]
 pub fn parse_snapshot_input(request: &RpcRequest) -> Result<SnapshotInput, RpcResponse> {
     let rpc_params: params::SnapshotParams = deserialize_optional_params(request)?;
 
@@ -271,14 +272,16 @@ pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> 
         None => None,
     };
 
-    if let Some(condition) = condition {
-        if condition.requires_text() && rpc_params.text.as_deref().is_none() {
-            return Err(RpcResponse::error(
-                request.id,
-                -32602,
-                "Invalid condition: text is required",
-            ));
-        }
+    if condition
+        .as_ref()
+        .is_some_and(|condition| condition.requires_text())
+        && rpc_params.text.as_deref().is_none()
+    {
+        return Err(RpcResponse::error(
+            request.id,
+            -32602,
+            "Invalid condition: text is required",
+        ));
     }
 
     Ok(WaitInput {
@@ -319,6 +322,7 @@ pub fn sessions_output_to_response(id: u64, output: SessionsOutput) -> RpcRespon
     )
 }
 
+#[allow(clippy::result_large_err)]
 pub fn parse_resize_input(request: &RpcRequest) -> Result<ResizeInput, RpcResponse> {
     let rpc_params: params::ResizeParams = deserialize_required_params(request)?;
 

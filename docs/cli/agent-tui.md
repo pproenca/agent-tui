@@ -23,7 +23,7 @@ Commands:
   wait         Wait for text or screenshot stability
   kill         Kill the current session
   sessions     List and manage sessions
-  live         Live preview API for the current session
+  live         Live preview API exposed by the local daemon
   daemon       Manage the background daemon
   version      Show version information
   env          Show environment diagnostics
@@ -196,6 +196,9 @@ Output Options:
       --strip-ansi
           Strip ANSI color codes from output
 
+      --retain-ansi
+          Preserve ANSI color/style codes in output
+
       --include-cursor
           Include cursor position in output
 
@@ -219,7 +222,8 @@ Session Options:
 
 EXAMPLES:
     agent-tui screenshot              # Just the screenshot
-    agent-tui screenshot --strip-ansi # Plain text without colors
+    agent-tui screenshot --retain-ansi # Preserve terminal colors/styles
+    agent-tui screenshot --strip-ansi  # Plain text without colors
 ```
 
 ## `agent-tui resize`
@@ -834,10 +838,11 @@ Arguments:
 ## `agent-tui live`
 
 ```text
-Show the daemon's live preview WebSocket endpoints.
+Show the local daemon's live preview WebSocket endpoints.
 
 The daemon serves a built-in web UI at /ui and exposes JSON-RPC over WebSocket at /ws.
 Use this command to print WS/UI URLs so external frontends can connect.
+This command always inspects the local daemon and does not use AGENT_TUI_TRANSPORT.
 
 CONFIGURATION:
     AGENT_TUI_WS_LISTEN          Bind address (default: 127.0.0.1:0)
@@ -1274,7 +1279,7 @@ Arguments:
 ```text
 Show detailed version information.
 
-Shows version info for both the CLI binary and the running daemon.
+Shows version info for both the CLI binary and the local running daemon.
 Useful for verifying CLI/daemon compatibility.
 
 Usage: version [OPTIONS]

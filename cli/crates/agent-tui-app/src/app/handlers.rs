@@ -33,6 +33,7 @@ use crate::infra::ipc::UnixSocketClient;
 use crate::infra::ipc::daemon_uses_client_working_directory;
 use crate::infra::ipc::get_daemon_pid;
 use crate::infra::ipc::socket_path;
+use crate::infra::ipc::start_daemon_background;
 
 use crate::adapters::presenter::ClientErrorView;
 use crate::adapters::presenter::Presenter;
@@ -622,10 +623,25 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     args: LiveStartArgs,
 ) -> HandlerResult {
+    handle_live_start_standalone(ctx.format, args)
+}
+
+pub(crate) fn handle_live_start_standalone(
+    format: OutputFormat,
+    args: LiveStartArgs,
+) -> HandlerResult {
     let state_path = ws_state_path();
+    if read_ws_state_running(&state_path).is_none() {
+        match UnixSocketClient::connect_local() {
+            Ok(_) => {}
+            Err(ClientError::DaemonNotRunning) => start_daemon_background()?,
+            Err(err) => return Err(err.into()),
+        }
+    }
+
     let state = wait_for_ws_state(&state_path, Duration::from_secs(3)).ok_or_else(|| {
         CliError::new(
-            ctx.format,
+            format,
             "WebSocket live preview is not available. Restart the daemon and try again."
                 .to_string(),
             None,
@@ -638,7 +654,7 @@ pub(crate) fn handle_live_start<C: DaemonClient>(
         .map(|url| url.trim().to_string())
         .filter(|url| !url.is_empty());
 
-    match ctx.format {
+    match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
             struct LiveStartOutput<'a> {
@@ -943,7 +959,7 @@ pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
     let cli_commit = env!("AGENT_TUI_GIT_SHA");
 
     let (daemon_version, daemon_commit, daemon_error) =
-        match crate::infra::ipc::UnixSocketClient::connect() {
+        match crate::infra::ipc::UnixSocketClient::connect_local() {
             Ok(mut client) => match call_no_params(&mut client, "version") {
                 Ok(result) => (
                     result
@@ -1954,7 +1970,7 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
 
     if !force {
         // Try graceful RPC shutdown first (needs connection but doesn't auto-start)
-        if let Ok(mut client) = UnixSocketClient::connect() {
+        if let Ok(mut client) = UnixSocketClient::connect_local() {
             if let Ok(result) = daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket) {
                 remove_ws_state_file();
                 return Ok(StopResult::Stopped {

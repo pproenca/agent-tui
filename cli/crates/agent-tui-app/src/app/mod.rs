@@ -519,6 +519,19 @@ impl Application {
                 self.handle_daemon_restart_without_autostart(cli)?;
                 Ok(true)
             }
+            Commands::Live { command: None } => {
+                handlers::handle_live_start_standalone(
+                    cli.effective_format(),
+                    LiveStartArgs::default(),
+                )?;
+                Ok(true)
+            }
+            Commands::Live {
+                command: Some(LiveCommand::Start(args)),
+            } => {
+                handlers::handle_live_start_standalone(cli.effective_format(), args.clone())?;
+                Ok(true)
+            }
             Commands::Live {
                 command: Some(LiveCommand::Stop),
             } => {
@@ -555,9 +568,6 @@ impl Application {
     fn requires_daemon_autostart(command: &Commands) -> bool {
         match command {
             Commands::Run { .. } => true,
-            Commands::Live { command } => {
-                matches!(command, None | Some(LiveCommand::Start(_)))
-            }
             _ => false,
         }
     }
@@ -1131,6 +1141,37 @@ mod tests {
             assert!(
                 !socket_path.exists(),
                 "live status must not autostart daemon or create socket"
+            );
+        }
+
+        #[test]
+        fn handle_standalone_commands_routes_live_start_locally_when_ws_transport_selected() {
+            let _env_lock = env_lock();
+            let tmp = TempDir::new().expect("temp dir");
+            let socket_path = tmp.path().join("agent-tui-test.sock");
+            let ws_state = tmp.path().join("api.json");
+            std::fs::write(
+                &ws_state,
+                format!(
+                    r#"{{"pid":{},"ws_url":"ws://127.0.0.1:43210/ws","ui_url":"http://127.0.0.1:43210/ui","listen":"127.0.0.1:43210","started_at":1735689600}}"#,
+                    std::process::id()
+                ),
+            )
+            .expect("write ws state");
+            let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
+            let _ws_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &ws_state);
+            let _transport_guard = EnvVarGuard::set("AGENT_TUI_TRANSPORT", "ws");
+            let _ws_addr_guard = EnvVarGuard::set("AGENT_TUI_WS_ADDR", "ws://127.0.0.1:9/ws");
+
+            let app = Application::new();
+            let cli = make_cli(Commands::Live { command: None });
+
+            let result = app.handle_standalone_commands(&cli);
+            assert!(result.is_ok(), "live start should be handled");
+            assert!(result.unwrap(), "live start should be standalone");
+            assert!(
+                !socket_path.exists(),
+                "live start should not use the selected remote websocket transport"
             );
         }
 

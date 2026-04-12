@@ -377,6 +377,32 @@ fn standalone_version_env_and_completions_contract() {
 }
 
 #[test]
+fn standalone_version_uses_local_daemon_when_ws_transport_selected() {
+    let env = StandaloneEnv::new();
+    env.run(&["daemon", "start"]).success();
+
+    let output = env
+        .cli_command()
+        .env("AGENT_TUI_TRANSPORT", "ws")
+        .env("AGENT_TUI_WS_ADDR", "ws://127.0.0.1:9/ws")
+        .args(["--format", "json", "version"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let parsed: Value = serde_json::from_slice(&output).expect("valid version json");
+    assert_ne!(parsed["daemon_version"], "unavailable");
+    assert!(
+        parsed.get("daemon_error").is_none(),
+        "version should ignore remote ws transport for local daemon inspection"
+    );
+
+    env.run(&["daemon", "stop", "--force"]).success();
+}
+
+#[test]
 fn standalone_daemon_commands_contract() {
     let env = StandaloneEnv::new();
 
@@ -400,21 +426,40 @@ fn standalone_daemon_commands_contract() {
 }
 
 #[test]
+fn standalone_daemon_stop_uses_local_daemon_when_ws_transport_selected() {
+    let env = StandaloneEnv::new();
+    env.run(&["daemon", "start"]).success();
+
+    env.cli_command()
+        .env("AGENT_TUI_TRANSPORT", "ws")
+        .env("AGENT_TUI_WS_ADDR", "ws://127.0.0.1:9/ws")
+        .args(["daemon", "stop"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Daemon stopped"));
+
+    env.run(&["daemon", "status"])
+        .code(3)
+        .stdout(predicate::str::contains("Daemon is not running"));
+}
+
+#[test]
 fn live_start_alias_contract() {
-    let harness = TestHarness::new();
     let env = StandaloneEnv::new();
     env.write_ws_state();
 
-    harness
-        .cli_command()
+    env.cli_command()
+        .env("AGENT_TUI_TRANSPORT", "ws")
+        .env("AGENT_TUI_WS_ADDR", "ws://127.0.0.1:9/ws")
         .env("AGENT_TUI_WS_STATE", &env.ws_state_path)
         .args(["--format", "json", "live", "start"])
         .assert()
         .success()
         .stdout(predicate::str::contains("\"running\": true"));
 
-    harness
-        .cli_command()
+    env.cli_command()
+        .env("AGENT_TUI_TRANSPORT", "ws")
+        .env("AGENT_TUI_WS_ADDR", "ws://127.0.0.1:9/ws")
         .env("AGENT_TUI_WS_STATE", &env.ws_state_path)
         .args(["--format", "json", "live", "info"])
         .assert()

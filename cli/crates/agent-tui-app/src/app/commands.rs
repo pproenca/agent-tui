@@ -353,12 +353,13 @@ EXAMPLES:
         command: Option<SessionsCommand>,
     },
 
-    /// Live preview API for the current session
+    /// Live preview API exposed by the local daemon
     #[command(long_about = "\
-Show the daemon's live preview WebSocket endpoints.
+Show the local daemon's live preview WebSocket endpoints.
 
 The daemon serves a built-in web UI at /ui and exposes JSON-RPC over WebSocket at /ws.
 Use this command to print WS/UI URLs so external frontends can connect.
+This command always inspects the local daemon and does not use AGENT_TUI_TRANSPORT.
 
 CONFIGURATION:
     AGENT_TUI_WS_LISTEN          Bind address (default: 127.0.0.1:0)
@@ -386,7 +387,7 @@ EXAMPLES:
     #[command(long_about = "\
 Show detailed version information.
 
-Shows version info for both the CLI binary and the running daemon.
+Shows version info for both the CLI binary and the local running daemon.
 Useful for verifying CLI/daemon compatibility.")]
     #[command(after_long_help = "\
 EXAMPLES:

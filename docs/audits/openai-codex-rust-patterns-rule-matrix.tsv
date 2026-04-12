@@ -1478,7 +1478,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	testing-insta-snapshot-tui-rendering	testing	finding	applicable	A10	2026-04-12 22:12Z	App crate inline tests have no snapshot-testing dependency or harness for render-level regressions.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	testing-paused-runtime-advance	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	testing-wiremock-sse-fakes	testing	pending	unreviewed			
@@ -1719,8 +1719,8 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	rpc_core.rs keeps an inline #[cfg(test)] mod tests block instead of a sibling rpc_core_tests.rs child module.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-paused-runtime-advance	testing	finding	applicable	A10	2026-04-12 22:12Z	Stream wait tests use park_timeout and elapsed-time bounds instead of paused-runtime or equivalent virtual-time control.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
@@ -1779,8 +1779,8 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	server.rs keeps an inline #[cfg(test)] mod tests block instead of a sibling server_tests.rs child module.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-paused-runtime-advance	testing	finding	applicable	A10	2026-04-12 22:12Z	Shutdown join-timeout tests use park_timeout and elapsed-time bounds instead of deterministic virtual-time control.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
@@ -2019,8 +2019,8 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	ws_server.rs keeps an inline #[cfg(test)] mod tests block instead of a sibling ws_server_tests.rs child module.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-paused-runtime-advance	testing	finding	applicable	A10	2026-04-12 22:12Z	Cancellation and bounded-shutdown tests rely on elapsed wall-clock time instead of virtual-time control.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
@@ -4596,11 +4596,11 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	sandbox-shared-policy-data-model	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	sandbox-staged-restrictions-re-exec	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-atomic-bool-test-opt-in	testing	pass	applicable	A10	2026-04-12 22:12Z	USE_DAEMON_START_STUB provides single-build test-only daemon autostart stubbing without a cargo feature split.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	transport.rs keeps an inline #[cfg(test)] mod tests block instead of a sibling transport_tests.rs child module.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-paused-runtime-advance	testing	finding	applicable	A10	2026-04-12 22:12Z	Daemon startup tests use elapsed-time bounds around wall-clock polling instead of deterministic virtual-time control.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
@@ -6338,7 +6338,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	testing-insta-snapshot-tui-rendering	testing	finding	applicable	A10	2026-04-12 22:12Z	Primary CLI test crate does not declare insta, and no terminal snapshot harness exists in tree.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	testing-paused-runtime-advance	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	testing-wiremock-sse-fakes	testing	pending	unreviewed			
@@ -6701,7 +6701,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-wiremock-sse-fakes	testing	pass	contextual	A10	2026-04-12 22:12Z	Command contract tests drive the CLI against MockDaemon over real JSON-RPC frames rather than mocked client traits.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
@@ -6818,7 +6818,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs	testing-insta-snapshot-tui-rendering	testing	finding	applicable	A10	2026-04-12 22:12Z	Smoke coverage checks substrings and JSON fields instead of stable full-screen terminal snapshots.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
@@ -6879,7 +6879,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	interactive_pty.rs keeps helper tests inline instead of a sibling interactive_pty_tests.rs module.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
@@ -6937,11 +6937,11 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	sandbox-staged-restrictions-re-exec	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	testing-config-closure-builder	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	testing-config-closure-builder	testing	not_applicable	contextual	A10	2026-04-12 22:12Z	MockDaemon exposes a small request-script API rather than a sprawling mutable fixture config that needs closure-based mutation.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	testing-paused-runtime-advance	testing	pass	contextual	A10	2026-04-12 22:12Z	DelayController plus advance_time and wait_for_pending_delays gives deterministic control over delayed mock responses without wall-clock sleeping.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	testing-wiremock-sse-fakes	testing	pass	contextual	A10	2026-04-12 22:12Z	MockDaemon exercises the real Unix-socket JSON-RPC boundary, captures requests, and can inject malformed or junk frames without trait-mocking transport.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
@@ -7061,7 +7061,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs	testing-wiremock-sse-fakes	testing	pass	contextual	A10	2026-04-12 22:12Z	RealTestHarness boots the actual daemon subprocess and drives the real socket transport for end-to-end coverage.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
@@ -7117,7 +7117,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/test_harness.rs	sandbox-staged-restrictions-re-exec	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/test_harness.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/test_harness.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/test_harness.rs	testing-config-closure-builder	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/test_harness.rs	testing-config-closure-builder	testing	not_applicable	contextual	A10	2026-04-12 22:12Z	Harness configuration is still small and request-oriented, so a closure-mutator builder would not yet pay for itself.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/test_harness.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/test_harness.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/test_harness.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
@@ -7178,7 +7178,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-insta-snapshot-tui-rendering	testing	finding	applicable	A10	2026-04-12 22:12Z	Attach and screenshot end-to-end checks rely on contains assertions, so layout and reflow regressions can pass unnoticed.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			

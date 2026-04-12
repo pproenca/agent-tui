@@ -6,6 +6,9 @@
 - `[A08][workspace-test-support-as-member-crates]` Shared test helpers are split between `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/` instead of a dedicated workspace member test-support crate.
 - `[A01][types-try-from-newtype-validation]` Terminal size invariants are encoded in `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs` as `TerminalSize`, but `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs` still models spawn and resize inputs as raw `u16` pairs, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` clamps or forwards raw values instead of constructing a validated type.
 - `[A02][errors-boundary-error-translator]` `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs` translates `SessionError::Persistence { operation, reason, source }` into `DomainError::Generic { message }`, which discards the specific persistence error code and collapses structured boundary context into a string.
+- `[A10][testing-path-attribute-sibling-tests]` The repository still relies on inline `#[cfg(test)] mod tests` blocks across at least `50` Rust files and currently has zero sibling `#[path = "..._tests.rs"]` stubs. Representative files: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs`.
+- `[A10][testing-insta-snapshot-tui-rendering]` Terminal-oriented smoke and E2E coverage still depends on substring and field assertions instead of stable render snapshots, and the audited test manifests do not include `insta`. Reviewed anchors: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml`.
+- `[A10][testing-paused-runtime-advance]` Async timing tests in `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs` still rely on wall-clock `park_timeout` and `Instant::elapsed()` bounds rather than paused-runtime or equivalent virtual-time control.
 
 ## Completed Tranches
 
@@ -77,11 +80,46 @@ Findings:
 
 - Persistence errors lose their specific code and structured payload when translated from `SessionError` into adapter-facing `DomainError`.
 
+### `2026-04-12 22:12Z` `A10` Test harnesses and auditability of tests
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/test_harness.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml`
+
+Passes:
+
+- The suite already covers three useful realism layers: `MockDaemon` drives real Unix-socket JSON-RPC, `RealTestHarness` boots the actual daemon subprocess, and `InteractivePtyRunner` exercises attach flows through a real PTY.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs` uses `USE_DAEMON_START_STUB` to opt test-only daemon-autostart behavior into a single build instead of fragmenting the build graph with a cargo feature.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs` can inject delays, malformed frames, disconnects, and junk lines while still exercising the real JSON-RPC transport boundary.
+
+Findings:
+
+- The workspace has not adopted sibling `#[path]` test modules, so implementation files still drown in inline test blocks and test churn remains attached to production modules in blame/history.
+- Terminal rendering behavior is not snapshot-tested, which leaves layout, whitespace, ANSI, and reflow regressions under-protected.
+- Time-sensitive async tests still depend on wall-clock sleeps and elapsed-time ceilings instead of deterministic virtual-time control.
+
+Contextual non-applicability:
+
+- The codex `wiremock` plus SSE helper rule does not map literally because this repository's main runtime boundary is Unix socket JSON-RPC plus WebSocket, not outbound HTTP SSE. The underlying "real wire, not trait mock" goal is still applicable and partly met by the existing harnesses.
+- The closure-builder fixture pattern is not a strong fit for the current harness API because the scripting surface is still small and request-oriented rather than a large mutable config object.
+
 ## Next Queue
 
-- `A10` Test harnesses and auditability of tests
 - `F01` Session spawn and initial run
 - `F05` Resize and terminal reflow
+- `A03` Session repository and persistence internals
 
 ## Notes
 

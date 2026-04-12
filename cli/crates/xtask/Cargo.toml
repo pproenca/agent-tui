@@ -12,12 +12,12 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-cargo_metadata = "0.23"
+cargo_metadata.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
-sha2 = "0.10"
-walkdir = "2.5"
+sha2.workspace = true
+walkdir.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

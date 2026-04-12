@@ -94,9 +94,8 @@ fn handle_completions_command(
         let shell = resolve_shell(shell).ok_or_else(|| {
             crate::app::error::CliError::new(
                 format,
-                format!(
-                    "Shell not specified. Re-run with `agent-tui completions --install <bash|zsh|fish|elvish>`."
-                ),
+                "Shell not specified. Re-run with `agent-tui completions --install <bash|zsh|fish|elvish>`."
+                    .to_string(),
                 None,
                 exit_codes::USAGE,
             )
@@ -110,9 +109,8 @@ fn handle_completions_command(
         let shell = resolve_shell(shell).ok_or_else(|| {
             crate::app::error::CliError::new(
                 format,
-                format!(
-                    "Shell not specified. Re-run with `agent-tui completions --print <bash|zsh|fish|elvish>`."
-                ),
+                "Shell not specified. Re-run with `agent-tui completions --print <bash|zsh|fish|elvish>`."
+                    .to_string(),
                 None,
                 exit_codes::USAGE,
             )
@@ -218,7 +216,9 @@ fn run_completions_wizard(
         CompletionStatus::OutOfDate | CompletionStatus::Missing
     ) {
         let stdin_tty = io::stdin().is_terminal();
-        if yes || (!no_input && stdin_tty && prompt_yes_no("Install/update completions now?", true)?) {
+        if yes
+            || (!no_input && stdin_tty && prompt_yes_no("Install/update completions now?", true)?)
+        {
             let outcome = install_completions(&script, &install_path)?;
             print_install_outcome(outcome);
             print_static_install_note(shell);

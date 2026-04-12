@@ -265,13 +265,17 @@ mod tests {
             Ok(())
         }
 
-        fn restart(&self, session_id: Option<&SessionId>) -> Result<crate::domain::RestartOutput, SessionError> {
+        fn restart(
+            &self,
+            session_id: Option<&SessionId>,
+        ) -> Result<crate::domain::RestartOutput, SessionError> {
             let old_session_id = session_id.cloned().unwrap_or_else(|| {
                 SessionId::try_new("active").expect("active id should be valid")
             });
             Ok(crate::domain::RestartOutput {
                 old_session_id,
-                new_session_id: SessionId::try_new("restarted").expect("restart id should be valid"),
+                new_session_id: SessionId::try_new("restarted")
+                    .expect("restart id should be valid"),
                 command: "bash".to_string(),
                 pid: 42,
             })

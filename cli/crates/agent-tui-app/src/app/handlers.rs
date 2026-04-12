@@ -472,7 +472,9 @@ pub(crate) fn handle_type<C: DaemonClient>(
             return Err(usage_cli_error(
                 ctx.format,
                 "Refusing to read `type -` from a TTY stdin.",
-                Some("Pipe text into stdin or pass the literal text argument directly.".to_string()),
+                Some(
+                    "Pipe text into stdin or pass the literal text argument directly.".to_string(),
+                ),
                 None,
             )
             .into());
@@ -624,16 +626,14 @@ pub(crate) fn handle_kill<C: DaemonClient>(
         };
 
         return ctx.output_json_or(&RpcValue::new(serde_json::to_value(output)?), || {
-            println!("Would kill {}.", selected_session_label(ctx.session.as_deref()));
+            println!(
+                "Would kill {}.",
+                selected_session_label(ctx.session.as_deref())
+            );
         });
     }
 
-    confirm_destructive_action(
-        ctx.format,
-        ctx.no_input,
-        yes,
-        &format!("Kill {}?", target),
-    )?;
+    confirm_destructive_action(ctx.format, ctx.no_input, yes, &format!("Kill {}?", target))?;
 
     let params = params::SessionParams {
         session: ctx.session.clone(),
@@ -769,7 +769,10 @@ pub(crate) fn handle_session_show<C: DaemonClient>(
                 super::exit_codes::GENERAL_ERROR,
                 "Invalid sessions response.",
                 "internal",
-                Some("Run `agent-tui sessions --json` to inspect the raw session payload.".to_string()),
+                Some(
+                    "Run `agent-tui sessions --json` to inspect the raw session payload."
+                        .to_string(),
+                ),
                 None,
             )
         })?;
@@ -2083,7 +2086,10 @@ pub(crate) fn handle_cleanup<C: DaemonClient>(
 
     if !target_ids.is_empty() {
         let prompt = if all {
-            format!("Clean up {} session(s), including running sessions?", target_ids.len())
+            format!(
+                "Clean up {} session(s), including running sessions?",
+                target_ids.len()
+            )
         } else {
             format!("Clean up {} stopped/orphaned session(s)?", target_ids.len())
         };
@@ -2240,7 +2246,10 @@ pub(crate) fn handle_attach<C: DaemonClient>(
 
 pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
     let vars = [
-        ("AGENT_TUI_NO_INPUT", std::env::var("AGENT_TUI_NO_INPUT").ok()),
+        (
+            "AGENT_TUI_NO_INPUT",
+            std::env::var("AGENT_TUI_NO_INPUT").ok(),
+        ),
         (
             "AGENT_TUI_TRANSPORT",
             std::env::var("AGENT_TUI_TRANSPORT").ok(),

@@ -5,7 +5,6 @@
 pub mod client;
 pub mod daemon_lifecycle;
 pub mod error;
-#[cfg(any(test, feature = "test-support"))]
 mod mock_client;
 pub mod polling;
 pub mod process;
@@ -19,7 +18,6 @@ pub use client::UnixSocketClient;
 pub use client::ensure_daemon;
 pub use client::get_daemon_pid;
 pub use error::ClientError;
-#[cfg(any(test, feature = "test-support"))]
 pub use mock_client::MockClient;
 pub use process::ProcessController;
 pub use process::ProcessStatus;

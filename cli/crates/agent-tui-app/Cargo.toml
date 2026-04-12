@@ -34,6 +34,4 @@ agent-tui-infra = { path = "../agent-tui-infra" }
 
 [dev-dependencies]
 tempfile.workspace = true
-once_cell = "1.19"
-agent-tui-usecases = { path = "../agent-tui-usecases", features = ["test-support"] }
-agent-tui-infra = { path = "../agent-tui-infra", features = ["test-support"] }
+once_cell.workspace = true

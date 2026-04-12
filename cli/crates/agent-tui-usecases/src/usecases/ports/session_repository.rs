@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::domain::core::CursorPosition;
 use crate::domain::RestartOutput;
+use crate::domain::core::CursorPosition;
 use crate::domain::session_types::SessionId;
 use crate::domain::session_types::SessionInfo;
 

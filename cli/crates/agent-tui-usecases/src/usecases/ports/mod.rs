@@ -5,7 +5,6 @@ pub mod errors;
 pub mod session_repository;
 pub mod shutdown_notifier;
 pub mod terminal_engine;
-#[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
 pub use clock::Clock;

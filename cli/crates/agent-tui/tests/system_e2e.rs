@@ -7,7 +7,6 @@
 
 mod common;
 
-#[cfg(feature = "slow-tests")]
 mod e2e {
     use crate::common::InteractivePtyRunner;
     use crate::common::RealTestHarness;
@@ -52,6 +51,7 @@ mod e2e {
     }
 
     #[test]
+    #[ignore = "slow e2e"]
     fn e2e_core_runtime_commands_work_end_to_end() {
         let mut harness = RealTestHarness::new();
 
@@ -145,6 +145,7 @@ mod e2e {
     }
 
     #[test]
+    #[ignore = "slow e2e"]
     fn e2e_sessions_attach_interactive_default_detach_keys() {
         let harness = RealTestHarness::new();
         let session_id = spawn_session(&harness, "bash");
@@ -186,6 +187,7 @@ mod e2e {
     }
 
     #[test]
+    #[ignore = "slow e2e"]
     fn e2e_sessions_attach_interactive_custom_detach_keys() {
         let harness = RealTestHarness::new();
         let session_id = spawn_session(&harness, "bash");

@@ -42,7 +42,7 @@ test:
 
 # Run slow, core-runtime command E2E coverage.
 test-core-e2e:
-    cargo test -p agent-tui --features slow-tests --test system_e2e
+    cargo test -p agent-tui --test system_e2e -- --ignored
 
 # Verify generated CLI docs are up-to-date.
 check-cli-docs-sync:

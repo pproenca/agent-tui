@@ -436,9 +436,12 @@ fn standalone_daemon_commands_contract() {
         .success()
         .stdout(predicate::str::contains("\"running\": true"));
 
-    env.run(&["daemon", "stop", "--force", "--yes"]).success().stdout(
-        predicate::str::contains("Daemon stopped").or(predicate::str::contains("already stopped")),
-    );
+    env.run(&["daemon", "stop", "--force", "--yes"])
+        .success()
+        .stdout(
+            predicate::str::contains("Daemon stopped")
+                .or(predicate::str::contains("already stopped")),
+        );
 
     env.run(&["daemon", "restart", "--yes"])
         .success()

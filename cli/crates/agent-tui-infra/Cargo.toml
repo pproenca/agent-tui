@@ -9,9 +9,6 @@ publish = false
 [lints]
 workspace = true
 
-[features]
-test-support = ["agent-tui-usecases/test-support"]
-
 [dependencies]
 bytes.workspace = true
 chrono.workspace = true
@@ -36,4 +33,3 @@ agent-tui-usecases = { path = "../agent-tui-usecases" }
 
 [dev-dependencies]
 tempfile.workspace = true
-agent-tui-usecases = { path = "../agent-tui-usecases", features = ["test-support"] }

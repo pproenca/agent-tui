@@ -1279,7 +1279,7 @@ fn ws_state_path() -> PathBuf {
     }
     let home = std::env::var("HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+        .unwrap_or_else(|_| std::env::temp_dir());
     home.join(".agent-tui").join("api.json")
 }
 
@@ -1326,7 +1326,7 @@ fn ui_state_path() -> PathBuf {
     }
     let home = std::env::var("HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+        .unwrap_or_else(|_| std::env::temp_dir());
     home.join(".agent-tui").join("ui.json")
 }
 
@@ -1533,10 +1533,6 @@ fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<()> {
         cmd
     } else if cfg!(target_os = "macos") {
         Command::new("open")
-    } else if cfg!(target_os = "windows") {
-        let mut cmd = Command::new("cmd");
-        cmd.args(["/C", "start"]);
-        cmd
     } else {
         Command::new("xdg-open")
     };

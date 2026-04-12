@@ -74,7 +74,7 @@ Use this file when you need complete CLI coverage and exact options.
 - `agent-tui help`
 
 ### Shell Completions
-- `agent-tui completions <bash|zsh|fish|powershell|elvish>`
+- `agent-tui completions <bash|zsh|fish|elvish>`
 
 ## Environment Variables
 - `NO_COLOR`: disable colored output.

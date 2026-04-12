@@ -13,6 +13,24 @@ CLI tool for AI agents to interact with TUI (Terminal User Interface) applicatio
 - **Live Preview WebSocket** - JSON-RPC over WebSocket for real-time UI monitoring
 - **Session Management** - Background daemon manages multiple concurrent TUI sessions
 
+## Platform Support
+
+`agent-tui` is Unix-only.
+
+Supported runtime contract:
+
+- **OS**: Linux, macOS, and other Unix-like systems with PTYs, Unix domain sockets, and POSIX signals
+- **Local IPC**: Unix domain socket at `AGENT_TUI_SOCKET`, defaulting to `$XDG_RUNTIME_DIR/agent-tui.sock` and falling back to the system temp directory
+- **Persistent state**: `~/.agent-tui/*` by default unless overridden with `AGENT_TUI_WS_STATE`, `AGENT_TUI_SESSION_STORE`, or `AGENT_TUI_UI_STATE`
+- **Shell integration**: `bash`, `zsh`, `fish`, and `elvish`
+- **Browser launch**: `$BROWSER`, `open` on macOS, or `xdg-open` on other Unix desktops
+
+Not supported:
+
+- Native Windows runtimes
+- PowerShell-specific shell integration
+- Win32 path, process, or socket semantics
+
 ## Installation
 
 ### Quick Install
@@ -21,7 +39,7 @@ CLI tool for AI agents to interact with TUI (Terminal User Interface) applicatio
 curl -fsSL https://raw.githubusercontent.com/pproenca/agent-tui/master/install.sh | bash
 ```
 
-The installer detects your platform and installs the appropriate binary to `~/.local/bin`.
+The installer detects your Unix platform and installs the appropriate binary to `~/.local/bin`.
 
 ### Package Managers
 
@@ -116,7 +134,7 @@ agent-tui screenshot --json
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AGENT_TUI_SOCKET` | IPC socket path | `~/.agent-tui/daemon.sock` |
+| `AGENT_TUI_SOCKET` | IPC socket path | `$XDG_RUNTIME_DIR/agent-tui.sock` or temp dir fallback |
 | `AGENT_TUI_TRANSPORT` | CLI transport (`unix` or `ws`) | `unix` |
 | `AGENT_TUI_WS_ADDR` | Remote WS-RPC URL when transport is `ws` | - |
 | `AGENT_TUI_WS_LISTEN` | Daemon WS bind address | `127.0.0.1:0` |

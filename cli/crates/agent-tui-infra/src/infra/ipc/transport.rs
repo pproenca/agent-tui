@@ -66,7 +66,7 @@ fn ws_state_path_from_env() -> std::path::PathBuf {
     }
     let home = std::env::var("HOME")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+        .unwrap_or_else(|_| std::env::temp_dir());
     home.join(".agent-tui").join("api.json")
 }
 

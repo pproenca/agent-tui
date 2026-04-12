@@ -32,6 +32,14 @@ Manages PTY sessions via a background daemon with JSON-RPC WebSocket API and emb
 - **Build**: Cargo workspace (8 crates) + `just` task runner
 - **Key deps**: `portable-pty`, `tracing`, `serde`, `crossterm`
 
+## Platform Boundary
+
+- **Supported targets**: Linux, macOS, and other Unix-like systems only
+- **Required runtime primitives**: PTYs, Unix domain sockets, POSIX signals, and standard Unix shell environment variables (`HOME`, `SHELL`, optionally `XDG_RUNTIME_DIR`)
+- **Shell integrations**: `bash`, `zsh`, `fish`, and `elvish`
+- **Out of scope**: Windows, PowerShell, `COMSPEC`/`USERPROFILE` fallbacks, and Win32 process or path semantics
+- **Path conventions**: Unix socket paths should follow `XDG_RUNTIME_DIR` when available; persistent metadata should stay under home-scoped dot directories unless explicitly overridden
+
 ## Verification
 
 Run from repo root before marking work complete:

@@ -60,7 +60,7 @@ impl ClientError {
     pub fn suggestion(&self) -> Option<&str> {
         match self {
             ClientError::RpcError { suggestion, .. } => suggestion.as_deref(),
-            ClientError::DaemonNotRunning => Some("Start daemon with: agent-tui daemon"),
+            ClientError::DaemonNotRunning => Some("Start daemon with: agent-tui daemon start"),
             _ => None,
         }
     }
@@ -102,7 +102,7 @@ impl ClientError {
                 "message": "Daemon not running",
                 "category": "external",
                 "retryable": false,
-                "suggestion": "Start daemon with: agent-tui daemon",
+                "suggestion": "Start daemon with: agent-tui daemon start",
             }),
             ClientError::InvalidResponse => serde_json::json!({
                 "code": -32000,

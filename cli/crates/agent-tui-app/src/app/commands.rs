@@ -35,6 +35,7 @@ OUTPUT:
     --format text  Human-readable text (default)
 
 CONFIGURATION:
+    AGENT_TUI_NO_INPUT          Disable prompts and interactive TTY behavior (default: false)
     AGENT_TUI_TRANSPORT         IPC transport (unix or ws; default: unix)
     AGENT_TUI_WS_ADDR           Remote WS-RPC target when transport is ws (e.g. ws://host:port/ws)
     AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-Q)
@@ -145,6 +146,16 @@ pub struct Cli {
         help_heading = "Output Options"
     )]
     pub no_color: bool,
+
+    /// Disable prompts and interactive TTY behavior; require explicit flags instead
+    #[arg(
+        long,
+        global = true,
+        env = "AGENT_TUI_NO_INPUT",
+        value_parser = clap::builder::BoolishValueParser::new(),
+        help_heading = "Interaction Options"
+    )]
+    pub no_input: bool,
 }
 
 impl Cli {
@@ -253,9 +264,17 @@ EXAMPLES:
 Restart the current session command, creating a new session.")]
     #[command(after_long_help = "\
 EXAMPLES:
-    agent-tui restart
-    agent-tui --session abc123 restart")]
-    Restart,
+    agent-tui restart --yes
+    agent-tui --session abc123 restart --dry-run")]
+    Restart {
+        /// Preview the restart without changing the session
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
     /// Send key press(es) to the terminal (supports modifier hold/release)
     #[command(after_long_help = "\
 NOTES:
@@ -282,10 +301,15 @@ EXAMPLES:
     },
 
     /// Type literal text character by character
+    #[command(long_about = "\
+Type literal text character by character.
+
+Pass `-` to read the text payload from stdin in non-interactive pipelines.")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui type \"hello world\"
-    agent-tui type \"user@example.com\"")]
+    agent-tui type \"user@example.com\"
+    printf 'project-name' | agent-tui type -")]
     Type {
         /// Text to type
         #[arg(value_name = "TEXT", allow_hyphen_values = true)]
@@ -329,7 +353,7 @@ WAIT CONDITIONS:
     -g, --gone   Modifier: wait for text to disappear
 
 ASSERT MODE:
-    --assert            Exit with code 0 if condition met, 1 if timeout.
+    --assert            Exit with code 0 if condition met, 75 if timeout.
                         Without --assert, always exit 0 (timeout still reported).")]
     #[command(after_long_help = "\
 EXAMPLES:
@@ -345,9 +369,17 @@ EXAMPLES:
     /// Kill the current session
     #[command(after_long_help = "\
 EXAMPLES:
-    agent-tui kill
-    agent-tui --session abc123 kill")]
-    Kill,
+    agent-tui kill --yes
+    agent-tui --session abc123 kill --dry-run")]
+    Kill {
+        /// Preview the kill without changing the session
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
 
     /// List and manage sessions
     #[command(long_about = "\
@@ -371,8 +403,8 @@ EXAMPLES:
     agent-tui sessions switch abc123      # Set active session
     agent-tui -s abc123 sessions attach -T # Attach without TTY (stream output only)
     agent-tui sessions attach --detach-keys 'ctrl-]'  # Custom detach sequence
-    agent-tui sessions cleanup            # Remove dead sessions
-    agent-tui sessions cleanup --all      # Remove all sessions")]
+    agent-tui sessions cleanup --yes            # Remove dead sessions
+    agent-tui sessions cleanup --all --dry-run  # Preview removing all sessions")]
     #[command(after_help = "Default action: list (same as `sessions list`).")]
     Sessions {
         #[command(subcommand)]
@@ -406,6 +438,16 @@ EXAMPLES:
         command: Option<LiveCommand>,
     },
     /// Manage the background daemon
+    #[command(long_about = "\
+Manage the background daemon lifecycle.
+
+Use `daemon start` to launch in the background, `daemon run` for foreground
+debugging, and `daemon status` to inspect the local daemon state.")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui daemon start
+    agent-tui daemon status
+    agent-tui daemon stop --yes")]
     #[command(subcommand)]
     Daemon(DaemonCommand),
 
@@ -438,7 +480,9 @@ Generate or install shell completions for bash, zsh, fish, or elvish.
 
 Runs an interactive setup by default (auto-detects your shell) and checks
 whether your installed completions are up-to-date. Use --print to output the
-raw completion script for scripting or redirection.")]
+raw completion script for scripting or redirection.
+
+Use --no-input to disable prompts and require explicit shell selection.")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui completions
@@ -477,15 +521,31 @@ INSTALLATION:
 pub enum SessionsCommand {
     /// List active sessions
     #[command(alias = "ls")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui sessions list
+    agent-tui --json sessions list")]
     List,
 
     /// Show details for a specific session
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui sessions show abc123
+    agent-tui --json sessions show abc123")]
     Show {
         #[arg(value_name = "ID")]
         session_id: String,
     },
 
     /// Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-Q or --detach-keys)
+    #[command(after_long_help = "\
+NOTES:
+    --no-input implies --no-tty for automation-safe streaming.
+
+EXAMPLES:
+    agent-tui sessions attach
+    agent-tui -s abc123 sessions attach --no-tty
+    agent-tui --no-input sessions attach")]
     Attach {
         /// Disable TTY mode (stream output only)
         #[arg(short = 'T', long = "no-tty")]
@@ -501,16 +561,32 @@ pub enum SessionsCommand {
 
     /// Set the active session without attaching
     #[command(alias = "select")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui sessions switch abc123
+    agent-tui sessions select abc123")]
     Switch {
         #[arg(value_name = "ID")]
         session_id: String,
     },
 
     /// Remove dead/orphaned sessions
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui sessions cleanup --yes
+    agent-tui sessions cleanup --all --dry-run")]
     Cleanup {
         /// Remove all sessions (including active)
         #[arg(long)]
         all: bool,
+
+        /// Preview which sessions would be cleaned without killing them
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
 }
 
@@ -518,12 +594,24 @@ pub enum SessionsCommand {
 pub enum LiveCommand {
     /// Show the live preview API details
     #[command(alias = "info")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui live start
+    agent-tui live start --open")]
     Start(LiveStartArgs),
 
-    /// Stop the live preview API (stop the daemon)
+    /// Stop any managed UI server and show how to stop daemon-backed live preview
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui live stop
+    agent-tui daemon stop --yes   # Stop daemon-backed live preview")]
     Stop,
 
     /// Show live preview API status
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui live status
+    agent-tui --json live status")]
     Status,
 }
 
@@ -574,12 +662,20 @@ sessions and resources. Use --force to send SIGKILL for immediate
 termination (not recommended unless daemon is unresponsive).")]
     #[command(after_long_help = "\
 EXAMPLES:
-    agent-tui daemon stop          # Graceful stop
-    agent-tui daemon stop --force  # Force kill")]
+    agent-tui daemon stop --yes          # Graceful stop
+    agent-tui daemon stop --force --yes  # Force kill")]
     Stop {
         /// Force kill the daemon (SIGKILL)
         #[arg(long)]
         force: bool,
+
+        /// Preview the stop without changing daemon state
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
 
     /// Show daemon status
@@ -592,6 +688,10 @@ WS/UI endpoints.
 EXIT CODES (LSB init script conventions):
     0 - Daemon is running
     3 - Daemon is not running")]
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui daemon status
+    agent-tui --json daemon status")]
     Status,
 
     /// Restart the daemon
@@ -602,7 +702,19 @@ Stops the running daemon and starts a new one. Useful after updating
 the agent-tui binary to ensure the daemon is running the new version.
 
 All active sessions will be terminated during restart.")]
-    Restart,
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui daemon restart --yes
+    agent-tui daemon restart --dry-run")]
+    Restart {
+        /// Preview the restart without changing daemon state
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -654,7 +766,7 @@ pub struct WaitParams {
     #[arg(short = 'g', long, requires = "text", help_heading = "Wait Condition")]
     pub gone: bool,
 
-    /// Exit with status 0 if met, 1 on timeout
+    /// Exit with status 0 if met, 75 on timeout
     #[arg(long, help_heading = "Behavior")]
     pub assert: bool,
 }
@@ -677,6 +789,7 @@ mod tests {
         assert!(cli.session.is_none());
         assert_eq!(cli.format, OutputFormat::Text);
         assert!(!cli.no_color);
+        assert!(!cli.no_input);
     }
 
     #[test]
@@ -688,11 +801,13 @@ mod tests {
             "--format",
             "json",
             "--no-color",
+            "--no-input",
             "sessions",
         ]);
         assert_eq!(cli.session, Some("my-session".to_string()));
         assert_eq!(cli.format, OutputFormat::Json);
         assert!(cli.no_color);
+        assert!(cli.no_input);
     }
 
     #[test]
@@ -876,6 +991,12 @@ mod tests {
     }
 
     #[test]
+    fn test_no_input_flag() {
+        let cli = Cli::parse_from(["agent-tui", "--no-input", "sessions"]);
+        assert!(cli.no_input);
+    }
+
+    #[test]
     fn test_run_with_cwd() {
         let cli = Cli::parse_from(["agent-tui", "run", "-d", "/tmp", "bash"]);
         let Commands::Run { command, cwd, .. } = cli.command else {
@@ -983,7 +1104,11 @@ mod tests {
         };
         assert!(matches!(
             command,
-            Some(SessionsCommand::Cleanup { all: false })
+            Some(SessionsCommand::Cleanup {
+                all: false,
+                dry_run: false,
+                yes: false
+            })
         ));
     }
 
@@ -995,7 +1120,34 @@ mod tests {
         };
         assert!(matches!(
             command,
-            Some(SessionsCommand::Cleanup { all: true })
+            Some(SessionsCommand::Cleanup {
+                all: true,
+                dry_run: false,
+                yes: false
+            })
+        ));
+    }
+
+    #[test]
+    fn test_sessions_cleanup_dry_run_yes() {
+        let cli = Cli::parse_from([
+            "agent-tui",
+            "sessions",
+            "cleanup",
+            "--all",
+            "--dry-run",
+            "--yes",
+        ]);
+        let Commands::Sessions { command } = cli.command else {
+            panic!("Expected Sessions command, got {:?}", cli.command);
+        };
+        assert!(matches!(
+            command,
+            Some(SessionsCommand::Cleanup {
+                all: true,
+                dry_run: true,
+                yes: true
+            })
         ));
     }
 
@@ -1038,7 +1190,25 @@ mod tests {
     #[test]
     fn test_kill_command() {
         let cli = Cli::parse_from(["agent-tui", "kill"]);
-        assert!(matches!(cli.command, Commands::Kill));
+        assert!(matches!(
+            cli.command,
+            Commands::Kill {
+                dry_run: false,
+                yes: false
+            }
+        ));
+    }
+
+    #[test]
+    fn test_kill_dry_run_yes() {
+        let cli = Cli::parse_from(["agent-tui", "kill", "--dry-run", "--yes"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Kill {
+                dry_run: true,
+                yes: true
+            }
+        ));
     }
 
     #[test]
@@ -1067,6 +1237,7 @@ mod tests {
             print,
             install,
             yes,
+            ..
         } = cli.command
         else {
             panic!("Expected Completions command, got {:?}", cli.command);
@@ -1103,19 +1274,39 @@ mod tests {
     #[test]
     fn test_daemon_stop_default() {
         let cli = Cli::parse_from(["agent-tui", "daemon", "stop"]);
-        let Commands::Daemon(DaemonCommand::Stop { force }) = cli.command else {
+        let Commands::Daemon(DaemonCommand::Stop {
+            force,
+            dry_run,
+            yes,
+        }) = cli.command
+        else {
             panic!("Expected Daemon Stop command, got {:?}", cli.command);
         };
         assert!(!force, "Default should be graceful stop");
+        assert!(!dry_run);
+        assert!(!yes);
     }
 
     #[test]
     fn test_daemon_stop_force() {
         let cli = Cli::parse_from(["agent-tui", "daemon", "stop", "--force"]);
-        let Commands::Daemon(DaemonCommand::Stop { force }) = cli.command else {
+        let Commands::Daemon(DaemonCommand::Stop { force, .. }) = cli.command else {
             panic!("Expected Daemon Stop command, got {:?}", cli.command);
         };
         assert!(force, "Should be force stop");
+    }
+
+    #[test]
+    fn test_daemon_stop_dry_run_yes() {
+        let cli = Cli::parse_from(["agent-tui", "daemon", "stop", "--dry-run", "--yes"]);
+        let Commands::Daemon(DaemonCommand::Stop {
+            dry_run, yes, ..
+        }) = cli.command
+        else {
+            panic!("Expected Daemon Stop command, got {:?}", cli.command);
+        };
+        assert!(dry_run);
+        assert!(yes);
     }
 
     #[test]
@@ -1123,7 +1314,10 @@ mod tests {
         let cli = Cli::parse_from(["agent-tui", "daemon", "restart"]);
         assert!(matches!(
             cli.command,
-            Commands::Daemon(DaemonCommand::Restart)
+            Commands::Daemon(DaemonCommand::Restart {
+                dry_run: false,
+                yes: false
+            })
         ));
     }
 
@@ -1139,7 +1333,25 @@ mod tests {
     #[test]
     fn test_restart_command_parses() {
         let cli = Cli::parse_from(["agent-tui", "restart"]);
-        assert!(matches!(cli.command, Commands::Restart));
+        assert!(matches!(
+            cli.command,
+            Commands::Restart {
+                dry_run: false,
+                yes: false
+            }
+        ));
+    }
+
+    #[test]
+    fn test_restart_command_dry_run_yes() {
+        let cli = Cli::parse_from(["agent-tui", "restart", "--dry-run", "--yes"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Restart {
+                dry_run: true,
+                yes: true
+            }
+        ));
     }
 
     #[test]

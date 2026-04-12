@@ -72,7 +72,7 @@ impl RealTestHarness {
     fn stop_daemon_inner(&mut self) {
         let _ = StdCommand::new(assert_cmd::cargo::cargo_bin!("agent-tui"))
             .env("AGENT_TUI_SOCKET", &self.socket_path)
-            .args(["daemon", "stop", "--force"])
+            .args(["daemon", "stop", "--force", "--yes"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();

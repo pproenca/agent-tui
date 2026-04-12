@@ -33,7 +33,6 @@ use crate::infra::ipc::UnixSocketClient;
 use crate::infra::ipc::ensure_daemon;
 use tracing::debug;
 
-use crate::adapters::presenter::create_presenter;
 use crate::app::attach::AttachError;
 use crate::app::commands::Cli;
 use crate::app::commands::Commands;
@@ -84,23 +83,39 @@ enum InstallOutcome {
 }
 
 fn handle_completions_command(
+    format: OutputFormat,
     shell: Option<CompletionShell>,
     print: bool,
     install: bool,
     yes: bool,
+    no_input: bool,
 ) -> Result<()> {
     if install {
         let shell = resolve_shell(shell).ok_or_else(|| {
-            anyhow::anyhow!("Shell not specified. Use one of: {}", supported_shells())
+            crate::app::error::CliError::new(
+                format,
+                format!(
+                    "Shell not specified. Re-run with `agent-tui completions --install <bash|zsh|fish|elvish>`."
+                ),
+                None,
+                exit_codes::USAGE,
+            )
         })?;
-        run_completions_wizard(shell, true, yes)?;
+        run_completions_wizard(shell, true, yes, no_input)?;
         return Ok(());
     }
 
     let stdout_tty = io::stdout().is_terminal();
     if print || !stdout_tty {
         let shell = resolve_shell(shell).ok_or_else(|| {
-            anyhow::anyhow!("Shell not specified. Use one of: {}", supported_shells())
+            crate::app::error::CliError::new(
+                format,
+                format!(
+                    "Shell not specified. Re-run with `agent-tui completions --print <bash|zsh|fish|elvish>`."
+                ),
+                None,
+                exit_codes::USAGE,
+            )
         })?;
         let mut cmd = Cli::command();
         generate(
@@ -112,6 +127,20 @@ fn handle_completions_command(
         return Ok(());
     }
 
+    if no_input {
+        let shell = resolve_shell(shell).ok_or_else(|| {
+            crate::app::error::CliError::new(
+                format,
+                "Shell not detected. Re-run with `agent-tui completions <bash|zsh|fish|elvish> --no-input` or `agent-tui completions --print <shell>`."
+                    .to_string(),
+                None,
+                exit_codes::USAGE,
+            )
+        })?;
+        run_completions_wizard(shell, install, yes, true)?;
+        return Ok(());
+    }
+
     let shell = match resolve_shell(shell) {
         Some(shell) => shell,
         None => {
@@ -120,11 +149,16 @@ fn handle_completions_command(
         }
     };
 
-    run_completions_wizard(shell, install, yes)?;
+    run_completions_wizard(shell, install, yes, false)?;
     Ok(())
 }
 
-fn run_completions_wizard(shell: CompletionShell, install: bool, yes: bool) -> Result<()> {
+fn run_completions_wizard(
+    shell: CompletionShell,
+    install: bool,
+    yes: bool,
+    no_input: bool,
+) -> Result<()> {
     println!("{}", Colors::bold("Shell completions"));
     println!("Detected shell: {}", shell_label(shell));
     println!();
@@ -184,7 +218,7 @@ fn run_completions_wizard(shell: CompletionShell, install: bool, yes: bool) -> R
         CompletionStatus::OutOfDate | CompletionStatus::Missing
     ) {
         let stdin_tty = io::stdin().is_terminal();
-        if yes || (stdin_tty && prompt_yes_no("Install/update completions now?", true)?) {
+        if yes || (!no_input && stdin_tty && prompt_yes_no("Install/update completions now?", true)?) {
             let outcome = install_completions(&script, &install_path)?;
             print_install_outcome(outcome);
             print_static_install_note(shell);
@@ -393,7 +427,7 @@ fn print_static_install_note(shell: CompletionShell) {
     }
 }
 
-fn prompt_yes_no(prompt: &str, default_yes: bool) -> io::Result<bool> {
+pub(crate) fn prompt_yes_no(prompt: &str, default_yes: bool) -> io::Result<bool> {
     let suffix = if default_yes { "[Y/n]" } else { "[y/N]" };
     let mut input = String::new();
     loop {
@@ -462,7 +496,7 @@ impl Application {
                 .context("failed to connect to daemon")?
         };
 
-        let mut ctx = HandlerContext::new(&mut client, cli.session, format);
+        let mut ctx = HandlerContext::new(&mut client, cli.session, format, cli.no_input);
         self.dispatch_command(&mut ctx, cli.command)
             .map_err(|e| self.wrap_error(e, format))
             .context("failed to execute command")
@@ -474,8 +508,7 @@ impl Application {
                 if daemon_start_requests_foreground() {
                     crate::app::daemon::start_daemon()?;
                 } else {
-                    crate::infra::ipc::start_daemon_background()?;
-                    println!("Daemon started in background");
+                    handlers::handle_daemon_start_standalone(cli.effective_format())?;
                 }
                 Ok(true)
             }
@@ -487,12 +520,27 @@ impl Application {
                 handlers::handle_daemon_status_standalone(cli.effective_format())?;
                 Ok(true)
             }
-            Commands::Daemon(DaemonCommand::Stop { force }) => {
-                self.handle_daemon_stop_without_autostart(*force)?;
+            Commands::Daemon(DaemonCommand::Stop {
+                force,
+                dry_run,
+                yes,
+            }) => {
+                handlers::handle_daemon_stop_standalone(
+                    cli.effective_format(),
+                    *force,
+                    *dry_run,
+                    *yes,
+                    cli.no_input,
+                )?;
                 Ok(true)
             }
-            Commands::Daemon(DaemonCommand::Restart) => {
-                self.handle_daemon_restart_without_autostart(cli)?;
+            Commands::Daemon(DaemonCommand::Restart { dry_run, yes }) => {
+                handlers::handle_daemon_restart_standalone(
+                    cli.effective_format(),
+                    *dry_run,
+                    *yes,
+                    cli.no_input,
+                )?;
                 Ok(true)
             }
             Commands::Live { command: None } => {
@@ -526,7 +574,14 @@ impl Application {
                 install,
                 yes,
             } => {
-                handle_completions_command(*shell, *print, *install, *yes)?;
+                handle_completions_command(
+                    cli.effective_format(),
+                    *shell,
+                    *print,
+                    *install,
+                    *yes,
+                    cli.no_input,
+                )?;
                 Ok(true)
             }
             Commands::Version => {
@@ -543,37 +598,6 @@ impl Application {
 
     fn requires_daemon_autostart(command: &Commands) -> bool {
         matches!(command, Commands::Run { .. })
-    }
-
-    fn handle_daemon_stop_without_autostart(&self, force: bool) -> Result<()> {
-        match handlers::stop_daemon_core(force)? {
-            handlers::StopResult::Stopped { warnings, .. } => {
-                for warning in &warnings {
-                    eprintln!("{}", Colors::warning(warning));
-                }
-                println!("{}", Colors::success("✓ Daemon stopped"));
-            }
-            handlers::StopResult::AlreadyStopped => {
-                println!("Daemon is not running (already stopped)");
-            }
-        }
-        Ok(())
-    }
-
-    fn handle_daemon_restart_without_autostart(&self, cli: &Cli) -> Result<()> {
-        let format = cli.effective_format();
-        let presenter = create_presenter(&format);
-
-        if let OutputFormat::Text = format {
-            presenter.present_info("Restarting daemon...");
-        }
-
-        let warnings = handlers::restart_daemon_core()?;
-        for warning in &warnings {
-            eprintln!("{}", Colors::warning(warning));
-        }
-        presenter.present_success("Daemon restarted", None);
-        Ok(())
     }
 
     fn connect_to_daemon_autostart(&self) -> Result<UnixSocketClient> {
@@ -599,7 +623,7 @@ impl Application {
                 DaemonCommand::Run => unreachable!("Handled in standalone"),
                 DaemonCommand::Status => unreachable!("Handled in standalone"),
                 DaemonCommand::Stop { .. } => unreachable!("Handled in standalone"),
-                DaemonCommand::Restart => unreachable!("Handled in standalone"),
+                DaemonCommand::Restart { .. } => unreachable!("Handled in standalone"),
             },
             Commands::Completions { .. } => unreachable!("Handled in standalone"),
 
@@ -619,7 +643,7 @@ impl Application {
             } => handlers::handle_snapshot(ctx, region, strip_ansi, retain_ansi, include_cursor)?,
 
             Commands::Resize { cols, rows } => handlers::handle_resize(ctx, cols, rows)?,
-            Commands::Restart => handlers::handle_restart(ctx)?,
+            Commands::Restart { dry_run, yes } => handlers::handle_restart(ctx, dry_run, yes)?,
 
             Commands::Press {
                 mut keys,
@@ -688,7 +712,7 @@ impl Application {
             }
 
             Commands::Wait { params } => handlers::handle_wait(ctx, params)?,
-            Commands::Kill => handlers::handle_kill(ctx)?,
+            Commands::Kill { dry_run, yes } => handlers::handle_kill(ctx, dry_run, yes)?,
 
             Commands::Sessions { command } => {
                 use crate::app::commands::SessionsCommand;
@@ -703,12 +727,19 @@ impl Application {
                         detach_keys,
                     }) => {
                         let attach_id = handlers::resolve_attach_session_id(ctx)?;
-                        handlers::handle_attach(ctx, attach_id, !no_tty, detach_keys)?
+                        handlers::handle_attach(
+                            ctx,
+                            attach_id,
+                            !no_tty && !ctx.no_input,
+                            detach_keys,
+                        )?
                     }
                     Some(SessionsCommand::Switch { session_id }) => {
                         handlers::handle_session_switch(ctx, session_id)?
                     }
-                    Some(SessionsCommand::Cleanup { all }) => handlers::handle_cleanup(ctx, all)?,
+                    Some(SessionsCommand::Cleanup { all, dry_run, yes }) => {
+                        handlers::handle_cleanup(ctx, all, dry_run, yes)?
+                    }
                 }
             }
 
@@ -967,6 +998,7 @@ mod tests {
                 format: OutputFormat::Text,
                 json: false,
                 no_color: true,
+                no_input: false,
             }
         }
 
@@ -979,7 +1011,11 @@ mod tests {
             let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
 
             let app = Application::new();
-            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop { force: false }));
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop {
+                force: false,
+                dry_run: false,
+                yes: true,
+            }));
 
             // When daemon is not running, should succeed (idempotent semantics)
             // The result should be Ok(true), indicating the command was handled
@@ -1034,7 +1070,10 @@ mod tests {
                 .store(true, std::sync::atomic::Ordering::SeqCst);
 
             let app = Application::new();
-            let cli = make_cli(Commands::Daemon(DaemonCommand::Restart));
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Restart {
+                dry_run: false,
+                yes: true,
+            }));
 
             // Restart should be handled as standalone (may error if start fails)
             let result = app.handle_standalone_commands(&cli);
@@ -1187,7 +1226,11 @@ mod tests {
             let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
 
             let app = Application::new();
-            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop { force: false }));
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop {
+                force: false,
+                dry_run: false,
+                yes: true,
+            }));
 
             let result = app.handle_standalone_commands(&cli);
             assert!(
@@ -1210,7 +1253,11 @@ mod tests {
             let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
 
             let app = Application::new();
-            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop { force: true }));
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop {
+                force: true,
+                dry_run: false,
+                yes: true,
+            }));
 
             let result = app.handle_standalone_commands(&cli);
             assert!(
@@ -1234,7 +1281,11 @@ mod tests {
             let _ws_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &ws_state);
 
             let app = Application::new();
-            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop { force: true }));
+            let cli = make_cli(Commands::Daemon(DaemonCommand::Stop {
+                force: true,
+                dry_run: false,
+                yes: true,
+            }));
 
             let result = app.handle_standalone_commands(&cli);
             assert!(

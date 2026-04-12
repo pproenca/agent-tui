@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::domain::core::CursorPosition;
+use crate::domain::RestartOutput;
 use crate::domain::session_types::SessionId;
 use crate::domain::session_types::SessionInfo;
 
@@ -85,6 +86,7 @@ pub trait SessionRepository: Send + Sync {
     fn set_active(&self, session_id: &SessionId) -> Result<(), SessionError>;
     fn list(&self) -> Vec<SessionInfo>;
     fn kill(&self, session_id: &SessionId) -> Result<(), SessionError>;
+    fn restart(&self, session_id: Option<&SessionId>) -> Result<RestartOutput, SessionError>;
     fn session_count(&self) -> usize;
     fn active_session_id(&self) -> Option<SessionId>;
 }

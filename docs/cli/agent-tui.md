@@ -59,6 +59,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 WORKFLOW:
     1. Run a TUI application
     2. View the screenshot
@@ -71,6 +77,7 @@ OUTPUT:
     --format text  Human-readable text (default)
 
 CONFIGURATION:
+    AGENT_TUI_NO_INPUT          Disable prompts and interactive TTY behavior (default: false)
     AGENT_TUI_TRANSPORT         IPC transport (unix or ws; default: unix)
     AGENT_TUI_WS_ADDR           Remote WS-RPC target when transport is ws (e.g. ws://host:port/ws)
     AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-Q)
@@ -172,6 +179,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui run bash
     agent-tui run htop
@@ -228,6 +241,12 @@ Session Options:
   -s, --session <ID>
           Session ID to use (defaults to the most recent session)
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui screenshot              # Just the screenshot
     agent-tui screenshot --retain-ansi # Preserve terminal colors/styles
@@ -273,6 +292,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui resize --cols 120 --rows 40
 ```
@@ -285,6 +310,12 @@ Restart the current session command, creating a new session.
 Usage: restart [OPTIONS]
 
 Options:
+      --dry-run
+          Preview the restart without changing the session
+
+  -y, --yes
+          Skip interactive confirmation
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -310,9 +341,15 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
-    agent-tui restart
-    agent-tui --session abc123 restart
+    agent-tui restart --yes
+    agent-tui --session abc123 restart --dry-run
 ```
 
 ## `agent-tui press`
@@ -359,6 +396,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 NOTES:
     --hold/--release require a single modifier key (Ctrl, Alt, Shift, Meta)
 
@@ -373,7 +416,9 @@ EXAMPLES:
 ## `agent-tui type`
 
 ```text
-Type literal text character by character
+Type literal text character by character.
+
+Pass `-` to read the text payload from stdin in non-interactive pipelines.
 
 Usage: type [OPTIONS] <TEXT>
 
@@ -407,9 +452,16 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui type "hello world"
     agent-tui type "user@example.com"
+    printf 'project-name' | agent-tui type -
 ```
 
 ## `agent-tui scroll`
@@ -462,6 +514,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui scroll down
     agent-tui scroll up 10
@@ -482,7 +540,7 @@ WAIT CONDITIONS:
     -g, --gone   Modifier: wait for text to disappear
 
 ASSERT MODE:
-    --assert            Exit with code 0 if condition met, 1 if timeout.
+    --assert            Exit with code 0 if condition met, 75 if timeout.
                         Without --assert, always exit 0 (timeout still reported).
 
 Usage: wait [OPTIONS] <TEXT|--stable>
@@ -513,7 +571,7 @@ Wait Condition:
 
 Behavior:
       --assert
-          Exit with status 0 if met, 1 on timeout
+          Exit with status 0 if met, 75 on timeout
 
 Session Options:
   -s, --session <ID>
@@ -534,6 +592,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui wait "Continue"           # Wait for text
     agent-tui wait --stable             # Wait for screenshot stability
@@ -549,6 +613,12 @@ Kill the current session
 Usage: kill [OPTIONS]
 
 Options:
+      --dry-run
+          Preview the kill without changing the session
+
+  -y, --yes
+          Skip interactive confirmation
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -574,9 +644,15 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
-    agent-tui kill
-    agent-tui --session abc123 kill
+    agent-tui kill --yes
+    agent-tui --session abc123 kill --dry-run
 ```
 
 ## `agent-tui sessions`
@@ -629,6 +705,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui sessions                    # List sessions
     agent-tui sessions list               # List sessions (explicit)
@@ -638,8 +720,8 @@ EXAMPLES:
     agent-tui sessions switch abc123      # Set active session
     agent-tui -s abc123 sessions attach -T # Attach without TTY (stream output only)
     agent-tui sessions attach --detach-keys 'ctrl-]'  # Custom detach sequence
-    agent-tui sessions cleanup            # Remove dead sessions
-    agent-tui sessions cleanup --all      # Remove all sessions
+    agent-tui sessions cleanup --yes            # Remove dead sessions
+    agent-tui sessions cleanup --all --dry-run  # Preview removing all sessions
 ```
 
 ## `agent-tui sessions list`
@@ -651,7 +733,7 @@ Usage: list [OPTIONS]
 
 Options:
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
   -V, --version
           Print version
@@ -674,6 +756,16 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+EXAMPLES:
+    agent-tui sessions list
+    agent-tui --json sessions list
 ```
 
 ## `agent-tui sessions show`
@@ -689,7 +781,7 @@ Arguments:
 
 Options:
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
   -V, --version
           Print version
@@ -712,6 +804,16 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+EXAMPLES:
+    agent-tui sessions show abc123
+    agent-tui --json sessions show abc123
 ```
 
 ## `agent-tui sessions attach`
@@ -731,7 +833,7 @@ Options:
           [env: AGENT_TUI_DETACH_KEYS=]
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
   -V, --version
           Print version
@@ -754,6 +856,20 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+NOTES:
+    --no-input implies --no-tty for automation-safe streaming.
+
+EXAMPLES:
+    agent-tui sessions attach
+    agent-tui -s abc123 sessions attach --no-tty
+    agent-tui --no-input sessions attach
 ```
 
 ## `agent-tui sessions switch`
@@ -769,7 +885,7 @@ Arguments:
 
 Options:
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
   -V, --version
           Print version
@@ -792,6 +908,16 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+EXAMPLES:
+    agent-tui sessions switch abc123
+    agent-tui sessions select abc123
 ```
 
 ## `agent-tui sessions cleanup`
@@ -805,8 +931,14 @@ Options:
       --all
           Remove all sessions (including active)
 
+      --dry-run
+          Preview which sessions would be cleaned without killing them
+
+  -y, --yes
+          Skip interactive confirmation
+
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
   -V, --version
           Print version
@@ -829,6 +961,16 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+EXAMPLES:
+    agent-tui sessions cleanup --yes
+    agent-tui sessions cleanup --all --dry-run
 ```
 
 ## `agent-tui sessions help`
@@ -865,7 +1007,7 @@ Usage: live [OPTIONS] [COMMAND]
 
 Commands:
   start   Show the live preview API details
-  stop    Stop the live preview API (stop the daemon)
+  stop    Stop any managed UI server and show how to stop daemon-backed live preview
   status  Show live preview API status
   help    Print this message or the help of the given subcommand(s)
 
@@ -895,6 +1037,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui live start
     agent-tui live status
@@ -916,7 +1064,7 @@ Options:
           Browser command to use (overrides $BROWSER)
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
   -V, --version
           Print version
@@ -939,18 +1087,28 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+EXAMPLES:
+    agent-tui live start
+    agent-tui live start --open
 ```
 
 ## `agent-tui live stop`
 
 ```text
-Stop the live preview API (stop the daemon)
+Stop any managed UI server and show how to stop daemon-backed live preview
 
 Usage: stop [OPTIONS]
 
 Options:
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
   -V, --version
           Print version
@@ -973,6 +1131,16 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+EXAMPLES:
+    agent-tui live stop
+    agent-tui daemon stop --yes   # Stop daemon-backed live preview
 ```
 
 ## `agent-tui live status`
@@ -984,7 +1152,7 @@ Usage: status [OPTIONS]
 
 Options:
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
   -V, --version
           Print version
@@ -1007,6 +1175,16 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+EXAMPLES:
+    agent-tui live status
+    agent-tui --json live status
 ```
 
 ## `agent-tui live help`
@@ -1024,7 +1202,10 @@ Arguments:
 ## `agent-tui daemon`
 
 ```text
-Manage the background daemon
+Manage the background daemon lifecycle.
+
+Use `daemon start` to launch in the background, `daemon run` for foreground
+debugging, and `daemon status` to inspect the local daemon state.
 
 Usage: daemon [OPTIONS] <COMMAND>
 
@@ -1038,7 +1219,7 @@ Commands:
 
 Options:
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
   -V, --version
           Print version
@@ -1061,6 +1242,17 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+EXAMPLES:
+    agent-tui daemon start
+    agent-tui daemon status
+    agent-tui daemon stop --yes
 ```
 
 ## `agent-tui daemon start`
@@ -1098,6 +1290,12 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
     agent-tui daemon start              # Start in background
@@ -1140,6 +1338,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui daemon run
     AGENT_TUI_WS_LISTEN=0.0.0.0:8080 agent-tui daemon run
@@ -1159,6 +1363,12 @@ Usage: stop [OPTIONS]
 Options:
       --force
           Force kill the daemon (SIGKILL)
+
+      --dry-run
+          Preview the stop without changing daemon state
+
+  -y, --yes
+          Skip interactive confirmation
 
   -h, --help
           Print help (see a summary with '-h')
@@ -1185,9 +1395,15 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
-    agent-tui daemon stop          # Graceful stop
-    agent-tui daemon stop --force  # Force kill
+    agent-tui daemon stop --yes          # Graceful stop
+    agent-tui daemon stop --force --yes  # Force kill
 ```
 
 ## `agent-tui daemon status`
@@ -1229,6 +1445,16 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+EXAMPLES:
+    agent-tui daemon status
+    agent-tui --json daemon status
 ```
 
 ## `agent-tui daemon restart`
@@ -1244,6 +1470,12 @@ All active sessions will be terminated during restart.
 Usage: restart [OPTIONS]
 
 Options:
+      --dry-run
+          Preview the restart without changing daemon state
+
+  -y, --yes
+          Skip interactive confirmation
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -1268,6 +1500,16 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
+EXAMPLES:
+    agent-tui daemon restart --yes
+    agent-tui daemon restart --dry-run
 ```
 
 ## `agent-tui daemon help`
@@ -1318,6 +1560,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui version
     agent-tui --format json version
@@ -1359,6 +1607,12 @@ Output Options:
           
           [env: NO_COLOR=1]
 
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
+
 EXAMPLES:
     agent-tui env
     agent-tui --format json env
@@ -1372,6 +1626,8 @@ Generate or install shell completions for bash, zsh, fish, or elvish.
 Runs an interactive setup by default (auto-detects your shell) and checks
 whether your installed completions are up-to-date. Use --print to output the
 raw completion script for scripting or redirection.
+
+Use --no-input to disable prompts and require explicit shell selection.
 
 Usage: completions [OPTIONS] [SHELL]
 
@@ -1413,6 +1669,12 @@ Output Options:
           Disable colored output (also respects NO_COLOR)
           
           [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+          
+          [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
     agent-tui completions

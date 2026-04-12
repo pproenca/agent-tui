@@ -132,12 +132,12 @@ mod tests {
             include_render: true,
         };
 
-        let json = serde_json::to_value(&params).unwrap();
+        let json = serde_json::to_value(&params).expect("snapshot params should serialize");
         assert!(json.get("session").is_some());
-        assert_eq!(json.get("strip_ansi").unwrap(), true);
-        assert_eq!(json.get("retain_ansi").unwrap(), false);
-        assert_eq!(json.get("include_cursor").unwrap(), false);
-        assert_eq!(json.get("include_render").unwrap(), true);
+        assert_eq!(json["strip_ansi"], true);
+        assert_eq!(json["retain_ansi"], false);
+        assert_eq!(json["include_cursor"], false);
+        assert_eq!(json["include_render"], true);
     }
 
     #[test]

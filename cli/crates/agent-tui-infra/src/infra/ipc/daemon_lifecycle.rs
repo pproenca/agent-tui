@@ -205,13 +205,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::mutex_lock_or_recover;
     use crate::test_support::MockProcessController;
     use tempfile::tempdir;
 
     #[test]
     fn test_stop_daemon_not_running() {
         let mock = MockProcessController::new();
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
         let result = stop_daemon(&mock, 1234, &socket, false);
@@ -223,12 +224,12 @@ mod tests {
         let mock = MockProcessController::new()
             .with_process(1234, ProcessStatus::Running)
             .with_signal_kills_process();
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
         let result = stop_daemon(&mock, 1234, &socket, false);
         assert!(result.is_ok());
-        let stop_result = result.unwrap();
+        let stop_result = result.expect("stop_daemon should succeed");
         assert_eq!(stop_result.pid, 1234);
         assert!(stop_result.warnings.is_empty());
         assert_eq!(mock.signals_sent(), vec![(1234, Signal::Term)]);
@@ -239,7 +240,7 @@ mod tests {
         let mock = MockProcessController::new()
             .with_process(1234, ProcessStatus::Running)
             .with_signal_kills_process();
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
         let result = stop_daemon(&mock, 1234, &socket, true);
@@ -250,7 +251,7 @@ mod tests {
     #[test]
     fn test_stop_daemon_returns_error_if_process_still_running() {
         let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("missing.sock");
 
         let result = stop_daemon(&mock, 1234, &socket, false);
@@ -268,7 +269,7 @@ mod tests {
     #[test]
     fn test_stop_daemon_no_permission() {
         let mock = MockProcessController::new().with_process(1234, ProcessStatus::NoPermission);
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
         let result = stop_daemon(&mock, 1234, &socket, false);
@@ -285,12 +286,12 @@ mod tests {
     #[test]
     fn test_stop_daemon_cleans_stale_socket() {
         let mock = MockProcessController::new();
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
         let lock = socket.with_extension("lock");
 
-        std::fs::write(&socket, "stale").unwrap();
-        std::fs::write(&lock, "1234").unwrap();
+        std::fs::write(&socket, "stale").expect("stale socket should be written");
+        std::fs::write(&lock, "1234").expect("stale lock should be written");
 
         let result = stop_daemon(&mock, 1234, &socket, false);
         assert!(matches!(result, Err(ClientError::DaemonNotRunning)));
@@ -302,7 +303,7 @@ mod tests {
     #[test]
     fn test_restart_daemon_not_running() {
         let mock = MockProcessController::new();
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
         let started = std::sync::atomic::AtomicBool::new(false);
 
@@ -325,7 +326,7 @@ mod tests {
         let mock = MockProcessController::new()
             .with_process(1234, ProcessStatus::Running)
             .with_signal_kills_process();
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
         let started = std::sync::atomic::AtomicBool::new(false);
 
@@ -349,7 +350,7 @@ mod tests {
         let mock = MockProcessController::new()
             .with_process(1234, ProcessStatus::Running)
             .with_signal_kills_process();
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
         let result = restart_daemon(
@@ -367,7 +368,7 @@ mod tests {
     #[test]
     fn test_restart_daemon_start_fails_when_not_running() {
         let mock = MockProcessController::new();
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
         let result = restart_daemon(
@@ -404,22 +405,20 @@ mod tests {
         }
 
         fn with_shutdown_response(self, response: Result<Value, ClientError>) -> Self {
-            *self.shutdown_response.lock().unwrap() = Some(response);
+            *mutex_lock_or_recover(&self.shutdown_response) = Some(response);
             self
         }
 
         fn calls(&self) -> Vec<String> {
-            self.calls.lock().unwrap().clone()
+            mutex_lock_or_recover(&self.calls).clone()
         }
     }
 
     impl DaemonClient for MockDaemonClient {
         fn call(&mut self, method: &str, _params: Option<Value>) -> Result<Value, ClientError> {
-            self.calls.lock().unwrap().push(method.to_string());
+            mutex_lock_or_recover(&self.calls).push(method.to_string());
             if method == "shutdown" {
-                self.shutdown_response
-                    .lock()
-                    .unwrap()
+                mutex_lock_or_recover(&self.shutdown_response)
                     .take()
                     .unwrap_or(Err(ClientError::InvalidResponse))
             } else {
@@ -440,13 +439,13 @@ mod tests {
     #[test]
     fn test_stop_daemon_via_rpc_success() {
         let mut client = MockDaemonClient::new();
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
         let result = stop_daemon_via_rpc(&mut client, &socket);
 
         assert!(result.is_ok());
-        let stop_result = result.unwrap();
+        let stop_result = result.expect("stop_daemon_via_rpc should succeed");
         assert!(stop_result.warnings.is_empty());
         assert_eq!(client.calls(), vec!["shutdown"]);
     }
@@ -455,7 +454,7 @@ mod tests {
     fn test_stop_daemon_via_rpc_not_acknowledged() {
         let mut client =
             MockDaemonClient::new().with_shutdown_response(Ok(json!({ "acknowledged": false })));
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
         let result = stop_daemon_via_rpc(&mut client, &socket);
@@ -471,7 +470,7 @@ mod tests {
         let mut client = MockDaemonClient::new().with_shutdown_response(Err(
             ClientError::ConnectionFailed(std::io::Error::other("connection refused")),
         ));
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
         let result = stop_daemon_via_rpc(&mut client, &socket);

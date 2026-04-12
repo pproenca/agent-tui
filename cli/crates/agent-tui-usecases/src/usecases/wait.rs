@@ -116,7 +116,7 @@ mod tests {
         let usecase = WaitUseCaseImpl::new(repo, clock);
 
         let input = WaitInput {
-            session_id: Some(SessionId::new("missing")),
+            session_id: Some(SessionId::try_new("missing").expect("valid session id")),
             text: Some("ready".to_string()),
             timeout_ms: 1000,
             condition: None,

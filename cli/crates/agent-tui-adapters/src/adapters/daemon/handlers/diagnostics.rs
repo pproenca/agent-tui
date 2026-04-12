@@ -66,8 +66,10 @@ mod tests {
         let request = RpcRequest::new(1, "shutdown".to_string(), None);
         let response = handle_shutdown_uc(&usecase, request);
 
-        let json_str = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let json_str =
+            serde_json::to_string(&response).expect("shutdown response should serialize");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("shutdown response should parse");
 
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert_eq!(parsed["result"]["acknowledged"], true);

@@ -405,6 +405,7 @@ pub fn get_daemon_pid() -> PidLookupResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::mutex_lock_or_recover;
     use std::io::ErrorKind;
     use std::sync::Mutex;
 
@@ -416,7 +417,7 @@ mod tests {
             method: "version".to_string(),
             params: None,
         };
-        let json = serde_json::to_string(&request).unwrap();
+        let json = serde_json::to_string(&request).expect("request should serialize");
         assert!(json.contains("\"jsonrpc\":\"2.0\""));
         assert!(json.contains("\"id\":1"));
         assert!(json.contains("\"method\":\"version\""));
@@ -431,7 +432,7 @@ mod tests {
             method: "spawn".to_string(),
             params: Some(serde_json::json!({"command": "bash", "cols": 80})),
         };
-        let json = serde_json::to_string(&request).unwrap();
+        let json = serde_json::to_string(&request).expect("request should serialize");
         assert!(json.contains("\"params\""));
         assert!(json.contains("\"command\":\"bash\""));
     }
@@ -439,7 +440,7 @@ mod tests {
     #[test]
     fn test_response_deserializes_success_result() {
         let json = r#"{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}"#;
-        let response: Response = serde_json::from_str(json).unwrap();
+        let response: Response = serde_json::from_str(json).expect("response should parse");
         assert!(response.result.is_some());
         assert!(response.error.is_none());
     }
@@ -448,10 +449,10 @@ mod tests {
     fn test_response_deserializes_error() {
         let json =
             r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}"#;
-        let response: Response = serde_json::from_str(json).unwrap();
+        let response: Response = serde_json::from_str(json).expect("response should parse");
         assert!(response.result.is_none());
         assert!(response.error.is_some());
-        let error = response.error.unwrap();
+        let error = response.error.expect("error payload should be present");
         assert_eq!(error.code, -32600);
     }
 
@@ -504,12 +505,12 @@ mod tests {
 
     #[test]
     fn test_ensure_daemon_starts_when_not_running() {
-        let _guard = ENV_MUTEX.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _guard = mutex_lock_or_recover(ENV_MUTEX.get_or_init(|| Mutex::new(())));
 
         let temp_dir = tempfile::Builder::new()
             .prefix("agent-tui-test-")
             .tempdir_in("/tmp")
-            .unwrap();
+            .expect("temp dir should be created");
         let socket_path = temp_dir.path().join("agent-tui.sock");
         let _ = std::fs::remove_file(&socket_path);
 
@@ -570,8 +571,11 @@ mod tests {
             },
         ));
 
-        let mut client = UnixSocketClient::connect_with_transport(transport).unwrap();
-        let result = client.call("version", None).unwrap();
+        let mut client = UnixSocketClient::connect_with_transport(transport)
+            .expect("transport-backed client should connect");
+        let result = client
+            .call("version", None)
+            .expect("transport-backed call should succeed");
         assert_eq!(result["ok"], true);
     }
 }

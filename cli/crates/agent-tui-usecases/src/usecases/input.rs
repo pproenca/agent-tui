@@ -136,7 +136,7 @@ mod tests {
         let usecase = KeystrokeUseCaseImpl::new(repo);
 
         let input = KeystrokeInput {
-            session_id: Some(SessionId::new("missing")),
+            session_id: Some(SessionId::try_new("missing").expect("valid session id")),
             key: "Tab".to_string(),
         };
 
@@ -168,7 +168,7 @@ mod tests {
         let usecase = TypeUseCaseImpl::new(repo);
 
         let input = TypeInput {
-            session_id: Some(SessionId::new("missing")),
+            session_id: Some(SessionId::try_new("missing").expect("valid session id")),
             text: "test text".to_string(),
         };
 
@@ -200,7 +200,7 @@ mod tests {
         let usecase = KeydownUseCaseImpl::new(repo);
 
         let input = KeydownInput {
-            session_id: Some(SessionId::new("missing")),
+            session_id: Some(SessionId::try_new("missing").expect("valid session id")),
             key: "Shift".to_string(),
         };
 
@@ -232,7 +232,7 @@ mod tests {
         let usecase = KeyupUseCaseImpl::new(repo);
 
         let input = KeyupInput {
-            session_id: Some(SessionId::new("missing")),
+            session_id: Some(SessionId::try_new("missing").expect("valid session id")),
             key: "Alt".to_string(),
         };
 

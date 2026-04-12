@@ -52,8 +52,15 @@ pub fn acquire_session_lock(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::mutex_lock_or_recover;
     use std::sync::Barrier;
     use std::sync::Condvar;
+    use std::sync::MutexGuard;
+
+    fn wait_or_recover<'a, T>(cvar: &Condvar, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
+        cvar.wait(guard)
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     #[test]
     fn test_backoff_respects_max() {
@@ -108,7 +115,7 @@ mod tests {
     #[test]
     fn test_lock_timeout_with_held_mutex() {
         let data = Arc::new(Mutex::new(42i32));
-        let _held = data.lock().unwrap();
+        let _held = mutex_lock_or_recover(&data);
         let start = Instant::now();
         let mut backoff = Duration::from_micros(100);
         let timeout = Duration::from_millis(50);
@@ -133,25 +140,25 @@ mod tests {
         let sync_clone = Arc::clone(&sync);
 
         let handle = thread::spawn(move || {
-            let _guard = data_clone.lock().unwrap();
+            let _guard = mutex_lock_or_recover(&data_clone);
 
             {
                 let (lock, cvar) = &*sync_clone;
-                let mut state = lock.lock().unwrap();
+                let mut state = mutex_lock_or_recover(lock);
                 state.0 = true;
                 cvar.notify_all();
 
                 while !state.1 {
-                    state = cvar.wait(state).unwrap();
+                    state = wait_or_recover(cvar, state);
                 }
             }
         });
 
         {
             let (lock, cvar) = &*sync;
-            let mut state = lock.lock().unwrap();
+            let mut state = mutex_lock_or_recover(lock);
             while !state.0 {
-                state = cvar.wait(state).unwrap();
+                state = wait_or_recover(cvar, state);
             }
         }
 
@@ -159,7 +166,7 @@ mod tests {
 
         {
             let (lock, cvar) = &*sync;
-            let mut state = lock.lock().unwrap();
+            let mut state = mutex_lock_or_recover(lock);
             state.1 = true;
             cvar.notify_all();
         }
@@ -180,7 +187,7 @@ mod tests {
             backoff = (backoff * 2).min(MAX_BACKOFF);
         }
 
-        handle.join().unwrap();
+        handle.join().expect("worker thread should join");
         assert!(acquired, "Should have acquired lock after contention");
     }
 
@@ -193,7 +200,7 @@ mod tests {
         let barrier_clone = Arc::clone(&barrier);
 
         let handle = thread::spawn(move || {
-            let _guard = data_clone.lock().unwrap();
+            let _guard = mutex_lock_or_recover(&data_clone);
             barrier_clone.wait();
             thread::park_timeout(Duration::from_millis(200));
         });
@@ -224,6 +231,6 @@ mod tests {
             "Should have waited full timeout"
         );
 
-        handle.join().unwrap();
+        handle.join().expect("worker thread should join");
     }
 }

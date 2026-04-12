@@ -1,5 +1,5 @@
 //! Mock IPC client for tests.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::expect_used)]
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -7,6 +7,7 @@ use std::sync::Mutex;
 
 use serde_json::Value;
 
+use crate::common::mutex_lock_or_recover;
 use crate::infra::ipc::client::DaemonClient;
 use crate::infra::ipc::client::DaemonClientConfig;
 use crate::infra::ipc::error::ClientError;
@@ -47,10 +48,7 @@ impl MockClient {
     }
 
     pub fn set_response(&mut self, method: &str, response: Value) {
-        self.responses
-            .lock()
-            .unwrap()
-            .insert(method.to_string(), response);
+        mutex_lock_or_recover(&self.responses).insert(method.to_string(), response);
     }
 
     pub fn set_default_response(&mut self, response: Value) {
@@ -58,22 +56,18 @@ impl MockClient {
     }
 
     pub fn get_calls(&self) -> Vec<(String, Option<Value>)> {
-        self.calls.lock().unwrap().clone()
+        mutex_lock_or_recover(&self.calls).clone()
     }
 
     pub fn call_count(&self, method: &str) -> usize {
-        self.calls
-            .lock()
-            .unwrap()
+        mutex_lock_or_recover(&self.calls)
             .iter()
             .filter(|(m, _)| m == method)
             .count()
     }
 
     pub fn last_call(&self, method: &str) -> Option<(String, Option<Value>)> {
-        self.calls
-            .lock()
-            .unwrap()
+        mutex_lock_or_recover(&self.calls)
             .iter()
             .rev()
             .find(|(m, _)| m == method)
@@ -81,9 +75,7 @@ impl MockClient {
     }
 
     pub fn params_for(&self, method: &str) -> Vec<Option<Value>> {
-        self.calls
-            .lock()
-            .unwrap()
+        mutex_lock_or_recover(&self.calls)
             .iter()
             .filter(|(m, _)| m == method)
             .map(|(_, p)| p.clone())
@@ -91,11 +83,11 @@ impl MockClient {
     }
 
     pub fn clear_calls(&mut self) {
-        self.calls.lock().unwrap().clear();
+        mutex_lock_or_recover(&self.calls).clear();
     }
 
     pub fn clear_responses(&mut self) {
-        self.responses.lock().unwrap().clear();
+        mutex_lock_or_recover(&self.responses).clear();
     }
 
     pub fn reset(&mut self) {
@@ -106,12 +98,9 @@ impl MockClient {
 
 impl DaemonClient for MockClient {
     fn call(&mut self, method: &str, params: Option<Value>) -> Result<Value, ClientError> {
-        self.calls
-            .lock()
-            .unwrap()
-            .push((method.to_string(), params));
+        mutex_lock_or_recover(&self.calls).push((method.to_string(), params));
 
-        let responses = self.responses.lock().unwrap();
+        let responses = mutex_lock_or_recover(&self.responses);
         if let Some(response) = responses.get(method) {
             Ok(response.clone())
         } else if self.error_on_missing {
@@ -148,7 +137,9 @@ mod tests {
         let mut mock = MockClient::new();
         mock.set_response("version", json!({ "status": "ok" }));
 
-        let result = mock.call("version", None).unwrap();
+        let result = mock
+            .call("version", None)
+            .expect("configured response should be returned");
         assert_eq!(result, json!({ "status": "ok" }));
     }
 
@@ -156,7 +147,9 @@ mod tests {
     fn test_mock_client_returns_default_for_unconfigured() {
         let mut mock = MockClient::new();
 
-        let result = mock.call("unknown", None).unwrap();
+        let result = mock
+            .call("unknown", None)
+            .expect("default response should be returned");
         assert_eq!(result, json!({ "success": true }));
     }
 
@@ -173,10 +166,11 @@ mod tests {
         let mut mock = MockClient::new();
 
         mock.call("method1", Some(json!({ "key": "value" })))
-            .unwrap();
-        mock.call("method2", None).unwrap();
+            .expect("first call should succeed");
+        mock.call("method2", None)
+            .expect("second call should succeed");
         mock.call("method1", Some(json!({ "key2": "value2" })))
-            .unwrap();
+            .expect("third call should succeed");
 
         assert_eq!(mock.call_count("method1"), 2);
         assert_eq!(mock.call_count("method2"), 1);
@@ -187,10 +181,14 @@ mod tests {
     fn test_mock_client_last_call() {
         let mut mock = MockClient::new();
 
-        mock.call("test", Some(json!({ "attempt": 1 }))).unwrap();
-        mock.call("test", Some(json!({ "attempt": 2 }))).unwrap();
+        mock.call("test", Some(json!({ "attempt": 1 })))
+            .expect("first call should succeed");
+        mock.call("test", Some(json!({ "attempt": 2 })))
+            .expect("second call should succeed");
 
-        let last = mock.last_call("test").unwrap();
+        let last = mock
+            .last_call("test")
+            .expect("last call should be recorded");
         assert_eq!(last.1, Some(json!({ "attempt": 2 })));
     }
 
@@ -198,9 +196,12 @@ mod tests {
     fn test_mock_client_params_for() {
         let mut mock = MockClient::new();
 
-        mock.call("test", Some(json!({ "a": 1 }))).unwrap();
-        mock.call("other", Some(json!({ "b": 2 }))).unwrap();
-        mock.call("test", Some(json!({ "c": 3 }))).unwrap();
+        mock.call("test", Some(json!({ "a": 1 })))
+            .expect("first call should succeed");
+        mock.call("other", Some(json!({ "b": 2 })))
+            .expect("second call should succeed");
+        mock.call("test", Some(json!({ "c": 3 })))
+            .expect("third call should succeed");
 
         let params = mock.params_for("test");
         assert_eq!(params.len(), 2);
@@ -212,12 +213,14 @@ mod tests {
     fn test_mock_client_reset() {
         let mut mock = MockClient::new();
         mock.set_response("test", json!({ "data": "value" }));
-        mock.call("test", None).unwrap();
+        mock.call("test", None).expect("call should succeed");
 
         mock.reset();
 
         assert_eq!(mock.call_count("test"), 0);
-        let result = mock.call("test", None).unwrap();
+        let result = mock
+            .call("test", None)
+            .expect("default response should be returned after reset");
         assert_eq!(result, json!({ "success": true }));
     }
 
@@ -226,7 +229,9 @@ mod tests {
         let mut mock = MockClient::new();
         mock.set_default_response(json!({ "custom": "default" }));
 
-        let result = mock.call("any_method", None).unwrap();
+        let result = mock
+            .call("any_method", None)
+            .expect("custom default response should be returned");
         assert_eq!(result, json!({ "custom": "default" }));
     }
 }

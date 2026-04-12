@@ -116,8 +116,12 @@ impl TestHarness {
         let actual_params = request.params.unwrap_or(Value::Null);
 
         if expected_params.is_object() && actual_params.is_object() {
-            let expected_obj = expected_params.as_object().unwrap();
-            let actual_obj = actual_params.as_object().unwrap();
+            let Some(expected_obj) = expected_params.as_object() else {
+                panic!("Expected params should be an object");
+            };
+            let Some(actual_obj) = actual_params.as_object() else {
+                panic!("Actual params should be an object");
+            };
 
             for (key, expected_value) in expected_obj {
                 let actual_value = actual_obj.get(key).unwrap_or_else(|| {

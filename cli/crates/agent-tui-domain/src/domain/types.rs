@@ -17,6 +17,7 @@ pub struct WaitConditionTypeError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum WaitConditionType {
     Text,
     Stable,
@@ -243,6 +244,7 @@ pub struct AssertConditionParseError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AssertConditionType {
     Text,
     Session,
@@ -328,11 +330,11 @@ mod tests {
         #[test]
         fn test_wait_condition_type_case_insensitive() {
             assert_eq!(
-                WaitConditionType::parse("TEXT").unwrap(),
+                WaitConditionType::parse("TEXT").expect("TEXT should parse"),
                 WaitConditionType::Text
             );
             assert_eq!(
-                WaitConditionType::parse("STABLE").unwrap(),
+                WaitConditionType::parse("STABLE").expect("STABLE should parse"),
                 WaitConditionType::Stable
             );
         }
@@ -359,7 +361,8 @@ mod tests {
 
         #[test]
         fn test_wait_condition_type_error_message() {
-            let err = WaitConditionType::parse("invalid").unwrap_err();
+            let err = WaitConditionType::parse("invalid")
+                .expect_err("invalid wait condition should be rejected");
             assert!(err.to_string().contains("invalid"));
             assert!(err.to_string().contains("text"));
         }
@@ -371,7 +374,7 @@ mod tests {
         #[test]
         fn test_assert_condition_type_parse_text() {
             assert_eq!(
-                AssertConditionType::parse("text").unwrap(),
+                AssertConditionType::parse("text").expect("text assert condition should parse"),
                 AssertConditionType::Text
             );
         }
@@ -379,7 +382,8 @@ mod tests {
         #[test]
         fn test_assert_condition_type_parse_session() {
             assert_eq!(
-                AssertConditionType::parse("session").unwrap(),
+                AssertConditionType::parse("session")
+                    .expect("session assert condition should parse"),
                 AssertConditionType::Session
             );
         }

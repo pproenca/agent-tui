@@ -75,7 +75,10 @@ pub fn handle_sessions<U: SessionsUseCase>(usecase: &U, request: RpcRequest) -> 
 
 pub fn handle_resize<U: ResizeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "resize").entered();
-    let input = parse_resize_input(&request);
+    let input = match parse_resize_input(&request) {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
 
     match usecase.execute(input) {
         Ok(output) => resize_output_to_response(request.id, output),

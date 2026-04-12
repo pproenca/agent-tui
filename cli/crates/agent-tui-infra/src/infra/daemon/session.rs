@@ -73,7 +73,7 @@ const STARTUP_KILL_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const STARTUP_PID_START_TOLERANCE_SECS: i64 = 30;
 
 pub fn generate_session_id() -> SessionId {
-    SessionId::new(Uuid::new_v4().to_string()[..8].to_string())
+    SessionId::new_unchecked(Uuid::new_v4().to_string()[..8].to_string())
 }
 
 struct StreamState {
@@ -843,15 +843,14 @@ impl SessionManager {
         args: &[String],
         cwd: Option<&str>,
         env: Option<&HashMap<String, String>>,
-        session_id: Option<String>,
+        session_id: Option<SessionId>,
         cols: u16,
         rows: u16,
     ) -> Result<(SessionId, u32), SessionError> {
         if let Some(ref requested_id) = session_id {
             let sessions = rwlock_read_or_recover(&self.sessions);
-            let id = SessionId::new(requested_id.clone());
-            if sessions.contains_key(&id) {
-                return Err(SessionError::AlreadyExists(requested_id.clone()));
+            if sessions.contains_key(requested_id) {
+                return Err(SessionError::AlreadyExists(requested_id.to_string()));
             }
         }
 
@@ -862,9 +861,7 @@ impl SessionManager {
             }
         }
 
-        let id = session_id
-            .map(SessionId::new)
-            .unwrap_or_else(generate_session_id);
+        let id = session_id.unwrap_or_else(generate_session_id);
 
         let pty = PtyHandle::spawn(command, args, cwd, env, cols, rows)
             .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
@@ -907,11 +904,10 @@ impl SessionManager {
         Ok((id, pid))
     }
 
-    pub fn get(&self, session_id: &str) -> Result<Arc<Mutex<Session>>, SessionError> {
+    pub fn get(&self, session_id: &SessionId) -> Result<Arc<Mutex<Session>>, SessionError> {
         let sessions = rwlock_read_or_recover(&self.sessions);
-        let id = SessionId::new(session_id);
         sessions
-            .get(&id)
+            .get(session_id)
             .cloned()
             .ok_or_else(|| SessionError::NotFound(session_id.to_string()))
     }
@@ -923,12 +919,15 @@ impl SessionManager {
         };
 
         match active_id {
-            Some(id) => self.get(id.as_str()),
+            Some(id) => self.get(&id),
             None => Err(SessionError::NoActiveSession),
         }
     }
 
-    pub fn resolve(&self, session_id: Option<&str>) -> Result<Arc<Mutex<Session>>, SessionError> {
+    pub fn resolve(
+        &self,
+        session_id: Option<&SessionId>,
+    ) -> Result<Arc<Mutex<Session>>, SessionError> {
         match session_id {
             Some(id) => self.get(id),
             None => {
@@ -952,14 +951,13 @@ impl SessionManager {
         }
     }
 
-    pub fn set_active(&self, session_id: &str) -> Result<(), SessionError> {
-        let id = SessionId::new(session_id);
+    pub fn set_active(&self, session_id: &SessionId) -> Result<(), SessionError> {
         let sessions = rwlock_read_or_recover(&self.sessions);
-        if !sessions.contains_key(&id) {
+        if !sessions.contains_key(session_id) {
             return Err(SessionError::NotFound(session_id.to_string()));
         }
         let mut active = rwlock_write_or_recover(&self.active_session);
-        *active = Some(id);
+        *active = Some(session_id.clone());
         Ok(())
     }
 
@@ -1001,18 +999,16 @@ impl SessionManager {
             .collect()
     }
 
-    pub fn kill(&self, session_id: &str) -> Result<(), SessionError> {
-        let id = SessionId::new(session_id);
-
+    pub fn kill(&self, session_id: &SessionId) -> Result<(), SessionError> {
         let (session, was_active) = {
             let mut sessions = rwlock_write_or_recover(&self.sessions);
             let mut active = rwlock_write_or_recover(&self.active_session);
 
             let session = sessions
-                .remove(&id)
+                .remove(session_id)
                 .ok_or_else(|| SessionError::NotFound(session_id.to_string()))?;
 
-            let was_active = active.as_ref() == Some(&id);
+            let was_active = active.as_ref() == Some(session_id);
             if was_active {
                 *active = None;
             }
@@ -1031,7 +1027,7 @@ impl SessionManager {
         }
 
         if let Err(e) = self.persistence.remove_session(session_id) {
-            warn!(session_id = session_id, error = %e, "Failed to remove session from persistence");
+            warn!(session_id = %session_id, error = %e, "Failed to remove session from persistence");
         }
 
         if was_active {
@@ -1510,7 +1506,9 @@ mod stream_tests {
         let mut cursor = StreamCursor::default();
 
         buffer.push(b"hello");
-        let read = buffer.read(&mut cursor, 16, 0).unwrap();
+        let read = buffer
+            .read(&mut cursor, 16, 0)
+            .expect("stream read should succeed");
 
         assert_eq!(read.data, b"hello");
         assert_eq!(cursor.seq, 5);
@@ -1525,7 +1523,9 @@ mod stream_tests {
         let mut cursor = StreamCursor::default();
 
         buffer.push(b"abcdef");
-        let read = buffer.read(&mut cursor, 10, 0).unwrap();
+        let read = buffer
+            .read(&mut cursor, 10, 0)
+            .expect("stream read should succeed");
 
         assert_eq!(read.dropped_bytes, 2);
         assert_eq!(read.data, b"cdef");
@@ -1545,7 +1545,9 @@ mod stream_tests {
             buffer_clone.push(b"ok");
         });
 
-        let read = buffer.read(&mut cursor, 16, 200).unwrap();
+        let read = buffer
+            .read(&mut cursor, 16, 200)
+            .expect("stream read should succeed");
         assert_eq!(read.data, b"ok");
         assert_eq!(cursor.seq, 2);
         assert_eq!(read.latest_cursor.seq, 2);
@@ -1560,8 +1562,12 @@ mod stream_tests {
 
         buffer.push(b"hello");
 
-        let read_a = buffer.read(&mut cursor_a, 2, 0).unwrap();
-        let read_b = buffer.read(&mut cursor_b, 16, 0).unwrap();
+        let read_a = buffer
+            .read(&mut cursor_a, 2, 0)
+            .expect("first stream read should succeed");
+        let read_b = buffer
+            .read(&mut cursor_b, 16, 0)
+            .expect("second stream read should succeed");
 
         assert_eq!(read_a.data, b"he");
         assert_eq!(read_b.data, b"hello");
@@ -1607,6 +1613,8 @@ mod pump_tests {
     use super::Session;
     use super::StreamCursor;
     use super::spawn_pump;
+    use crate::common::mutex_lock_or_recover;
+    use crate::domain::SessionId;
     use crate::infra::terminal::PtyHandle;
     use std::path::Path;
     use std::sync::Arc;
@@ -1623,28 +1631,37 @@ mod pump_tests {
         } else {
             "sh"
         };
-        let pty = PtyHandle::spawn(shell, &args, Some("/tmp"), None, 80, 24).unwrap();
-        let session = Session::new("test-session".into(), "sh".to_string(), pty, 80, 24);
+        let pty =
+            PtyHandle::spawn(shell, &args, Some("/tmp"), None, 80, 24).expect("PTY should spawn");
+        let session = Session::new(
+            SessionId::try_new("test-session").expect("valid session id"),
+            "sh".to_string(),
+            pty,
+            80,
+            24,
+        );
         let session = Arc::new(Mutex::new(session));
 
         let (tx, join) = spawn_pump(Arc::clone(&session), "test-pump".to_string());
         {
-            let mut guard = session.lock().unwrap();
+            let mut guard = mutex_lock_or_recover(&session);
             guard.attach_pump(tx, join);
         }
 
-        let reader = { session.lock().unwrap().stream_reader() };
+        let reader = { mutex_lock_or_recover(&session).stream_reader() };
         let mut cursor = StreamCursor::default();
         let deadline = Instant::now() + Duration::from_millis(1500);
         let mut collected = Vec::new();
 
         while Instant::now() < deadline {
-            let ack = { session.lock().unwrap().request_flush() };
+            let ack = { mutex_lock_or_recover(&session).request_flush() };
             if let Some(ack) = ack {
                 let _ = ack.recv_timeout(PUMP_FLUSH_TIMEOUT);
             }
 
-            let read = reader.read(&mut cursor, 4096, 50).unwrap();
+            let read = reader
+                .read(&mut cursor, 4096, 50)
+                .expect("pump reader should succeed");
             if !read.data.is_empty() {
                 collected.extend_from_slice(&read.data);
             }
@@ -1662,8 +1679,8 @@ mod pump_tests {
             String::from_utf8_lossy(&collected)
         );
 
-        let join = { session.lock().unwrap().shutdown_pump() };
-        let _ = session.lock().unwrap().kill();
+        let join = { mutex_lock_or_recover(&session).shutdown_pump() };
+        let _ = mutex_lock_or_recover(&session).kill();
         if let Some(join) = join {
             let _ = join.join();
         }
@@ -2035,14 +2052,22 @@ mod tests {
     impl Drop for SessionCleanup<'_> {
         fn drop(&mut self) {
             for session_id in self.session_ids.drain(..) {
-                let _ = self.manager.kill(session_id.as_str());
+                let _ = self.manager.kill(&session_id);
             }
         }
     }
 
     #[cfg(unix)]
     fn spawn_session_or_skip(manager: &SessionManager, session_id: &str) -> Option<SessionId> {
-        match manager.spawn("sh", &[], None, None, Some(session_id.to_string()), 80, 24) {
+        match manager.spawn(
+            "sh",
+            &[],
+            None,
+            None,
+            Some(SessionId::try_new(session_id).expect("test session id should be valid")),
+            80,
+            24,
+        ) {
             Ok((id, _)) => Some(id),
             Err(SessionError::Terminal(_)) => None,
             Err(e) => panic!("unexpected spawn error: {e}"),
@@ -2060,8 +2085,9 @@ mod tests {
             rows: 24,
         };
 
-        let json = serde_json::to_string(&session).unwrap();
-        let parsed: PersistedSession = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&session).expect("session should serialize");
+        let parsed: PersistedSession =
+            serde_json::from_str(&json).expect("session JSON should parse");
 
         assert_eq!(parsed.id, session.id);
         assert_eq!(parsed.command, session.command);
@@ -2086,7 +2112,7 @@ mod tests {
     #[test]
     fn test_spawn_rejects_duplicate_session_id() {
         let _env_lock = env_lock();
-        let temp_home = tempdir().unwrap();
+        let temp_home = tempdir().expect("temp dir should be created");
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
         unsafe {
@@ -2094,7 +2120,7 @@ mod tests {
         }
 
         let manager = SessionManager::with_max_sessions(2);
-        let session_id = "dup-session".to_string();
+        let session_id = SessionId::try_new("dup-session").expect("valid session id");
         match manager.spawn("sh", &[], None, None, Some(session_id.clone()), 80, 24) {
             Ok(_) => {}
             Err(SessionError::Terminal(_)) => return, // PTY unavailable, skip
@@ -2105,7 +2131,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(SessionError::AlreadyExists(id)) if id == session_id
+            Err(SessionError::AlreadyExists(id)) if id == session_id.as_str()
         ));
 
         let _ = manager.kill(&session_id);
@@ -2115,7 +2141,7 @@ mod tests {
     #[test]
     fn test_resolve_without_active_falls_back_to_most_recent_running_session() {
         let _env_lock = env_lock();
-        let temp_home = tempdir().unwrap();
+        let temp_home = tempdir().expect("temp dir should be created");
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
         unsafe {
@@ -2155,7 +2181,7 @@ mod tests {
     #[test]
     fn test_resolve_repairs_stale_active_session_with_running_fallback() {
         let _env_lock = env_lock();
-        let temp_home = tempdir().unwrap();
+        let temp_home = tempdir().expect("temp dir should be created");
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
         unsafe {
@@ -2173,7 +2199,7 @@ mod tests {
 
         {
             let mut active = rwlock_write_or_recover(&manager.active_session);
-            *active = Some(SessionId::new("stale-active-id"));
+            *active = Some(SessionId::try_new("stale-active-id").expect("valid session id"));
         }
 
         let resolved = manager
@@ -2189,7 +2215,7 @@ mod tests {
     #[test]
     fn test_kill_promotes_most_recent_remaining_running_session_to_active() {
         let _env_lock = env_lock();
-        let temp_home = tempdir().unwrap();
+        let temp_home = tempdir().expect("temp dir should be created");
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
         unsafe {
@@ -2213,7 +2239,7 @@ mod tests {
         assert_eq!(manager.active_session_id(), Some(active.clone()));
 
         manager
-            .kill(active.as_str())
+            .kill(&active)
             .expect("kill should succeed for active session");
 
         assert_eq!(manager.active_session_id(), Some(older.clone()));
@@ -2226,7 +2252,7 @@ mod tests {
     #[test]
     fn test_resolve_without_running_sessions_returns_no_active_session() {
         let _env_lock = env_lock();
-        let temp_home = tempdir().unwrap();
+        let temp_home = tempdir().expect("temp dir should be created");
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
         unsafe {
@@ -2237,7 +2263,7 @@ mod tests {
         let manager = SessionManager::with_max_sessions(1);
         {
             let mut active = rwlock_write_or_recover(&manager.active_session);
-            *active = Some(SessionId::new("stale-active-id"));
+            *active = Some(SessionId::try_new("stale-active-id").expect("valid session id"));
         }
 
         let result = manager.resolve(None);
@@ -2249,7 +2275,7 @@ mod tests {
     #[test]
     fn test_resolve_with_explicit_session_id_does_not_reroute() {
         let _env_lock = env_lock();
-        let temp_home = tempdir().unwrap();
+        let temp_home = tempdir().expect("temp dir should be created");
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
         unsafe {
@@ -2275,7 +2301,7 @@ mod tests {
         }
 
         let resolved = manager
-            .resolve(Some(requested.as_str()))
+            .resolve(Some(&requested))
             .expect("explicit session resolution should succeed");
         assert_eq!(mutex_lock_or_recover(&resolved).id, requested);
         assert!(manager.active_session_id().is_none());
@@ -2284,7 +2310,7 @@ mod tests {
     #[test]
     fn test_persistence_migration_from_json() {
         let _env_lock = env_lock();
-        let temp_home = tempdir().unwrap();
+        let temp_home = tempdir().expect("temp dir should be created");
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
         unsafe {
@@ -2293,7 +2319,7 @@ mod tests {
         let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
 
         let legacy_dir = temp_home.path().join(".agent-tui");
-        fs::create_dir_all(&legacy_dir).unwrap();
+        fs::create_dir_all(&legacy_dir).expect("legacy dir should be created");
         let legacy_path = legacy_dir.join("sessions.json");
         let sessions = vec![PersistedSession {
             id: "legacy".to_string(),
@@ -2303,7 +2329,11 @@ mod tests {
             cols: 80,
             rows: 24,
         }];
-        fs::write(&legacy_path, serde_json::to_string(&sessions).unwrap()).unwrap();
+        fs::write(
+            &legacy_path,
+            serde_json::to_string(&sessions).expect("legacy sessions should serialize"),
+        )
+        .expect("legacy session file should be written");
 
         let persistence = SessionPersistence::new();
         let loaded = persistence.load();
@@ -2318,7 +2348,7 @@ mod tests {
     #[test]
     fn test_jsonl_add_remove_roundtrip() {
         let _env_lock = env_lock();
-        let temp_home = tempdir().unwrap();
+        let temp_home = tempdir().expect("temp dir should be created");
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
         unsafe {
@@ -2335,11 +2365,15 @@ mod tests {
             cols: 100,
             rows: 40,
         };
-        persistence.add_session(session.clone()).unwrap();
+        persistence
+            .add_session(session.clone())
+            .expect("session should be added");
         let loaded = persistence.load();
         assert!(loaded.iter().any(|s| s.id == session.id));
 
-        persistence.remove_session(&session.id).unwrap();
+        persistence
+            .remove_session(&session.id)
+            .expect("session should be removed");
         let loaded = persistence.load();
         assert!(loaded.is_empty());
     }
@@ -2347,7 +2381,7 @@ mod tests {
     #[test]
     fn test_session_store_env_override() {
         let _env_lock = env_lock();
-        let temp_home = tempdir().unwrap();
+        let temp_home = tempdir().expect("temp dir should be created");
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
         unsafe {
@@ -2369,7 +2403,7 @@ mod tests {
                 cols: 80,
                 rows: 24,
             })
-            .unwrap();
+            .expect("custom session should be persisted");
 
         assert!(store_path.exists());
         let default_path = temp_home.path().join(".agent-tui").join("sessions.jsonl");
@@ -2383,7 +2417,7 @@ mod tests {
         use std::os::unix::process::CommandExt;
         use std::process::Command;
 
-        let temp_home = tempdir().unwrap();
+        let temp_home = tempdir().expect("temp dir should be created");
         let _home_guard = HomeGuard(std::env::var("HOME").ok());
         // SAFETY: Test-only environment override for HOME directory.
         unsafe {

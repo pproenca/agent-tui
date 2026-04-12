@@ -989,7 +989,7 @@ mod tests {
                 "daemon stop should succeed when daemon not running (idempotent)"
             );
             assert!(
-                result.unwrap(),
+                matches!(result, Ok(true)),
                 "daemon stop should be handled as standalone"
             );
         }
@@ -1110,7 +1110,10 @@ mod tests {
 
             let result = app.handle_standalone_commands(&cli);
             assert!(result.is_ok(), "live status should be handled");
-            assert!(result.unwrap(), "live status should be standalone");
+            assert!(
+                matches!(result, Ok(true)),
+                "live status should be standalone"
+            );
             assert!(
                 !socket_path.exists(),
                 "live status must not autostart daemon or create socket"
@@ -1141,7 +1144,10 @@ mod tests {
 
             let result = app.handle_standalone_commands(&cli);
             assert!(result.is_ok(), "live start should be handled");
-            assert!(result.unwrap(), "live start should be standalone");
+            assert!(
+                matches!(result, Ok(true)),
+                "live start should be standalone"
+            );
             assert!(
                 !socket_path.exists(),
                 "live start should not use the selected remote websocket transport"
@@ -1164,7 +1170,7 @@ mod tests {
 
             let result = app.handle_standalone_commands(&cli);
             assert!(result.is_ok(), "live stop should be handled");
-            assert!(result.unwrap(), "live stop should be standalone");
+            assert!(matches!(result, Ok(true)), "live stop should be standalone");
             assert!(
                 !socket_path.exists(),
                 "live stop must not autostart daemon or create socket"
@@ -1185,7 +1191,7 @@ mod tests {
 
             let result = app.handle_standalone_commands(&cli);
             assert!(
-                result.is_ok() && result.unwrap(),
+                matches!(result, Ok(true)),
                 "daemon stop should be idempotent with stale lock"
             );
             assert!(
@@ -1208,7 +1214,7 @@ mod tests {
 
             let result = app.handle_standalone_commands(&cli);
             assert!(
-                result.is_ok() && result.unwrap(),
+                matches!(result, Ok(true)),
                 "daemon stop --force should be idempotent with stale lock"
             );
             assert!(
@@ -1232,7 +1238,7 @@ mod tests {
 
             let result = app.handle_standalone_commands(&cli);
             assert!(
-                result.is_ok() && result.unwrap(),
+                matches!(result, Ok(true)),
                 "daemon stop should succeed when daemon is already stopped"
             );
             assert!(

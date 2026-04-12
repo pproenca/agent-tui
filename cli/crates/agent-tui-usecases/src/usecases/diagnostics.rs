@@ -65,7 +65,7 @@ mod tests {
         let usecase = TerminalWriteUseCaseImpl::new(repo);
 
         let input = TerminalWriteInput {
-            session_id: Some(SessionId::new("missing")),
+            session_id: Some(SessionId::try_new("missing").expect("valid session id")),
             data: b"test data".to_vec(),
         };
 

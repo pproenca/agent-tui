@@ -11,7 +11,10 @@ use crate::usecases::SnapshotUseCase;
 
 pub fn handle_snapshot_uc<U: SnapshotUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "snapshot").entered();
-    let input = parse_snapshot_input(&request);
+    let input = match parse_snapshot_input(&request) {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
     let strip_ansi = input.strip_ansi;
     let retain_ansi = input.retain_ansi;
 

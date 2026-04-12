@@ -223,12 +223,14 @@ mod tests {
             _args: &[String],
             _cwd: Option<&str>,
             _env: Option<&HashMap<String, String>>,
-            session_id: Option<String>,
+            session_id: Option<SessionId>,
             _cols: u16,
             _rows: u16,
         ) -> Result<(SessionId, u32), SessionError> {
-            let id = session_id.unwrap_or_else(|| "test-session".to_string());
-            Ok((SessionId::new(id), 42))
+            let id = session_id.unwrap_or_else(|| {
+                SessionId::try_new("test-session").expect("default test session id should be valid")
+            });
+            Ok((id, 42))
         }
 
         fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError> {
@@ -238,17 +240,16 @@ mod tests {
         }
 
         fn active(&self) -> Result<SessionHandle, SessionError> {
-            let id = self
-                .active
-                .clone()
-                .unwrap_or_else(|| SessionId::new("active"));
+            let id = self.active.clone().unwrap_or_else(|| {
+                SessionId::try_new("active").expect("active id should be valid")
+            });
             Ok(Arc::new(TestSession { id }))
         }
 
         fn resolve(&self, session_id: Option<&SessionId>) -> Result<SessionHandle, SessionError> {
-            let id = session_id
-                .cloned()
-                .unwrap_or_else(|| SessionId::new("active"));
+            let id = session_id.cloned().unwrap_or_else(|| {
+                SessionId::try_new("active").expect("active id should be valid")
+            });
             Ok(Arc::new(TestSession { id }))
         }
 
@@ -290,8 +291,9 @@ mod tests {
         let request = RpcRequest::new(1, "ping".to_string(), None);
         let response = router.route(request);
 
-        let json_str = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let json_str = serde_json::to_string(&response).expect("ping response should serialize");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("ping response should parse");
 
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert_eq!(parsed["result"]["pong"], true);
@@ -305,17 +307,17 @@ mod tests {
         let request = RpcRequest::new(1, "nonexistent_method".to_string(), None);
         let response = router.route(request);
 
-        let json_str = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let json_str =
+            serde_json::to_string(&response).expect("unknown-method response should serialize");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("unknown-method response should parse");
 
         assert!(parsed.get("error").is_some());
         assert_eq!(parsed["error"]["code"], -32601);
-        assert!(
-            parsed["error"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("nonexistent_method")
-        );
+        assert!(matches!(
+            parsed["error"]["message"].as_str(),
+            Some(message) if message.contains("nonexistent_method")
+        ));
     }
 
     #[test]
@@ -326,8 +328,9 @@ mod tests {
         let request = RpcRequest::new(1, "version".to_string(), None);
         let response = router.route(request);
 
-        let json_str = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let json_str = serde_json::to_string(&response).expect("version response should serialize");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("version response should parse");
 
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert!(parsed.get("result").is_some());
@@ -342,8 +345,10 @@ mod tests {
         let request = RpcRequest::new(1, "sessions".to_string(), None);
         let response = router.route(request);
 
-        let json_str = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let json_str =
+            serde_json::to_string(&response).expect("sessions response should serialize");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("sessions response should parse");
 
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert!(parsed["result"]["sessions"].is_array());
@@ -357,8 +362,9 @@ mod tests {
         let request = RpcRequest::new(1, "cleanup".to_string(), None);
         let response = router.route(request);
 
-        let json_str = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let json_str = serde_json::to_string(&response).expect("cleanup response should serialize");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("cleanup response should parse");
 
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert!(parsed.get("result").is_some());
@@ -378,17 +384,17 @@ mod tests {
         );
         let response = router.route(request);
 
-        let json_str = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let json_str =
+            serde_json::to_string(&response).expect("assert error response should serialize");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("assert error response should parse");
 
         assert!(parsed.get("error").is_some());
         assert_eq!(parsed["error"]["code"], -32602);
-        assert!(
-            parsed["error"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("Invalid type")
-        );
+        assert!(matches!(
+            parsed["error"]["message"].as_str(),
+            Some(message) if message.contains("Invalid type")
+        ));
     }
 
     #[test]
@@ -403,8 +409,10 @@ mod tests {
         );
         let response = router.route(request);
 
-        let json_str = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let json_str = serde_json::to_string(&response)
+            .expect("assert session condition response should serialize");
+        let parsed: serde_json::Value = serde_json::from_str(&json_str)
+            .expect("assert session condition response should parse");
 
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert_eq!(parsed["result"]["passed"], false);
@@ -419,8 +427,10 @@ mod tests {
         let request = RpcRequest::new(1, "shutdown".to_string(), None);
         let response = router.route(request);
 
-        let json_str = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let json_str =
+            serde_json::to_string(&response).expect("shutdown response should serialize");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("shutdown response should parse");
 
         assert!(parsed.get("error").is_none() || parsed["error"].is_null());
         assert_eq!(parsed["result"]["acknowledged"], true);

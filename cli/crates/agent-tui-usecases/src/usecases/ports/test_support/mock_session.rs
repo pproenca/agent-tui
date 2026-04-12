@@ -1,5 +1,6 @@
 //! Mock session handle for use case tests.
 
+use crate::common::mutex_lock_or_recover;
 use crate::domain::core::CursorPosition;
 use crate::domain::session_types::SessionId;
 use crate::usecases::ports::LivePreviewSnapshot;
@@ -58,7 +59,7 @@ impl MockSession {
     }
 
     pub fn written_data(&self) -> Vec<Vec<u8>> {
-        self.written_data.lock().unwrap().clone()
+        mutex_lock_or_recover(&self.written_data).clone()
     }
 }
 
@@ -89,7 +90,7 @@ impl SessionOps for MockSession {
                 source: None,
             }))
         } else {
-            self.written_data.lock().unwrap().push(data.to_vec());
+            mutex_lock_or_recover(&self.written_data).push(data.to_vec());
             Ok(())
         }
     }
@@ -147,7 +148,7 @@ impl SessionOps for MockSession {
     }
 
     fn session_id(&self) -> SessionId {
-        SessionId::new(self.id.clone())
+        SessionId::try_new(self.id.clone()).expect("mock session id should be valid")
     }
 
     fn command(&self) -> String {
@@ -233,8 +234,12 @@ mod tests {
     fn test_mock_session_terminal_write_tracks_data() {
         let session = MockSession::new("test");
 
-        session.terminal_write(b"hello").unwrap();
-        session.terminal_write(b"world").unwrap();
+        session
+            .terminal_write(b"hello")
+            .expect("first write should succeed");
+        session
+            .terminal_write(b"world")
+            .expect("second write should succeed");
 
         let written = session.written_data();
         assert_eq!(written.len(), 2);

@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use super::mock_error::MockError;
+use crate::common::mutex_lock_or_recover;
 use crate::domain::SessionId;
 use crate::domain::SessionInfo;
 use crate::usecases::ports::SessionError;
@@ -72,15 +73,15 @@ impl MockSessionRepository {
     }
 
     pub fn killed_sessions(&self) -> Vec<String> {
-        self.killed_sessions.lock().unwrap().clone()
+        mutex_lock_or_recover(&self.killed_sessions).clone()
     }
 
     pub fn activated_sessions(&self) -> Vec<String> {
-        self.activated_sessions.lock().unwrap().clone()
+        mutex_lock_or_recover(&self.activated_sessions).clone()
     }
 
     pub fn spawn_params(&self) -> Vec<SpawnParams> {
-        self.spawn_params.lock().unwrap().clone()
+        mutex_lock_or_recover(&self.spawn_params).clone()
     }
 }
 
@@ -91,18 +92,18 @@ impl SessionRepository for MockSessionRepository {
         args: &[String],
         cwd: Option<&str>,
         env: Option<&HashMap<String, String>>,
-        session_id: Option<String>,
+        session_id: Option<SessionId>,
         cols: u16,
         rows: u16,
     ) -> Result<(SessionId, u32), SessionError> {
         self.spawn_calls.fetch_add(1, Ordering::SeqCst);
 
-        self.spawn_params.lock().unwrap().push(SpawnParams {
+        mutex_lock_or_recover(&self.spawn_params).push(SpawnParams {
             command: command.to_string(),
             args: args.to_vec(),
             cwd: cwd.map(|s| s.to_string()),
             env: env.cloned(),
-            session_id,
+            session_id: session_id.map(|id| id.to_string()),
             cols,
             rows,
         });
@@ -157,10 +158,7 @@ impl SessionRepository for MockSessionRepository {
 
     fn set_active(&self, session_id: &SessionId) -> Result<(), SessionError> {
         self.set_active_calls.fetch_add(1, Ordering::SeqCst);
-        self.activated_sessions
-            .lock()
-            .unwrap()
-            .push(session_id.as_str().to_string());
+        mutex_lock_or_recover(&self.activated_sessions).push(session_id.as_str().to_string());
 
         if let Some(ref err) = self.set_active_error {
             return Err(err.to_session_error());
@@ -175,10 +173,7 @@ impl SessionRepository for MockSessionRepository {
 
     fn kill(&self, session_id: &SessionId) -> Result<(), SessionError> {
         self.kill_calls.fetch_add(1, Ordering::SeqCst);
-        self.killed_sessions
-            .lock()
-            .unwrap()
-            .push(session_id.as_str().to_string());
+        mutex_lock_or_recover(&self.killed_sessions).push(session_id.as_str().to_string());
 
         if let Some(ref err) = self.kill_error {
             return Err(err.to_session_error());
@@ -217,7 +212,10 @@ impl MockSessionRepositoryBuilder {
     }
 
     pub fn with_spawn_result(mut self, session_id: impl Into<String>, pid: u32) -> Self {
-        self.repo.spawn_result = Some((SessionId::new(session_id.into()), pid));
+        self.repo.spawn_result = Some((
+            SessionId::try_new(session_id.into()).expect("builder session id should be valid"),
+            pid,
+        ));
         self
     }
 
@@ -227,7 +225,9 @@ impl MockSessionRepositoryBuilder {
     }
 
     pub fn with_active_session(mut self, session_id: impl Into<String>) -> Self {
-        self.repo.active_id = Some(SessionId::new(session_id.into()));
+        self.repo.active_id = Some(
+            SessionId::try_new(session_id.into()).expect("builder session id should be valid"),
+        );
         self
     }
 
@@ -260,7 +260,7 @@ mod tests {
             .with_resolve_error(MockError::NotFound("custom".to_string()))
             .build();
 
-        let session1 = SessionId::new("session1");
+        let session1 = SessionId::try_new("session1").expect("valid session id");
         let result = repo.resolve(Some(&session1));
 
         assert!(matches!(result, Err(SessionError::NotFound(id)) if id == "custom"));
@@ -275,7 +275,7 @@ mod tests {
         let result = repo.spawn("bash", &[], None, None, None, 80, 24);
 
         assert!(result.is_ok());
-        let (session_id, pid) = result.unwrap();
+        let (session_id, pid) = result.expect("spawn should succeed");
         assert_eq!(session_id.as_str(), "test-session");
         assert_eq!(pid, 12345);
         assert_eq!(repo.spawn_call_count(), 1);
@@ -293,7 +293,7 @@ mod tests {
             &args,
             Some("/tmp"),
             None,
-            Some("custom-id".to_string()),
+            Some(SessionId::try_new("custom-id").expect("valid session id")),
             120,
             40,
         );
@@ -312,8 +312,8 @@ mod tests {
     fn test_mock_repository_kill_tracks_sessions() {
         let repo = MockSessionRepository::new();
 
-        let s1 = SessionId::new("session1");
-        let s2 = SessionId::new("session2");
+        let s1 = SessionId::try_new("session1").expect("valid session id");
+        let s2 = SessionId::try_new("session2").expect("valid session id");
         let _ = repo.kill(&s1);
         let _ = repo.kill(&s2);
 
@@ -325,8 +325,8 @@ mod tests {
     fn test_mock_repository_set_active_tracks_sessions() {
         let repo = MockSessionRepository::new();
 
-        let s1 = SessionId::new("session1");
-        let s2 = SessionId::new("session2");
+        let s1 = SessionId::try_new("session1").expect("valid session id");
+        let s2 = SessionId::try_new("session2").expect("valid session id");
         let _ = repo.set_active(&s1);
         let _ = repo.set_active(&s2);
 
@@ -338,7 +338,7 @@ mod tests {
     fn test_builder_with_sessions_list() {
         use crate::domain::TerminalSize;
         let sessions = vec![SessionInfo {
-            id: SessionId::new("sess1"),
+            id: SessionId::try_new("sess1").expect("valid session id"),
             command: "bash".to_string(),
             pid: 1234,
             running: true,
@@ -354,7 +354,10 @@ mod tests {
 
         assert_eq!(repo.list().len(), 1);
         assert_eq!(repo.session_count(), 1);
-        assert_eq!(repo.active_session_id().unwrap().as_str(), "sess1");
+        assert_eq!(
+            repo.active_session_id().as_ref().map(|id| id.as_str()),
+            Some("sess1")
+        );
     }
 
     #[test]

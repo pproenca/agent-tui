@@ -49,14 +49,13 @@ impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
             cols,
             rows,
         } = input;
-        let session_id_str = session_id.map(|id| id.to_string());
 
         match self.repository.spawn(
             &command,
             &args,
             cwd.as_deref(),
             env.as_ref(),
-            session_id_str,
+            session_id,
             cols,
             rows,
         ) {
@@ -308,6 +307,12 @@ impl<R: SessionRepository> AssertUseCase for AssertUseCaseImpl<R> {
                     .iter()
                     .any(|s| s.id.as_str() == input.value && s.is_active())
             }
+            other => {
+                return Err(SessionError::InvalidKey(format!(
+                    "Unsupported assert condition: {}",
+                    other.as_str()
+                )));
+            }
         };
 
         Ok(AssertOutput { passed, condition })
@@ -341,7 +346,7 @@ mod tests {
             args: vec!["-c".to_string(), "echo hello".to_string()],
             cwd: Some("/tmp".to_string()),
             env: Some(env.clone()),
-            session_id: Some(SessionId::new("custom-id")),
+            session_id: Some(SessionId::try_new("custom-id").expect("valid session id")),
             cols: 120,
             rows: 40,
         };
@@ -379,7 +384,7 @@ mod tests {
             rows: 24,
         };
 
-        let result = usecase.execute(input).unwrap();
+        let result = usecase.execute(input).expect("spawn should succeed");
         assert_eq!(result.session_id.as_str(), "test-session-123");
         assert_eq!(result.pid, 54321);
     }
@@ -450,12 +455,14 @@ mod tests {
             args: vec![],
             cwd: None,
             env: None,
-            session_id: Some(SessionId::new("my-custom-session")),
+            session_id: Some(SessionId::try_new("my-custom-session").expect("valid session id")),
             cols: 80,
             rows: 24,
         };
 
-        let result = usecase.execute(input).unwrap();
+        let result = usecase
+            .execute(input)
+            .expect("spawn with explicit session id should succeed");
         assert_eq!(result.session_id.as_str(), "my-custom-session");
 
         let params = repo.spawn_params();
@@ -595,7 +602,7 @@ mod tests {
     fn test_sessions_usecase_returns_configured_sessions() {
         let sessions = vec![
             SessionInfo {
-                id: SessionId::new("session1"),
+                id: SessionId::try_new("session1").expect("valid session id"),
                 command: "bash".to_string(),
                 pid: 1001,
                 running: true,
@@ -603,12 +610,12 @@ mod tests {
                 size: TerminalSize::default(),
             },
             SessionInfo {
-                id: SessionId::new("session2"),
+                id: SessionId::try_new("session2").expect("valid session id"),
                 command: "vim".to_string(),
                 pid: 1002,
                 running: true,
                 created_at: "2024-01-01T01:00:00Z".to_string(),
-                size: TerminalSize::try_new(120, 40).unwrap(),
+                size: TerminalSize::try_new(120, 40).expect("valid terminal size"),
             },
         ];
 
@@ -626,13 +633,16 @@ mod tests {
         assert_eq!(result.sessions[0].command, "bash");
         assert_eq!(result.sessions[1].id.as_str(), "session2");
         assert_eq!(result.sessions[1].command, "vim");
-        assert_eq!(result.active_session.unwrap().as_str(), "session1");
+        assert_eq!(
+            result.active_session.as_ref().map(|id| id.as_str()),
+            Some("session1")
+        );
     }
 
     #[test]
     fn test_sessions_usecase_returns_active_session_none_when_not_set() {
         let sessions = vec![SessionInfo {
-            id: SessionId::new("orphan"),
+            id: SessionId::try_new("orphan").expect("valid session id"),
             command: "sleep".to_string(),
             pid: 999,
             running: true,
@@ -672,7 +682,7 @@ mod tests {
         let usecase = KillUseCaseImpl::new(repo);
 
         let input = SessionInput {
-            session_id: Some(SessionId::new("nonexistent")),
+            session_id: Some(SessionId::try_new("nonexistent").expect("valid session id")),
         };
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
@@ -698,7 +708,7 @@ mod tests {
         let usecase = RestartUseCaseImpl::new(repo);
 
         let input = SessionInput {
-            session_id: Some(SessionId::new("missing")),
+            session_id: Some(SessionId::try_new("missing").expect("valid session id")),
         };
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(id)) if id == "missing"));
@@ -710,7 +720,7 @@ mod tests {
         let usecase = AttachUseCaseImpl::new(repo);
 
         let input = AttachInput {
-            session_id: SessionId::new("nonexistent"),
+            session_id: SessionId::try_new("nonexistent").expect("valid session id"),
         };
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(_))));
@@ -726,7 +736,7 @@ mod tests {
         let usecase = AttachUseCaseImpl::new(repo);
 
         let input = AttachInput {
-            session_id: SessionId::new("target-session"),
+            session_id: SessionId::try_new("target-session").expect("valid session id"),
         };
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(id)) if id == "target-session"));
@@ -757,7 +767,7 @@ mod tests {
         let usecase = ResizeUseCaseImpl::new(repo);
 
         let input = ResizeInput {
-            session_id: Some(SessionId::new("unknown")),
+            session_id: Some(SessionId::try_new("unknown").expect("valid session id")),
             cols: 80,
             rows: 24,
         };

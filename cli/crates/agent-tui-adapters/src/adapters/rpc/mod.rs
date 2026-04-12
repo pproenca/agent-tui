@@ -157,8 +157,9 @@ pub fn parse_snapshot_input(request: &RpcRequest) -> SnapshotInput {
         session_id: parse_session_selector(rpc_params.session),
         region: rpc_params.region,
         strip_ansi: rpc_params.strip_ansi,
+        retain_ansi: rpc_params.retain_ansi,
         include_cursor: rpc_params.include_cursor,
-        include_render: rpc_params.include_render,
+        include_render: rpc_params.include_render || rpc_params.retain_ansi,
     }
 }
 
@@ -166,10 +167,16 @@ pub fn snapshot_output_to_response(
     id: u64,
     output: SnapshotOutput,
     strip_ansi: bool,
+    retain_ansi: bool,
 ) -> RpcResponse {
     use crate::common::strip_ansi_codes;
 
-    let screenshot = if strip_ansi {
+    let rendered = output.rendered;
+    let screenshot = if retain_ansi {
+        rendered
+            .clone()
+            .unwrap_or_else(|| output.screenshot.clone())
+    } else if strip_ansi {
         strip_ansi_codes(&output.screenshot)
     } else {
         output.screenshot
@@ -188,7 +195,7 @@ pub fn snapshot_output_to_response(
         });
     }
 
-    if let Some(rendered) = output.rendered {
+    if let Some(rendered) = rendered {
         result["rendered"] = json!(rendered);
     }
 
@@ -463,11 +470,34 @@ mod tests {
         let request = make_request(
             1,
             "snapshot",
-            Some(json!({"strip_ansi": true, "include_cursor": true})),
+            Some(json!({"retain_ansi": true, "include_cursor": true})),
         );
         let input = parse_snapshot_input(&request);
-        assert!(input.strip_ansi);
+        assert!(input.retain_ansi);
         assert!(input.include_cursor);
+        assert!(input.include_render);
+    }
+
+    #[test]
+    fn test_snapshot_output_to_response_prefers_rendered_when_retaining_ansi() {
+        let output = SnapshotOutput {
+            session_id: crate::domain::SessionId::new("session-1"),
+            screenshot: "plain text".to_string(),
+            cursor: None,
+            rendered: Some("\u{1b}[31mplain text\u{1b}[0m".to_string()),
+        };
+
+        let response = snapshot_output_to_response(1, output, false, true);
+        let value = serde_json::to_value(response).expect("response should serialize");
+
+        assert_eq!(
+            value["result"]["screenshot"],
+            json!("\u{1b}[31mplain text\u{1b}[0m")
+        );
+        assert_eq!(
+            value["result"]["rendered"],
+            json!("\u{1b}[31mplain text\u{1b}[0m")
+        );
     }
 
     #[test]

@@ -30,6 +30,7 @@ use crate::infra::ipc::ProcessController;
 use crate::infra::ipc::Signal;
 use crate::infra::ipc::UnixProcessController;
 use crate::infra::ipc::UnixSocketClient;
+use crate::infra::ipc::daemon_uses_client_working_directory;
 use crate::infra::ipc::get_daemon_pid;
 use crate::infra::ipc::socket_path;
 
@@ -218,7 +219,16 @@ pub(crate) fn handle_spawn<C: DaemonClient>(
     cols: u16,
     rows: u16,
 ) -> HandlerResult {
-    let cwd = cwd.map(|path| path.to_string_lossy().into_owned());
+    let cwd = match cwd {
+        Some(path) => Some(path.to_string_lossy().into_owned()),
+        None if daemon_uses_client_working_directory() => Some(
+            std::env::current_dir()
+                .context("failed to resolve current working directory for run command")?
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        None => None,
+    };
     let rpc_params = params::SpawnParams {
         command,
         args,
@@ -245,14 +255,16 @@ pub(crate) fn handle_snapshot<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     region: Option<String>,
     strip_ansi: bool,
+    retain_ansi: bool,
     include_cursor: bool,
 ) -> HandlerResult {
     let rpc_params = params::SnapshotParams {
         session: ctx.session.clone(),
         region,
         strip_ansi,
+        retain_ansi,
         include_cursor,
-        include_render: false,
+        include_render: retain_ansi,
     };
     let result = call_with_params(ctx.client, "snapshot", rpc_params)?;
 
@@ -262,7 +274,15 @@ pub(crate) fn handle_snapshot<C: DaemonClient>(
         }
         OutputFormat::Text => {
             println!("{}", Colors::bold("Screenshot:"));
-            if let Some(screenshot) = result.get("screenshot").and_then(|v| v.as_str()) {
+            let screen = if retain_ansi {
+                result
+                    .get("rendered")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| result.get("screenshot").and_then(|v| v.as_str()))
+            } else {
+                result.get("screenshot").and_then(|v| v.as_str())
+            };
+            if let Some(screenshot) = screen {
                 println!("{}", screenshot);
             }
             if include_cursor {
@@ -1799,6 +1819,7 @@ pub(crate) fn handle_assert<C: DaemonClient>(
                 session: ctx.session.clone(),
                 region: None,
                 strip_ansi: true,
+                retain_ansi: false,
                 include_cursor: false,
                 include_render: false,
             };
@@ -1999,10 +2020,14 @@ mod tests {
     use crate::adapters::presenter::ClientErrorView;
     use crate::adapters::presenter::Presenter;
     use crate::adapters::presenter::TextPresenter;
+    use crate::app::commands::OutputFormat;
+    use crate::infra::ipc::MockClient;
     use crate::infra::ipc::ProcessStatus;
     use crate::test_support::env_lock;
     use std::cell::RefCell;
     use std::fs;
+    use std::path::Path;
+    use std::path::PathBuf;
     use std::rc::Rc;
     use std::sync::Mutex;
     use tempfile::TempDir;
@@ -2042,6 +2067,24 @@ mod tests {
                     std::env::remove_var(self.key);
                 }
             }
+        }
+    }
+
+    struct CurrentDirGuard {
+        previous: PathBuf,
+    }
+
+    impl CurrentDirGuard {
+        fn change_to(path: &Path) -> Self {
+            let previous = std::env::current_dir().expect("capture current directory");
+            std::env::set_current_dir(path).expect("set current directory");
+            Self { previous }
+        }
+    }
+
+    impl Drop for CurrentDirGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.previous).expect("restore current directory");
         }
     }
 
@@ -2207,6 +2250,78 @@ mod tests {
         assert!(captured.iter().any(|s| s.contains("success:")));
         assert!(captured.iter().any(|s| s.contains("error:")));
         assert!(captured.iter().any(|s| s.contains("kv:")));
+    }
+
+    #[test]
+    fn handle_spawn_uses_invocation_cwd_for_local_transport_when_cwd_omitted() {
+        let _env = env_lock();
+        let _transport_guard = EnvVarGuard::set("AGENT_TUI_TRANSPORT", "unix");
+        let temp_dir = TempDir::new_in("/tmp").expect("tempdir");
+        let expected_cwd = fs::canonicalize(temp_dir.path()).expect("canonical temp dir");
+        let _cwd_guard = CurrentDirGuard::change_to(temp_dir.path());
+
+        let mut client = MockClient::new();
+        client.set_response(
+            "spawn",
+            serde_json::json!({
+                "session_id": "session-1",
+                "pid": 42
+            }),
+        );
+
+        let (presenter, _output) = MockPresenter::new();
+        let mut ctx = HandlerContext {
+            client: &mut client,
+            session: None,
+            format: OutputFormat::Json,
+            presenter: Box::new(presenter),
+        };
+
+        handle_spawn(&mut ctx, "bash".to_string(), Vec::new(), None, 120, 40)
+            .expect("spawn should succeed");
+
+        let params = client
+            .last_call("spawn")
+            .and_then(|(_, params)| params)
+            .expect("spawn params");
+        assert_eq!(params["cwd"], expected_cwd.display().to_string());
+    }
+
+    #[test]
+    fn handle_spawn_omits_default_cwd_for_websocket_transport() {
+        let _env = env_lock();
+        let _transport_guard = EnvVarGuard::set("AGENT_TUI_TRANSPORT", "ws");
+        let temp_dir = TempDir::new_in("/tmp").expect("tempdir");
+        let _cwd_guard = CurrentDirGuard::change_to(temp_dir.path());
+
+        let mut client = MockClient::new();
+        client.set_response(
+            "spawn",
+            serde_json::json!({
+                "session_id": "session-1",
+                "pid": 42
+            }),
+        );
+
+        let (presenter, _output) = MockPresenter::new();
+        let mut ctx = HandlerContext {
+            client: &mut client,
+            session: None,
+            format: OutputFormat::Json,
+            presenter: Box::new(presenter),
+        };
+
+        handle_spawn(&mut ctx, "bash".to_string(), Vec::new(), None, 120, 40)
+            .expect("spawn should succeed");
+
+        let params = client
+            .last_call("spawn")
+            .and_then(|(_, params)| params)
+            .expect("spawn params");
+        assert!(
+            params.get("cwd").is_none(),
+            "cwd should be omitted for ws transport"
+        );
     }
 
     #[test]

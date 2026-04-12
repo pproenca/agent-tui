@@ -187,15 +187,20 @@ Returns the current terminal screenshot content.")]
     #[command(after_long_help = "\
 EXAMPLES:
     agent-tui screenshot              # Just the screenshot
-    agent-tui screenshot --strip-ansi # Plain text without colors")]
+    agent-tui screenshot --retain-ansi # Preserve terminal colors/styles
+    agent-tui screenshot --strip-ansi  # Plain text without colors")]
     Screenshot {
         /// Limit capture to a named region (if supported)
         #[arg(long, value_name = "REGION", help_heading = "Filtering")]
         region: Option<String>,
 
         /// Strip ANSI color codes from output
-        #[arg(long, help_heading = "Output Options")]
+        #[arg(long, conflicts_with = "retain_ansi", help_heading = "Output Options")]
         strip_ansi: bool,
+
+        /// Preserve ANSI color/style codes in output
+        #[arg(long, conflicts_with = "strip_ansi", help_heading = "Output Options")]
+        retain_ansi: bool,
 
         /// Include cursor position in output
         #[arg(long, help_heading = "Output Options")]
@@ -726,20 +731,31 @@ mod tests {
             "screenshot",
             "--region",
             "modal",
-            "--strip-ansi",
+            "--retain-ansi",
             "--include-cursor",
         ]);
         let Commands::Screenshot {
             region,
             strip_ansi,
+            retain_ansi,
             include_cursor,
         } = cli.command
         else {
             panic!("Expected Screenshot command, got {:?}", cli.command);
         };
         assert_eq!(region, Some("modal".to_string()));
-        assert!(strip_ansi);
+        assert!(!strip_ansi);
+        assert!(retain_ansi);
         assert!(include_cursor);
+    }
+
+    #[test]
+    fn test_screenshot_output_mode_flags_conflict() {
+        let err = Cli::try_parse_from(["agent-tui", "screenshot", "--strip-ansi", "--retain-ansi"])
+            .err()
+            .expect("expected parse error");
+
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
     }
 
     #[test]

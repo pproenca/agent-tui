@@ -51,6 +51,10 @@ fn transport_kind() -> TransportKind {
     kind
 }
 
+pub fn daemon_uses_client_working_directory() -> bool {
+    matches!(transport_kind(), TransportKind::Unix)
+}
+
 #[derive(Debug, Deserialize)]
 struct WsStateFile {
     ws_url: String,

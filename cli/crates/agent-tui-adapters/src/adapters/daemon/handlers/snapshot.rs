@@ -13,9 +13,10 @@ pub fn handle_snapshot_uc<U: SnapshotUseCase>(usecase: &U, request: RpcRequest) 
     let _span = common::handler_span(&request, "snapshot").entered();
     let input = parse_snapshot_input(&request);
     let strip_ansi = input.strip_ansi;
+    let retain_ansi = input.retain_ansi;
 
     match usecase.execute(input) {
-        Ok(output) => snapshot_output_to_response(request.id, output, strip_ansi),
+        Ok(output) => snapshot_output_to_response(request.id, output, strip_ansi, retain_ansi),
         Err(e) => session_error_response(request.id, e),
     }
 }

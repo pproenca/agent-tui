@@ -92,6 +92,7 @@ pub struct SnapshotInput {
     pub session_id: Option<SessionId>,
     pub region: Option<String>,
     pub strip_ansi: bool,
+    pub retain_ansi: bool,
     pub include_cursor: bool,
     pub include_render: bool,
 }

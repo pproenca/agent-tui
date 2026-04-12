@@ -48,6 +48,8 @@ pub struct SnapshotParams {
     #[serde(default)]
     pub strip_ansi: bool,
     #[serde(default)]
+    pub retain_ansi: bool,
+    #[serde(default)]
     pub include_cursor: bool,
     #[serde(default)]
     pub include_render: bool,
@@ -125,6 +127,7 @@ mod tests {
             session: Some("abc".to_string()),
             region: None,
             strip_ansi: true,
+            retain_ansi: false,
             include_cursor: false,
             include_render: true,
         };
@@ -132,6 +135,7 @@ mod tests {
         let json = serde_json::to_value(&params).unwrap();
         assert!(json.get("session").is_some());
         assert_eq!(json.get("strip_ansi").unwrap(), true);
+        assert_eq!(json.get("retain_ansi").unwrap(), false);
         assert_eq!(json.get("include_cursor").unwrap(), false);
         assert_eq!(json.get("include_render").unwrap(), true);
     }

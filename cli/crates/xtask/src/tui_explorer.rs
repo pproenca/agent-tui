@@ -258,14 +258,14 @@ struct RawCommandOutput {
 
 impl AgentTuiRunner {
     fn new(root: &Path) -> Self {
-        if let Ok(bin) = env::var("AGENT_TUI_BIN")
-            && !bin.trim().is_empty()
-        {
-            return Self {
-                executable: bin,
-                base_args: Vec::new(),
-                command_cwd: None,
-            };
+        if let Ok(bin) = env::var("AGENT_TUI_BIN") {
+            if !bin.trim().is_empty() {
+                return Self {
+                    executable: bin,
+                    base_args: Vec::new(),
+                    command_cwd: None,
+                };
+            }
         }
 
         let cli_manifest = root.join("Cargo.toml");
@@ -863,13 +863,12 @@ fn validate_frontmatter(frontmatter: &BTreeMap<String, Value>) -> Result<(), Exp
         }
     }
 
-    if let Some(cwd) = frontmatter.get("cwd")
-        && !cwd.is_null()
-        && cwd.as_str().is_none()
-    {
-        return Err(ExplorerError::spec(
-            "frontmatter 'cwd' must be a string when present",
-        ));
+    if let Some(cwd) = frontmatter.get("cwd") {
+        if !cwd.is_null() && cwd.as_str().is_none() {
+            return Err(ExplorerError::spec(
+                "frontmatter 'cwd' must be a string when present",
+            ));
+        }
     }
 
     Ok(())
@@ -1219,18 +1218,18 @@ fn discover_with_runner<R: Runner>(
         }
         visited_hashes.insert(state_hash);
 
-        if !path.is_empty()
-            && let Some(anchor) = anchor
-        {
-            let mut steps = Vec::new();
-            for action in &path {
-                steps.extend(steps_for_action(action));
+        if !path.is_empty() {
+            if let Some(anchor) = anchor {
+                let mut steps = Vec::new();
+                for action in &path {
+                    steps.extend(steps_for_action(action));
+                }
+                steps.push(Step::Expect(anchor));
+                scenarios.push(Scenario {
+                    name: scenario_name(&path, scenarios.len() + 1),
+                    steps,
+                });
             }
-            steps.push(Step::Expect(anchor));
-            scenarios.push(Scenario {
-                name: scenario_name(&path, scenarios.len() + 1),
-                steps,
-            });
         }
 
         if path.len() >= config.max_depth {

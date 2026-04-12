@@ -44,10 +44,10 @@ pub fn render_screen(buffer: &ScreenBuffer) -> String {
             col = run_end;
         }
 
-        if row_idx + 1 < buffer.cells.len()
-            && let Err(err) = queue!(out, style::Print("\r\n"))
-        {
-            debug!(error = %err, "Failed to write terminal newline");
+        if row_idx + 1 < buffer.cells.len() {
+            if let Err(err) = queue!(out, style::Print("\r\n")) {
+                debug!(error = %err, "Failed to write terminal newline");
+            }
         }
     }
 

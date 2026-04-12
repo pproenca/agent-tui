@@ -917,18 +917,18 @@ struct WsState {
 
 impl WsState {
     fn resolved_ui_url(&self) -> String {
-        if let Some(url) = self.ui_url.as_ref()
-            && !url.trim().is_empty()
-        {
-            return url.trim().to_string();
-        }
-        if let Some(http_url) = self.http_url.as_ref()
-            && !http_url.trim().is_empty()
-        {
-            if http_url.ends_with('/') {
-                return format!("{http_url}ui");
+        if let Some(url) = self.ui_url.as_ref() {
+            if !url.trim().is_empty() {
+                return url.trim().to_string();
             }
-            return format!("{http_url}/ui");
+        }
+        if let Some(http_url) = self.http_url.as_ref() {
+            if !http_url.trim().is_empty() {
+                if http_url.ends_with('/') {
+                    return format!("{http_url}ui");
+                }
+                return format!("{http_url}/ui");
+            }
         }
         if let Ok(ws_url) = url::Url::parse(&self.ws_url) {
             let scheme = if ws_url.scheme() == "wss" {
@@ -1062,10 +1062,10 @@ fn parse_port_from_url(url: &str) -> Option<u16> {
 }
 
 fn resolve_ui_status() -> UiStatus {
-    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL")
-        && !url.trim().is_empty()
-    {
-        return UiStatus::External(url);
+    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL") {
+        if !url.trim().is_empty() {
+            return UiStatus::External(url);
+        }
     }
     match read_ui_state_running(&ui_state_path()) {
         Some(state) => UiStatus::Running(state),
@@ -1075,14 +1075,14 @@ fn resolve_ui_status() -> UiStatus {
 
 fn remove_ws_state_file() {
     let state_path = ws_state_path();
-    if let Err(err) = std::fs::remove_file(&state_path)
-        && err.kind() != std::io::ErrorKind::NotFound
-    {
-        warn!(
-            path = %state_path.display(),
-            error = %err,
-            "Failed to remove WS state file"
-        );
+    if let Err(err) = std::fs::remove_file(&state_path) {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            warn!(
+                path = %state_path.display(),
+                error = %err,
+                "Failed to remove WS state file"
+            );
+        }
     }
 }
 
@@ -1135,10 +1135,10 @@ fn stop_ui_server_with_controller_and_timeouts<C: ProcessController>(
     term_timeout: Duration,
     kill_timeout: Duration,
 ) -> Result<StopUiResult> {
-    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL")
-        && !url.trim().is_empty()
-    {
-        return Ok(StopUiResult::External);
+    if let Ok(url) = std::env::var("AGENT_TUI_UI_URL") {
+        if !url.trim().is_empty() {
+            return Ok(StopUiResult::External);
+        }
     }
 
     let state_path = ui_state_path();
@@ -1276,16 +1276,18 @@ pub(crate) fn handle_cleanup<C: DaemonClient>(
         for session in sessions.iter() {
             let id = session.get("id").and_then(|v| v.as_str());
             let should_cleanup = all || !session.bool_or("running", false);
-            if should_cleanup && let Some(id) = id {
-                let params = params::SessionParams {
-                    session: Some(id.to_string()),
-                };
-                match call_with_params(ctx.client, "kill", params) {
-                    Ok(_) => cleaned += 1,
-                    Err(e) => failures.push(CleanupFailure {
-                        session_id: id.to_string(),
-                        error: e.to_string(),
-                    }),
+            if should_cleanup {
+                if let Some(id) = id {
+                    let params = params::SessionParams {
+                        session: Some(id.to_string()),
+                    };
+                    match call_with_params(ctx.client, "kill", params) {
+                        Ok(_) => cleaned += 1,
+                        Err(e) => failures.push(CleanupFailure {
+                            session_id: id.to_string(),
+                            error: e.to_string(),
+                        }),
+                    }
                 }
             }
         }
@@ -1680,14 +1682,14 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
 
     if !force {
         // Try graceful RPC shutdown first (needs connection but doesn't auto-start)
-        if let Ok(mut client) = UnixSocketClient::connect()
-            && let Ok(result) = daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket)
-        {
-            remove_ws_state_file();
-            return Ok(StopResult::Stopped {
-                pid,
-                warnings: result.warnings,
-            });
+        if let Ok(mut client) = UnixSocketClient::connect() {
+            if let Ok(result) = daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket) {
+                remove_ws_state_file();
+                return Ok(StopResult::Stopped {
+                    pid,
+                    warnings: result.warnings,
+                });
+            }
         }
     }
 

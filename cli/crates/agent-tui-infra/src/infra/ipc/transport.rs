@@ -464,10 +464,10 @@ fn start_daemon_background_stub() -> Result<(), ClientError> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub fn clear_test_listener() {
-    if let Some(holder) = TEST_LISTENER.get()
-        && let Ok(mut guard) = holder.lock()
-    {
-        guard.take();
+    if let Some(holder) = TEST_LISTENER.get() {
+        if let Ok(mut guard) = holder.lock() {
+            guard.take();
+        }
     }
 }
 

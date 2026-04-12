@@ -566,10 +566,7 @@ impl Application {
     }
 
     fn requires_daemon_autostart(command: &Commands) -> bool {
-        match command {
-            Commands::Run { .. } => true,
-            _ => false,
-        }
+        matches!(command, Commands::Run { .. })
     }
 
     fn handle_daemon_stop_without_autostart(&self, force: bool) -> Result<()> {

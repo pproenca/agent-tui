@@ -6,20 +6,24 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 
 ## Progress
 
-- [ ] Create the persistent audit artifacts: plan, matrix, and findings ledger.
-- [ ] Complete the workspace and architecture tranche (`A08`) and record findings.
-- [ ] Complete the domain invariants and error-boundary tranches (`A01`, `A02`) and record findings.
+- [x] (2026-04-12 22:03Z) Create the persistent audit artifacts: plan, matrix, and findings ledger.
+- [x] (2026-04-12 22:03Z) Complete the workspace and architecture tranche (`A08`) and record findings.
+- [x] (2026-04-12 22:06Z) Complete the domain invariants tranche (`A01`) and record findings.
+- [ ] Complete the error-boundary tranche (`A02`) and record findings.
 - [ ] Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
 - [ ] Close the plan by filling the retrospective and moving it to `completed/`.
 
 ## Surprises & Discoveries
 
 - `2026-04-12 22:00Z` The repository does not currently contain `/Users/pedroproenca/Documents/Projects/agent-tui/docs/PLANS.md` or `/Users/pedroproenca/Documents/Projects/agent-tui/docs/exec-plans/`, so this plan uses the `exec-plan` skill's required structure directly instead of inheriting a local template.
+- `2026-04-12 22:03Z` The first matrix draft undercounted the perimeter because it omitted non-`src` audit targets such as `build.rs`, workspace manifests, API specs, and Rust-to-web boundary files. The corrected baseline is `130` targets and `7,800` audit cells.
+- `2026-04-12 22:06Z` The domain already contains a strong `TerminalSize` invariant type, but spawn and resize request DTOs still move raw `u16` dimensions through the boundary, which means the invariant is not actually enforced at all entry points.
 
 ## Decision Log
 
-- `2026-04-12 22:00Z` Use a generated TSV matrix for the 6,660 file-by-rule audit cells instead of a Markdown table because the state space is too large for manual editing and needs deterministic regeneration.
+- `2026-04-12 22:00Z` Use a generated TSV matrix for the file-by-rule audit cells instead of a Markdown table because the state space is too large for manual editing and needs deterministic regeneration.
 - `2026-04-12 22:00Z` Treat the existing audit inventory at `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` as the coverage perimeter and audit-unit registry rather than duplicating that taxonomy in this plan.
+- `2026-04-12 22:03Z` Expand the matrix perimeter beyond Rust `src/**/*.rs` to include manifests, `build.rs`, API specs, and Rust-to-web contract files because those artifacts materially affect the skill's `workspace`, `proto`, and `tui` audit categories.
 
 ## Outcomes & Retrospective
 
@@ -75,7 +79,7 @@ Work: generate the file-by-rule matrix from the current Rust file list and the 6
 
 Result: any later session can answer "what is left?" and "what has been reviewed?" from repo files instead of conversation history.
 
-Proof: the matrix row count matches `111 × 60 + 1 header`, and the findings ledger contains at least one tranche section.
+Proof: the matrix row count matches `130 × 60 + 1 header`, and the findings ledger contains at least one tranche section.
 
 ### Milestone 2: Complete the workspace/architecture tranche
 
@@ -87,17 +91,27 @@ Result: a completed `A08` tranche with recorded passes/findings and matrix cells
 
 Proof: the findings ledger has an `A08` section with verdicts, and the matrix includes non-`pending` rows for the audited files/rules.
 
-### Milestone 3: Complete the domain and error tranches
+### Milestone 3: Complete the domain invariants tranche
 
-Goal: validate the core semantic invariants and error-boundary discipline that affect every feature slice.
+Goal: validate the core semantic invariants that affect every feature slice.
 
-Work: audit `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/**/*.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs`, and the surrounding boundary translators.
+Work: audit `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/**/*.rs` and any boundary parser that can weaken those invariants before values reach the use cases.
 
-Result: completed `A01` and `A02` sections, with concrete findings or explicit pass notes.
+Result: completed `A01` section with concrete findings or explicit pass notes.
 
-Proof: the ledger documents the completed tranches and the matrix rows for those files show reviewed statuses.
+Proof: the ledger documents the completed tranche and the matrix rows for the reviewed domain files show non-`pending` statuses.
 
-### Milestone 4: Execute remaining tranches until the inventory is exhausted
+### Milestone 4: Complete the error-boundary tranche
+
+Goal: validate the error-boundary discipline that affects every feature slice.
+
+Work: audit `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs`, and the surrounding boundary translators.
+
+Result: completed `A02` section with concrete findings or explicit pass notes.
+
+Proof: the ledger documents the completed tranche and the matrix rows for the reviewed error files show non-`pending` statuses.
+
+### Milestone 5: Execute remaining tranches until the inventory is exhausted
 
 Goal: finish every audit unit listed in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md`.
 

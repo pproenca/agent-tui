@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::error::Error as StdError;
 use std::io;
 use std::io::Read;
 use std::io::Write;
@@ -92,19 +93,9 @@ impl PtyHandle {
         cmd.env("TERM", "xterm-256color");
 
         let child = pair.slave.spawn_command(cmd).map_err(|e| {
-            let kind = if let Some(io_err) = e.downcast_ref::<io::Error>() {
-                match io_err.kind() {
-                    io::ErrorKind::NotFound => SpawnErrorKind::NotFound,
-                    io::ErrorKind::PermissionDenied => SpawnErrorKind::PermissionDenied,
-                    _ => SpawnErrorKind::Other,
-                }
-            } else {
-                SpawnErrorKind::Other
-            };
-            PtyError::Spawn {
-                reason: e.to_string(),
-                kind,
-            }
+            let reason = e.to_string();
+            let kind = classify_spawn_error(e.as_ref(), &reason);
+            PtyError::Spawn { reason, kind }
         })?;
 
         let reader = pair.master.try_clone_reader().map_err(|e| PtyError::Open {
@@ -578,6 +569,43 @@ pub(crate) fn keycode_to_escape_sequence(code: KeyCode) -> Option<Vec<u8>> {
     key_to_escape_sequence(key)
 }
 
+fn classify_spawn_error(error: &(dyn StdError + 'static), reason: &str) -> SpawnErrorKind {
+    if let Some(kind) = find_spawn_error_kind_in_chain(error) {
+        return kind;
+    }
+
+    let normalized_reason = reason.to_ascii_lowercase();
+    if normalized_reason.contains("no viable candidates found in path")
+        || normalized_reason.contains("command not found")
+        || normalized_reason.contains("no such file or directory")
+    {
+        return SpawnErrorKind::NotFound;
+    }
+
+    if normalized_reason.contains("permission denied")
+        || normalized_reason.contains("operation not permitted")
+    {
+        return SpawnErrorKind::PermissionDenied;
+    }
+
+    SpawnErrorKind::Other
+}
+
+fn find_spawn_error_kind_in_chain(error: &(dyn StdError + 'static)) -> Option<SpawnErrorKind> {
+    let mut current = Some(error);
+    while let Some(err) = current {
+        if let Some(io_err) = err.downcast_ref::<io::Error>() {
+            return match io_err.kind() {
+                io::ErrorKind::NotFound => Some(SpawnErrorKind::NotFound),
+                io::ErrorKind::PermissionDenied => Some(SpawnErrorKind::PermissionDenied),
+                _ => None,
+            };
+        }
+        current = err.source();
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -613,5 +641,33 @@ mod tests {
         );
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    #[test]
+    fn spawn_missing_command_is_classified_as_not_found() {
+        let result = PtyHandle::spawn(
+            "agent-tui-command-that-should-not-exist-for-tests",
+            &[],
+            None,
+            None,
+            80,
+            24,
+        );
+
+        match result {
+            Err(PtyError::Spawn { kind, reason }) => {
+                assert_eq!(kind, SpawnErrorKind::NotFound);
+                assert!(
+                    reason.contains("PATH")
+                        || reason.to_ascii_lowercase().contains("not found")
+                        || reason
+                            .to_ascii_lowercase()
+                            .contains("no such file or directory"),
+                    "unexpected spawn reason: {reason}"
+                );
+            }
+            Err(other) => panic!("expected spawn error, got {other:?}"),
+            Ok(_) => panic!("expected missing command to fail"),
+        }
     }
 }

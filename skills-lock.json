@@ -4,7 +4,7 @@
     "cli-for-agents": {
       "source": "pproenca/dot-skills",
       "sourceType": "github",
-      "computedHash": "07969ab4d47ce1ba27daad84e3c285b564c283aa6280afd4828d8725063d08e6"
+      "computedHash": "691a41874bedd4d6a91f97d23d001e8a31f2eb66a01457849aa1aa5ffb1beb3e"
     },
     "harness-engineering": {
       "source": "pproenca/dot-skills",

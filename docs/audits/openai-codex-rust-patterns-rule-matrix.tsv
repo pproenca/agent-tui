@@ -54,7 +54,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/ARCHITECTURE.md	types-try-from-newtype-validation	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/ARCHITECTURE.md	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/ARCHITECTURE.md	workspace-ban-per-crate-features	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/ARCHITECTURE.md	workspace-layered-transport-api-core	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/ARCHITECTURE.md	workspace-layered-transport-api-core	workspace	not_applicable	contextual	A08	2026-04-12 22:03Z	Repository uses clean-architecture ring crates instead of a transport/api/core HTTP stack.
 /Users/pedroproenca/Documents/Projects/agent-tui/ARCHITECTURE.md	workspace-lint-config-package	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/ARCHITECTURE.md	workspace-single-source-dependencies	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/ARCHITECTURE.md	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
@@ -68,7 +68,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pass	applicable	A08	2026-04-12 22:03Z	Workspace clippy denies unwrap_used and expect_used.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
@@ -113,12 +113,12 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	types-thread-local-raii-serde	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	types-try-from-newtype-validation	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	types-unknown-variant-forward-compat	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-ban-per-crate-features	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-ban-per-crate-features	workspace	pass	applicable	A08	2026-04-12 22:03Z	No per-crate feature sections found in workspace manifests.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-layered-transport-api-core	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-lint-config-package	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-single-source-dependencies	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-lint-config-package	workspace	pass	applicable	A08	2026-04-12 22:03Z	Workspace lints centralize clippy policy for member crates.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-single-source-dependencies	workspace	pass	applicable	A08	2026-04-12 22:03Z	External dependency versions are centralized in workspace.dependencies.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-test-support-as-member-crates	workspace	finding	applicable	A08	2026-04-12 22:03Z	Shared test helpers live in tree modules instead of a workspace member test-support crate.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml	workspace-utils-microcrate-fanout	workspace	not_applicable	contextual	A08	2026-04-12 22:03Z	Smaller workspace uses one cohesive common crate instead of utils microcrates.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	async-abort-on-drop-handle	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	async-biased-select-for-cancellation	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	async-bounded-vs-unbounded-channel-split	async	pending	unreviewed			
@@ -175,7 +175,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	workspace-layered-transport-api-core	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	workspace-lint-config-package	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	workspace-lint-config-package	workspace	pass	applicable	A08	2026-04-12 22:03Z	Clippy policy is centralized in a workspace-level clippy.toml file.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	workspace-single-source-dependencies	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/clippy.toml	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
@@ -188,7 +188,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pass	applicable	A08	2026-04-12 22:03Z	Crate inherits workspace unwrap and expect denial policy.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
@@ -233,10 +233,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	types-thread-local-raii-serde	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	types-try-from-newtype-validation	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	types-unknown-variant-forward-compat	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	workspace-ban-per-crate-features	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	workspace-ban-per-crate-features	workspace	pass	applicable	A08	2026-04-12 22:03Z	No per-crate feature section present.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	workspace-layered-transport-api-core	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	workspace-lint-config-package	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	workspace-single-source-dependencies	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	workspace-lint-config-package	workspace	pass	applicable	A08	2026-04-12 22:03Z	Crate opts into workspace lint policy.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	workspace-single-source-dependencies	workspace	finding	applicable	A08	2026-04-12 22:03Z	Internal workspace dependencies are repeated as per-crate path entries instead of workspace=true references.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	async-abort-on-drop-handle	async	pending	unreviewed			
@@ -252,11 +252,11 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	errors-boundary-error-translator	errors	finding	applicable	A02	2026-04-12 22:07Z	SessionError::Persistence is translated to DomainError::Generic, discarding its specific error code and structured persistence context.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	errors-struct-display-payload	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	errors-struct-display-payload	errors	finding	applicable	A02	2026-04-12 22:07Z	DomainError::Generic stores a preformatted message string after persistence translation instead of preserving a structured payload.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	errors-tool-call-respond-vs-fatal	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	errors-transient-permanent-type-split	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/error.rs	otel-field-empty-then-record	otel	pending	unreviewed			
@@ -1071,7 +1071,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-try-from-newtype-validation	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-try-from-newtype-validation	types	finding	applicable	A01	2026-04-12 22:06Z	parse_spawn_input clamps raw terminal sizes and parse_resize_input forwards raw sizes instead of constructing a validated TerminalSize.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -1448,7 +1448,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pass	applicable	A08	2026-04-12 22:03Z	Crate inherits workspace unwrap and expect denial policy.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
@@ -1493,10 +1493,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	types-thread-local-raii-serde	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	types-try-from-newtype-validation	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	types-unknown-variant-forward-compat	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	workspace-ban-per-crate-features	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	workspace-ban-per-crate-features	workspace	pass	applicable	A08	2026-04-12 22:03Z	No per-crate feature section present.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	workspace-layered-transport-api-core	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	workspace-lint-config-package	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	workspace-single-source-dependencies	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	workspace-lint-config-package	workspace	pass	applicable	A08	2026-04-12 22:03Z	Crate opts into workspace lint policy.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	workspace-single-source-dependencies	workspace	finding	applicable	A08	2026-04-12 22:03Z	Internal workspace dependencies are repeated as per-crate path entries instead of workspace=true references.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	async-abort-on-drop-handle	async	pending	unreviewed			
@@ -2056,7 +2056,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-struct-display-payload	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-struct-display-payload	errors	pass	applicable	A02	2026-04-12 22:07Z	AttachError exposes structured context through AttachErrorContext and AttachErrorPayload.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-tool-call-respond-vs-fatal	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-transient-permanent-type-split	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	otel-field-empty-then-record	otel	pending	unreviewed			
@@ -2408,7 +2408,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pass	applicable	A08	2026-04-12 22:03Z	Crate inherits workspace unwrap and expect denial policy.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
@@ -2453,10 +2453,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	types-thread-local-raii-serde	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	types-try-from-newtype-validation	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	types-unknown-variant-forward-compat	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	workspace-ban-per-crate-features	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	workspace-ban-per-crate-features	workspace	pass	applicable	A08	2026-04-12 22:03Z	No per-crate feature section present.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	workspace-layered-transport-api-core	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	workspace-lint-config-package	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	workspace-single-source-dependencies	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	workspace-lint-config-package	workspace	pass	applicable	A08	2026-04-12 22:03Z	Crate opts into workspace lint policy.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	workspace-single-source-dependencies	workspace	pass	applicable	A08	2026-04-12 22:03Z	Dependencies are sourced through workspace declarations.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/Cargo.toml	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/color.rs	async-abort-on-drop-handle	async	pending	unreviewed			
@@ -2534,7 +2534,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs	errors-boundary-error-translator	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs	errors-exhaustive-retryable-match	errors	pass	applicable	A02	2026-04-12 22:07Z	DaemonError retryability is explicitly matched by variant.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs	errors-struct-display-payload	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs	errors-tool-call-respond-vs-fatal	errors	pending	unreviewed			
@@ -2948,7 +2948,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pass	applicable	A08	2026-04-12 22:03Z	Crate inherits workspace unwrap and expect denial policy.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
@@ -2993,10 +2993,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	types-thread-local-raii-serde	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	types-try-from-newtype-validation	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	types-unknown-variant-forward-compat	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	workspace-ban-per-crate-features	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	workspace-ban-per-crate-features	workspace	pass	applicable	A08	2026-04-12 22:03Z	No per-crate feature section present.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	workspace-layered-transport-api-core	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	workspace-lint-config-package	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	workspace-single-source-dependencies	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	workspace-lint-config-package	workspace	pass	applicable	A08	2026-04-12 22:03Z	Crate opts into workspace lint policy.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	workspace-single-source-dependencies	workspace	pass	applicable	A08	2026-04-12 22:03Z	Dependencies are sourced through workspace declarations.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/Cargo.toml	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/core/mod.rs	async-abort-on-drop-handle	async	pending	unreviewed			
@@ -3288,10 +3288,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	tui-schedule-frame-coalescer	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	tui-two-gear-hysteresis-chunking	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-dyn-safe-adapter-trait	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-full-reference-hierarchy	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-full-reference-hierarchy	types	pass	applicable	A01	2026-04-12 22:06Z	SessionId implements Borrow AsRef Deref and TryFrom to preserve ergonomic reference behavior with validation.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-try-from-newtype-validation	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-try-from-newtype-validation	types	pass	contextual	A01	2026-04-12 22:06Z	SessionId routes construction through TryFrom and rejects empty identifiers.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -3349,10 +3349,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	tui-two-gear-hysteresis-chunking	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-dyn-safe-adapter-trait	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-full-reference-hierarchy	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-non-exhaustive-public-enums	types	pass	applicable	A01	2026-04-12 22:06Z	Public condition enums are marked non_exhaustive.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-try-from-newtype-validation	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-try-from-newtype-validation	types	finding	applicable	A01	2026-04-12 22:06Z	SpawnInput and ResizeInput carry raw cols and rows instead of the validated TerminalSize type.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-unknown-variant-forward-compat	types	not_applicable	contextual	A01	2026-04-12 22:06Z	Condition enums represent validated command inputs rather than persisted open-ended wire values.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	workspace-lint-config-package	workspace	pending	unreviewed			
@@ -3428,7 +3428,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pass	applicable	A08	2026-04-12 22:03Z	Crate inherits workspace unwrap and expect denial policy.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
@@ -3473,10 +3473,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	types-thread-local-raii-serde	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	types-try-from-newtype-validation	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	types-unknown-variant-forward-compat	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	workspace-ban-per-crate-features	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	workspace-ban-per-crate-features	workspace	pass	applicable	A08	2026-04-12 22:03Z	No per-crate feature section present.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	workspace-layered-transport-api-core	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	workspace-lint-config-package	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	workspace-single-source-dependencies	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	workspace-lint-config-package	workspace	pass	applicable	A08	2026-04-12 22:03Z	Crate opts into workspace lint policy.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	workspace-single-source-dependencies	workspace	finding	applicable	A08	2026-04-12 22:03Z	Internal workspace dependencies are repeated as per-crate path entries instead of workspace=true references.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/config.rs	async-abort-on-drop-handle	async	pending	unreviewed			
@@ -5048,7 +5048,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pass	applicable	A08	2026-04-12 22:03Z	Crate inherits workspace unwrap and expect denial policy.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
@@ -5093,10 +5093,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	types-thread-local-raii-serde	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	types-try-from-newtype-validation	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	types-unknown-variant-forward-compat	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	workspace-ban-per-crate-features	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	workspace-ban-per-crate-features	workspace	pass	applicable	A08	2026-04-12 22:03Z	No per-crate feature section present.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	workspace-layered-transport-api-core	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	workspace-lint-config-package	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	workspace-single-source-dependencies	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	workspace-lint-config-package	workspace	pass	applicable	A08	2026-04-12 22:03Z	Crate opts into workspace lint policy.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	workspace-single-source-dependencies	workspace	finding	applicable	A08	2026-04-12 22:03Z	Internal workspace dependencies are repeated as per-crate path entries instead of workspace=true references.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/lib.rs	async-abort-on-drop-handle	async	pending	unreviewed			
@@ -5414,7 +5414,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-boundary-error-translator	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-exhaustive-retryable-match	errors	pass	applicable	A02	2026-04-12 22:07Z	TerminalError retryability is derived with an explicit variant match.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-struct-display-payload	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-tool-call-respond-vs-fatal	errors	pending	unreviewed			
@@ -5937,7 +5937,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mod.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mod.rs	workspace-lint-config-package	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mod.rs	workspace-single-source-dependencies	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mod.rs	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mod.rs	workspace-test-support-as-member-crates	workspace	finding	applicable	A08	2026-04-12 22:03Z	Shared mocks live in an in-tree module instead of a reusable workspace member test-support crate.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mod.rs	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs	async-abort-on-drop-handle	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs	async-biased-select-for-cancellation	async	pending	unreviewed			
@@ -6308,7 +6308,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pass	applicable	A08	2026-04-12 22:03Z	Crate inherits workspace unwrap and expect denial policy.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
@@ -6353,10 +6353,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	types-thread-local-raii-serde	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	types-try-from-newtype-validation	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	types-unknown-variant-forward-compat	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	workspace-ban-per-crate-features	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	workspace-ban-per-crate-features	workspace	pass	applicable	A08	2026-04-12 22:03Z	No per-crate feature section present.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	workspace-layered-transport-api-core	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	workspace-lint-config-package	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	workspace-single-source-dependencies	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	workspace-lint-config-package	workspace	pass	applicable	A08	2026-04-12 22:03Z	Crate opts into workspace lint policy.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	workspace-single-source-dependencies	workspace	pass	applicable	A08	2026-04-12 22:03Z	Internal crate dependency already uses workspace=true.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/Cargo.toml	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	async-abort-on-drop-handle	async	pending	unreviewed			
@@ -7017,7 +7017,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mod.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mod.rs	workspace-lint-config-package	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mod.rs	workspace-single-source-dependencies	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mod.rs	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mod.rs	workspace-test-support-as-member-crates	workspace	finding	applicable	A08	2026-04-12 22:03Z	Shared integration-test harness lives under tests/common instead of a workspace member crate.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mod.rs	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs	async-abort-on-drop-handle	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/real_test_harness.rs	async-biased-select-for-cancellation	async	pending	unreviewed			
@@ -7208,7 +7208,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	defensive-deny-unwrap-workspace-wide	defensive	pass	applicable	A08	2026-04-12 22:03Z	Crate inherits workspace unwrap and expect denial policy.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
@@ -7253,10 +7253,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	types-thread-local-raii-serde	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	types-try-from-newtype-validation	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	types-unknown-variant-forward-compat	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	workspace-ban-per-crate-features	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	workspace-ban-per-crate-features	workspace	pass	applicable	A08	2026-04-12 22:03Z	No per-crate feature section present.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	workspace-layered-transport-api-core	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	workspace-lint-config-package	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	workspace-single-source-dependencies	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	workspace-lint-config-package	workspace	pass	applicable	A08	2026-04-12 22:03Z	Crate opts into workspace lint policy.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	workspace-single-source-dependencies	workspace	pass	applicable	A08	2026-04-12 22:03Z	Dependencies are sourced through workspace declarations.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/Cargo.toml	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	async-abort-on-drop-handle	async	pending	unreviewed			

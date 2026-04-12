@@ -698,6 +698,27 @@ mod tests {
     }
 
     #[test]
+    fn test_restart_usecase_returns_repository_restart_output() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_restart_result("session-a", "session-b", "bash", 4242)
+                .build(),
+        );
+        let usecase = RestartUseCaseImpl::new(Arc::clone(&repo));
+        let input = SessionInput {
+            session_id: Some(SessionId::try_new("session-a").expect("valid session id")),
+        };
+
+        let result = usecase.execute(input).expect("restart should succeed");
+
+        assert_eq!(repo.restart_call_count(), 1);
+        assert_eq!(result.old_session_id.as_str(), "session-a");
+        assert_eq!(result.new_session_id.as_str(), "session-b");
+        assert_eq!(result.command, "bash");
+        assert_eq!(result.pid, 4242);
+    }
+
+    #[test]
     fn test_attach_usecase_returns_error_when_session_not_found() {
         let repo = Arc::new(MockSessionRepository::new());
         let usecase = AttachUseCaseImpl::new(repo);

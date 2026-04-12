@@ -62,7 +62,6 @@ impl ProcessController for UnixProcessController {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
 #[allow(clippy::expect_used)]
 pub mod mock {
     use super::*;

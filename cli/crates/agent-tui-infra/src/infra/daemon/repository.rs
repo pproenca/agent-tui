@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::common::mutex_lock_or_recover;
-use crate::domain::core::CursorPosition;
 use crate::domain::RestartOutput;
+use crate::domain::core::CursorPosition;
 use crate::usecases::ports::LivePreviewSnapshot;
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionHandle;

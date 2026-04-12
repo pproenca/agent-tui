@@ -56,8 +56,8 @@ use crate::usecases::ports::StreamWaiter;
 use crate::usecases::ports::StreamWaiterHandle;
 
 use super::pty_session::PtySession;
-use crate::infra::daemon::TerminalState;
 use crate::domain::RestartOutput;
+use crate::infra::daemon::TerminalState;
 
 pub use crate::domain::session_types::SessionId;
 pub use crate::domain::session_types::SessionInfo;
@@ -606,13 +606,7 @@ pub struct Session {
 }
 
 impl Session {
-    fn new(
-        id: SessionId,
-        launch: SessionLaunchSpec,
-        pty: PtyHandle,
-        cols: u16,
-        rows: u16,
-    ) -> Self {
+    fn new(id: SessionId, launch: SessionLaunchSpec, pty: PtyHandle, cols: u16, rows: u16) -> Self {
         let stream = Arc::new(StreamBuffer::new(STREAM_MAX_BUFFER_BYTES));
         let mut pty = PtySession::new(pty);
         let pty_rx = pty.take_read_rx();
@@ -925,7 +919,7 @@ impl SessionManager {
             cols,
             rows,
         )
-            .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
+        .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
         let pid = pty.pid().unwrap_or(0);
 
         let session = Session::new(id.clone(), launch.clone(), pty, cols, rows);
@@ -1258,6 +1252,18 @@ enum SessionEvent {
     Remove { session_id: String },
 }
 
+#[derive(Default)]
+struct SessionLogState {
+    sessions: HashMap<String, PersistedSession>,
+    unknown_records: usize,
+}
+
+impl SessionLogState {
+    fn into_sessions(self) -> Vec<PersistedSession> {
+        self.sessions.into_values().collect()
+    }
+}
+
 pub struct SessionPersistence {
     path: PathBuf,
     lock_path: PathBuf,
@@ -1420,9 +1426,9 @@ impl SessionPersistence {
         Ok(())
     }
 
-    fn load_unlocked(&self) -> Vec<PersistedSession> {
+    fn load_log_state_unlocked(&self) -> SessionLogState {
         if !self.path.exists() {
-            return Vec::new();
+            return SessionLogState::default();
         }
         let file = match File::open(&self.path) {
             Ok(file) => file,
@@ -1432,17 +1438,18 @@ impl SessionPersistence {
                     error = %e,
                     "Failed to open sessions log"
                 );
-                return Vec::new();
+                return SessionLogState::default();
             }
         };
 
-        let mut sessions = HashMap::new();
+        let mut state = SessionLogState::default();
         let reader = BufReader::new(file);
         for line in reader.lines() {
             let line = match line {
                 Ok(line) => line,
                 Err(e) => {
                     warn!(error = %e, "Failed to read session log line");
+                    state.unknown_records += 1;
                     continue;
                 }
             };
@@ -1454,20 +1461,25 @@ impl SessionPersistence {
                 Ok(event) => event,
                 Err(e) => {
                     warn!(error = %e, "Failed to parse session log entry");
+                    state.unknown_records += 1;
                     continue;
                 }
             };
             match event {
                 SessionEvent::Upsert { session } => {
-                    sessions.insert(session.id.clone(), session);
+                    state.sessions.insert(session.id.clone(), session);
                 }
                 SessionEvent::Remove { session_id } => {
-                    sessions.remove(&session_id);
+                    state.sessions.remove(&session_id);
                 }
             }
         }
 
-        sessions.into_values().collect()
+        state
+    }
+
+    fn load_unlocked(&self) -> Vec<PersistedSession> {
+        self.load_log_state_unlocked().into_sessions()
     }
 
     fn write_event_unlocked(&self, event: &SessionEvent) -> Result<(), SessionError> {
@@ -1533,8 +1545,16 @@ impl SessionPersistence {
         if size < SESSION_STORE_COMPACT_THRESHOLD_BYTES {
             return Ok(());
         }
-        let sessions = self.load_unlocked();
-        self.save_unlocked(&sessions)?;
+        let state = self.load_log_state_unlocked();
+        if state.unknown_records > 0 {
+            warn!(
+                path = %self.path.display(),
+                unknown_records = state.unknown_records,
+                "Skipping session log compaction because unknown records must be preserved"
+            );
+            return Ok(());
+        }
+        self.save_unlocked(&state.into_sessions())?;
         Ok(())
     }
 
@@ -1554,6 +1574,17 @@ impl SessionPersistence {
     pub fn save(&self, sessions: &[PersistedSession]) -> Result<(), SessionError> {
         let _lock = self.acquire_lock()?;
         self.migrate_legacy_if_needed_locked()?;
+        let state = self.load_log_state_unlocked();
+        if state.unknown_records > 0 {
+            return Err(SessionError::Persistence {
+                operation: "save".to_string(),
+                reason: format!(
+                    "refusing to rewrite session log with {} unknown record(s)",
+                    state.unknown_records
+                ),
+                source: None,
+            });
+        }
         self.save_unlocked(sessions)
     }
 
@@ -1576,19 +1607,24 @@ impl SessionPersistence {
     pub fn cleanup_stale_sessions(&self) -> Result<usize, SessionError> {
         let _lock = self.acquire_lock()?;
         self.migrate_legacy_if_needed_locked()?;
-        let sessions = self.load_unlocked();
+        let state = self.load_log_state_unlocked();
+        let unknown_records = state.unknown_records;
+        let sessions = state.into_sessions();
         let mut cleaned = 0;
 
         let mut active_sessions = Vec::new();
+        let mut removed_session_ids = Vec::new();
         for session in sessions {
             if session.pid == 0 {
                 cleaned += 1;
+                removed_session_ids.push(session.id);
                 continue;
             }
 
             reap_child_if_any(session.pid);
             if !is_process_running(session.pid) {
                 cleaned += 1;
+                removed_session_ids.push(session.id);
                 continue;
             }
 
@@ -1615,6 +1651,7 @@ impl SessionPersistence {
                         "Persisted PID does not match session identity; removing entry without terminating"
                     );
                     cleaned += 1;
+                    removed_session_ids.push(session.id);
                 }
                 ProcessIdentity::Unknown => {
                     warn!(
@@ -1627,7 +1664,13 @@ impl SessionPersistence {
             }
         }
 
-        self.save_unlocked(&active_sessions)?;
+        if unknown_records > 0 {
+            for session_id in removed_session_ids {
+                self.write_event_unlocked(&SessionEvent::Remove { session_id })?;
+            }
+        } else {
+            self.save_unlocked(&active_sessions)?;
+        }
         Ok(cleaned)
     }
 }
@@ -1775,7 +1818,12 @@ mod pump_tests {
             PtyHandle::spawn(shell, &args, Some("/tmp"), None, 80, 24).expect("PTY should spawn");
         let session = Session::new(
             SessionId::try_new("test-session").expect("valid session id"),
-            "sh".to_string(),
+            super::SessionLaunchSpec {
+                command: "sh".to_string(),
+                args: args.clone(),
+                cwd: Some("/tmp".to_string()),
+                env: None,
+            },
             pty,
             80,
             24,
@@ -2214,6 +2262,17 @@ mod tests {
         }
     }
 
+    fn wait_for_file_contents(path: &std::path::Path, timeout: Duration) -> Option<String> {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if let Ok(contents) = fs::read_to_string(path) {
+                return Some(contents);
+            }
+            std::thread::park_timeout(Duration::from_millis(25));
+        }
+        fs::read_to_string(path).ok()
+    }
+
     #[test]
     fn test_persisted_session_serialization() {
         let session = PersistedSession {
@@ -2447,6 +2506,97 @@ mod tests {
         assert!(manager.active_session_id().is_none());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_restart_preserves_launch_context_and_replaces_session() {
+        let _env_lock = env_lock();
+        let temp_home = tempdir().expect("temp dir should be created");
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
+
+        let working_dir = temp_home.path().join("restart-cwd");
+        fs::create_dir_all(&working_dir).expect("working dir should be created");
+        let marker_path = temp_home.path().join("restart-marker.txt");
+
+        let manager = SessionManager::with_max_sessions(4);
+        let mut cleanup = SessionCleanup::new(&manager);
+        let expected_working_dir =
+            fs::canonicalize(&working_dir).unwrap_or_else(|_| working_dir.clone());
+
+        let mut env = HashMap::new();
+        env.insert("MYVAR".to_string(), "preserved-env".to_string());
+        let args = vec![
+            "-c".to_string(),
+            format!(
+                "printf \"%s|%s\" \"$PWD\" \"$MYVAR\" > \"{}\"; sleep 30",
+                marker_path.display()
+            ),
+        ];
+
+        let initial_session_id = match manager.spawn(
+            "sh",
+            &args,
+            Some(
+                working_dir
+                    .to_str()
+                    .expect("working directory should be valid UTF-8"),
+            ),
+            Some(&env),
+            Some(SessionId::try_new("restart-src").expect("valid session id")),
+            80,
+            24,
+        ) {
+            Ok((session_id, _pid)) => cleanup.track(session_id),
+            Err(SessionError::Terminal(_)) => return,
+            Err(e) => panic!("unexpected spawn error: {e}"),
+        };
+
+        let expected_marker = format!("{}|preserved-env", expected_working_dir.display());
+        let initial_contents = wait_for_file_contents(&marker_path, Duration::from_secs(2))
+            .expect("spawned session should write marker");
+        assert_eq!(initial_contents, expected_marker);
+        fs::remove_file(&marker_path).expect("marker file should be removed before restart");
+
+        let restarted = manager
+            .restart(Some(&initial_session_id))
+            .expect("restart should succeed");
+        cleanup.track(restarted.new_session_id.clone());
+
+        assert_eq!(restarted.old_session_id, initial_session_id);
+        assert_ne!(restarted.new_session_id, initial_session_id);
+        assert_eq!(
+            manager.active_session_id(),
+            Some(restarted.new_session_id.clone())
+        );
+        assert!(matches!(
+            manager.get(&initial_session_id),
+            Err(SessionError::NotFound(_))
+        ));
+
+        let restarted_contents = wait_for_file_contents(&marker_path, Duration::from_secs(2))
+            .expect("restarted session should write marker");
+        assert_eq!(restarted_contents, expected_marker);
+
+        let session = manager
+            .get(&restarted.new_session_id)
+            .expect("restarted session should exist");
+        let launch = mutex_lock_or_recover(&session).launch_spec();
+        let env_value = launch
+            .env
+            .as_ref()
+            .and_then(|vars| vars.get("MYVAR"))
+            .map(String::as_str);
+
+        assert_eq!(launch.command, "sh");
+        assert_eq!(launch.args, args);
+        assert_eq!(launch.cwd.as_deref(), working_dir.to_str());
+        assert_eq!(env_value, Some("preserved-env"));
+    }
+
     #[test]
     fn test_persistence_migration_from_json() {
         let _env_lock = env_lock();
@@ -2516,6 +2666,56 @@ mod tests {
             .expect("session should be removed");
         let loaded = persistence.load();
         assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn test_compaction_skips_unknown_records_to_preserve_forward_compatibility() {
+        let _env_lock = env_lock();
+        let temp_home = tempdir().expect("temp dir should be created");
+        let _home_guard = HomeGuard(std::env::var("HOME").ok());
+        // SAFETY: Test-only environment override for HOME directory.
+        unsafe {
+            std::env::set_var("HOME", temp_home.path());
+        }
+        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
+
+        let log_path = temp_home.path().join(".agent-tui").join("sessions.jsonl");
+        fs::create_dir_all(log_path.parent().expect("log path should have parent"))
+            .expect("log directory should be created");
+
+        let known = SessionEvent::Upsert {
+            session: PersistedSession {
+                id: "known".to_string(),
+                command: "sh".to_string(),
+                pid: 111,
+                created_at: "2024-01-01T00:00:00Z".to_string(),
+                cols: 80,
+                rows: 24,
+            },
+        };
+        let unknown = serde_json::json!({
+            "type": "future_event",
+            "payload": "x".repeat(SESSION_STORE_COMPACT_THRESHOLD_BYTES as usize),
+        });
+
+        let before = format!(
+            "{}\n{}\n",
+            serde_json::to_string(&known).expect("known event should serialize"),
+            serde_json::to_string(&unknown).expect("unknown event should serialize"),
+        );
+        fs::write(&log_path, &before).expect("session log should be seeded");
+
+        let persistence = SessionPersistence::new();
+        persistence
+            .maybe_compact_unlocked()
+            .expect("compaction should skip without failing");
+
+        let after = fs::read_to_string(&log_path).expect("session log should still exist");
+        let loaded = persistence.load();
+
+        assert_eq!(after, before);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, "known");
     }
 
     #[test]

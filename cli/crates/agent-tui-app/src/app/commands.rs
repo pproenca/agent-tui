@@ -1299,10 +1299,7 @@ mod tests {
     #[test]
     fn test_daemon_stop_dry_run_yes() {
         let cli = Cli::parse_from(["agent-tui", "daemon", "stop", "--dry-run", "--yes"]);
-        let Commands::Daemon(DaemonCommand::Stop {
-            dry_run, yes, ..
-        }) = cli.command
-        else {
+        let Commands::Daemon(DaemonCommand::Stop { dry_run, yes, .. }) = cli.command else {
             panic!("Expected Daemon Stop command, got {:?}", cli.command);
         };
         assert!(dry_run);

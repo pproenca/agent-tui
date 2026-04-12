@@ -434,18 +434,15 @@ impl IpcTransport for InMemoryTransport {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
 static TEST_LISTENER: std::sync::OnceLock<
     std::sync::Mutex<Option<std::os::unix::net::UnixListener>>,
 > = std::sync::OnceLock::new();
-#[cfg(any(test, feature = "test-support"))]
 pub static USE_DAEMON_START_STUB: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 static DAEMON_START_TEST_REAPED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-#[cfg(any(test, feature = "test-support"))]
 fn start_daemon_background_stub() -> Result<(), ClientError> {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::UnixListener;
@@ -466,7 +463,6 @@ fn start_daemon_background_stub() -> Result<(), ClientError> {
     Ok(())
 }
 
-#[cfg(any(test, feature = "test-support"))]
 pub fn clear_test_listener() {
     if let Some(holder) = TEST_LISTENER.get() {
         if let Ok(mut guard) = holder.lock() {
@@ -622,7 +618,7 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
     }
 
     if let Ok(Some(_status)) = child.try_wait() {
-        #[cfg(any(test, feature = "test-support"))]
+        #[cfg(test)]
         {
             DAEMON_START_TEST_REAPED.store(true, std::sync::atomic::Ordering::SeqCst);
         }
@@ -633,7 +629,6 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
 }
 
 pub fn start_daemon_background() -> Result<(), ClientError> {
-    #[cfg(any(test, feature = "test-support"))]
     if USE_DAEMON_START_STUB.load(std::sync::atomic::Ordering::SeqCst) {
         return start_daemon_background_stub();
     }

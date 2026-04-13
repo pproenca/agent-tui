@@ -226,19 +226,21 @@ pub fn attach_ipc<C: DaemonClient>(
             eprintln!();
 
             let term_guard = TerminalGuard::new()?;
-
-            let (cols, rows) = terminal::size().map_err(AttachError::Terminal)?;
-            if let Ok(size) = TerminalSize::try_new(cols, rows) {
-                let resize_params = params::ResizeParams {
-                    size,
-                    session: Some(session_id.to_string()),
-                };
-                let _ = call_with_params(client, "resize", resize_params);
-            }
-
             let stdout = Arc::new(Mutex::new(io::stdout()));
+
+            let initial_resize_warning = match terminal::size().map_err(AttachError::Terminal) {
+                Ok((cols, rows)) => TerminalSize::try_new(cols, rows).ok().and_then(|size| {
+                    sync_attach_resize(client, session_id, size)
+                        .err()
+                        .map(|error| attach_resize_warning(&error))
+                }),
+                Err(error) => return Err(error),
+            };
             if let Ok(mut guard) = stdout.lock() {
                 render_initial_screen(client, session_id, &mut *guard);
+                if let Some(message) = initial_resize_warning.as_deref() {
+                    render_status_line(&mut *guard, Some(message));
+                }
             }
 
             let result = attach_ipc_loop(client, session_id, &detach_keys, stdout);
@@ -335,6 +337,7 @@ fn attach_ipc_loop<C: DaemonClient>(
     stdout: Arc<Mutex<io::Stdout>>,
 ) -> Result<(), AttachError> {
     let mut detach_detector = DetachDetector::new(detach_keys);
+    let mut paste_burst = PasteBurstState::default();
     let mut hint_active = false;
 
     let stream = call_stream_with_params(
@@ -347,6 +350,7 @@ fn attach_ipc_loop<C: DaemonClient>(
     .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
     let mut output_worker = start_attach_stream_output(stream, Arc::clone(&stdout), false)?;
     let event_worker = spawn_event_reader();
+    let paste_flush_tick = channel::tick(ATTACH_PASTE_BURST_CHAR_INTERVAL);
 
     loop {
         channel::select! {
@@ -357,74 +361,143 @@ fn attach_ipc_loop<C: DaemonClient>(
                     Err(_) => break,
                 }
             }
+            recv(paste_flush_tick) -> _ => {
+                if let Some(input) = paste_burst.flush_ready(Instant::now())
+                    && process_attach_input(
+                        client,
+                        session_id,
+                        detach_keys,
+                        &mut detach_detector,
+                        &mut hint_active,
+                        &stdout,
+                        input,
+                    )?
+                {
+                    finish_detach(&mut output_worker, &event_worker);
+                    break;
+                }
+            }
             recv(event_worker.receiver()) -> msg => {
                 match msg {
                     Ok(EventMessage::Event(Event::Key(key_event))) => {
-                        if let Some(bytes) = key_event_to_bytes(&key_event) {
-                            let (to_send, detach) = detach_detector.consume(&bytes);
-                            if !detach_keys.is_disabled() {
-                                let now_active = detach_detector.is_partial_match();
-                                if now_active != hint_active {
-                                    if let Ok(mut guard) = stdout.lock() {
-                                        render_detach_hint(
-                                            &mut *guard,
-                                            if now_active {
-                                                Some(
-                                                    "Detach: sequence started, press remaining keys to detach",
-                                                )
-                                            } else {
-                                                None
-                                            },
-                                        );
-                                    }
-                                    hint_active = now_active;
-                                }
-                            }
-                            if detach {
-                                if let (true, Ok(mut guard)) = (hint_active, stdout.lock()) {
-                                    render_detach_hint(&mut *guard, None);
-                                }
-                                output_worker.abort();
-                                let _ =
-                                    output_worker.receiver().recv_timeout(ATTACH_OUTPUT_SHUTDOWN_WAIT);
-                                event_worker.cancel();
+                        let now = Instant::now();
+                        if let Some(character) = plain_char_for_paste_burst(&key_event) {
+                            if let Some(input) = paste_burst.on_plain_char(character, now)
+                                && process_attach_input(
+                                    client,
+                                    session_id,
+                                    detach_keys,
+                                    &mut detach_detector,
+                                    &mut hint_active,
+                                    &stdout,
+                                    input,
+                                )?
+                            {
+                                finish_detach(&mut output_worker, &event_worker);
                                 break;
                             }
+                            continue;
+                        }
 
-                            if !to_send.is_empty() {
-                                let data_b64 = STANDARD.encode(&to_send);
-                                let params = params::PtyWriteParams {
-                                    session: Some(session_id.to_string()),
-                                    data: data_b64,
-                                };
-                                if let Err(e) = call_with_params(client, "pty_write", params) {
-                                    return Err(AttachError::PtyWrite(format_client_error(&e)));
-                                }
-                            }
+                        if let Some(input) = paste_burst.flush_all()
+                            && process_attach_input(
+                                client,
+                                session_id,
+                                detach_keys,
+                                &mut detach_detector,
+                                &mut hint_active,
+                                &stdout,
+                                input,
+                            )?
+                        {
+                            finish_detach(&mut output_worker, &event_worker);
+                            break;
+                        }
+
+                        if let Some(bytes) = key_event_to_bytes(&key_event)
+                            && process_attach_input(
+                                client,
+                                session_id,
+                                detach_keys,
+                                &mut detach_detector,
+                                &mut hint_active,
+                                &stdout,
+                                BufferedAttachInput::normal(bytes),
+                            )?
+                        {
+                            finish_detach(&mut output_worker, &event_worker);
+                            break;
                         }
                     }
                     Ok(EventMessage::Event(Event::Paste(data))) => {
-                        if !data.is_empty() {
-                            let data_b64 = STANDARD.encode(data.as_bytes());
-                            let params = params::PtyWriteParams {
-                                session: Some(session_id.to_string()),
-                                data: data_b64,
-                            };
-                            if let Err(e) = call_with_params(client, "pty_write", params) {
-                                return Err(AttachError::PtyWrite(format_client_error(&e)));
-                            }
+                        if let Some(input) = paste_burst.flush_all()
+                            && process_attach_input(
+                                client,
+                                session_id,
+                                detach_keys,
+                                &mut detach_detector,
+                                &mut hint_active,
+                                &stdout,
+                                input,
+                            )?
+                        {
+                            finish_detach(&mut output_worker, &event_worker);
+                            break;
+                        }
+
+                        if !data.is_empty()
+                            && process_attach_input(
+                                client,
+                                session_id,
+                                detach_keys,
+                                &mut detach_detector,
+                                &mut hint_active,
+                                &stdout,
+                                BufferedAttachInput::bypass(data.into_bytes()),
+                            )?
+                        {
+                            finish_detach(&mut output_worker, &event_worker);
+                            break;
                         }
                     }
                     Ok(EventMessage::Event(Event::Resize(cols, rows))) => {
-                        if let Ok(size) = TerminalSize::try_new(cols, rows) {
-                            let params = params::ResizeParams {
-                                size,
-                                session: Some(session_id.to_string()),
-                            };
-                            let _ = call_with_params(client, "resize", params);
+                        if let Some(input) = paste_burst.flush_all()
+                            && process_attach_input(
+                                client,
+                                session_id,
+                                detach_keys,
+                                &mut detach_detector,
+                                &mut hint_active,
+                                &stdout,
+                                input,
+                            )?
+                        {
+                            finish_detach(&mut output_worker, &event_worker);
+                            break;
+                        }
+
+                        if let Ok(size) = TerminalSize::try_new(cols, rows)
+                            && let Err(error) = sync_attach_resize(client, session_id, size)
+                        {
+                            announce_attach_warning(&stdout, &attach_resize_warning(&error));
                         }
                     }
-                    Ok(EventMessage::Event(_)) => {}
+                    Ok(EventMessage::Event(_)) => {
+                        if let Some(input) = paste_burst.flush_all()
+                            && process_attach_input(
+                                client,
+                                session_id,
+                                detach_keys,
+                                &mut detach_detector,
+                                &mut hint_active,
+                                &stdout,
+                                input,
+                            )?
+                        {
+                            finish_detach(&mut output_worker, &event_worker);
+                            break;
+                        }
+                    }
                     Ok(EventMessage::Error) => return Err(AttachError::EventRead),
                     Err(_) => return Err(AttachError::EventRead),
                 }
@@ -626,9 +699,127 @@ impl DetachDetector {
         output.push(byte);
         false
     }
+
+    fn cancel_partial_match(&mut self) -> Vec<u8> {
+        if self.matched == 0 {
+            return Vec::new();
+        }
+
+        let pending = self.sequence[..self.matched].to_vec();
+        self.matched = 0;
+        pending
+    }
 }
 
-fn render_detach_hint(stdout: &mut impl Write, message: Option<&str>) {
+#[derive(Debug, PartialEq, Eq)]
+struct BufferedAttachInput {
+    bytes: Vec<u8>,
+    bypass_detach: bool,
+}
+
+impl BufferedAttachInput {
+    fn normal(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes,
+            bypass_detach: false,
+        }
+    }
+
+    fn bypass(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes,
+            bypass_detach: true,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct PasteBurstState {
+    pending_first_char: Option<(char, Instant)>,
+    buffer: String,
+    last_plain_char_at: Option<Instant>,
+}
+
+impl PasteBurstState {
+    fn on_plain_char(&mut self, character: char, now: Instant) -> Option<BufferedAttachInput> {
+        if !self.buffer.is_empty() {
+            if self
+                .last_plain_char_at
+                .is_some_and(|last| now.duration_since(last) <= ATTACH_PASTE_BURST_CHAR_INTERVAL)
+            {
+                self.buffer.push(character);
+                self.last_plain_char_at = Some(now);
+                return None;
+            }
+
+            let flushed = self.take_buffer();
+            self.pending_first_char = Some((character, now));
+            return Some(flushed);
+        }
+
+        if let Some((pending, pending_at)) = self.pending_first_char {
+            if now.duration_since(pending_at) <= ATTACH_PASTE_BURST_CHAR_INTERVAL {
+                self.pending_first_char = None;
+                self.buffer.push(pending);
+                self.buffer.push(character);
+                self.last_plain_char_at = Some(now);
+                return None;
+            }
+
+            self.pending_first_char = Some((character, now));
+            return Some(Self::single_char_input(pending));
+        }
+
+        self.pending_first_char = Some((character, now));
+        None
+    }
+
+    fn flush_ready(&mut self, now: Instant) -> Option<BufferedAttachInput> {
+        if !self.buffer.is_empty() {
+            if self
+                .last_plain_char_at
+                .is_some_and(|last| now.duration_since(last) > ATTACH_PASTE_BURST_CHAR_INTERVAL)
+            {
+                return Some(self.take_buffer());
+            }
+            return None;
+        }
+
+        if let Some((pending, pending_at)) = self.pending_first_char
+            && now.duration_since(pending_at) > ATTACH_PASTE_BURST_CHAR_INTERVAL
+        {
+            self.pending_first_char = None;
+            return Some(Self::single_char_input(pending));
+        }
+
+        None
+    }
+
+    fn flush_all(&mut self) -> Option<BufferedAttachInput> {
+        if !self.buffer.is_empty() {
+            return Some(self.take_buffer());
+        }
+
+        self.pending_first_char
+            .take()
+            .map(|(pending, _)| Self::single_char_input(pending))
+    }
+
+    fn single_char_input(character: char) -> BufferedAttachInput {
+        let mut buf = [0u8; 4];
+        let bytes = character.encode_utf8(&mut buf).as_bytes().to_vec();
+        BufferedAttachInput::normal(bytes)
+    }
+
+    fn take_buffer(&mut self) -> BufferedAttachInput {
+        self.last_plain_char_at = None;
+        let bytes = self.buffer.as_bytes().to_vec();
+        self.buffer.clear();
+        BufferedAttachInput::bypass(bytes)
+    }
+}
+
+fn render_status_line(stdout: &mut impl Write, message: Option<&str>) {
     let (cols, rows) = match terminal::size() {
         Ok(size) => size,
         Err(_) => return,
@@ -656,6 +847,114 @@ fn render_detach_hint(stdout: &mut impl Write, message: Option<&str>) {
     let _ = stdout.flush();
 }
 
+fn sync_detach_hint(
+    stdout: &Arc<Mutex<io::Stdout>>,
+    detach_keys: &DetachKeys,
+    detach_detector: &DetachDetector,
+    hint_active: &mut bool,
+) {
+    if detach_keys.is_disabled() {
+        return;
+    }
+
+    let now_active = detach_detector.is_partial_match();
+    if now_active == *hint_active {
+        return;
+    }
+
+    if let Ok(mut guard) = stdout.lock() {
+        render_status_line(
+            &mut *guard,
+            if now_active {
+                Some("Detach: sequence started, press remaining keys to detach")
+            } else {
+                None
+            },
+        );
+    }
+    *hint_active = now_active;
+}
+
+fn finish_detach(
+    output_worker: &mut AttachOutputWorker,
+    event_worker: &AttachReaderWorker<EventMessage>,
+) {
+    output_worker.abort();
+    let _ = output_worker
+        .receiver()
+        .recv_timeout(ATTACH_OUTPUT_SHUTDOWN_WAIT);
+    event_worker.cancel();
+}
+
+fn write_session_bytes<C: DaemonClient>(
+    client: &mut C,
+    session_id: &str,
+    data: &[u8],
+) -> Result<(), AttachError> {
+    if data.is_empty() {
+        return Ok(());
+    }
+
+    let data_b64 = STANDARD.encode(data);
+    let params = params::PtyWriteParams {
+        session: Some(session_id.to_string()),
+        data: data_b64,
+    };
+    call_with_params(client, "pty_write", params)
+        .map(|_| ())
+        .map_err(|e| AttachError::PtyWrite(format_client_error(&e)))
+}
+
+fn sync_attach_resize<C: DaemonClient>(
+    client: &mut C,
+    session_id: &str,
+    size: TerminalSize,
+) -> Result<(), ClientError> {
+    let params = params::ResizeParams {
+        size,
+        session: Some(session_id.to_string()),
+    };
+    call_with_params(client, "resize", params).map(|_| ())
+}
+
+fn attach_resize_warning(error: &ClientError) -> String {
+    format!("Resize sync failed: {}", format_client_error(error))
+}
+
+fn announce_attach_warning(stdout: &Arc<Mutex<io::Stdout>>, message: &str) {
+    tracing::warn!(warning = %message, "Attach warning");
+    if let Ok(mut guard) = stdout.lock() {
+        render_status_line(&mut *guard, Some(message));
+    }
+}
+
+fn process_attach_input<C: DaemonClient>(
+    client: &mut C,
+    session_id: &str,
+    detach_keys: &DetachKeys,
+    detach_detector: &mut DetachDetector,
+    hint_active: &mut bool,
+    stdout: &Arc<Mutex<io::Stdout>>,
+    input: BufferedAttachInput,
+) -> Result<bool, AttachError> {
+    let (to_send, detach) = if input.bypass_detach {
+        let mut bytes = detach_detector.cancel_partial_match();
+        bytes.extend_from_slice(&input.bytes);
+        (bytes, false)
+    } else {
+        detach_detector.consume(&input.bytes)
+    };
+
+    sync_detach_hint(stdout, detach_keys, detach_detector, hint_active);
+
+    if detach {
+        return Ok(true);
+    }
+
+    write_session_bytes(client, session_id, &to_send)?;
+    Ok(false)
+}
+
 enum StdinMessage {
     Data(Vec<u8>),
     Eof,
@@ -666,6 +965,7 @@ const ATTACH_STDIN_CHANNEL_CAPACITY: usize = 64;
 const ATTACH_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const ATTACH_THREAD_JOIN_TIMEOUT: Duration = Duration::from_millis(500);
 const ATTACH_OUTPUT_SHUTDOWN_WAIT: Duration = Duration::from_millis(500);
+const ATTACH_PASTE_BURST_CHAR_INTERVAL: Duration = Duration::from_millis(8);
 
 struct AttachReaderWorker<T> {
     rx: channel::Receiver<T>,
@@ -1002,6 +1302,17 @@ fn stream_output_loop(
     }
 }
 
+fn plain_char_for_paste_burst(key_event: &event::KeyEvent) -> Option<char> {
+    if key_event.kind == KeyEventKind::Release || key_event.modifiers != KeyModifiers::NONE {
+        return None;
+    }
+
+    match key_event.code {
+        KeyCode::Char(character) => Some(character),
+        _ => None,
+    }
+}
+
 fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
     if key_event.kind == KeyEventKind::Release {
         return None;
@@ -1175,7 +1486,9 @@ fn display_char(ch: char) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::ipc::client::DaemonClientConfig;
     use crate::test_support::MockClient;
+    use serde_json::Value;
 
     static PANIC_HOOK_TEST_LOCK: std::sync::LazyLock<Mutex<()>> =
         std::sync::LazyLock::new(|| Mutex::new(()));
@@ -1184,6 +1497,47 @@ mod tests {
         PANIC_HOOK_TEST_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[derive(Default)]
+    struct ResizeErrorClient {
+        calls: Vec<(String, Option<Value>)>,
+    }
+
+    impl ResizeErrorClient {
+        fn last_resize_params(&self) -> Option<&Value> {
+            self.calls
+                .iter()
+                .rev()
+                .find(|(method, _)| method == "resize")
+                .and_then(|(_, params)| params.as_ref())
+        }
+    }
+
+    impl DaemonClient for ResizeErrorClient {
+        fn call(&mut self, method: &str, params: Option<Value>) -> Result<Value, ClientError> {
+            self.calls.push((method.to_string(), params));
+            if method == "resize" {
+                return Err(ClientError::RpcError {
+                    code: -32001,
+                    message: "resize failed".to_string(),
+                    category: None,
+                    retryable: false,
+                    context: None,
+                    suggestion: Some("check daemon".to_string()),
+                });
+            }
+            Err(ClientError::InvalidResponse)
+        }
+
+        fn call_with_config(
+            &mut self,
+            method: &str,
+            params: Option<Value>,
+            _config: &DaemonClientConfig,
+        ) -> Result<Value, ClientError> {
+            self.call(method, params)
+        }
     }
 
     #[test]
@@ -1227,6 +1581,61 @@ mod tests {
             KeyEventKind::Release,
         );
         assert_eq!(key_event_to_bytes(&event), None);
+    }
+
+    #[test]
+    fn paste_burst_state_flushes_single_char_as_normal_input() {
+        let mut state = PasteBurstState::default();
+        let now = Instant::now();
+
+        assert_eq!(state.on_plain_char('a', now), None);
+
+        let flushed = state
+            .flush_ready(now + ATTACH_PASTE_BURST_CHAR_INTERVAL + Duration::from_millis(1))
+            .expect("pending char should flush after the burst interval");
+        assert_eq!(flushed, BufferedAttachInput::normal(b"a".to_vec()));
+    }
+
+    #[test]
+    fn paste_burst_state_groups_fast_chars_into_bypass_buffer() {
+        let mut state = PasteBurstState::default();
+        let now = Instant::now();
+
+        assert_eq!(state.on_plain_char('a', now), None);
+        assert_eq!(
+            state.on_plain_char('b', now + Duration::from_millis(1)),
+            None
+        );
+
+        let flushed = state
+            .flush_ready(now + ATTACH_PASTE_BURST_CHAR_INTERVAL + Duration::from_millis(2))
+            .expect("buffered paste burst should flush after inactivity");
+        assert_eq!(flushed, BufferedAttachInput::bypass(b"ab".to_vec()));
+    }
+
+    #[test]
+    fn paste_burst_state_flushes_previous_burst_before_holding_next_char() {
+        let mut state = PasteBurstState::default();
+        let now = Instant::now();
+
+        assert_eq!(state.on_plain_char('a', now), None);
+        assert_eq!(
+            state.on_plain_char('b', now + Duration::from_millis(1)),
+            None
+        );
+
+        let flushed = state
+            .on_plain_char(
+                'c',
+                now + ATTACH_PASTE_BURST_CHAR_INTERVAL + Duration::from_millis(2),
+            )
+            .expect("stale burst should flush before a new pending char is held");
+        assert_eq!(flushed, BufferedAttachInput::bypass(b"ab".to_vec()));
+
+        let pending = state
+            .flush_all()
+            .expect("next char should remain pending after the earlier burst flush");
+        assert_eq!(pending, BufferedAttachInput::normal(b"c".to_vec()));
     }
 
     #[test]
@@ -1335,6 +1744,23 @@ mod tests {
         let (out, detach) = detector.consume(&[0x10, 0x10]);
         assert_eq!(out, vec![0x10, 0x10]);
         assert!(!detach);
+    }
+
+    #[test]
+    fn test_detach_detector_cancel_partial_match_returns_pending_prefix() {
+        let detach_keys = "a,b"
+            .parse::<DetachKeys>()
+            .expect("custom detach keys should parse");
+        let mut detector = DetachDetector::new(&detach_keys);
+
+        let (out, detach) = detector.consume(b"a");
+        assert!(out.is_empty());
+        assert!(!detach);
+        assert!(detector.is_partial_match());
+
+        assert_eq!(detector.cancel_partial_match(), b"a");
+        assert!(!detector.is_partial_match());
+        assert!(detector.cancel_partial_match().is_empty());
     }
 
     #[test]
@@ -1462,6 +1888,26 @@ mod tests {
         assert!(aborted.load(Ordering::Relaxed));
         assert!(worker.join.is_none());
         assert!(worker.shutdown_signal.is_none());
+    }
+
+    #[test]
+    fn sync_attach_resize_surfaces_structured_warning_text() {
+        let mut client = ResizeErrorClient::default();
+        let size = TerminalSize::try_new(120, 40).expect("terminal size should validate");
+
+        let error = sync_attach_resize(&mut client, "sess1", size)
+            .expect_err("resize error should be returned to the caller");
+        let warning = attach_resize_warning(&error);
+
+        assert!(warning.contains("Resize sync failed: RPC error (-32001): resize failed"));
+        assert!(warning.contains("check daemon"));
+
+        let params = client
+            .last_resize_params()
+            .expect("resize params should be recorded");
+        assert_eq!(params["session"], "sess1");
+        assert_eq!(params["cols"], 120);
+        assert_eq!(params["rows"], 40);
     }
 
     #[test]

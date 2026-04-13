@@ -29,15 +29,24 @@ impl ShutdownUseCaseImpl {
 impl ShutdownUseCase for ShutdownUseCaseImpl {
     fn execute(&self, _input: ShutdownInput) -> ShutdownOutput {
         self.shutdown_flag.store(true, Ordering::SeqCst);
-        self.notifier.notify();
+        let acknowledged = self.notifier.notify().is_ok();
 
-        ShutdownOutput { acknowledged: true }
+        ShutdownOutput { acknowledged }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io;
+
+    struct FailingShutdownNotifier;
+
+    impl crate::usecases::ports::ShutdownNotifier for FailingShutdownNotifier {
+        fn notify(&self) -> Result<(), io::Error> {
+            Err(io::Error::other("wakeup pipe closed"))
+        }
+    }
 
     #[test]
     fn test_shutdown_usecase_sets_flag_to_true() {
@@ -66,6 +75,20 @@ mod tests {
         let output = usecase.execute(ShutdownInput);
 
         assert!(output.acknowledged);
+    }
+
+    #[test]
+    fn test_shutdown_usecase_returns_acknowledged_false_when_notify_fails() {
+        let shutdown_flag = Arc::new(AtomicBool::new(false));
+        let usecase = ShutdownUseCaseImpl::new(
+            Arc::clone(&shutdown_flag),
+            Arc::new(FailingShutdownNotifier),
+        );
+
+        let output = usecase.execute(ShutdownInput);
+
+        assert!(shutdown_flag.load(Ordering::SeqCst));
+        assert!(!output.acknowledged);
     }
 
     #[test]

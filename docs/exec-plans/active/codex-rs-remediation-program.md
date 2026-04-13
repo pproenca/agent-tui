@@ -11,6 +11,10 @@ Remediate the open `openai-codex-rust-patterns` findings in `/Users/pedroproenca
 - [x] (2026-04-13 09:12Z) Execute tranche 1: attach input hardening and attach-side resize error surfacing.
 - [x] (2026-04-13 09:50Z) Execute tranche 2: injected-input semantic fidelity and wait/assert timing coverage.
 - [x] (2026-04-13 09:50Z) Execute tranche 3: snapshot freshness/region correctness and rendered-output regression protection.
+- [x] (2026-04-13 10:24Z) Close the `A06/F08` process-identity tranche: persist `pid + process_started_at`, reject stale daemon/UI state, and surface invalid daemon lock state structurally.
+- [x] (2026-04-13 10:24Z) Reduce the `F11` IPC tranche: per-request Unix-socket size accounting, real Unix-socket round-trip coverage, and unary RPC retry/backoff wiring.
+- [x] (2026-04-13 10:30Z) Narrow the `A05` shutdown-acknowledgement gap: make shutdown wake delivery fallible, return `acknowledged: false` on notifier failure, and log signal-path wake failures.
+- [x] (2026-04-13 10:34Z) Close the remaining `A05` owner-thread shutdown gap: timed-out daemon stream threads and WS runtime threads now hand `JoinHandle` ownership to background reapers instead of detaching ownerless, and WS state files stay present while the runtime thread is still alive.
 - [ ] Execute tranche 4: session lifecycle, persistence, and shutdown ownership fixes.
 - [ ] Execute tranche 5: live-preview security/contract parity plus listener-level tests.
 - [ ] Execute tranche 6: workspace/test-support cleanup, cargo-deny duplicate reduction, and any remaining docs/spec drift.
@@ -24,6 +28,9 @@ Remediate the open `openai-codex-rust-patterns` findings in `/Users/pedroproenca
 - `2026-04-13 09:02Z` The earlier audit program in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/exec-plans/active/openai-codex-rust-audit-program.md` remains the discovery artifact; this plan is the separate implementation artifact for closing the remaining findings.
 - `2026-04-13 09:12Z` Running the full verification sequentially matters for this repo: `just ready` and `just test-core-e2e` are both green after tranche 1, but parallelizing them is noisy enough to trigger a misleading daemon-stop failure in the ignored E2E suite.
 - `2026-04-13 09:50Z` On this host, `kill(pid, 0)` reports an unreaped zombie child as still alive. The daemon-stop E2E failure turned out to be a process-reaping false positive, not a missing shutdown signal, so liveness checks now need to distinguish zombie state from real running ownership.
+- `2026-04-13 10:24Z` `UnixSocketClient::connect_local()` performs a probe connection before the first RPC call. The real-socket regression test had to bypass that helper and exercise the transport-backed client directly so one test server thread maps to one real request/response exchange.
+- `2026-04-13 10:30Z` The shutdown wake path had been optimistic all the way through the stack. Making the notifier port return `io::Result` was a low-blast-radius fix that closed the false-acknowledgement bug without yet solving the separate owner-thread detachment problem in the same tranche.
+- `2026-04-13 10:34Z` The std-thread shutdown paths in this repo cannot be force-aborted like tokio tasks. The practical parity move was to keep ownership explicit: after the bounded wait expires, a named background reaper thread now owns the `JoinHandle` and performs the eventual `join`, rather than letting the handle detach invisibly.
 
 ## Decision Log
 

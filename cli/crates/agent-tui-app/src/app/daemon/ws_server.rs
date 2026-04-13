@@ -59,6 +59,12 @@ const UI_STYLES_CSS: &str = include_str!(concat!(
 const UI_XTERM_CSS: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/web/xterm.css"));
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThreadJoinOutcome {
+    Joined,
+    ReapingInBackground,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct WsConfig {
     enabled: bool,
@@ -122,21 +128,17 @@ impl WsServerHandle {
         if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(true);
         }
+        let mut remove_state_path = true;
         if let Some(join) = self.join.take() {
-            let deadline = Instant::now() + Duration::from_secs(2);
-            while !join.is_finished() {
-                if Instant::now() >= deadline {
-                    break;
+            match join_thread_with_timeout_or_reap(join, WS_SHUTDOWN_TIMEOUT, "ws server thread") {
+                ThreadJoinOutcome::Joined => {}
+                ThreadJoinOutcome::ReapingInBackground => {
+                    warn!("WS server did not stop within shutdown timeout");
+                    remove_state_path = false;
                 }
-                thread::park_timeout(WS_JOIN_POLL_INTERVAL);
-            }
-            if join.is_finished() {
-                let _ = join.join();
-            } else {
-                warn!("WS server did not stop within shutdown timeout");
             }
         }
-        if !self.state_path.as_os_str().is_empty() {
+        if remove_state_path && !self.state_path.as_os_str().is_empty() {
             let _ = std::fs::remove_file(&self.state_path);
         }
     }
@@ -622,6 +624,70 @@ fn generate_ws_auth_token() -> String {
     Uuid::new_v4().simple().to_string()
 }
 
+fn join_thread_with_timeout_or_reap(
+    handle: thread::JoinHandle<()>,
+    timeout: Duration,
+    thread_label: &'static str,
+) -> ThreadJoinOutcome {
+    let deadline = Instant::now() + timeout;
+    while !handle.is_finished() {
+        if Instant::now() >= deadline {
+            warn!(
+                thread = thread_label,
+                timeout_ms = timeout.as_millis(),
+                "Timed out joining thread; handing ownership to background reaper"
+            );
+            return spawn_join_reaper(handle, thread_label);
+        }
+        thread::park_timeout(WS_JOIN_POLL_INTERVAL);
+    }
+    let _ = handle.join();
+    ThreadJoinOutcome::Joined
+}
+
+fn spawn_join_reaper(
+    handle: thread::JoinHandle<()>,
+    thread_label: &'static str,
+) -> ThreadJoinOutcome {
+    let handle_cell = Arc::new(std::sync::Mutex::new(Some(handle)));
+    let handle_for_thread = Arc::clone(&handle_cell);
+    match thread::Builder::new()
+        .name("agent-tui-ws-reaper".to_string())
+        .spawn(move || {
+            let Some(handle) = handle_for_thread
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+            else {
+                return;
+            };
+
+            if handle.join().is_err() {
+                warn!(
+                    thread = thread_label,
+                    "Background reaper observed thread panic"
+                );
+            }
+        }) {
+        Ok(_) => ThreadJoinOutcome::ReapingInBackground,
+        Err(err) => {
+            warn!(
+                thread = thread_label,
+                error = %err,
+                "Failed to spawn background join reaper; joining synchronously"
+            );
+            if let Some(handle) = handle_cell
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+            {
+                let _ = handle.join();
+            }
+            ThreadJoinOutcome::Joined
+        }
+    }
+}
+
 #[derive(serde::Serialize)]
 struct WsStateFile<'a> {
     pid: u32,
@@ -835,6 +901,27 @@ mod tests {
         assert!(
             start.elapsed() < Duration::from_secs(3),
             "shutdown should return after timeout even if ws thread is still running"
+        );
+    }
+
+    #[test]
+    fn ws_handle_shutdown_keeps_state_file_until_thread_exits() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let state_path = tempdir.path().join("api.json");
+        std::fs::write(&state_path, b"state").expect("seed state file");
+
+        let join = thread::spawn(|| thread::park_timeout(Duration::from_secs(5)));
+        let handle = WsServerHandle {
+            shutdown_tx: None,
+            join: Some(join),
+            state_path: state_path.clone(),
+        };
+
+        handle.shutdown();
+
+        assert!(
+            state_path.exists(),
+            "state file should remain while the ws thread is still owned by the background reaper"
         );
     }
 }

@@ -9,6 +9,7 @@ use std::sync::atomic::Ordering;
 use std::thread;
 use std::thread::JoinHandle;
 use tracing::info;
+use tracing::warn;
 
 use crate::common::DaemonError;
 use crate::usecases::ports::ShutdownNotifierHandle;
@@ -34,8 +35,10 @@ impl SignalHandler {
                     if shutdown_initiated {
                         info!(signal = sig, "Received second signal, forcing shutdown");
                         shutdown.store(true, Ordering::SeqCst);
-                        if let Some(notifier) = notifier.as_ref() {
-                            notifier.notify();
+                        if let Some(notifier) = notifier.as_ref()
+                            && let Err(err) = notifier.notify()
+                        {
+                            warn!(error = %err, "Failed to notify shutdown waker");
                         }
                         continue;
                     }
@@ -45,8 +48,10 @@ impl SignalHandler {
                         "Received signal, initiating graceful shutdown"
                     );
                     shutdown.store(true, Ordering::SeqCst);
-                    if let Some(notifier) = notifier.as_ref() {
-                        notifier.notify();
+                    if let Some(notifier) = notifier.as_ref()
+                        && let Err(err) = notifier.notify()
+                    {
+                        warn!(error = %err, "Failed to notify shutdown waker");
                     }
                 }
             })

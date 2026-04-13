@@ -1,8 +1,10 @@
 //! Session repository implementation.
 
+use crossbeam_channel as channel;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::common::mutex_lock_or_recover;
 use crate::domain::RestartOutput;
@@ -16,6 +18,7 @@ use crate::usecases::ports::SessionRepository;
 use crate::usecases::ports::StreamCursor;
 use crate::usecases::ports::StreamRead;
 use crate::usecases::ports::StreamWaiterHandle;
+use crate::usecases::ports::TerminalError;
 
 use crate::infra::daemon::session::PUMP_FLUSH_TIMEOUT;
 use crate::infra::daemon::session::Session;
@@ -47,16 +50,33 @@ impl SessionHandleImpl {
     }
 }
 
+fn wait_for_flush_ack(
+    ack: Option<channel::Receiver<()>>,
+    timeout: Duration,
+) -> Result<(), SessionError> {
+    let Some(ack) = ack else {
+        return Ok(());
+    };
+
+    ack.recv_timeout(timeout).map_err(|err| match err {
+        channel::RecvTimeoutError::Timeout => SessionError::Terminal(TerminalError::Read {
+            reason: "Timed out waiting for session state to flush".to_string(),
+            source: None,
+        }),
+        channel::RecvTimeoutError::Disconnected => SessionError::Terminal(TerminalError::Read {
+            reason: "Session state flush closed before it acknowledged".to_string(),
+            source: None,
+        }),
+    })
+}
+
 impl SessionOps for SessionHandleImpl {
     fn update(&self) -> Result<(), SessionError> {
         let ack = {
             let session_guard = mutex_lock_or_recover(&self.inner);
             session_guard.request_flush()
         };
-        if let Some(ack) = ack {
-            let _ = ack.recv_timeout(PUMP_FLUSH_TIMEOUT);
-        }
-        Ok(())
+        wait_for_flush_ack(ack, PUMP_FLUSH_TIMEOUT)
     }
 
     fn screen_text(&self) -> String {
@@ -216,6 +236,7 @@ impl SessionRepository for SessionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::usecases::ports::TerminalError;
 
     #[test]
     fn test_session_repository_trait_is_object_safe() {
@@ -237,5 +258,37 @@ mod tests {
 
         let session = MockSession::new("test");
         assert_generic_bound(&session);
+    }
+
+    #[test]
+    fn test_wait_for_flush_ack_returns_ok_without_pump() {
+        assert!(wait_for_flush_ack(None, Duration::ZERO).is_ok());
+    }
+
+    #[test]
+    fn test_wait_for_flush_ack_returns_timeout_error() {
+        let (_tx, rx) = channel::bounded(1);
+
+        let result = wait_for_flush_ack(Some(rx), Duration::ZERO);
+
+        assert!(matches!(
+            result,
+            Err(SessionError::Terminal(TerminalError::Read { reason, .. }))
+            if reason.contains("Timed out waiting for session state to flush")
+        ));
+    }
+
+    #[test]
+    fn test_wait_for_flush_ack_returns_disconnect_error() {
+        let (tx, rx) = channel::bounded(1);
+        drop(tx);
+
+        let result = wait_for_flush_ack(Some(rx), Duration::from_millis(1));
+
+        assert!(matches!(
+            result,
+            Err(SessionError::Terminal(TerminalError::Read { reason, .. }))
+            if reason.contains("Session state flush closed before it acknowledged")
+        ));
     }
 }

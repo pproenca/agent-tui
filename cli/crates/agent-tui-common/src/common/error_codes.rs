@@ -5,6 +5,7 @@ pub const NO_ACTIVE_SESSION: i32 = -32002;
 pub const SESSION_LIMIT: i32 = -32006;
 pub const LOCK_TIMEOUT: i32 = -32007;
 pub const SESSION_ALREADY_EXISTS: i32 = -32018;
+pub const INVALID_INPUT: i32 = -32019;
 
 pub const INVALID_KEY: i32 = -32005;
 pub const PTY_ERROR: i32 = -32008;
@@ -71,7 +72,7 @@ pub fn is_retryable(code: i32) -> bool {
 pub fn category_for_code(code: i32) -> ErrorCategory {
     match code {
         SESSION_NOT_FOUND | NO_ACTIVE_SESSION => ErrorCategory::NotFound,
-        INVALID_KEY | SESSION_ALREADY_EXISTS => ErrorCategory::InvalidInput,
+        INVALID_KEY | SESSION_ALREADY_EXISTS | INVALID_INPUT => ErrorCategory::InvalidInput,
         SESSION_LIMIT | LOCK_TIMEOUT => ErrorCategory::Busy,
         PTY_ERROR | COMMAND_NOT_FOUND | PERMISSION_DENIED | DAEMON_ERROR | PERSISTENCE_ERROR => {
             ErrorCategory::External
@@ -115,6 +116,10 @@ mod tests {
     #[test]
     fn test_category_for_code_invalid_input() {
         assert_eq!(category_for_code(INVALID_KEY), ErrorCategory::InvalidInput);
+        assert_eq!(
+            category_for_code(INVALID_INPUT),
+            ErrorCategory::InvalidInput
+        );
     }
 
     #[test]

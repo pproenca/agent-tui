@@ -30,6 +30,7 @@ impl ErrorPresentation for SessionError {
             SessionError::AlreadyExists(_) => error_codes::SESSION_ALREADY_EXISTS,
             SessionError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
             SessionError::InvalidKey(_) => error_codes::INVALID_KEY,
+            SessionError::InvalidInput { .. } => error_codes::INVALID_INPUT,
             SessionError::LimitReached(_) => error_codes::SESSION_LIMIT,
             SessionError::Terminal(_) => error_codes::PTY_ERROR,
             SessionError::Persistence { .. } => error_codes::PERSISTENCE_ERROR,
@@ -49,6 +50,9 @@ impl ErrorPresentation for SessionError {
             SessionError::AlreadyExists(id) => json!({ "session_id": id }),
             SessionError::NoActiveSession => json!({}),
             SessionError::InvalidKey(key) => json!({ "key": key }),
+            SessionError::InvalidInput { field, reason } => {
+                json!({ "field": field, "reason": reason })
+            }
             SessionError::LimitReached(max) => json!({ "max_sessions": max }),
             SessionError::Terminal(terminal_err) => json!({
                 "operation": terminal_err.operation(),
@@ -78,6 +82,9 @@ impl ErrorPresentation for SessionError {
             }
             SessionError::InvalidKey(_) => {
                 "Supported keys: Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp/Down, F1-F12. Modifiers: Ctrl+, Alt+, Shift+".to_string()
+            }
+            SessionError::InvalidInput { .. } => {
+                "Adjust the invalid input and retry the command.".to_string()
             }
             SessionError::LimitReached(_) => {
                 "Kill unused sessions with 'kill <session_id>' or increase limit with AGENT_TUI_MAX_SESSIONS env var.".to_string()
@@ -143,6 +150,9 @@ pub enum DomainError {
     #[error("Invalid key: {key}")]
     InvalidKey { key: String },
 
+    #[error("Invalid input for {field}: {reason}")]
+    InvalidInput { field: String, reason: String },
+
     #[error("Session limit reached: maximum {max} sessions allowed")]
     SessionLimitReached { max: usize },
 
@@ -177,6 +187,7 @@ impl DomainError {
             DomainError::SessionAlreadyExists { .. } => error_codes::SESSION_ALREADY_EXISTS,
             DomainError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
             DomainError::InvalidKey { .. } => error_codes::INVALID_KEY,
+            DomainError::InvalidInput { .. } => error_codes::INVALID_INPUT,
             DomainError::SessionLimitReached { .. } => error_codes::SESSION_LIMIT,
             DomainError::LockTimeout { .. } => error_codes::LOCK_TIMEOUT,
             DomainError::TerminalError { .. } => error_codes::PTY_ERROR,
@@ -205,6 +216,9 @@ impl DomainError {
             DomainError::NoActiveSession => json!({}),
             DomainError::InvalidKey { key } => {
                 json!({ "key": key })
+            }
+            DomainError::InvalidInput { field, reason } => {
+                json!({ "field": field, "reason": reason })
             }
             DomainError::SessionLimitReached { max } => {
                 json!({ "max_sessions": max })
@@ -259,6 +273,9 @@ impl DomainError {
             DomainError::InvalidKey { .. } => {
                 "Supported keys: Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp/Down, F1-F12. Modifiers: Ctrl+, Alt+, Shift+".to_string()
             }
+            DomainError::InvalidInput { .. } => {
+                "Adjust the invalid input and retry the command.".to_string()
+            }
             DomainError::SessionLimitReached { .. } => {
                 "Kill unused sessions with 'kill <session_id>' or increase limit with AGENT_TUI_MAX_SESSIONS env var.".to_string()
             }
@@ -301,6 +318,9 @@ impl From<SessionError> for DomainError {
             SessionError::AlreadyExists(id) => DomainError::SessionAlreadyExists { session_id: id },
             SessionError::NoActiveSession => DomainError::NoActiveSession,
             SessionError::InvalidKey(key) => DomainError::InvalidKey { key },
+            SessionError::InvalidInput { field, reason } => {
+                DomainError::InvalidInput { field, reason }
+            }
             SessionError::LimitReached(max) => DomainError::SessionLimitReached { max },
             SessionError::Terminal(terminal_err) => DomainError::TerminalError {
                 operation: terminal_err.operation().to_string(),
@@ -385,6 +405,15 @@ mod tests {
     }
 
     #[test]
+    fn test_session_error_invalid_input_code() {
+        let err = SessionError::InvalidInput {
+            field: "region".into(),
+            reason: "not supported".into(),
+        };
+        assert_eq!(err.code(), error_codes::INVALID_INPUT);
+    }
+
+    #[test]
     fn test_session_error_limit_reached_code() {
         let err = SessionError::LimitReached(16);
         assert_eq!(err.code(), error_codes::SESSION_LIMIT);
@@ -396,6 +425,12 @@ mod tests {
         assert_eq!(err.category(), ErrorCategory::NotFound);
 
         let err = SessionError::InvalidKey("x".into());
+        assert_eq!(err.category(), ErrorCategory::InvalidInput);
+
+        let err = SessionError::InvalidInput {
+            field: "region".into(),
+            reason: "not supported".into(),
+        };
         assert_eq!(err.category(), ErrorCategory::InvalidInput);
 
         let err = SessionError::LimitReached(10);
@@ -411,6 +446,14 @@ mod tests {
         let err = SessionError::LimitReached(16);
         let ctx = err.context();
         assert_eq!(ctx["max_sessions"], 16);
+
+        let err = SessionError::InvalidInput {
+            field: "region".into(),
+            reason: "not supported".into(),
+        };
+        let ctx = err.context();
+        assert_eq!(ctx["field"], "region");
+        assert_eq!(ctx["reason"], "not supported");
     }
 
     #[test]
@@ -420,6 +463,12 @@ mod tests {
 
         let err = SessionError::InvalidKey("x".into());
         assert!(err.suggestion().contains("Enter"));
+
+        let err = SessionError::InvalidInput {
+            field: "region".into(),
+            reason: "not supported".into(),
+        };
+        assert!(err.suggestion().contains("Adjust"));
     }
 
     #[test]
@@ -427,6 +476,13 @@ mod tests {
         assert!(!SessionError::NotFound("x".into()).is_retryable());
         assert!(!SessionError::NoActiveSession.is_retryable());
         assert!(!SessionError::InvalidKey("x".into()).is_retryable());
+        assert!(
+            !SessionError::InvalidInput {
+                field: "region".into(),
+                reason: "not supported".into(),
+            }
+            .is_retryable()
+        );
     }
 
     #[test]

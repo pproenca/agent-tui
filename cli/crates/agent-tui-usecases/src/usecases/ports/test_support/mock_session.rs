@@ -30,6 +30,8 @@ pub struct MockSession {
     size: TerminalSize,
     cursor: CursorPosition,
     screen_text: String,
+    screen_render: Option<String>,
+    screen_render_compact: Option<String>,
     running: bool,
     update_error: Option<SessionError>,
     terminal_write_error: Option<SessionError>,
@@ -48,6 +50,8 @@ impl MockSession {
                 visible: false,
             },
             screen_text: String::new(),
+            screen_render: None,
+            screen_render_compact: None,
             running: true,
             update_error: None,
             terminal_write_error: None,
@@ -81,11 +85,15 @@ impl SessionOps for MockSession {
     }
 
     fn screen_render(&self) -> String {
-        self.screen_text.clone()
+        self.screen_render
+            .clone()
+            .unwrap_or_else(|| self.screen_text.clone())
     }
 
     fn screen_render_compact(&self) -> String {
-        self.screen_text.clone()
+        self.screen_render_compact
+            .clone()
+            .unwrap_or_else(|| self.screen_text.clone())
     }
 
     fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError> {
@@ -190,6 +198,16 @@ impl MockSessionBuilder {
         self
     }
 
+    pub fn with_rendered_screen(
+        mut self,
+        rendered: impl Into<String>,
+        compact_rendered: impl Into<String>,
+    ) -> Self {
+        self.session.screen_render = Some(rendered.into());
+        self.session.screen_render_compact = Some(compact_rendered.into());
+        self
+    }
+
     pub fn with_running(mut self, running: bool) -> Self {
         self.session.running = running;
         self
@@ -221,6 +239,17 @@ mod tests {
             .with_screen_text("Hello, World!")
             .build();
         assert_eq!(session.screen_text(), "Hello, World!");
+    }
+
+    #[test]
+    fn test_mock_session_with_rendered_screen() {
+        let session = MockSession::builder("test")
+            .with_screen_text("plain")
+            .with_rendered_screen("\u{001b}[31mplain\u{001b}[0m", "plain")
+            .build();
+
+        assert_eq!(session.screen_render(), "\u{001b}[31mplain\u{001b}[0m");
+        assert_eq!(session.screen_render_compact(), "plain");
     }
 
     #[test]

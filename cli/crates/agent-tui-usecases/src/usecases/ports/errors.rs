@@ -95,6 +95,8 @@ pub enum SessionError {
     Terminal(#[from] TerminalError),
     #[error("Invalid key: {0}")]
     InvalidKey(String),
+    #[error("Invalid input for {field}: {reason}")]
+    InvalidInput { field: String, reason: String },
     #[error("Session limit reached: maximum {0} sessions allowed")]
     LimitReached(usize),
     #[error("Persistence error during {operation}: {reason}")]

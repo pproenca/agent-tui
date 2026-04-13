@@ -266,7 +266,7 @@ EXAMPLES:
     agent-tui screenshot --retain-ansi # Explicitly preserve terminal colors/styles
     agent-tui screenshot --strip-ansi  # Plain text without colors")]
     Screenshot {
-        /// Limit capture to a named region (if supported)
+        /// Reserved for future named regions; currently rejected if provided
         #[arg(long, value_name = "REGION", help_heading = "Filtering")]
         region: Option<String>,
 

@@ -715,19 +715,17 @@ fn ci(root: &Path) -> Result<()> {
         )
     })?;
 
-    if has_command("cargo-deny") {
-        run_step("Running cargo-deny", || {
-            run_command(
-                "cargo",
-                &["deny", "check", "advisories", "bans", "licenses", "sources"],
-                Some(root),
-            )
-        })?;
-    } else if env::var_os("CI").is_some() {
-        bail!("cargo-deny is required in CI but was not found in PATH");
-    } else {
-        println!("cargo-deny not installed, skipping...");
+    if !has_command("cargo-deny") {
+        bail!("cargo-deny is required but was not found in PATH");
     }
+
+    run_step("Running cargo-deny", || {
+        run_command(
+            "cargo",
+            &["deny", "check", "advisories", "bans", "licenses", "sources"],
+            Some(root),
+        )
+    })?;
 
     run_step("Running architecture checks", || {
         architecture_check(root, false)

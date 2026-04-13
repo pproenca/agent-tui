@@ -6,7 +6,10 @@ no-default-features = false
 feature-depth = 1
 
 [advisories]
-ignore = []
+ignore = [
+    { id = "RUSTSEC-2025-0056", reason = "adler is pulled transitively via tattoy-wezterm-term/image stack; no safe replacement is available in current upstream releases" },
+    { id = "RUSTSEC-2024-0436", reason = "paste is pulled transitively via ravif/rav1e/image in tattoy terminal rendering deps; no safe replacement is available in current upstream releases" },
+]
 
 [licenses]
 allow = [

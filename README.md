@@ -180,7 +180,7 @@ See `docs/ops/process-model.md` for process types and deployment guidance.
 
 ### Prerequisites
 
-- Rust stable (1.85+)
+- Rust stable (1.88+)
 - Bun (for web UI)
 - just (task runner)
 

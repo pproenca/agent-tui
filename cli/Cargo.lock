@@ -22,6 +22,7 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "clap",
+ "crossbeam-channel",
  "once_cell",
  "portable-pty",
  "predicates",

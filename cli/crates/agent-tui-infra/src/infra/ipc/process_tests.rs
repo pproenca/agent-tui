@@ -125,8 +125,6 @@ fn test_check_process_treats_zombie_as_not_found() {
         .expect("spawn should succeed");
     let pid = child.id();
 
-    std::thread::park_timeout(Duration::from_millis(300));
-
     let deadline = Instant::now() + Duration::from_secs(2);
     while Instant::now() < deadline {
         if matches!(process_status_code(pid), Some('Z')) {

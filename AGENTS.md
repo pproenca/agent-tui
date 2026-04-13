@@ -27,7 +27,7 @@ Manages PTY sessions via a background daemon with JSON-RPC WebSocket API and emb
 
 ## Tech Stack
 
-- **Rust 1.85+** (2024 edition) — Tokio async runtime, Axum WebSocket server, Clap CLI
+- **Rust 1.88+** (2024 edition) — Tokio async runtime, Axum WebSocket server, Clap CLI
 - **TypeScript/Bun** — Web UI with xterm.js terminal emulator
 - **Build**: Cargo workspace (8 crates) + `just` task runner
 - **Key deps**: `portable-pty`, `tracing`, `serde`, `crossterm`

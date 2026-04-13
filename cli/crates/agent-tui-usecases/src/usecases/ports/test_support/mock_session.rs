@@ -3,6 +3,7 @@
 use crate::common::mutex_lock_or_recover;
 use crate::domain::core::CursorPosition;
 use crate::domain::session_types::SessionId;
+use crate::domain::session_types::TerminalSize;
 use crate::usecases::ports::LivePreviewSnapshot;
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionOps;
@@ -26,8 +27,7 @@ impl StreamWaiter for MockStreamWaiter {
 pub struct MockSession {
     pub id: String,
     command: String,
-    cols: u16,
-    rows: u16,
+    size: TerminalSize,
     cursor: CursorPosition,
     screen_text: String,
     update_error: Option<SessionError>,
@@ -40,8 +40,7 @@ impl MockSession {
         Self {
             id: id.into(),
             command: "mock".to_string(),
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
             cursor: CursorPosition {
                 row: 0,
                 col: 0,
@@ -142,8 +141,8 @@ impl SessionOps for MockSession {
         true
     }
 
-    fn resize(&self, cols: u16, rows: u16) -> Result<(), SessionError> {
-        let _ = (cols, rows);
+    fn resize(&self, size: TerminalSize) -> Result<(), SessionError> {
+        let _ = size;
         Ok(())
     }
 
@@ -159,14 +158,14 @@ impl SessionOps for MockSession {
         self.command.clone()
     }
 
-    fn size(&self) -> (u16, u16) {
-        (self.cols, self.rows)
+    fn size(&self) -> TerminalSize {
+        self.size
     }
 
     fn live_preview_snapshot(&self) -> LivePreviewSnapshot {
         LivePreviewSnapshot {
-            cols: self.cols,
-            rows: self.rows,
+            cols: self.size.cols(),
+            rows: self.size.rows(),
             seq: self.screen_text.clone(),
             stream_seq: 0,
         }

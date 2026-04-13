@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use crate::common::mutex_lock_or_recover;
 use crate::domain::RestartOutput;
 use crate::domain::core::CursorPosition;
+use crate::domain::session_types::TerminalSize;
 use crate::usecases::ports::LivePreviewSnapshot;
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionHandle;
@@ -124,9 +125,9 @@ impl SessionOps for SessionHandleImpl {
         session_guard.is_running()
     }
 
-    fn resize(&self, cols: u16, rows: u16) -> Result<(), SessionError> {
+    fn resize(&self, size: TerminalSize) -> Result<(), SessionError> {
         let mut session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.resize(cols, rows)
+        session_guard.resize(size)
     }
 
     fn cursor(&self) -> CursorPosition {
@@ -144,7 +145,7 @@ impl SessionOps for SessionHandleImpl {
         session_guard.command.clone()
     }
 
-    fn size(&self) -> (u16, u16) {
+    fn size(&self) -> TerminalSize {
         let session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.size()
     }
@@ -164,10 +165,9 @@ impl SessionRepository for SessionManager {
         cwd: Option<&str>,
         env: Option<&HashMap<String, String>>,
         session_id: Option<SessionId>,
-        cols: u16,
-        rows: u16,
+        size: TerminalSize,
     ) -> Result<(SessionId, u32), SessionError> {
-        SessionManager::spawn(self, command, args, cwd, env, session_id, cols, rows)
+        SessionManager::spawn(self, command, args, cwd, env, session_id, size)
     }
 
     fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError> {

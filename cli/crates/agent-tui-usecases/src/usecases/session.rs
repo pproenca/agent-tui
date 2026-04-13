@@ -46,8 +46,7 @@ impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
             cwd,
             env,
             session_id,
-            cols,
-            rows,
+            size,
         } = input;
 
         match self.repository.spawn(
@@ -56,8 +55,7 @@ impl<R: SessionRepository> SpawnUseCase for SpawnUseCaseImpl<R> {
             cwd.as_deref(),
             env.as_ref(),
             session_id,
-            cols,
-            rows,
+            size,
         ) {
             Ok((session_id, pid)) => Ok(SpawnOutput { session_id, pid }),
             Err(SessionError::LimitReached(max)) => Err(SpawnError::SessionLimitReached { max }),
@@ -209,13 +207,12 @@ impl<R: SessionRepository> ResizeUseCaseImpl<R> {
 impl<R: SessionRepository> ResizeUseCase for ResizeUseCaseImpl<R> {
     fn execute(&self, input: ResizeInput) -> Result<ResizeOutput, SessionError> {
         let session = self.repository.resolve(input.session_id.as_ref())?;
-        session.resize(input.cols, input.rows)?;
+        session.resize(input.size)?;
 
         Ok(ResizeOutput {
             session_id: session.session_id(),
             success: true,
-            cols: input.cols,
-            rows: input.rows,
+            size: input.size,
         })
     }
 }
@@ -330,8 +327,7 @@ mod tests {
             cwd: Some("/tmp".to_string()),
             env: Some(env.clone()),
             session_id: Some(SessionId::try_new("custom-id").expect("valid session id")),
-            cols: 120,
-            rows: 40,
+            size: TerminalSize::try_new(120, 40).expect("valid terminal size"),
         };
 
         let result = usecase.execute(input);
@@ -344,8 +340,10 @@ mod tests {
         assert_eq!(params[0].cwd, Some("/tmp".to_string()));
         assert_eq!(params[0].env, Some(env));
         assert_eq!(params[0].session_id, Some("custom-id".to_string()));
-        assert_eq!(params[0].cols, 120);
-        assert_eq!(params[0].rows, 40);
+        assert_eq!(
+            params[0].size,
+            TerminalSize::try_new(120, 40).expect("valid terminal size")
+        );
     }
 
     #[test]
@@ -363,8 +361,7 @@ mod tests {
             cwd: None,
             env: None,
             session_id: None,
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         };
 
         let result = usecase.execute(input).expect("spawn should succeed");
@@ -387,15 +384,13 @@ mod tests {
             cwd: None,
             env: None,
             session_id: None,
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         };
 
         let _ = usecase.execute(input);
 
         let params = repo.spawn_params();
-        assert_eq!(params[0].cols, 80);
-        assert_eq!(params[0].rows, 24);
+        assert_eq!(params[0].size, TerminalSize::default());
     }
 
     #[test]
@@ -413,8 +408,7 @@ mod tests {
             cwd: None,
             env: None,
             session_id: None,
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         };
 
         let result = usecase.execute(input);
@@ -439,8 +433,7 @@ mod tests {
             cwd: None,
             env: None,
             session_id: Some(SessionId::try_new("my-custom-session").expect("valid session id")),
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         };
 
         let result = usecase
@@ -470,8 +463,7 @@ mod tests {
             cwd: None,
             env: None,
             session_id: None,
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         };
 
         let result = usecase.execute(input);
@@ -499,8 +491,7 @@ mod tests {
             cwd: None,
             env: None,
             session_id: None,
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         };
 
         let result = usecase.execute(input);
@@ -528,8 +519,7 @@ mod tests {
             cwd: None,
             env: None,
             session_id: None,
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         };
 
         let result = usecase.execute(input);
@@ -557,8 +547,7 @@ mod tests {
             cwd: None,
             env: None,
             session_id: None,
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         };
 
         let result = usecase.execute(input);
@@ -753,8 +742,7 @@ mod tests {
 
         let input = ResizeInput {
             session_id: None,
-            cols: 120,
-            rows: 40,
+            size: TerminalSize::try_new(120, 40).expect("valid terminal size"),
         };
 
         let result = usecase.execute(input);
@@ -772,8 +760,7 @@ mod tests {
 
         let input = ResizeInput {
             session_id: Some(SessionId::try_new("unknown").expect("valid session id")),
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         };
 
         let result = usecase.execute(input);

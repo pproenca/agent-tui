@@ -7,6 +7,7 @@ use std::str::FromStr;
 use super::core::CursorPosition;
 use super::session_types::SessionId;
 use super::session_types::SessionInfo;
+use super::session_types::TerminalSize;
 
 use thiserror::Error;
 
@@ -70,8 +71,7 @@ pub struct SpawnInput {
     pub cwd: Option<String>,
     pub env: Option<HashMap<String, String>>,
     pub session_id: Option<SessionId>,
-    pub cols: u16,
-    pub rows: u16,
+    pub size: TerminalSize,
 }
 
 #[derive(Debug, Clone)]
@@ -168,16 +168,14 @@ pub struct WaitOutput {
 #[derive(Debug, Clone)]
 pub struct ResizeInput {
     pub session_id: Option<SessionId>,
-    pub cols: u16,
-    pub rows: u16,
+    pub size: TerminalSize,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResizeOutput {
     pub session_id: SessionId,
     pub success: bool,
-    pub cols: u16,
-    pub rows: u16,
+    pub size: TerminalSize,
 }
 
 #[derive(Debug, Clone)]

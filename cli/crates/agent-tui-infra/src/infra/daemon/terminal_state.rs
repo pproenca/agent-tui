@@ -1,5 +1,6 @@
 //! Terminal state management.
 
+use crate::domain::session_types::TerminalSize;
 use crate::infra::terminal::CursorPosition;
 use crate::infra::terminal::ScreenBuffer;
 use crate::infra::terminal::VirtualTerminal;
@@ -9,9 +10,9 @@ pub struct TerminalState {
 }
 
 impl TerminalState {
-    pub fn new(cols: u16, rows: u16) -> Self {
+    pub fn new(size: TerminalSize) -> Self {
         Self {
-            terminal: VirtualTerminal::new(cols, rows),
+            terminal: VirtualTerminal::new(size),
         }
     }
 
@@ -31,11 +32,11 @@ impl TerminalState {
         self.terminal.cursor()
     }
 
-    pub fn size(&self) -> (u16, u16) {
+    pub fn size(&self) -> TerminalSize {
         self.terminal.size()
     }
 
-    pub fn resize(&mut self, cols: u16, rows: u16) {
-        self.terminal.resize(cols, rows);
+    pub fn resize(&mut self, size: TerminalSize) {
+        self.terminal.resize(size);
     }
 }

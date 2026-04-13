@@ -19,6 +19,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::domain::TerminalSize;
 use crate::infra::daemon::DaemonConfig;
 use crate::infra::daemon::SessionManager;
 use crate::infra::daemon::SystemClock;
@@ -38,6 +39,26 @@ const FLIGHTDECK_STREAM_DEFAULT_INTERVAL_MS: u64 = 1000;
 const FLIGHTDECK_STREAM_MIN_INTERVAL_MS: u64 = 250;
 const FLIGHTDECK_STREAM_MAX_INTERVAL_MS: u64 = 5000;
 const FLIGHTDECK_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
+
+fn validated_terminal_size(cols: u16, rows: u16) -> TerminalSize {
+    match TerminalSize::try_new(cols, rows) {
+        Ok(size) => size,
+        Err(err) => {
+            debug_assert!(
+                false,
+                "live preview snapshot should carry validated sizes: {}",
+                err
+            );
+            tracing::warn!(
+                cols,
+                rows,
+                error = %err,
+                "Live preview snapshot carried invalid terminal dimensions; falling back to default size",
+            );
+            TerminalSize::default()
+        }
+    }
+}
 const STREAM_WAIT_SLICE: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -468,7 +489,7 @@ impl RpcCore {
 
         let subscription = session.stream_subscribe();
         let mut cursor = live_preview_initial_cursor(&snapshot);
-        let mut last_size = (snapshot.cols, snapshot.rows);
+        let mut last_size = validated_terminal_size(snapshot.cols, snapshot.rows);
 
         loop {
             if self.should_stream_terminate(connection_cancelled) {
@@ -538,7 +559,7 @@ impl RpcCore {
                         },
                     );
                     writer.write_response(&init)?;
-                    last_size = (snapshot.cols, snapshot.rows);
+                    last_size = validated_terminal_size(snapshot.cols, snapshot.rows);
                     cursor.seq = read.latest_cursor.seq;
                     sent_any = true;
                     break;
@@ -593,8 +614,8 @@ impl RpcCore {
                     &LivePreviewResize {
                         event: "resize",
                         time: start_time.elapsed().as_secs_f64(),
-                        cols: size.0,
-                        rows: size.1,
+                        cols: size.cols(),
+                        rows: size.rows(),
                     },
                 );
                 writer.write_response(&resize)?;
@@ -1021,8 +1042,7 @@ mod tests {
                 crate::domain::SessionId::try_new("timeline-session")
                     .expect("timeline session id should be valid"),
             ),
-            80,
-            24,
+            TerminalSize::default(),
         );
         if spawn_result.is_err() {
             return;
@@ -1085,8 +1105,7 @@ mod tests {
                 crate::domain::SessionId::try_new("timeline-resize-session")
                     .expect("timeline resize session id should be valid"),
             ),
-            80,
-            24,
+            TerminalSize::default(),
         );
         if spawn_result.is_err() {
             return;
@@ -1114,7 +1133,7 @@ mod tests {
                 .expect("timeline resize session id should be valid"),
         ) {
             let mut guard = session.lock().unwrap_or_else(|poison| poison.into_inner());
-            let _ = guard.resize(120, 40);
+            let _ = guard.resize(TerminalSize::try_new(120, 40).expect("valid terminal size"));
         }
 
         let resize = handle.wait_for_event("resize", Duration::from_secs(2));
@@ -1206,8 +1225,7 @@ mod tests {
                 crate::domain::SessionId::try_new("flightdeck-new")
                     .expect("flightdeck session id should be valid"),
             ),
-            80,
-            24,
+            TerminalSize::default(),
         );
         if spawn_result.is_err() {
             cancelled.store(true, Ordering::Relaxed);

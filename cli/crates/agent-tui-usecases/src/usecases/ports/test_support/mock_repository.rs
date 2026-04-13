@@ -10,6 +10,7 @@ use crate::common::mutex_lock_or_recover;
 use crate::domain::RestartOutput;
 use crate::domain::SessionId;
 use crate::domain::SessionInfo;
+use crate::domain::TerminalSize;
 use crate::usecases::ports::SessionError;
 use crate::usecases::ports::SessionHandle;
 use crate::usecases::ports::SessionRepository;
@@ -47,8 +48,7 @@ pub struct SpawnParams {
     pub cwd: Option<String>,
     pub env: Option<HashMap<String, String>>,
     pub session_id: Option<String>,
-    pub cols: u16,
-    pub rows: u16,
+    pub size: TerminalSize,
 }
 
 impl MockSessionRepository {
@@ -101,8 +101,7 @@ impl SessionRepository for MockSessionRepository {
         cwd: Option<&str>,
         env: Option<&HashMap<String, String>>,
         session_id: Option<SessionId>,
-        cols: u16,
-        rows: u16,
+        size: TerminalSize,
     ) -> Result<(SessionId, u32), SessionError> {
         self.spawn_calls.fetch_add(1, Ordering::SeqCst);
 
@@ -112,8 +111,7 @@ impl SessionRepository for MockSessionRepository {
             cwd: cwd.map(|s| s.to_string()),
             env: env.cloned(),
             session_id: session_id.map(|id| id.to_string()),
-            cols,
-            rows,
+            size,
         });
 
         if let Some(ref err) = self.spawn_error {
@@ -331,7 +329,7 @@ mod tests {
             .with_spawn_result("test-session", 12345)
             .build();
 
-        let result = repo.spawn("bash", &[], None, None, None, 80, 24);
+        let result = repo.spawn("bash", &[], None, None, None, TerminalSize::default());
 
         assert!(result.is_ok());
         let (session_id, pid) = result.expect("spawn should succeed");
@@ -353,8 +351,7 @@ mod tests {
             Some("/tmp"),
             None,
             Some(SessionId::try_new("custom-id").expect("valid session id")),
-            120,
-            40,
+            TerminalSize::try_new(120, 40).expect("valid terminal size"),
         );
 
         let params = repo.spawn_params();
@@ -363,8 +360,10 @@ mod tests {
         assert_eq!(params[0].args, vec!["--version"]);
         assert_eq!(params[0].cwd, Some("/tmp".to_string()));
         assert_eq!(params[0].session_id, Some("custom-id".to_string()));
-        assert_eq!(params[0].cols, 120);
-        assert_eq!(params[0].rows, 40);
+        assert_eq!(
+            params[0].size,
+            TerminalSize::try_new(120, 40).expect("valid terminal size")
+        );
     }
 
     #[test]

@@ -44,11 +44,6 @@ use crate::usecases::ports::SessionError;
 
 use crate::domain::session_types::TerminalSize;
 
-const MAX_TERMINAL_COLS: u16 = TerminalSize::MAX_COLS;
-const MAX_TERMINAL_ROWS: u16 = TerminalSize::MAX_ROWS;
-const MIN_TERMINAL_COLS: u16 = TerminalSize::MIN_COLS;
-const MIN_TERMINAL_ROWS: u16 = TerminalSize::MIN_ROWS;
-
 pub fn to_value<T: Serialize>(value: T) -> Result<serde_json::Value, serde_json::Error> {
     serde_json::to_value(value)
 }
@@ -115,6 +110,21 @@ pub fn parse_session_input(request: &RpcRequest) -> SessionInput {
     SessionInput { session_id }
 }
 
+#[allow(clippy::result_large_err)]
+fn parse_terminal_size(
+    request: &RpcRequest,
+    cols: u16,
+    rows: u16,
+) -> Result<TerminalSize, RpcResponse> {
+    TerminalSize::try_new(cols, rows).map_err(|err| {
+        RpcResponse::error(
+            request.id,
+            -32602,
+            &format!("Invalid terminal size: {}", err),
+        )
+    })
+}
+
 pub fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
     RpcResponse::domain_error(
         id,
@@ -153,8 +163,7 @@ pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse
         cwd: rpc_params.cwd,
         env: None,
         session_id: parse_session_id(rpc_params.session),
-        cols: rpc_params.cols.clamp(MIN_TERMINAL_COLS, MAX_TERMINAL_COLS),
-        rows: rpc_params.rows.clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS),
+        size: parse_terminal_size(request, rpc_params.cols, rpc_params.rows)?,
     })
 }
 
@@ -333,8 +342,7 @@ pub fn parse_resize_input(request: &RpcRequest) -> Result<ResizeInput, RpcRespon
 
     Ok(ResizeInput {
         session_id: parse_session_selector(rpc_params.session),
-        cols: rpc_params.cols,
-        rows: rpc_params.rows,
+        size: rpc_params.size,
     })
 }
 
@@ -344,8 +352,8 @@ pub fn resize_output_to_response(id: u64, output: ResizeOutput) -> RpcResponse {
         json!({
             "success": output.success,
             "session_id": output.session_id.as_str(),
-            "cols": output.cols,
-            "rows": output.rows
+            "cols": output.size.cols(),
+            "rows": output.size.rows()
         }),
     )
 }
@@ -470,8 +478,7 @@ mod tests {
         let request = make_request(1, "spawn", Some(json!({})));
         let input = parse_spawn_input(&request).expect("spawn input should parse");
         assert_eq!(input.command, "bash");
-        assert_eq!(input.cols, 80);
-        assert_eq!(input.rows, 24);
+        assert_eq!(input.size, TerminalSize::default());
     }
 
     #[test]

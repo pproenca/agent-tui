@@ -90,6 +90,7 @@ dependencies = [
 name = "agent-tui-domain"
 version = "1.0.2"
 dependencies = [
+ "serde",
  "thiserror 2.0.18",
 ]
 

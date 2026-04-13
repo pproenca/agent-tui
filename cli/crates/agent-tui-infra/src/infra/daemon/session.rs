@@ -607,7 +607,7 @@ pub struct Session {
 }
 
 impl Session {
-    fn new(id: SessionId, launch: SessionLaunchSpec, pty: PtyHandle, cols: u16, rows: u16) -> Self {
+    fn new(id: SessionId, launch: SessionLaunchSpec, pty: PtyHandle, size: TerminalSize) -> Self {
         let stream = Arc::new(StreamBuffer::new(STREAM_MAX_BUFFER_BYTES));
         let mut pty = PtySession::new(pty);
         let pty_rx = pty.take_read_rx();
@@ -617,7 +617,7 @@ impl Session {
             created_at: Utc::now(),
             launch,
             pty,
-            terminal: TerminalState::new(cols, rows),
+            terminal: TerminalState::new(size),
             held_modifiers: ModifierState::default(),
             stream,
             command_timeline: CommandTimeline::default(),
@@ -641,7 +641,7 @@ impl Session {
         self.pty.is_running()
     }
 
-    pub fn size(&self) -> (u16, u16) {
+    pub fn size(&self) -> TerminalSize {
         self.terminal.size()
     }
 
@@ -715,10 +715,10 @@ impl Session {
         Ok(())
     }
 
-    pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), SessionError> {
-        self.pty.resize(cols, rows)?;
-        self.terminal.resize(cols, rows);
-        self.record_command_timeline_entry("resize", format!("{cols}x{rows}"));
+    pub fn resize(&mut self, size: TerminalSize) -> Result<(), SessionError> {
+        self.pty.resize(size)?;
+        self.terminal.resize(size);
+        self.record_command_timeline_entry("resize", format!("{}x{}", size.cols(), size.rows()));
         self.stream.notify();
         Ok(())
     }
@@ -809,14 +809,14 @@ impl Session {
     }
 
     pub fn live_preview_snapshot(&self) -> LivePreviewSnapshot {
-        let (cols, rows) = self.terminal.size();
+        let size = self.terminal.size();
         let buffer = self.terminal.screen_buffer();
         let cursor = self.terminal.cursor();
         let seq = render_live_preview_init(&buffer, &cursor);
         let stream_seq = self.stream.latest_seq();
         LivePreviewSnapshot {
-            cols,
-            rows,
+            cols: size.cols(),
+            rows: size.rows(),
             seq,
             stream_seq,
         }
@@ -871,16 +871,14 @@ impl SessionManager {
         session_id: &SessionId,
         command: &str,
         pid: u32,
-        cols: u16,
-        rows: u16,
+        size: TerminalSize,
     ) -> PersistedSession {
         PersistedSession {
             id: session_id.to_string(),
             command: command.to_string(),
             pid,
             created_at: Utc::now().to_rfc3339(),
-            cols,
-            rows,
+            size,
         }
     }
 
@@ -892,8 +890,7 @@ impl SessionManager {
         cwd: Option<&str>,
         env: Option<&HashMap<String, String>>,
         session_id: Option<SessionId>,
-        cols: u16,
-        rows: u16,
+        size: TerminalSize,
     ) -> Result<(SessionId, u32), SessionError> {
         if let Some(ref requested_id) = session_id {
             let sessions = rwlock_read_or_recover(&self.sessions);
@@ -922,16 +919,15 @@ impl SessionManager {
             &launch.args,
             launch.cwd.as_deref(),
             launch.env.as_ref(),
-            cols,
-            rows,
+            size,
         )
         .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
         let pid = pty.pid().unwrap_or(0);
 
-        let session = Session::new(id.clone(), launch.clone(), pty, cols, rows);
+        let session = Session::new(id.clone(), launch.clone(), pty, size);
         let session = Arc::new(Mutex::new(session));
 
-        let persisted = Self::persisted_session(&id, &launch.command, pid, cols, rows);
+        let persisted = Self::persisted_session(&id, &launch.command, pid, size);
 
         {
             let mut sessions = rwlock_write_or_recover(&self.sessions);
@@ -1016,10 +1012,9 @@ impl SessionManager {
 
     pub fn restart(&self, session_id: Option<&SessionId>) -> Result<RestartOutput, SessionError> {
         let session = self.resolve(session_id)?;
-        let (old_session_id, launch, cols, rows) = {
+        let (old_session_id, launch, size) = {
             let sess = mutex_lock_or_recover(&session);
-            let (cols, rows) = sess.size();
-            (sess.id.clone(), sess.launch_spec(), cols, rows)
+            (sess.id.clone(), sess.launch_spec(), sess.size())
         };
 
         let new_session_id = self.next_session_id();
@@ -1028,8 +1023,7 @@ impl SessionManager {
             &launch.args,
             launch.cwd.as_deref(),
             launch.env.as_ref(),
-            cols,
-            rows,
+            size,
         )
         .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
         let pid = replacement_pty.pid().unwrap_or(0);
@@ -1055,8 +1049,7 @@ impl SessionManager {
             new_session_id.clone(),
             launch.clone(),
             replacement_pty,
-            cols,
-            rows,
+            size,
         )));
         let thread_name = format!("session-pump-{}", new_session_id.as_str());
         let (pump_tx, pump_join) = spawn_pump(Arc::clone(&new_session), thread_name);
@@ -1088,7 +1081,7 @@ impl SessionManager {
             warn!(session_id = %old_session_id, error = %e, "Failed to remove session from persistence");
         }
 
-        let persisted = Self::persisted_session(&new_session_id, &launch.command, pid, cols, rows);
+        let persisted = Self::persisted_session(&new_session_id, &launch.command, pid, size);
         if let Err(e) = self.persistence.add_session(persisted) {
             warn!(session_id = %new_session_id, error = %e, "Failed to persist restarted session metadata");
         }
@@ -1116,14 +1109,13 @@ impl SessionManager {
             .into_iter()
             .map(|(id, session)| {
                 if let Some(mut sess) = acquire_session_lock(&session, Duration::from_millis(100)) {
-                    let (cols, rows) = sess.size();
                     SessionInfo {
                         id,
                         command: sess.command.clone(),
                         pid: sess.pid().unwrap_or(0),
                         running: sess.is_running(),
                         created_at: sess.created_at.to_rfc3339(),
-                        size: TerminalSize::try_new(cols, rows).unwrap_or_default(),
+                        size: sess.size(),
                     }
                 } else {
                     SessionInfo {
@@ -1247,8 +1239,8 @@ pub struct PersistedSession {
     pub command: String,
     pub pid: u32,
     pub created_at: String,
-    pub cols: u16,
-    pub rows: u16,
+    #[serde(flatten)]
+    pub size: TerminalSize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1805,6 +1797,7 @@ mod pump_tests {
     use super::spawn_pump;
     use crate::common::mutex_lock_or_recover;
     use crate::domain::SessionId;
+    use crate::domain::TerminalSize;
     use crate::infra::terminal::PtyHandle;
     use std::path::Path;
     use std::sync::Arc;
@@ -1821,8 +1814,8 @@ mod pump_tests {
         } else {
             "sh"
         };
-        let pty =
-            PtyHandle::spawn(shell, &args, Some("/tmp"), None, 80, 24).expect("PTY should spawn");
+        let pty = PtyHandle::spawn(shell, &args, Some("/tmp"), None, TerminalSize::default())
+            .expect("PTY should spawn");
         let session = Session::new(
             SessionId::try_new("test-session").expect("valid session id"),
             super::SessionLaunchSpec {
@@ -1832,8 +1825,7 @@ mod pump_tests {
                 env: None,
             },
             pty,
-            80,
-            24,
+            TerminalSize::default(),
         );
         let session = Arc::new(Mutex::new(session));
 
@@ -2153,8 +2145,7 @@ impl From<&SessionInfo> for PersistedSession {
             command: info.command.clone(),
             pid: info.pid,
             created_at: info.created_at.clone(),
-            cols: info.size.cols(),
-            rows: info.size.rows(),
+            size: info.size,
         }
     }
 }
@@ -2259,8 +2250,7 @@ mod tests {
             None,
             None,
             Some(SessionId::try_new(session_id).expect("test session id should be valid")),
-            80,
-            24,
+            TerminalSize::default(),
         ) {
             Ok((id, _)) => Some(id),
             Err(SessionError::Terminal(_)) => None,
@@ -2286,8 +2276,7 @@ mod tests {
             command: "bash".to_string(),
             pid: 12345,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         };
 
         let json = serde_json::to_string(&session).expect("session should serialize");
@@ -2326,13 +2315,27 @@ mod tests {
 
         let manager = SessionManager::with_max_sessions(2);
         let session_id = SessionId::try_new("dup-session").expect("valid session id");
-        match manager.spawn("sh", &[], None, None, Some(session_id.clone()), 80, 24) {
+        match manager.spawn(
+            "sh",
+            &[],
+            None,
+            None,
+            Some(session_id.clone()),
+            TerminalSize::default(),
+        ) {
             Ok(_) => {}
             Err(SessionError::Terminal(_)) => return, // PTY unavailable, skip
             Err(e) => panic!("unexpected error from first spawn: {e}"),
         }
 
-        let result = manager.spawn("sh", &[], None, None, Some(session_id.clone()), 80, 24);
+        let result = manager.spawn(
+            "sh",
+            &[],
+            None,
+            None,
+            Some(session_id.clone()),
+            TerminalSize::default(),
+        );
 
         assert!(matches!(
             result,
@@ -2553,8 +2556,7 @@ mod tests {
             ),
             Some(&env),
             Some(SessionId::try_new("restart-src").expect("valid session id")),
-            80,
-            24,
+            TerminalSize::default(),
         ) {
             Ok((session_id, _pid)) => cleanup.track(session_id),
             Err(SessionError::Terminal(_)) => return,
@@ -2622,8 +2624,7 @@ mod tests {
             command: "sh".to_string(),
             pid: 1234,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            cols: 80,
-            rows: 24,
+            size: TerminalSize::default(),
         }];
         fs::write(
             &legacy_path,
@@ -2658,8 +2659,7 @@ mod tests {
             command: "bash".to_string(),
             pid: 777,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            cols: 100,
-            rows: 40,
+            size: TerminalSize::try_new(100, 40).expect("valid terminal size"),
         };
         persistence
             .add_session(session.clone())
@@ -2695,8 +2695,7 @@ mod tests {
                 command: "sh".to_string(),
                 pid: 111,
                 created_at: "2024-01-01T00:00:00Z".to_string(),
-                cols: 80,
-                rows: 24,
+                size: TerminalSize::default(),
             },
         };
         let unknown = serde_json::json!({
@@ -2746,8 +2745,7 @@ mod tests {
                 command: "sh".to_string(),
                 pid: 456,
                 created_at: "2024-01-01T00:00:00Z".to_string(),
-                cols: 80,
-                rows: 24,
+                size: TerminalSize::default(),
             })
             .expect("custom session should be persisted");
 
@@ -2793,8 +2791,7 @@ mod tests {
                 command: "sleep".to_string(),
                 pid,
                 created_at: Utc::now().to_rfc3339(),
-                cols: 80,
-                rows: 24,
+                size: TerminalSize::default(),
             })
             .expect("failed to persist session");
 
@@ -2862,8 +2859,7 @@ mod tests {
                 command: "sleep".to_string(),
                 pid,
                 created_at: Utc::now().to_rfc3339(),
-                cols: 80,
-                rows: 24,
+                size: TerminalSize::default(),
             })
             .expect("failed to persist session");
 

@@ -2,6 +2,8 @@
 
 ## Open Findings
 
+- `[A04][async-bounded-vs-unbounded-channel-split]` PTY output delivery still blocks on an internal bounded event queue: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs` uses `channel::bounded(PTY_READ_CHANNEL_CAPACITY)` for `ReadEvent`s and `spawn_reader` calls blocking `send(ReadEvent::Data(...))`. If `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` cannot keep `pump_loop` moving because the session lock is contended or output bursts outrun processing, the reader stops draining the PTY master and the child process is backpressured by its own output.
+- `[A04][defensive-io-drain-timeout-grandchildren]` PTY shutdown still has no reader-drain timeout or join path: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs` spawns a detached `pty-reader` thread but `PtyHandle::kill` and `Drop` never join or time out that thread. When process-group signaling falls back to direct child kill, or descendants keep the slave side open, the reader can stay blocked on `read()` indefinitely and leak a stuck background thread even after the session is considered dead.
 - `[A03][errors-boundary-error-translator]` Session persistence is still treated as best-effort even though startup cleanup depends on it: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` suppresses `cleanup_stale_sessions()` failure in `SessionManager::with_max_sessions`, and `spawn`, `restart`, and `kill` only warn when `add_session` or `remove_session` fail. The CLI/RPC path can therefore report success while the JSONL store diverges from live state, leaving the next daemon startup to recover from stale or missing metadata with no operator-visible signal.
 - `[F05][types-try-from-newtype-validation]` The resize path still bypasses the `TerminalSize` invariant end to end: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` accepts unrestricted `u16`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs` model resize DTOs as raw integers, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` forwards them without `TerminalSize::try_new`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs` accept raw sizes, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` later masks invalid live sizes in `list()` via `TerminalSize::try_new(cols, rows).unwrap_or_default()`.
 - `[F05][errors-boundary-error-translator]` Attach-triggered resize failures are silently discarded in `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs`: both the initial `terminal::size()` sync and the `Event::Resize` branch ignore `call_with_params(..., "resize", ...)` errors, so the operator gets no warning when the local terminal and remote session diverge on size.
@@ -221,11 +223,46 @@ Contextual non-applicability:
 - `async-abort-on-drop-handle` and `async-shared-boxfuture-joinhandle` are not a direct fit here because this slice uses a dedicated std-thread pump with a single explicit join owner, not a tokio task tree with multi-waiter futures.
 - `testing-paused-runtime-advance` is not a direct fit for the persistence cleanup tests because they exercise real OS processes, file locks, and blocking waits instead of tokio timers.
 
+### `2026-04-13 06:53Z` `A04` PTY and virtual terminal engine
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/pty_session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/core/mod.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/core/screen.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/core/style.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs` handles partial PTY writes defensively: it retries `Interrupted`, waits for `POLLOUT` on `WouldBlock`, and treats `write == 0` as a closed-terminal error instead of silently dropping input.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs` already prefers process-group-aware termination before falling back to a direct child kill, which reduces orphaned descendants when the PTY child is the process-group leader.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs` still preserves the key rendering guarantees previously observed in `F05`: compact rendering trims trailing blank rows and the renderer explicitly resets terminal style state at the end of the frame.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/core/{screen,style}.rs` keep the terminal-engine boundary clean by translating wezterm cell/cursor data into domain `ScreenSnapshot`, `ScreenCell`, `CursorPosition`, `CellStyle`, and `Color` types instead of leaking engine-specific types upward.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/pty_session.rs` remains a thin boundary adapter that converts `PtyError` into `SessionError` exactly once for the rest of the daemon runtime.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` already caps retained live stream bytes in `StreamBuffer` and tracks `dropped_bytes`, so long-running sessions do not let the in-memory output history grow without bound even when consumers lag behind.
+
+Findings:
+
+- PTY output delivery still blocks on a bounded internal event channel, so a slow or lock-blocked session pump can stop draining the master PTY and backpressure the child process.
+- PTY shutdown still lacks a reader-drain timeout or join path, so descendants that keep the slave open can leave a detached `pty-reader` thread blocked on `read()` indefinitely.
+- The existing `TerminalSize` invariant gap remains visible inside the engine layer because `PtySession::resize`, `PtyHandle::resize`, and `VirtualTerminal::resize` still accept raw `u16` dimensions.
+- The previously recorded snapshot gap remains visible at the engine layer: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs` still rely on focused assertion tests rather than full rendered-screen snapshots.
+
+Contextual non-applicability:
+
+- `tui-drop-guard-panic-hook-chain` and `tui-event-broker-pause-resume` are not direct fits for this tranche because the audited files implement PTY transport and screen modeling, not raw-mode/stdin ownership during full-screen attach.
+- `async-abort-on-drop-handle` and `async-shared-boxfuture-joinhandle` are not direct fits because this slice uses std threads and crossbeam channels rather than a tokio task tree with shared join futures.
+- `types-non-exhaustive-public-enums` and `types-unknown-variant-forward-compat` are not direct fits for `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/core/{screen,style}.rs` because those types model internal screen state, not versioned external wire enums.
+
 ## Next Queue
 
-- `A04` PTY and virtual terminal engine
-- `F07` Session lifecycle management
 - `A05` Concurrency, shutdown, and thread/task ownership
+- `F07` Session lifecycle management
+- `F02` Snapshot and screenshot rendering
 
 ## Notes
 

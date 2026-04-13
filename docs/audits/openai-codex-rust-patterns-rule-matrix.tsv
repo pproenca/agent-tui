@@ -2009,19 +2009,19 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	proto-internal-vs-wire-error-split	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	proto-internally-tagged-rpc-dispatch	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	proto-rename-alias-wire-migration	proto	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	proto-sse-idle-timeout-terminator	proto	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	proto-sse-idle-timeout-terminator	proto	not_applicable	contextual	F09	2026-04-13 08:48Z	The live preview control plane uses WebSocket plus JSON-RPC, not SSE framing with idle terminators.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	sandbox-argv0-multiplex-binary	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	sandbox-dev-null-first-missing-mount	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	sandbox-env-clear-pre-exec	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	sandbox-shared-policy-data-model	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	sandbox-staged-restrictions-re-exec	sandbox	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	sandbox-three-layer-network-isolation	sandbox	finding	applicable	F09	2026-04-13 08:48Z	The listener defaults to loopback, but ws_url embeds the bearer token in a query string and ws_handler checks only that token with no Origin validation, so any external UI that receives the URL can connect back to the local daemon.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-insta-snapshot-tui-rendering	testing	not_applicable	contextual	F09	2026-04-13 08:48Z	F09 covers listener/auth/state-file control-plane behavior rather than terminal rendering diffs.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	ws_server.rs keeps an inline #[cfg(test)] mod tests block instead of a sibling ws_server_tests.rs child module.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-paused-runtime-advance	testing	finding	applicable	A10,A05	2026-04-13 06:59Z	Cancellation and bounded-shutdown tests still rely on elapsed wall-clock time instead of virtual-time control.
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	testing-wiremock-sse-fakes	testing	finding	applicable	F09	2026-04-13 08:48Z	ws_server tests cover env parsing, URL formatting, and bounded cancellation but never boot the axum listener to exercise /, /ui, /ws, or /api/v1/stream over a real HTTP/WebSocket handshake.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
@@ -2135,10 +2135,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	sandbox-env-clear-pre-exec	sandbox	finding	applicable	F01	2026-04-12 22:19Z	handle_spawn resolves cwd but never snapshots the caller environment into the spawn request, leaving env propagation implicit.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	sandbox-shared-policy-data-model	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	sandbox-staged-restrictions-re-exec	sandbox	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	sandbox-three-layer-network-isolation	sandbox	finding	applicable	F09	2026-04-13 08:48Z	handle_live_start_standalone reads AGENT_TUI_UI_URL and build_ui_url appends the full authenticated ws_url before open_in_browser launches it, so remote UI overrides receive a reusable localhost WebSocket credential.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	testing-insta-snapshot-tui-rendering	testing	not_applicable	contextual	F09	2026-04-13 08:48Z	Live preview start/status/stop outputs are control-plane URLs and status payloads, not terminal render snapshots.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
@@ -4452,7 +4452,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process.rs	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process.rs	errors-boundary-error-translator	errors	pass	applicable	F09	2026-04-13 08:48Z	UnixProcessController maps libc kill(0) results into typed ProcessStatus values (Running/NotFound/NoPermission), keeping PID liveness translation local to the process boundary.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -6701,7 +6701,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-insta-snapshot-tui-rendering	testing	finding	applicable	F05	2026-04-12 23:19Z	CLI contract tests prove resize method routing but not rendered-screen correctness after resize.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-paused-runtime-advance	testing	finding	applicable	F04	2026-04-13 08:27Z	CLI contract coverage checks wait routing and the --assert timeout exit code, but it does not use the mock-daemon delay controller to verify deterministic wait progression or wakeup timing.
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-wiremock-sse-fakes	testing	pass	contextual	A10,F04	2026-04-13 08:27Z	Command contract tests drive the CLI against MockDaemon over real JSON-RPC frames rather than mocked client traits, including the wait/assert routing surface audited in F04.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-wiremock-sse-fakes	testing	finding	applicable	A10,F04,F09	2026-04-13 08:48Z	Command contract tests use real JSON-RPC frames for wait/assert, but live preview start/status/stop only seed a handcrafted WS state file and never exercise the actual HTTP/WebSocket listener, auth, or redirect surface.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
@@ -7526,10 +7526,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	otel-w3c-traceparent-propagation	otel	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-double-option-tri-state	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-experimental-runtime-gate	proto	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-internal-vs-wire-error-split	proto	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-internal-vs-wire-error-split	proto	finding	applicable	F09	2026-04-13 08:48Z	The published contract says authentication is unenforced, documents /api/v1/sessions and snapshot routes that the runtime does not serve, omits the required token query parameter, and models errors as plain ErrorResponse rather than the JSON-RPC envelopes returned by ws_server.
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-internally-tagged-rpc-dispatch	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-rename-alias-wire-migration	proto	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-sse-idle-timeout-terminator	proto	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-sse-idle-timeout-terminator	proto	not_applicable	contextual	F09	2026-04-13 08:48Z	The documented live preview control plane is WebSocket-based rather than SSE-based.
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	sandbox-argv0-multiplex-binary	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	sandbox-dev-null-first-missing-mount	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	sandbox-env-clear-pre-exec	sandbox	pending	unreviewed			
@@ -7538,7 +7538,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	testing-insta-snapshot-tui-rendering	testing	not_applicable	contextual	F09	2026-04-13 08:48Z	OpenAPI drift here concerns wire/auth/schema documentation, not terminal rendering output.
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	testing-paused-runtime-advance	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	testing-wiremock-sse-fakes	testing	pending	unreviewed			

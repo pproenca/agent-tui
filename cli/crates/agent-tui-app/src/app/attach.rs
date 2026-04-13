@@ -50,7 +50,8 @@ impl TerminalGuard {
     fn new() -> Result<Self, AttachError> {
         enable_raw_mode().map_err(AttachError::Terminal)?;
         let mut stdout = io::stdout();
-        let _ = prepare_terminal(&mut stdout);
+        prepare_terminal_with_rollback(&mut stdout, prepare_terminal)
+            .map_err(AttachError::Terminal)?;
         Ok(Self)
     }
 }
@@ -291,8 +292,7 @@ fn attach_ipc_loop<C: DaemonClient>(
         },
     )
     .map_err(|e| AttachError::PtyRead(format_client_error(&e)))?;
-    let abort_handle = stream.abort_handle();
-    let output_worker = start_attach_stream_output(stream, Arc::clone(&stdout), false)?;
+    let mut output_worker = start_attach_stream_output(stream, Arc::clone(&stdout), false)?;
     let event_worker = spawn_event_reader();
 
     loop {
@@ -331,9 +331,7 @@ fn attach_ipc_loop<C: DaemonClient>(
                                 if let (true, Ok(mut guard)) = (hint_active, stdout.lock()) {
                                     render_detach_hint(&mut *guard, None);
                                 }
-                                if let Some(handle) = abort_handle.as_ref() {
-                                    handle.abort();
-                                }
+                                output_worker.abort();
                                 let _ =
                                     output_worker.receiver().recv_timeout(ATTACH_OUTPUT_SHUTDOWN_WAIT);
                                 event_worker.cancel();
@@ -454,7 +452,7 @@ fn format_client_error(error: &ClientError) -> String {
     msg
 }
 
-fn prepare_terminal(stdout: &mut impl Write) -> io::Result<()> {
+fn prepare_terminal<W: Write>(stdout: &mut W) -> io::Result<()> {
     execute!(
         stdout,
         terminal::EnterAlternateScreen,
@@ -469,6 +467,20 @@ fn prepare_terminal(stdout: &mut impl Write) -> io::Result<()> {
         event::EnableBracketedPaste
     )?;
     stdout.flush()
+}
+
+fn prepare_terminal_with_rollback<W, F>(stdout: &mut W, prepare: F) -> io::Result<()>
+where
+    W: Write,
+    F: FnOnce(&mut W) -> io::Result<()>,
+{
+    if let Err(err) = prepare(stdout) {
+        let _ = disable_raw_mode();
+        let _ = reset_terminal_modes(stdout);
+        return Err(err);
+    }
+
+    Ok(())
 }
 
 fn reset_terminal_modes(stdout: &mut impl Write) -> io::Result<()> {
@@ -611,6 +623,7 @@ impl<T> Drop for AttachReaderWorker<T> {
 struct AttachOutputWorker {
     done_rx: channel::Receiver<Result<(), AttachError>>,
     join: Option<thread::JoinHandle<()>>,
+    shutdown_signal: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl AttachOutputWorker {
@@ -618,7 +631,14 @@ impl AttachOutputWorker {
         &self.done_rx
     }
 
+    fn abort(&mut self) {
+        if let Some(shutdown_signal) = self.shutdown_signal.take() {
+            shutdown_signal();
+        }
+    }
+
     fn shutdown(&mut self, timeout: Duration) {
+        self.abort();
         join_thread_with_timeout(&mut self.join, timeout, "attach-stream-output");
     }
 }
@@ -844,6 +864,9 @@ fn start_attach_stream_output(
     report_drops: bool,
 ) -> Result<AttachOutputWorker, AttachError> {
     let (tx, rx) = channel::bounded(1);
+    let shutdown_signal = stream
+        .abort_handle()
+        .map(|handle| Arc::new(move || handle.abort()) as Arc<dyn Fn() + Send + Sync>);
     let builder = thread::Builder::new().name("attach-stream-output".to_string());
     let join = builder
         .spawn(move || {
@@ -856,6 +879,7 @@ fn start_attach_stream_output(
     Ok(AttachOutputWorker {
         done_rx: rx,
         join: Some(join),
+        shutdown_signal,
     })
 }
 
@@ -1306,6 +1330,54 @@ mod tests {
             AttachStreamEvent::Closed => {}
             _ => panic!("expected closed event"),
         }
+    }
+
+    #[test]
+    fn prepare_terminal_with_rollback_restores_terminal_after_failure() {
+        let mut buffer = Vec::new();
+        let err = prepare_terminal_with_rollback(&mut buffer, |stdout| {
+            stdout.write_all(b"partial")?;
+            Err(io::Error::other("boom"))
+        })
+        .expect_err("failing setup should trigger rollback");
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+        assert_eq!(err.to_string(), "boom");
+
+        let mut reset = Vec::new();
+        reset_terminal_modes(&mut reset).expect("terminal reset sequence should render");
+        assert!(
+            buffer.ends_with(&reset),
+            "terminal reset sequence should be written after setup failure"
+        );
+    }
+
+    #[test]
+    fn attach_output_worker_shutdown_aborts_before_joining() {
+        let aborted = Arc::new(AtomicBool::new(false));
+        let aborted_for_thread = Arc::clone(&aborted);
+        let aborted_for_signal = Arc::clone(&aborted);
+        let shutdown_signal: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            aborted_for_signal.store(true, Ordering::Relaxed);
+        });
+        let (tx, rx) = channel::bounded(1);
+        let join = thread::spawn(move || {
+            while !aborted_for_thread.load(Ordering::Relaxed) {
+                thread::park_timeout(Duration::from_millis(10));
+            }
+            let _ = tx.send(Ok(()));
+        });
+
+        let mut worker = AttachOutputWorker {
+            done_rx: rx,
+            join: Some(join),
+            shutdown_signal: Some(shutdown_signal),
+        };
+
+        worker.shutdown(Duration::from_millis(250));
+
+        assert!(aborted.load(Ordering::Relaxed));
+        assert!(worker.join.is_none());
+        assert!(worker.shutdown_signal.is_none());
     }
 
     #[test]

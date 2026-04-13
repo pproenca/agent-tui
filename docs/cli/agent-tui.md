@@ -91,7 +91,7 @@ CONFIGURATION:
     AGENT_TUI_LOG               Log file path (optional)
     AGENT_TUI_LOG_FORMAT        Log format (text or json; default: text)
     AGENT_TUI_LOG_STREAM        Log output stream (stderr or stdout; default: stderr)
-    AGENT_TUI_UI_URL            External UI URL (optional)
+    AGENT_TUI_UI_URL            Same-origin UI URL or path override for live preview opening (optional)
     AGENT_TUI_UI_MODE           UI mode override (optional)
     AGENT_TUI_UI_PORT           UI port override (optional)
     AGENT_TUI_UI_ROOT           UI root path override (optional)
@@ -149,6 +149,10 @@ Options:
   -V, --version
           Print version
 
+Environment:
+      --env <KEY=VALUE>
+          Environment variable override for the spawned session (repeatable)
+
 Terminal Size:
       --cols <COLS>
           Terminal columns (default: 120)
@@ -187,6 +191,7 @@ Interaction Options:
 
 EXAMPLES:
     agent-tui run bash
+    agent-tui run --env FOO=bar --env BAZ=qux bash
     agent-tui run htop
     agent-tui run "npx create-next-app"
     agent-tui run vim -- file.txt
@@ -211,7 +216,7 @@ Options:
 
 Filtering:
       --region <REGION>
-          Limit capture to a named region (if supported)
+          Reserved for future named regions; currently rejected if provided
 
 Output Options:
       --strip-ansi
@@ -998,7 +1003,7 @@ CONFIGURATION:
     AGENT_TUI_WS_LISTEN          Bind address (default: 127.0.0.1:0)
     AGENT_TUI_WS_ALLOW_REMOTE    Allow non-loopback bind (default: false)
     AGENT_TUI_WS_STATE           State file path (default: ~/.agent-tui/api.json)
-    AGENT_TUI_UI_URL             External UI URL to open with --open (CLI appends ws/session/auto)
+    AGENT_TUI_UI_URL             Same-origin UI URL or path to open with --open (CLI appends ws/session/auto)
 
 SECURITY:
     Remote exposure is opt-in. Set AGENT_TUI_WS_ALLOW_REMOTE=1 for non-loopback binds.

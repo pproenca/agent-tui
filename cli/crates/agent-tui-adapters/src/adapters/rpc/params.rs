@@ -4,23 +4,44 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::domain::session_types::TerminalSize;
+use crate::domain::session_types::TerminalSizeError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "SpawnParamsWire", into = "SpawnParamsWire")]
 pub struct SpawnParams {
-    #[serde(default)]
     pub command: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    pub size: Option<TerminalSize>,
+    pub size: TerminalSize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SpawnParamsWire {
+    #[serde(default)]
+    command: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    args: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cwd: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session: Option<String>,
+    #[serde(default = "default_cols")]
+    cols: u16,
+    #[serde(default = "default_rows")]
+    rows: u16,
 }
 
 fn default_spawn_size() -> TerminalSize {
     TerminalSize::default()
+}
+
+fn default_cols() -> u16 {
+    TerminalSize::default().cols()
+}
+
+fn default_rows() -> u16 {
+    TerminalSize::default().rows()
 }
 
 impl Default for SpawnParams {
@@ -30,7 +51,34 @@ impl Default for SpawnParams {
             args: Vec::new(),
             cwd: None,
             session: None,
-            size: Some(default_spawn_size()),
+            size: default_spawn_size(),
+        }
+    }
+}
+
+impl TryFrom<SpawnParamsWire> for SpawnParams {
+    type Error = TerminalSizeError;
+
+    fn try_from(value: SpawnParamsWire) -> Result<Self, Self::Error> {
+        Ok(Self {
+            command: value.command,
+            args: value.args,
+            cwd: value.cwd,
+            session: value.session,
+            size: TerminalSize::try_new(value.cols, value.rows)?,
+        })
+    }
+}
+
+impl From<SpawnParams> for SpawnParamsWire {
+    fn from(value: SpawnParams) -> Self {
+        Self {
+            command: value.command,
+            args: value.args,
+            cwd: value.cwd,
+            session: value.session,
+            cols: value.size.cols(),
+            rows: value.size.rows(),
         }
     }
 }
@@ -152,7 +200,7 @@ mod tests {
             args: vec!["-lc".to_string(), "echo hello".to_string()],
             cwd: Some("/tmp".to_string()),
             session: Some("session-1".to_string()),
-            size: Some(TerminalSize::try_new(120, 40).expect("valid terminal size")),
+            size: TerminalSize::try_new(120, 40).expect("valid terminal size"),
         };
 
         let json = serde_json::to_value(&params).expect("spawn params should serialize");

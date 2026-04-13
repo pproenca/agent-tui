@@ -132,9 +132,10 @@ impl InteractivePtyRunner {
             if Instant::now() >= deadline {
                 let _ = self.child.kill();
                 let _ = self.child.wait();
+                let output = self.output_as_string();
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
-                    "PTY process did not exit within timeout",
+                    format!("PTY process did not exit within timeout. Output so far: {output}"),
                 ));
             }
             self.drain_output(Duration::from_millis(25));

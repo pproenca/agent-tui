@@ -146,7 +146,7 @@ pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse
         cwd: rpc_params.cwd,
         env: None,
         session_id: parse_session_id(rpc_params.session),
-        size: rpc_params.size.unwrap_or_default(),
+        size: rpc_params.size,
     })
 }
 

@@ -408,7 +408,7 @@ pub(crate) fn handle_spawn<C: DaemonClient>(
         args,
         cwd,
         session: ctx.session.clone(),
-        size: Some(size),
+        size,
     };
     let result = call_with_params(ctx.client, "spawn", rpc_params)?;
 

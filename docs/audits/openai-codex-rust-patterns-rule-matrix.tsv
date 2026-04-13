@@ -552,7 +552,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs	errors-boundary-error-translator	errors	pass	applicable	F01	2026-04-12 22:19Z	Spawn RPC handler translates the use-case error exactly once via DomainError::from(e).
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs	errors-boundary-error-translator	errors	pass	applicable	F01,F05	2026-04-12 23:19Z	Spawn and resize RPC handlers translate use-case failures exactly once via DomainError::from(e) or session_error_response.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -1071,7 +1071,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-try-from-newtype-validation	types	finding	applicable	A01,F01	2026-04-12 22:19Z	parse_spawn_input clamps raw terminal sizes for spawn and parse_resize_input forwards raw sizes instead of constructing a validated TerminalSize.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-try-from-newtype-validation	types	finding	applicable	A01,F01,F05	2026-04-12 23:19Z	parse_spawn_input clamps raw terminal sizes for spawn, but parse_resize_input still forwards raw cols/rows instead of constructing a validated TerminalSize.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -1131,7 +1131,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs	types-try-from-newtype-validation	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs	types-try-from-newtype-validation	types	finding	applicable	F05	2026-04-12 23:19Z	ResizeParams models cols and rows as raw u16 values instead of a validated terminal-size type.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -1512,7 +1512,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	errors-boundary-error-translator	errors	finding	applicable	F05	2026-04-12 23:19Z	Initial attach resize sync and Event::Resize both discard resize RPC errors instead of translating or surfacing them.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -1545,8 +1545,8 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-schedule-frame-coalescer	tui	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-two-gear-hysteresis-chunking	tui	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-schedule-frame-coalescer	tui	not_applicable	contextual	F05	2026-04-12 23:19Z	Attach resize handling sends discrete RPC resize calls and does not own a local redraw scheduler.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-two-gear-hysteresis-chunking	tui	not_applicable	contextual	F05	2026-04-12 23:19Z	Attach resize handling is not a streamed chunking path with backlog gear shifts.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	types-dyn-safe-adapter-trait	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
@@ -1611,7 +1611,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs	types-try-from-newtype-validation	types	finding	applicable	F01	2026-04-12 22:19Z	The run command still accepts raw u16 cols and rows and forwards them to spawn without constructing TerminalSize.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs	types-try-from-newtype-validation	types	finding	applicable	F01,F05	2026-04-12 23:19Z	The run and resize CLI commands accept raw u16 cols/rows and forward them without constructing TerminalSize.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -1718,15 +1718,15 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-insta-snapshot-tui-rendering	testing	finding	applicable	F05	2026-04-12 23:19Z	Resize coverage asserts event emission but not reflowed screen output or layout snapshots.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	rpc_core.rs keeps an inline #[cfg(test)] mod tests block instead of a sibling rpc_core_tests.rs child module.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-paused-runtime-advance	testing	finding	applicable	A10	2026-04-12 22:12Z	Stream wait tests use park_timeout and elapsed-time bounds instead of paused-runtime or equivalent virtual-time control.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-schedule-frame-coalescer	tui	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-two-gear-hysteresis-chunking	tui	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-schedule-frame-coalescer	tui	not_applicable	contextual	F05	2026-04-12 23:19Z	Live preview resize propagation emits stream events rather than running a local frame-request coalescer.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-two-gear-hysteresis-chunking	tui	not_applicable	contextual	F05	2026-04-12 23:19Z	Live preview resize notifications are discrete events, not line-chunk streaming with hysteresis thresholds.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	types-dyn-safe-adapter-trait	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
@@ -2151,7 +2151,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	types-try-from-newtype-validation	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	types-try-from-newtype-validation	types	finding	applicable	F05	2026-04-12 23:19Z	handle_resize forwards raw u16 cols/rows to the RPC boundary without constructing or validating TerminalSize.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -3291,7 +3291,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-full-reference-hierarchy	types	pass	applicable	A01	2026-04-12 22:06Z	SessionId implements Borrow AsRef Deref and TryFrom to preserve ergonomic reference behavior with validation.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-try-from-newtype-validation	types	pass	contextual	A01	2026-04-12 22:06Z	SessionId routes construction through TryFrom and rejects empty identifiers.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-try-from-newtype-validation	types	pass	applicable	A01,F05	2026-04-12 23:19Z	TerminalSize centralizes min/max validation via try_new, even though the current resize boundaries still bypass that invariant type.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -3351,7 +3351,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-non-exhaustive-public-enums	types	pass	applicable	A01	2026-04-12 22:06Z	Public condition enums are marked non_exhaustive.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-try-from-newtype-validation	types	finding	applicable	A01	2026-04-12 22:06Z	SpawnInput and ResizeInput carry raw cols and rows instead of the validated TerminalSize type.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-try-from-newtype-validation	types	finding	applicable	A01,F05	2026-04-12 23:19Z	SpawnInput and ResizeInput carry raw cols and rows instead of the validated TerminalSize type.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	types-unknown-variant-forward-compat	types	not_applicable	contextual	A01	2026-04-12 22:06Z	Condition enums represent validated command inputs rather than persisted open-ended wire values.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -3827,7 +3827,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	tui-schedule-frame-coalescer	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	tui-two-gear-hysteresis-chunking	tui	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	types-dyn-safe-adapter-trait	types	pass	applicable	F01	2026-04-12 22:19Z	SessionRepository stays object-safe by exposing SessionHandle and SessionOps adapters instead of the concrete Session type.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	types-dyn-safe-adapter-trait	types	pass	applicable	F01,A03	2026-04-13 00:20Z	SessionRepository stays object-safe by exposing SessionHandle and SessionOps adapters instead of the concrete Session type, and local tests pin both object safety and generic SessionOps usage.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	types-thread-local-raii-serde	types	pending	unreviewed			
@@ -3839,12 +3839,12 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	workspace-single-source-dependencies	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	async-abort-on-drop-handle	async	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	async-abort-on-drop-handle	async	not_applicable	contextual	A03	2026-04-13 00:20Z	This slice uses a dedicated std-thread pump with explicit shutdown and join, not tokio AbortOnDropHandle task ownership.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	async-biased-select-for-cancellation	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	async-bounded-vs-unbounded-channel-split	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	async-child-cancellation-tokens	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	async-graceful-then-forceful-cancel	async	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	async-shared-boxfuture-joinhandle	async	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	async-shared-boxfuture-joinhandle	async	not_applicable	contextual	A03	2026-04-13 00:20Z	Session pump shutdown has a single explicit join owner; there is no multi-waiter completion surface that needs Shared<BoxFuture>.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
@@ -3852,10 +3852,10 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	errors-boundary-error-translator	errors	finding	applicable	A03	2026-04-13 00:20Z	SessionManager logs and suppresses cleanup_stale_sessions/add_session/remove_session failures, so spawn/restart/kill can succeed while persistence diverges from live state.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	errors-io-error-with-context-struct	errors	pass	applicable	A03	2026-04-13 00:20Z	SessionError::Persistence keeps operation, reason, and source as structured fields instead of collapsing persistence failures into anyhow strings.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	errors-struct-display-payload	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	errors-tool-call-respond-vs-fatal	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	errors-transient-permanent-type-split	errors	pending	unreviewed			
@@ -3880,7 +3880,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	testing-paused-runtime-advance	testing	not_applicable	contextual	A03	2026-04-13 00:20Z	Persistence cleanup coverage exercises real OS processes, file locks, and blocking waits rather than tokio timers, so paused-runtime advance is not the relevant pattern here.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
@@ -3891,8 +3891,8 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	types-try-from-newtype-validation	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	types-try-from-newtype-validation	types	finding	applicable	F05,A03	2026-04-13 00:20Z	Session::new, Session::resize, and PersistedSession keep raw cols/rows in live and persisted state, and SessionManager::list later normalizes invalid sizes with TerminalSize::try_new(...).unwrap_or_default().
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	types-unknown-variant-forward-compat	types	pass	applicable	A03	2026-04-13 00:20Z	SessionPersistence tracks unknown_records, refuses destructive save/compaction rewrites, and appends remove events during cleanup so future JSONL records survive older runtimes.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs	workspace-lint-config-package	workspace	pending	unreviewed			
@@ -4000,7 +4000,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/system_clock.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/system_clock.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/system_clock.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/system_clock.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/system_clock.rs	testing-paused-runtime-advance	testing	not_applicable	contextual	A03	2026-04-13 00:20Z	SystemClock is a thin Instant adapter; paused-runtime timing determinism is exercised in the wait use-case tests rather than the persistence slice.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/system_clock.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/system_clock.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/system_clock.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
@@ -4071,7 +4071,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/terminal_state.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/terminal_state.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/terminal_state.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/terminal_state.rs	types-try-from-newtype-validation	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/terminal_state.rs	types-try-from-newtype-validation	types	finding	applicable	A03	2026-04-13 00:20Z	TerminalState::new and TerminalState::resize still accept raw cols/rows and rely on callers to uphold the TerminalSize invariant.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/terminal_state.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/terminal_state.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/terminal_state.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -4692,7 +4692,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/error.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/error.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/error.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/error.rs	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/error.rs	errors-boundary-error-translator	errors	pass	applicable	F05	2026-04-12 23:19Z	PtyError keeps resize as a dedicated variant with structured operation and reason context.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/error.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/error.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/error.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -4851,7 +4851,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs	types-try-from-newtype-validation	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs	types-try-from-newtype-validation	types	finding	applicable	F05	2026-04-12 23:19Z	PtyHandle::resize accepts raw u16 sizes and sends them straight to portable-pty without a TerminalSize boundary.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -4898,7 +4898,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs	testing-insta-snapshot-tui-rendering	testing	finding	applicable	F05	2026-04-12 23:19Z	Render tests cover trimmed rows and style reset only; no snapshot-based reflow assertions protect resize output.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
@@ -4958,7 +4958,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	testing-insta-snapshot-tui-rendering	testing	finding	applicable	F05	2026-04-12 23:19Z	VirtualTerminal tests do not exercise resize or reflow behavior, and no rendered-screen snapshots exist.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
@@ -4971,7 +4971,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	types-try-from-newtype-validation	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	types-try-from-newtype-validation	types	finding	applicable	F05	2026-04-12 23:19Z	VirtualTerminal::resize and the stored size fields use raw u16 dimensions instead of a validated TerminalSize.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -5412,7 +5412,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-boundary-error-translator	errors	pass	applicable	F05	2026-04-12 23:19Z	TerminalError preserves resize as a first-class variant so the boundary retains structured resize failures.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-exhaustive-retryable-match	errors	pass	applicable	A02	2026-04-12 22:07Z	TerminalError retryability is derived with an explicit variant match.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -5567,7 +5567,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs	tui-schedule-frame-coalescer	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs	tui-two-gear-hysteresis-chunking	tui	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs	types-dyn-safe-adapter-trait	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs	types-dyn-safe-adapter-trait	types	pass	applicable	A03	2026-04-13 00:20Z	SessionRepository stays object-safe by returning SessionHandle and StreamWaiterHandle trait objects rather than the concrete Session runtime.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs	types-thread-local-raii-serde	types	pending	unreviewed			
@@ -5691,7 +5691,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs	types-try-from-newtype-validation	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs	types-try-from-newtype-validation	types	finding	applicable	F05	2026-04-12 23:19Z	TerminalEngine::resize exposes raw cols/rows, so the port cannot enforce the TerminalSize invariant.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -5991,7 +5991,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs	types-thread-local-raii-serde	types	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs	types-try-from-newtype-validation	types	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs	types-try-from-newtype-validation	types	finding	applicable	F05	2026-04-12 23:19Z	ResizeUseCaseImpl forwards raw cols/rows from ResizeInput directly to the session repository.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs	types-unknown-variant-forward-compat	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
@@ -6698,7 +6698,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-insta-snapshot-tui-rendering	testing	finding	applicable	F05	2026-04-12 23:19Z	CLI contract tests prove resize method routing but not rendered-screen correctness after resize.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs	testing-wiremock-sse-fakes	testing	pass	contextual	A10	2026-04-12 22:12Z	Command contract tests drive the CLI against MockDaemon over real JSON-RPC frames rather than mocked client traits.

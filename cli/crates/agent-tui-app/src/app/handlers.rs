@@ -1039,7 +1039,7 @@ pub(crate) fn handle_live_stop_standalone(format: OutputFormat) -> HandlerResult
             if let Some(err) = ui_error {
                 return Err(CliError::new(
                     format,
-                    format!("Failed to stop UI server: {err}"),
+                    err,
                     Some(serde_json::to_string_pretty(&output)?),
                     super::exit_codes::GENERAL_ERROR,
                 )
@@ -1059,26 +1059,19 @@ pub(crate) fn handle_live_stop_standalone(format: OutputFormat) -> HandlerResult
                     println!("UI server is managed externally (AGENT_TUI_UI_URL).");
                 }
                 Err(err) => {
-                    eprintln!(
-                        "{} Failed to stop UI server: {}",
-                        Colors::warning("Warning:"),
-                        err
-                    );
+                    return Err(CliError::new(
+                        format,
+                        err.to_string(),
+                        None,
+                        super::exit_codes::GENERAL_ERROR,
+                    )
+                    .into());
                 }
             }
             println!(
                 "Live preview is served by the daemon; run 'agent-tui daemon stop --yes' to stop."
             );
         }
-    }
-    if let Some(err) = ui_error {
-        return Err(CliError::new(
-            format,
-            format!("Failed to stop UI server: {err}"),
-            None,
-            super::exit_codes::GENERAL_ERROR,
-        )
-        .into());
     }
     Ok(())
 }

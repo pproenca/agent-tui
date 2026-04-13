@@ -9,11 +9,12 @@ Remediate the open `openai-codex-rust-patterns` findings in `/Users/pedroproenca
 - [x] (2026-04-13 09:02Z) Re-run the green-base verification with `just ready` and `just test-core-e2e` before starting remediation work.
 - [x] (2026-04-13 09:02Z) Create the remediation exec plan and group the open findings into green-base tranches.
 - [x] (2026-04-13 09:12Z) Execute tranche 1: attach input hardening and attach-side resize error surfacing.
-- [ ] Execute tranche 2: injected-input semantic fidelity and wait/assert timing coverage.
-- [ ] Execute tranche 3: snapshot freshness/region correctness and rendered-output regression protection.
+- [x] (2026-04-13 09:50Z) Execute tranche 2: injected-input semantic fidelity and wait/assert timing coverage.
+- [x] (2026-04-13 09:50Z) Execute tranche 3: snapshot freshness/region correctness and rendered-output regression protection.
 - [ ] Execute tranche 4: session lifecycle, persistence, and shutdown ownership fixes.
 - [ ] Execute tranche 5: live-preview security/contract parity plus listener-level tests.
 - [ ] Execute tranche 6: workspace/test-support cleanup, cargo-deny duplicate reduction, and any remaining docs/spec drift.
+- [x] (2026-04-13 09:50Z) Close the standalone admin-surface gaps from `F12`: structured JSON completions, non-duplicated `live stop` errors, and standalone contract tests.
 - [ ] Close the program by updating the retrospective and moving this file to `completed/`.
 
 ## Surprises & Discoveries
@@ -22,12 +23,15 @@ Remediate the open `openai-codex-rust-patterns` findings in `/Users/pedroproenca
 - `2026-04-13 09:02Z` `cargo-deny` is green but still noisy because the lockfile contains duplicate crate versions; this is not yet a failing policy, so it should be remediated in its own tranche rather than mixed into behavioral fixes.
 - `2026-04-13 09:02Z` The earlier audit program in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/exec-plans/active/openai-codex-rust-audit-program.md` remains the discovery artifact; this plan is the separate implementation artifact for closing the remaining findings.
 - `2026-04-13 09:12Z` Running the full verification sequentially matters for this repo: `just ready` and `just test-core-e2e` are both green after tranche 1, but parallelizing them is noisy enough to trigger a misleading daemon-stop failure in the ignored E2E suite.
+- `2026-04-13 09:50Z` On this host, `kill(pid, 0)` reports an unreaped zombie child as still alive. The daemon-stop E2E failure turned out to be a process-reaping false positive, not a missing shutdown signal, so liveness checks now need to distinguish zombie state from real running ownership.
 
 ## Decision Log
 
 - `2026-04-13 09:02Z` Start with attach/runtime input hardening because it is directly user-facing, maps cleanly to the `codex-rs` TUI rules, and can be verified with focused unit tests plus the existing attach E2E coverage while keeping the repo green.
 - `2026-04-13 09:02Z` Keep `cargo-deny` duplicate cleanup out of tranche 1 even though the user explicitly called it out, because dependency-graph churn is a wider blast radius than the attach fixes and is easier to isolate once behaviorally critical findings are reduced.
 - `2026-04-13 09:12Z` Treat sequential `just ready` plus sequential `just test-core-e2e` as the required green-base contract for every remaining tranche; do not overlap the slow E2E run with other heavyweight verification.
+- `2026-04-13 09:50Z` Convert `screenshot --region` from a ghost API into explicit invalid input instead of silently succeeding with the full screen. This keeps the contract honest until named regions are actually implemented.
+- `2026-04-13 09:50Z` Give standalone `completions` a first-class JSON contract rather than carving it out as a text-only exception. The CLI advertises `--format json` globally, so the standalone admin surface should honor that promise.
 
 ## Outcomes & Retrospective
 
@@ -51,12 +55,12 @@ Terms used in this plan:
 
 Open findings grouped into implementation tranches:
 
-- Tranche 1: `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-findings.md` findings `F03` paste-burst handling and `F05` attach-triggered resize error surfacing.
-- Tranche 2: `F03` modifier hold/release semantic dead state and `F04` deterministic wait/assert timing coverage.
-- Tranche 3: `F02` snapshot region/freshness/render regression findings plus the remaining `F05` resize/reflow rendering coverage.
-- Tranche 4: `F07`, `F08`, `A03`, `A04`, and `A05` lifecycle, persistence, PTY, and shutdown ownership findings.
-- Tranche 5: `F09` and `F10` live-preview security, spec parity, and transport-level tests.
-- Tranche 6: `A08`, `A10`, lingering protocol/doc drift, and `cargo-deny` duplicate cleanup where dependency graph surgery is required.
+- Completed tranche 1: `F03` paste-burst handling and `F05` attach-triggered resize error surfacing.
+- Completed tranche 2: `F03` modifier hold/release semantic fidelity and `F04` deterministic wait/assert timing coverage.
+- Completed tranche 3: `F02` snapshot region/freshness correctness.
+- Remaining tranche 4: `F07`, `F08`, `A03`, `A04`, and `A05` lifecycle, persistence, PTY, and shutdown ownership findings.
+- Remaining tranche 5: `F09` and `F10` live-preview security, spec parity, and transport-level tests.
+- Remaining tranche 6: `A07`, `A08`, `A09`, `A10`, `A11`, `F11`, lingering protocol/doc drift, and `cargo-deny` duplicate cleanup where dependency graph surgery is required.
 
 Files expected to change in tranche 1:
 

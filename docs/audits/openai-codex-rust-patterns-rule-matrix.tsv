@@ -6372,7 +6372,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	errors-boundary-error-translator	errors	finding	applicable	A09	2026-04-13 09:47Z	Build metadata injection collapses missing env vars and git lookup failures into literal unknown strings, so release binaries can expose unverifiable version or commit metadata without failing the build.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -6401,7 +6401,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	testing-wiremock-sse-fakes	testing	finding	applicable	A09	2026-04-13 09:47Z	No test compiles the build metadata path under missing env or git conditions, so the fallback-to-unknown release stamp is not regression-covered against the real build boundary.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
@@ -7272,7 +7272,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	errors-boundary-error-translator	errors	finding	applicable	A09	2026-04-13 09:47Z	release() computes and pushes the target tag after only checking git cleanliness and tag absence, but it never calls version_check, assert_input, ci, dist_verify, or any build step, so the tagging boundary does not enforce manifest or artifact correctness.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -7301,7 +7301,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	testing-wiremock-sse-fakes	testing	finding	applicable	A09	2026-04-13 09:47Z	main.rs has no tempdir-based integration coverage around version sync, release refusal paths, dist checksum emission, or npm package staging, so the real filesystem packaging boundary is untested.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
@@ -7316,7 +7316,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	workspace-ban-per-crate-features	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	workspace-layered-transport-api-core	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	workspace-lint-config-package	workspace	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	workspace-single-source-dependencies	workspace	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	workspace-single-source-dependencies	workspace	pass	applicable	A09	2026-04-13 09:47Z	version_check() and set_version() keep the workspace Cargo version, root npm package, optional platform dependencies, and npm/* package manifests synchronized from one release version.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	workspace-test-support-as-member-crates	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/main.rs	workspace-utils-microcrate-fanout	workspace	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/xtask/src/tui_explorer.rs	async-abort-on-drop-handle	async	pending	unreviewed			

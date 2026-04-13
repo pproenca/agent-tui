@@ -42,7 +42,7 @@ impl ScreenGrid for ScreenBuffer {
     }
 
     fn cols(&self) -> usize {
-        self.cells.first().map(|r| r.len()).unwrap_or(0)
+        self.cells.first().map(std::vec::Vec::len).unwrap_or(0)
     }
 
     fn cell(&self, row: usize, col: usize) -> Option<(char, CellStyle)> {

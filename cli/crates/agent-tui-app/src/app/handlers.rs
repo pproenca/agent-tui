@@ -106,7 +106,7 @@ fn structured_cli_error(
     let message = message.into();
     let mut output = serde_json::json!({
         "code": exit_code,
-        "message": message.clone(),
+        "message": message.as_str(),
         "category": category,
         "retryable": false,
     });
@@ -316,7 +316,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
                     self.presenter.present_value(result);
                 } else {
                     let msg = result.str_or("message", "Unknown error");
-                    let message = format!("{}: {}", failure_prefix, msg);
+                    let message = format!("{failure_prefix}: {msg}");
                     return Err(CliError::new(
                         self.format,
                         message,
@@ -332,7 +332,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
                     self.presenter.present_success(success_msg, warning);
                 } else {
                     let msg = result.str_or("message", "Unknown error");
-                    let message = format!("{}: {}", failure_prefix, msg);
+                    let message = format!("{failure_prefix}: {msg}");
                     return Err(CliError::new(
                         self.format,
                         message,
@@ -388,7 +388,7 @@ pub(crate) fn handle_spawn<C: DaemonClient>(
     let size = TerminalSize::try_new(cols, rows).map_err(|err| {
         usage_cli_error(
             ctx.format,
-            format!("Invalid terminal size: {}", err),
+            format!("Invalid terminal size: {err}"),
             Some("Use a terminal size within the supported range.".to_string()),
             Some(serde_json::json!({ "cols": cols, "rows": rows })),
         )
@@ -420,7 +420,7 @@ pub(crate) fn handle_spawn<C: DaemonClient>(
             Colors::success("Session started:"),
             Colors::session_id(session_id)
         );
-        println!("  PID: {}", pid);
+        println!("  PID: {pid}");
     })
 }
 
@@ -458,7 +458,7 @@ pub(crate) fn handle_snapshot<C: DaemonClient>(
                 result.get("screenshot").and_then(|v| v.as_str())
             };
             if let Some(screenshot) = screen {
-                println!("{}", screenshot);
+                println!("{screenshot}");
             }
             if include_cursor {
                 if let Some(cursor) = result.get("cursor") {
@@ -466,7 +466,7 @@ pub(crate) fn handle_snapshot<C: DaemonClient>(
                     let col = cursor.u64_or("col", 0);
                     let visible = cursor.bool_or("visible", false);
                     let vis_str = if visible { "visible" } else { "hidden" };
-                    println!("\nCursor: row={}, col={} ({})", row, col, vis_str);
+                    println!("\nCursor: row={row}, col={col} ({vis_str})");
                 } else {
                     eprintln!("Warning: Cursor position requested but not available from session");
                 }
@@ -479,12 +479,10 @@ pub(crate) fn handle_snapshot<C: DaemonClient>(
 key_handler!(handle_press, "keystroke", |_: &String| "Key pressed"
     .to_string());
 key_handler!(handle_keydown, "keydown", |k: &String| format!(
-    "Key held: {}",
-    k
+    "Key held: {k}"
 ));
 key_handler!(handle_keyup, "keyup", |k: &String| format!(
-    "Key released: {}",
-    k
+    "Key released: {k}"
 ));
 
 pub(crate) fn handle_type<C: DaemonClient>(
@@ -657,7 +655,7 @@ pub(crate) fn handle_kill<C: DaemonClient>(
         });
     }
 
-    confirm_destructive_action(ctx.format, ctx.no_input, yes, &format!("Kill {}?", target))?;
+    confirm_destructive_action(ctx.format, ctx.no_input, yes, &format!("Kill {target}?"))?;
 
     let params = params::SessionParams {
         session: ctx.session.clone(),
@@ -700,12 +698,7 @@ pub(crate) fn handle_restart<C: DaemonClient>(
         });
     }
 
-    confirm_destructive_action(
-        ctx.format,
-        ctx.no_input,
-        yes,
-        &format!("Restart {}?", target),
-    )?;
+    confirm_destructive_action(ctx.format, ctx.no_input, yes, &format!("Restart {target}?"))?;
 
     let params = params::SessionParams {
         session: ctx.session.clone(),
@@ -807,7 +800,7 @@ pub(crate) fn handle_session_show<C: DaemonClient>(
         .ok_or_else(|| {
             unavailable_cli_error(
                 ctx.format,
-                format!("Session not found: {}", session_id),
+                format!("Session not found: {session_id}"),
                 Some("Run `agent-tui sessions list` to discover valid session ids.".to_string()),
                 Some(serde_json::json!({ "session_id": session_id })),
             )
@@ -861,12 +854,12 @@ pub(crate) fn handle_session_show<C: DaemonClient>(
                 Colors::session_id(id),
                 active
             );
-            println!("  Command: {}", command);
-            println!("  Status: {}", status);
-            println!("  Size: {}x{}", cols, rows);
-            println!("  PID: {}", pid);
+            println!("  Command: {command}");
+            println!("  Status: {status}");
+            println!("  Size: {cols}x{rows}");
+            println!("  PID: {pid}");
             if let Some(created) = created_at {
-                println!("  Created: {}", created);
+                println!("  Created: {created}");
             }
         }
     }
@@ -970,7 +963,7 @@ pub(crate) fn handle_live_start_standalone(
         }
         OutputFormat::Text => {
             println!("WS: {}", state.ws_url);
-            println!("UI: {}", daemon_ui_url);
+            println!("UI: {daemon_ui_url}");
         }
     }
 
@@ -978,7 +971,7 @@ pub(crate) fn handle_live_start_standalone(
         let open_base_url = open_base_url.as_deref().unwrap_or(&daemon_ui_url);
         let target = build_ui_url(open_base_url, &state);
         if let Err(err) = open_in_browser(&target, args.browser.as_deref()) {
-            eprintln!("Warning: failed to open browser: {}", err);
+            eprintln!("Warning: failed to open browser: {err}");
         }
     }
 
@@ -991,7 +984,10 @@ pub(crate) fn handle_live_stop<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> 
 
 pub(crate) fn handle_live_stop_standalone(format: OutputFormat) -> HandlerResult {
     let ui_result = stop_ui_server();
-    let ui_error = ui_result.as_ref().err().map(|err| err.to_string());
+    let ui_error = ui_result
+        .as_ref()
+        .err()
+        .map(std::string::ToString::to_string);
     match format {
         OutputFormat::Json => {
             #[derive(Serialize)]
@@ -1043,7 +1039,7 @@ pub(crate) fn handle_live_stop_standalone(format: OutputFormat) -> HandlerResult
             if let Some(err) = ui_error {
                 return Err(CliError::new(
                     format,
-                    format!("Failed to stop UI server: {}", err),
+                    format!("Failed to stop UI server: {err}"),
                     Some(serde_json::to_string_pretty(&output)?),
                     super::exit_codes::GENERAL_ERROR,
                 )
@@ -1078,7 +1074,7 @@ pub(crate) fn handle_live_stop_standalone(format: OutputFormat) -> HandlerResult
     if let Some(err) = ui_error {
         return Err(CliError::new(
             format,
-            format!("Failed to stop UI server: {}", err),
+            format!("Failed to stop UI server: {err}"),
             None,
             super::exit_codes::GENERAL_ERROR,
         )
@@ -1205,13 +1201,13 @@ pub(crate) fn handle_live_status_standalone(format: OutputFormat) -> HandlerResu
                 println!("Live preview WS: {}", state.ws_url);
                 println!("Live preview UI: {}", state.resolved_ui_url());
                 if let UiStatus::External(url) = ui_status {
-                    println!("UI override: {} (external)", url);
+                    println!("UI override: {url} (external)");
                 }
             } else {
                 println!("Live preview: not running");
                 match ui_status {
                     UiStatus::External(url) => {
-                        println!("UI: {} (external)", url);
+                        println!("UI: {url} (external)");
                     }
                     UiStatus::Running(state) => {
                         println!("UI: {}", state.url);
@@ -1235,7 +1231,7 @@ pub(crate) fn handle_resize<C: DaemonClient>(
     let size = TerminalSize::try_new(cols, rows).map_err(|err| {
         usage_cli_error(
             ctx.format,
-            format!("Invalid terminal size: {}", err),
+            format!("Invalid terminal size: {err}"),
             Some("Use a terminal size within the supported range.".to_string()),
             Some(serde_json::json!({ "cols": cols, "rows": rows })),
         )
@@ -1314,8 +1310,8 @@ pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
         }
         OutputFormat::Text => {
             println!("{}", Colors::bold("agent-tui"));
-            println!("  CLI version: {}", cli_version);
-            println!("  CLI commit: {}", cli_commit);
+            println!("  CLI version: {cli_version}");
+            println!("  CLI commit: {cli_commit}");
             if let Some(err) = &daemon_error {
                 println!(
                     "  Daemon version: {} ({})",
@@ -1323,8 +1319,8 @@ pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
                     Colors::error(err)
                 );
             } else {
-                println!("  Daemon version: {}", daemon_version);
-                println!("  Daemon commit: {}", daemon_commit);
+                println!("  Daemon version: {daemon_version}");
+                println!("  Daemon commit: {daemon_commit}");
             }
         }
     }
@@ -1625,8 +1621,8 @@ pub(crate) fn handle_daemon_status_standalone(format: OutputFormat) -> HandlerRe
                 OutputFormat::Text => {
                     println!("Daemon is not running");
                     println!("  Socket: {}", socket_path().display());
-                    println!("  CLI version: {}", cli_version);
-                    println!("  CLI commit: {}", cli_commit);
+                    println!("  CLI version: {cli_version}");
+                    println!("  CLI commit: {cli_commit}");
                 }
             }
             return Err(DaemonNotRunningError.into());
@@ -1729,10 +1725,10 @@ pub(crate) fn handle_daemon_status_standalone(format: OutputFormat) -> HandlerRe
                 println!("Daemon is running");
             }
             println!("  Socket: {}", socket_path().display());
-            println!("  CLI version: {}", cli_version);
-            println!("  CLI commit: {}", cli_commit);
-            println!("  Daemon version: {}", daemon_version);
-            println!("  Daemon commit: {}", daemon_commit);
+            println!("  CLI version: {cli_version}");
+            println!("  CLI commit: {cli_commit}");
+            println!("  Daemon version: {daemon_version}");
+            println!("  Daemon commit: {daemon_commit}");
             if version_mismatch {
                 println!(
                     "  Version status: {}",
@@ -1740,10 +1736,10 @@ pub(crate) fn handle_daemon_status_standalone(format: OutputFormat) -> HandlerRe
                 );
             }
             if let Some(session_count) = session_count {
-                println!("  Sessions: {}", session_count);
+                println!("  Sessions: {session_count}");
             }
             if let Some(uptime) = uptime {
-                println!("  Uptime: {}", uptime);
+                println!("  Uptime: {uptime}");
             }
             if let Some(state) = ws_state {
                 println!("  Listen: {}", state.listen);
@@ -2108,8 +2104,7 @@ fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<()> {
         Ok(())
     } else {
         Err(anyhow::anyhow!(
-            "Browser command exited with status {}",
-            status
+            "Browser command exited with status {status}"
         ))
     }
 }
@@ -2282,7 +2277,7 @@ pub(crate) fn handle_attach<C: DaemonClient>(
         if !result.bool_or("success", false) {
             return Err(CliError::new(
                 ctx.format,
-                format!("Failed to attach to session: {}", session_id),
+                format!("Failed to attach to session: {session_id}"),
                 Some(result.to_pretty_json()),
                 super::exit_codes::GENERAL_ERROR,
             )
@@ -2304,7 +2299,7 @@ pub(crate) fn handle_attach<C: DaemonClient>(
                 } else {
                     return Err(CliError::new(
                         ctx.format,
-                        format!("Failed to attach to session: {}", session_id),
+                        format!("Failed to attach to session: {session_id}"),
                         Some(result.to_pretty_json()),
                         super::exit_codes::GENERAL_ERROR,
                     )
@@ -2317,7 +2312,7 @@ pub(crate) fn handle_attach<C: DaemonClient>(
                 } else {
                     return Err(CliError::new(
                         ctx.format,
-                        format!("Failed to attach to session: {}", session_id),
+                        format!("Failed to attach to session: {session_id}"),
                         Some(result.to_pretty_json()),
                         super::exit_codes::GENERAL_ERROR,
                     )
@@ -2421,13 +2416,16 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
                 .and_then(|(_, v)| v.as_ref());
             println!(
                 "  Transport: {}",
-                transport.map(|v| v.as_str()).unwrap_or("unix")
+                transport.map(std::string::String::as_str).unwrap_or("unix")
             );
             println!("  Socket: {}", socket_path().display());
             println!();
             println!("{}", Colors::bold("Environment Variables:"));
             for (name, value) in &vars {
-                let val_str = value.as_ref().map(|v| v.as_str()).unwrap_or("(not set)");
+                let val_str = value
+                    .as_ref()
+                    .map(std::string::String::as_str)
+                    .unwrap_or("(not set)");
                 println!(
                     "  {}: {}",
                     name,
@@ -2482,10 +2480,7 @@ pub(crate) fn handle_assert<C: DaemonClient>(
         _ => {
             return Err(CliError::new(
                 ctx.format,
-                format!(
-                    "Unknown condition type: {}. Use: text or session",
-                    cond_type
-                ),
+                format!("Unknown condition type: {cond_type}. Use: text or session"),
                 None,
                 super::exit_codes::USAGE,
             )
@@ -2524,7 +2519,7 @@ pub(crate) fn handle_assert<C: DaemonClient>(
         };
         return Err(CliError::new(
             ctx.format,
-            format!("Assertion failed: {}", condition),
+            format!("Assertion failed: {condition}"),
             Some(serde_json::to_string_pretty(&output)?),
             super::exit_codes::GENERAL_ERROR,
         )
@@ -2734,27 +2729,33 @@ mod tests {
         fn signals(&self) -> Vec<Signal> {
             self.signals
                 .lock()
-                .unwrap_or_else(|e| e.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .clone()
         }
     }
 
     impl ProcessController for StopUiController {
         fn check_process(&self, _pid: u32) -> std::io::Result<crate::infra::ipc::ProcessStatus> {
-            Ok(*self.status.lock().unwrap_or_else(|e| e.into_inner()))
+            Ok(*self
+                .status
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner))
         }
 
         fn send_signal(&self, _pid: u32, signal: Signal) -> std::io::Result<()> {
             self.signals
                 .lock()
-                .unwrap_or_else(|e| e.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push(signal);
             let should_stop = match signal {
                 Signal::Term => self.kill_on_term,
                 Signal::Kill => self.kill_on_kill,
             };
             if should_stop {
-                *self.status.lock().unwrap_or_else(|e| e.into_inner()) = ProcessStatus::NotFound;
+                *self
+                    .status
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = ProcessStatus::NotFound;
             }
             Ok(())
         }
@@ -2778,16 +2779,14 @@ mod tests {
 
     impl Presenter for MockPresenter {
         fn present_success(&self, message: &str, warning: Option<&str>) {
-            self.output
-                .borrow_mut()
-                .push(format!("success: {}", message));
+            self.output.borrow_mut().push(format!("success: {message}"));
             if let Some(w) = warning {
-                self.output.borrow_mut().push(format!("warning: {}", w));
+                self.output.borrow_mut().push(format!("warning: {w}"));
             }
         }
 
         fn present_error(&self, message: &str) {
-            self.output.borrow_mut().push(format!("error: {}", message));
+            self.output.borrow_mut().push(format!("error: {message}"));
         }
 
         fn present_value(&self, value: &RpcValue) {
@@ -2803,35 +2802,33 @@ mod tests {
         }
 
         fn present_kv(&self, key: &str, value: &str) {
-            self.output
-                .borrow_mut()
-                .push(format!("kv: {}={}", key, value));
+            self.output.borrow_mut().push(format!("kv: {key}={value}"));
         }
 
         fn present_session_id(&self, session_id: &str, label: Option<&str>) {
             self.output
                 .borrow_mut()
-                .push(format!("session: {} {:?}", session_id, label));
+                .push(format!("session: {session_id} {label:?}"));
         }
 
         fn present_list_header(&self, title: &str) {
-            self.output.borrow_mut().push(format!("header: {}", title));
+            self.output.borrow_mut().push(format!("header: {title}"));
         }
 
         fn present_list_item(&self, item: &str) {
-            self.output.borrow_mut().push(format!("item: {}", item));
+            self.output.borrow_mut().push(format!("item: {item}"));
         }
 
         fn present_info(&self, message: &str) {
-            self.output.borrow_mut().push(format!("info: {}", message));
+            self.output.borrow_mut().push(format!("info: {message}"));
         }
 
         fn present_header(&self, text: &str) {
-            self.output.borrow_mut().push(format!("bold: {}", text));
+            self.output.borrow_mut().push(format!("bold: {text}"));
         }
 
         fn present_raw(&self, text: &str) {
-            self.output.borrow_mut().push(format!("raw: {}", text));
+            self.output.borrow_mut().push(format!("raw: {text}"));
         }
 
         fn present_wait_result(&self, result: &crate::adapters::presenter::WaitResult) {

@@ -127,7 +127,7 @@ pub mod mock {
             Ok(self
                 .process_states
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .get(&pid)
                 .copied()
                 .unwrap_or(ProcessStatus::NotFound))

@@ -108,7 +108,7 @@ impl SessionRepository for MockSessionRepository {
         mutex_lock_or_recover(&self.spawn_params).push(SpawnParams {
             command: command.to_string(),
             args: args.to_vec(),
-            cwd: cwd.map(|s| s.to_string()),
+            cwd: cwd.map(std::string::ToString::to_string),
             env: env.cloned(),
             session_id: session_id.map(|id| id.to_string()),
             size,
@@ -413,7 +413,9 @@ mod tests {
         assert_eq!(repo.list().len(), 1);
         assert_eq!(repo.session_count(), 1);
         assert_eq!(
-            repo.active_session_id().as_ref().map(|id| id.as_str()),
+            repo.active_session_id()
+                .as_ref()
+                .map(agent_tui_domain::SessionId::as_str),
             Some("sess1")
         );
     }

@@ -99,8 +99,8 @@ impl DetachKeys {
 impl Default for DetachKeys {
     fn default() -> Self {
         Self {
-            sequence: vec![0x10, 0x11],
-            display: "Ctrl-P Ctrl-Q".to_string(),
+            sequence: vec![0x10, 0x02],
+            display: "Ctrl-P Ctrl-B".to_string(),
         }
     }
 }
@@ -449,7 +449,7 @@ fn attach_stream_loop<C: DaemonClient>(
 fn format_client_error(error: &ClientError) -> String {
     let mut msg = error.to_string();
     if let Some(suggestion) = error.suggestion() {
-        msg.push_str(&format!(" ({})", suggestion));
+        msg.push_str(&format!(" ({suggestion})"));
     }
     msg
 }
@@ -851,7 +851,7 @@ fn start_attach_stream_output(
             let _ = tx.send(result);
         })
         .map_err(|err| {
-            AttachError::PtyRead(format!("Failed to spawn attach output thread: {}", err))
+            AttachError::PtyRead(format!("Failed to spawn attach output thread: {err}"))
         })?;
     Ok(AttachOutputWorker {
         done_rx: rx,
@@ -916,7 +916,7 @@ fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
         }
         KeyCode::BackTab => key_to_escape_sequence("Shift+Tab"),
         _ => {
-            let base = keycode_to_name(&key_event.code)?;
+            let base = keycode_to_name(key_event.code)?;
             key_with_modifiers_to_bytes(base, key_event.modifiers)
         }
     }
@@ -972,7 +972,7 @@ fn format_modified_char(prefix: &str, c: char) -> String {
     key
 }
 
-fn keycode_to_name(code: &KeyCode) -> Option<&'static str> {
+fn keycode_to_name(code: KeyCode) -> Option<&'static str> {
     match code {
         KeyCode::Enter => Some("Enter"),
         KeyCode::Tab => Some("Tab"),
@@ -1017,12 +1017,12 @@ fn parse_detach_key_token(token: &str) -> Result<(u8, String), String> {
             let mut chars = rest.chars();
             match (chars.next(), chars.next()) {
                 (Some(ch), None) => ch,
-                _ => return Err(format!("detach keys: unsupported ctrl key '{}'", rest)),
+                _ => return Err(format!("detach keys: unsupported ctrl key '{rest}'")),
             }
         };
 
         let byte = ctrl_char_to_byte(ch)
-            .ok_or_else(|| format!("detach keys: unsupported ctrl key '{}'", rest))?;
+            .ok_or_else(|| format!("detach keys: unsupported ctrl key '{rest}'"))?;
         let display = format!("Ctrl-{}", display_char(ch));
         return Ok((byte, display));
     }
@@ -1040,7 +1040,7 @@ fn parse_detach_key_token(token: &str) -> Result<(u8, String), String> {
         return Ok((ch as u8, display));
     }
 
-    Err(format!("detach keys: unsupported token '{}'", trimmed))
+    Err(format!("detach keys: unsupported token '{trimmed}'"))
 }
 
 fn ctrl_char_to_byte(ch: char) -> Option<u8> {
@@ -1190,14 +1190,14 @@ mod tests {
     }
 
     #[test]
-    fn test_detach_detector_ctrl_p_ctrl_q_detaches() {
+    fn test_detach_detector_ctrl_p_ctrl_b_detaches() {
         let detach_keys = DetachKeys::default();
         let mut detector = DetachDetector::new(&detach_keys);
         let (out, detach) = detector.consume(&[0x10]);
         assert!(out.is_empty());
         assert!(!detach);
 
-        let (out, detach) = detector.consume(&[0x11]);
+        let (out, detach) = detector.consume(&[0x02]);
         assert!(out.is_empty());
         assert!(detach);
     }
@@ -1231,11 +1231,11 @@ mod tests {
 
     #[test]
     fn test_detach_keys_from_str_default() {
-        let keys = "ctrl-p,ctrl-q"
+        let keys = "ctrl-p,ctrl-b"
             .parse::<DetachKeys>()
             .expect("default detach keys should parse");
-        assert_eq!(keys.bytes(), &[0x10, 0x11]);
-        assert_eq!(keys.display(), "Ctrl-P Ctrl-Q");
+        assert_eq!(keys.bytes(), &[0x10, 0x02]);
+        assert_eq!(keys.display(), "Ctrl-P Ctrl-B");
     }
 
     #[test]
@@ -1259,8 +1259,7 @@ mod tests {
         let payload = STANDARD.encode(b"hello");
         let value = RpcValue::new(
             serde_json::from_str(&format!(
-                r#"{{"event":"output","data":"{}","dropped_bytes":2}}"#,
-                payload
+                r#"{{"event":"output","data":"{payload}","dropped_bytes":2}}"#
             ))
             .expect("output event payload should parse"),
         );

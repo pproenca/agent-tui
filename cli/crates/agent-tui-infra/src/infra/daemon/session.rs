@@ -148,7 +148,10 @@ impl StreamWaiter for StreamWaiterImpl {
 
 impl Drop for StreamWaiterImpl {
     fn drop(&mut self) {
-        let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
+        let mut notifiers = self
+            .notifiers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         notifiers.retain(|(id, _)| *id != self.notifier_id);
     }
 }
@@ -190,8 +193,14 @@ impl StreamBuffer {
         if data.is_empty() {
             return;
         }
-        let _wait_guard = self.wait_lock.lock().unwrap_or_else(|e| e.into_inner());
-        let mut state = self.state.write().unwrap_or_else(|e| e.into_inner());
+        let _wait_guard = self
+            .wait_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut state = self
+            .state
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.buffer_len = state.buffer_len.saturating_add(data.len());
         state.next_seq = state.next_seq.saturating_add(data.len() as u64);
         state.buffer.push_back(data);
@@ -222,8 +231,14 @@ impl StreamBuffer {
     }
 
     fn close(&self, error: Option<String>) {
-        let _wait_guard = self.wait_lock.lock().unwrap_or_else(|e| e.into_inner());
-        let mut state = self.state.write().unwrap_or_else(|e| e.into_inner());
+        let _wait_guard = self
+            .wait_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut state = self
+            .state
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.closed = true;
         state.error = error;
         drop(state);
@@ -232,7 +247,10 @@ impl StreamBuffer {
     }
 
     fn notify(&self) {
-        let _wait_guard = self.wait_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _wait_guard = self
+            .wait_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.notify_listeners();
         self.cv.notify_all();
     }
@@ -242,7 +260,10 @@ impl StreamBuffer {
         let notifier_id = self.next_notifier_id.fetch_add(1, Ordering::Relaxed);
         self.notify_listeners();
         {
-            let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
+            let mut notifiers = self
+                .notifiers
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             notifiers.push((notifier_id, tx));
         }
         Arc::new(StreamWaiterImpl {
@@ -253,12 +274,18 @@ impl StreamBuffer {
     }
 
     fn latest_seq(&self) -> u64 {
-        let state = self.state.read().unwrap_or_else(|e| e.into_inner());
+        let state = self
+            .state
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.next_seq
     }
 
     fn notify_listeners(&self) {
-        let mut notifiers = self.notifiers.lock().unwrap_or_else(|e| e.into_inner());
+        let mut notifiers = self
+            .notifiers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         notifiers.retain(|(_, sender)| match sender.try_send(()) {
             Ok(()) => true,
             Err(channel::TrySendError::Full(_)) => true,
@@ -270,7 +297,7 @@ impl StreamBuffer {
     fn notifier_count(&self) -> usize {
         self.notifiers
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .len()
     }
 
@@ -287,9 +314,15 @@ impl StreamBuffer {
             Some(Duration::from_millis(timeout_ms as u64))
         };
 
-        let mut guard = self.wait_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self
+            .wait_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         loop {
-            let state = self.state.read().unwrap_or_else(|e| e.into_inner());
+            let state = self
+                .state
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if state.next_seq > cursor.seq || state.closed {
                 break;
             }
@@ -299,18 +332,24 @@ impl StreamBuffer {
                 let (new_guard, result) = self
                     .cv
                     .wait_timeout(guard, wait)
-                    .unwrap_or_else(|e| e.into_inner());
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 guard = new_guard;
                 if result.timed_out() {
                     break;
                 }
             } else {
-                guard = self.cv.wait(guard).unwrap_or_else(|e| e.into_inner());
+                guard = self
+                    .cv
+                    .wait(guard)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
             }
         }
         drop(guard);
 
-        let state = self.state.read().unwrap_or_else(|e| e.into_inner());
+        let state = self
+            .state
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(error) = state.error.clone() {
             return Err(SessionError::Terminal(
                 crate::usecases::ports::TerminalError::Read {
@@ -368,7 +407,7 @@ impl StreamBuffer {
 
 fn render_live_preview_init(
     buffer: &crate::infra::terminal::ScreenBuffer,
-    cursor: &CursorPosition,
+    cursor: CursorPosition,
 ) -> String {
     let mut out = Vec::new();
     let _ = queue!(
@@ -408,7 +447,7 @@ fn spawn_pump(
     let join = match thread::Builder::new().name(thread_name).spawn(move || {
         let Some((session, pty_rx, rx)) = payload_for_thread
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take()
         else {
             warn!("Session pump payload missing; pump thread exiting");
@@ -422,7 +461,11 @@ fn spawn_pump(
                 error = %err,
                 "Failed to spawn named session pump thread; falling back to unnamed thread"
             );
-            match payload.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            match payload
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+            {
                 Some((session, pty_rx, rx)) => {
                     thread::spawn(move || pump_loop(session, pty_rx, rx))
                 }
@@ -688,8 +731,7 @@ impl Session {
     pub fn keydown(&mut self, key: &str) -> Result<(), SessionError> {
         let modifier = ModifierKey::from_str(key).ok_or_else(|| {
             SessionError::InvalidKey(format!(
-                "{}. Only modifier keys (Ctrl, Alt, Shift, Meta) can be held",
-                key
+                "{key}. Only modifier keys (Ctrl, Alt, Shift, Meta) can be held"
             ))
         })?;
         self.held_modifiers.set(modifier, true);
@@ -700,8 +742,7 @@ impl Session {
     pub fn keyup(&mut self, key: &str) -> Result<(), SessionError> {
         let modifier = ModifierKey::from_str(key).ok_or_else(|| {
             SessionError::InvalidKey(format!(
-                "{}. Only modifier keys (Ctrl, Alt, Shift, Meta) can be released",
-                key
+                "{key}. Only modifier keys (Ctrl, Alt, Shift, Meta) can be released"
             ))
         })?;
         self.held_modifiers.set(modifier, false);
@@ -812,7 +853,7 @@ impl Session {
         let size = self.terminal.size();
         let buffer = self.terminal.screen_buffer();
         let cursor = self.terminal.cursor();
-        let seq = render_live_preview_init(&buffer, &cursor);
+        let seq = render_live_preview_init(&buffer, cursor);
         let stream_seq = self.stream.latest_seq();
         LivePreviewSnapshot {
             cols: size.cols(),
@@ -1404,10 +1445,10 @@ impl SessionPersistence {
             let event = SessionEvent::Upsert { session };
             let line = serde_json::to_string(&event).map_err(|e| SessionError::Persistence {
                 operation: "serialize_event".to_string(),
-                reason: format!("Failed to serialize session event: {}", e),
+                reason: format!("Failed to serialize session event: {e}"),
                 source: Some(Box::new(e)),
             })?;
-            writeln!(file, "{}", line).map_err(|e| Self::io_to_persistence("write_event", e))?;
+            writeln!(file, "{line}").map_err(|e| Self::io_to_persistence("write_event", e))?;
         }
 
         let backup_path = legacy_path.with_extension("json.bak");
@@ -1489,10 +1530,10 @@ impl SessionPersistence {
             .map_err(|e| Self::io_to_persistence("open_jsonl", e))?;
         let line = serde_json::to_string(event).map_err(|e| SessionError::Persistence {
             operation: "serialize_event".to_string(),
-            reason: format!("Failed to serialize session event: {}", e),
+            reason: format!("Failed to serialize session event: {e}"),
             source: Some(Box::new(e)),
         })?;
-        writeln!(file, "{}", line).map_err(|e| Self::io_to_persistence("write_event", e))?;
+        writeln!(file, "{line}").map_err(|e| Self::io_to_persistence("write_event", e))?;
         Ok(())
     }
 
@@ -1514,10 +1555,10 @@ impl SessionPersistence {
             };
             let line = serde_json::to_string(&event).map_err(|e| SessionError::Persistence {
                 operation: "serialize_event".to_string(),
-                reason: format!("Failed to serialize session event: {}", e),
+                reason: format!("Failed to serialize session event: {e}"),
                 source: Some(Box::new(e)),
             })?;
-            writeln!(writer, "{}", line).map_err(|e| Self::io_to_persistence("write_event", e))?;
+            writeln!(writer, "{line}").map_err(|e| Self::io_to_persistence("write_event", e))?;
         }
         writer
             .flush()
@@ -1820,7 +1861,7 @@ mod pump_tests {
             SessionId::try_new("test-session").expect("valid session id"),
             super::SessionLaunchSpec {
                 command: "sh".to_string(),
-                args: args.clone(),
+                args,
                 cwd: Some("/tmp".to_string()),
                 env: None,
             },

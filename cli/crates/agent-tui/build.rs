@@ -34,6 +34,6 @@ fn main() {
         })
         .unwrap_or_else(|| "unknown".to_string());
 
-    println!("cargo:rustc-env=AGENT_TUI_VERSION={}", version);
-    println!("cargo:rustc-env=AGENT_TUI_GIT_SHA={}", git_sha);
+    println!("cargo:rustc-env=AGENT_TUI_VERSION={version}");
+    println!("cargo:rustc-env=AGENT_TUI_GIT_SHA={git_sha}");
 }

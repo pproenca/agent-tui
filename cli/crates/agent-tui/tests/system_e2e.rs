@@ -168,10 +168,10 @@ mod e2e {
             .read_until_contains("Connected!", Duration::from_secs(5))
             .expect("attach should print Connected");
         runner
-            .read_until_contains("Press Ctrl-P Ctrl-Q to detach.", Duration::from_secs(5))
+            .read_until_contains("Press Ctrl-P Ctrl-B to detach.", Duration::from_secs(5))
             .expect("attach should show default detach keys");
         runner.send_bytes(&[0x10]).expect("send Ctrl-P");
-        runner.send_bytes(&[0x11]).expect("send Ctrl-Q");
+        runner.send_bytes(&[0x02]).expect("send Ctrl-B");
         let status = runner
             .wait_for_exit(Duration::from_secs(6))
             .expect("attach command should exit");

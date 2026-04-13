@@ -106,7 +106,7 @@ impl DaemonClient for MockClient {
         } else if self.error_on_missing {
             Err(ClientError::RpcError {
                 code: -32601,
-                message: format!("Method not found: {}", method),
+                message: format!("Method not found: {method}"),
                 category: None,
                 retryable: false,
                 context: None,

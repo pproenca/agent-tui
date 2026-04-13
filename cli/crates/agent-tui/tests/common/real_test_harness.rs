@@ -124,7 +124,7 @@ fn wait_for_daemon_ready(socket_path: &Path, daemon: &mut Child, timeout: Durati
             return;
         }
         if let Ok(Some(status)) = daemon.try_wait() {
-            panic!("Daemon exited early with status {}", status);
+            panic!("Daemon exited early with status {status}");
         }
         thread::park_timeout(Duration::from_millis(50));
     }

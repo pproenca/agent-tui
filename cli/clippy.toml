@@ -9,3 +9,4 @@ cognitive-complexity-threshold = 30
 too-many-lines-threshold = 200
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+large-error-threshold = 256

@@ -12,7 +12,7 @@ use tokio::runtime::Runtime;
 // Shared runtime keeps the mock daemon server running while CLI processes execute.
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     let worker_threads = std::thread::available_parallelism()
-        .map(|n| n.get())
+        .map(std::num::NonZero::get)
         .unwrap_or(2)
         .min(4);
     tokio::runtime::Builder::new_multi_thread()
@@ -111,7 +111,7 @@ impl TestHarness {
     pub fn assert_method_called_with(&self, method: &str, expected_params: Value) {
         let request = self
             .last_request_for(method)
-            .unwrap_or_else(|| panic!("Expected method '{}' to be called", method));
+            .unwrap_or_else(|| panic!("Expected method '{method}' to be called"));
 
         let actual_params = request.params.unwrap_or(Value::Null);
 
@@ -126,21 +126,18 @@ impl TestHarness {
             for (key, expected_value) in expected_obj {
                 let actual_value = actual_obj.get(key).unwrap_or_else(|| {
                     panic!(
-                        "Expected param '{}' not found in request. Actual params: {:?}",
-                        key, actual_params
+                        "Expected param '{key}' not found in request. Actual params: {actual_params:?}"
                     )
                 });
                 assert_eq!(
                     actual_value, expected_value,
-                    "Param '{}' mismatch. Expected: {:?}, Actual: {:?}",
-                    key, expected_value, actual_value
+                    "Param '{key}' mismatch. Expected: {expected_value:?}, Actual: {actual_value:?}"
                 );
             }
         } else {
             assert_eq!(
                 actual_params, expected_params,
-                "Params mismatch for method '{}'",
-                method
+                "Params mismatch for method '{method}'"
             );
         }
     }
@@ -151,11 +148,10 @@ impl TestHarness {
         let params = last_request.params.as_ref().expect("Request has no params");
         let actual = params
             .get(param_name)
-            .unwrap_or_else(|| panic!("Param '{}' not found. Params: {:?}", param_name, params));
+            .unwrap_or_else(|| panic!("Param '{param_name}' not found. Params: {params:?}"));
         assert_eq!(
             actual, &expected_value,
-            "Param '{}' mismatch. Expected: {:?}, Actual: {:?}",
-            param_name, expected_value, actual
+            "Param '{param_name}' mismatch. Expected: {expected_value:?}, Actual: {actual:?}"
         );
     }
 }

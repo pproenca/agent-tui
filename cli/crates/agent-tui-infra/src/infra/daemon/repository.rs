@@ -80,7 +80,10 @@ impl SessionOps for SessionHandleImpl {
     }
 
     fn terminal_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
-        let mut cursor = self.pty_cursor.lock().unwrap_or_else(|e| e.into_inner());
+        let mut cursor = self
+            .pty_cursor
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let read = self.stream.read(&mut cursor, buf.len(), timeout_ms)?;
         let bytes_read = read.data.len().min(buf.len());
         buf[..bytes_read].copy_from_slice(&read.data[..bytes_read]);

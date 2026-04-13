@@ -100,11 +100,11 @@ impl Presenter for TextPresenter {
     fn present_value(&self, value: &RpcValue) {
         let value_ref = value.as_ref();
         if let Some(s) = value_ref.as_str() {
-            println!("{}", s);
+            println!("{s}");
         } else if let Some(n) = value_ref.as_u64() {
-            println!("{}", n);
+            println!("{n}");
         } else if let Some(b) = value_ref.as_bool() {
-            println!("{}", b);
+            println!("{b}");
         } else {
             println!("{}", value.to_pretty_json());
         }
@@ -129,7 +129,7 @@ impl Presenter for TextPresenter {
     }
 
     fn present_kv(&self, key: &str, value: &str) {
-        println!("  {}: {}", key, value);
+        println!("  {key}: {value}");
     }
 
     fn present_session_id(&self, session_id: &str, label: Option<&str>) {
@@ -145,7 +145,7 @@ impl Presenter for TextPresenter {
     }
 
     fn present_list_item(&self, item: &str) {
-        println!("  {}", item);
+        println!("  {item}");
     }
 
     fn present_info(&self, message: &str) {
@@ -157,7 +157,7 @@ impl Presenter for TextPresenter {
     }
 
     fn present_raw(&self, text: &str) {
-        println!("{}", text);
+        println!("{text}");
     }
 
     fn present_wait_result(&self, result: &WaitResult) {
@@ -249,7 +249,7 @@ impl Presenter for JsonPresenter {
 
     fn present_client_error(&self, error: &ClientErrorView) {
         if let Some(json) = error.json.as_deref() {
-            eprintln!("{}", json);
+            eprintln!("{json}");
             return;
         }
 
@@ -290,7 +290,7 @@ impl Presenter for JsonPresenter {
     fn present_list_header(&self, _title: &str) {}
 
     fn present_list_item(&self, item: &str) {
-        println!("\"{}\"", item);
+        println!("\"{item}\"");
     }
 
     fn present_info(&self, message: &str) {

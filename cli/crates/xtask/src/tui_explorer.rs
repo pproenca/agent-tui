@@ -695,7 +695,7 @@ fn pick_anchor(screenshot: &str) -> Option<String> {
             continue;
         }
 
-        let digits = line.chars().filter(|ch| ch.is_ascii_digit()).count();
+        let digits = line.chars().filter(char::is_ascii_digit).count();
         let ratio = digits as f64 / line.len() as f64;
         if ratio > 0.45 {
             continue;
@@ -1129,12 +1129,7 @@ fn discover_with_runner<R: Runner>(
         .collect::<Vec<_>>();
 
     let blocked_risky_actions = if config.allow_risky {
-        actions.extend(
-            DEFAULT_RISKY_ACTIONS
-                .iter()
-                .map(|item| (*item).to_string())
-                .collect::<Vec<_>>(),
-        );
+        actions.extend(DEFAULT_RISKY_ACTIONS.iter().map(|item| (*item).to_string()));
         Vec::new()
     } else {
         DEFAULT_RISKY_ACTIONS

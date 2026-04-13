@@ -46,7 +46,7 @@ impl RpcRequest {
         self.params
             .as_ref()
             .and_then(|p| p.get(key))
-            .and_then(|v| v.as_u64())
+            .and_then(serde_json::Value::as_u64)
     }
 
     pub fn param_u64(&self, key: &str, default: u64) -> u64 {
@@ -60,7 +60,7 @@ impl RpcRequest {
     #[allow(clippy::result_large_err)]
     pub fn require_str(&self, key: &str) -> Result<&str, RpcResponse> {
         self.param_str(key)
-            .ok_or_else(|| RpcResponse::error(self.id, -32602, &format!("Missing '{}' param", key)))
+            .ok_or_else(|| RpcResponse::error(self.id, -32602, &format!("Missing '{key}' param")))
     }
 }
 

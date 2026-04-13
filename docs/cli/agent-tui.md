@@ -80,7 +80,7 @@ CONFIGURATION:
     AGENT_TUI_NO_INPUT          Disable prompts and interactive TTY behavior (default: false)
     AGENT_TUI_TRANSPORT         IPC transport (unix or ws; default: unix)
     AGENT_TUI_WS_ADDR           Remote WS-RPC target when transport is ws (e.g. ws://host:port/ws)
-    AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-Q)
+    AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-B)
     AGENT_TUI_WS_LISTEN         Daemon WS bind address (default: 127.0.0.1:0)
     AGENT_TUI_WS_ALLOW_REMOTE   Allow non-loopback WS bind (default: false)
     AGENT_TUI_WS_STATE          Daemon WS state file path (default: ~/.agent-tui/api.json)
@@ -674,7 +674,7 @@ Usage: sessions [OPTIONS] [COMMAND]
 Commands:
   list     List active sessions
   show     Show details for a specific session
-  attach   Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-Q or --detach-keys)
+  attach   Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-B or --detach-keys)
   switch   Set the active session without attaching
   cleanup  Remove dead/orphaned sessions
   help     Print this message or the help of the given subcommand(s)
@@ -819,7 +819,7 @@ EXAMPLES:
 ## `agent-tui sessions attach`
 
 ```text
-Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-Q or --detach-keys)
+Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-B or --detach-keys)
 
 Usage: attach [OPTIONS]
 
@@ -828,7 +828,7 @@ Options:
           Disable TTY mode (stream output only)
 
       --detach-keys <KEYS>
-          Detach key sequence (docker-style, e.g. "ctrl-p,ctrl-q"; use "none" to disable)
+          Detach key sequence (docker-style, e.g. "ctrl-p,ctrl-b"; use "none" to disable)
           
           [env: AGENT_TUI_DETACH_KEYS=]
 

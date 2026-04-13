@@ -225,7 +225,7 @@ fn response_to_result(response: Response) -> Result<Value, ClientError> {
                 .and_then(|s| s.parse::<error_codes::ErrorCategory>().ok());
             let retry = data
                 .get("retryable")
-                .and_then(|v| v.as_bool())
+                .and_then(serde_json::Value::as_bool)
                 .unwrap_or_else(|| error_codes::is_retryable(rpc_error.code));
             let ctx = data.get("context").cloned();
             let sug = data
@@ -529,10 +529,7 @@ mod tests {
             Err(ClientError::ConnectionFailed(io_err))
                 if io_err.kind() == ErrorKind::PermissionDenied =>
             {
-                eprintln!(
-                    "Skipping ensure_daemon test on restricted socket access: {}",
-                    io_err
-                );
+                eprintln!("Skipping ensure_daemon test on restricted socket access: {io_err}");
             }
             Err(err) => {
                 panic!(

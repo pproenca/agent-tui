@@ -482,7 +482,9 @@ fn spawn_daemon_reaper(child: std::process::Child) -> Result<(), ClientError> {
     match std::thread::Builder::new()
         .name("daemon-reaper".to_string())
         .spawn(move || {
-            let mut guard = child_for_thread.lock().unwrap_or_else(|e| e.into_inner());
+            let mut guard = child_for_thread
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(mut child) = guard.take() {
                 let _ = child.wait();
             }
@@ -490,7 +492,9 @@ fn spawn_daemon_reaper(child: std::process::Child) -> Result<(), ClientError> {
         Ok(_) => Ok(()),
         Err(err) => {
             warn!(error = %err, "Failed to spawn daemon reaper thread");
-            let mut guard = child_cell.lock().unwrap_or_else(|e| e.into_inner());
+            let mut guard = child_cell
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(child) = guard.take() {
                 handle_reaper_spawn_failure(child)
             } else {
@@ -691,7 +695,9 @@ mod tests {
     }
 
     fn acquire_env_lock() -> MutexGuard<'static, ()> {
-        env_lock().lock().unwrap_or_else(|e| e.into_inner())
+        env_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     #[test]

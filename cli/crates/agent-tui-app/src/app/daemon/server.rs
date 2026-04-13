@@ -235,18 +235,27 @@ impl DaemonServer {
     }
 
     fn register_connection(&self, fd: RawFd) {
-        let mut fds = self.active_fds.lock().unwrap_or_else(|e| e.into_inner());
+        let mut fds = self
+            .active_fds
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         fds.insert(fd);
     }
 
     fn unregister_connection(&self, fd: RawFd) {
-        let mut fds = self.active_fds.lock().unwrap_or_else(|e| e.into_inner());
+        let mut fds = self
+            .active_fds
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         fds.remove(&fd);
     }
 
     fn shutdown_connections(&self) {
         let fds = {
-            let guard = self.active_fds.lock().unwrap_or_else(|e| e.into_inner());
+            let guard = self
+                .active_fds
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             guard.iter().copied().collect::<Vec<_>>()
         };
         for fd in fds {
@@ -261,7 +270,7 @@ impl DaemonServer {
         let mut guard = self
             .stream_threads
             .lock()
-            .unwrap_or_else(|e| e.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.push(handle);
     }
 
@@ -270,7 +279,7 @@ impl DaemonServer {
             let mut guard = self
                 .stream_threads
                 .lock()
-                .unwrap_or_else(|e| e.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             guard.drain(..).collect::<Vec<_>>()
         };
 
@@ -410,7 +419,7 @@ impl DaemonServer {
 
                 let Some((mut conn, request)) = payload_for_thread
                     .lock()
-                    .unwrap_or_else(|e| e.into_inner())
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .take()
                 else {
                     warn!("Stream payload missing; dropping connection");
@@ -459,8 +468,10 @@ impl DaemonServer {
         match spawn_result {
             Ok(handle) => server.register_stream_thread(handle),
             Err(_) => {
-                let Some((mut conn, request)) =
-                    payload.lock().unwrap_or_else(|e| e.into_inner()).take()
+                let Some((mut conn, request)) = payload
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take()
                 else {
                     warn!("Stream payload missing; dropping connection");
                     let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
@@ -586,7 +597,7 @@ fn wait_for_connections(server: &DaemonServer, timeout_secs: u64) {
     let mut guard = server
         .connection_wait_lock
         .lock()
-        .unwrap_or_else(|e| e.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     while server.active_connections.load(Ordering::Relaxed) > 0 {
         let now = Instant::now();
         if now >= shutdown_deadline {
@@ -597,7 +608,7 @@ fn wait_for_connections(server: &DaemonServer, timeout_secs: u64) {
         let (_guard, result) = server
             .connection_cv
             .wait_timeout(guard, remaining)
-            .unwrap_or_else(|e| e.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard = _guard;
         if result.timed_out() {
             warn!("Shutdown timeout, forcing close");

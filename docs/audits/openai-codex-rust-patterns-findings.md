@@ -2,6 +2,9 @@
 
 ## Open Findings
 
+- `[F02][errors-boundary-error-translator]` Snapshot region filtering is exposed as a ghost API: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` advertises `--region`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs` carry a raw `region`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` forwards it into `SnapshotInput`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs` never branches on it. Snapshot requests can therefore succeed and return the full screen even when the caller explicitly asked for a named region.
+- `[F02][errors-boundary-error-translator]` Snapshot freshness is optimistic instead of explicit: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs` discards `request_flush()` timeout/close results in `SessionHandleImpl::update()` and still returns `Ok(())`, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs` treats `session.update()?` as authoritative before reading the screen and cursor buffers. A stalled or failed flush can therefore produce a successful snapshot of stale state.
+- `[F02][testing-insta-snapshot-tui-rendering]` Snapshot presentation is still not snapshot-protected end to end: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs` only use narrow helper assertions, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs` only tests the missing-session error, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs` checks substrings and fields, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mock_session.rs` aliases raw text and rendered output. ANSI, whitespace, and layout regressions in screenshot presentation can therefore slip through unnoticed.
 - `[F07][types-try-from-newtype-validation]` Invalid explicit session selectors are silently coerced to "active": `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` makes `parse_session_selector()` return `None` when `SessionId::try_new()` fails, and `parse_session_input()` then feeds that selector into `kill`, `restart`, and the other session-targeted RPCs as though the caller had asked for the active session. A malformed `session` parameter can therefore mutate the wrong session instead of being rejected at the boundary.
 - `[F07][errors-struct-display-payload]` Stopped-session switch errors are flattened into a fake "not found" identifier: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs` returns `SessionError::NotFound(format!("{} (session not running)", input.session_id))` from `AttachUseCase`. The adapter and CLI layers therefore lose the ability to distinguish "missing session" from "known session that has stopped" and can only surface a preformatted string.
 - `[F07][errors-boundary-error-translator]` Session lifecycle state is flattened into misleading stopped/absent outputs: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` turns lock-timeout sessions into synthetic `running: false` / `"(locked)"` entries in `list()`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` both trust that lossy state during cleanup, and `SessionManager::kill()` removes a session from the registry before `sess.kill()` succeeds. A locked or kill-failing session can therefore be reported as stopped/cleaned or disappear from `sessions` while its process is still alive.
@@ -356,11 +359,46 @@ Contextual non-applicability:
 - `async-abort-on-drop-handle`, `async-child-cancellation-tokens`, and `async-shared-boxfuture-joinhandle` are not direct fits for this tranche because the lifecycle surface is primarily lock/PTY/session-manager code over std threads and shared state, not a nested tokio task tree with owned join futures.
 - `testing-wiremock-sse-fakes`, `testing-insta-snapshot-tui-rendering`, and the TUI-specific rendering rules are not direct fits here because this slice is session selection and metadata mutation rather than outbound protocol fakes or rendered-screen correctness.
 
+### `2026-04-13 08:04Z` `F02` Snapshot and screenshot rendering
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/snapshot.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mock_session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` preserve the richer rendered path when ANSI output is desired: the CLI text presenter prefers `compact_rendered` and then `rendered`, and the RPC responder also prefers rendered output over the raw `screenshot` fallback when `retain_ansi` is enabled.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/snapshot.rs` remains a thin boundary translator. It parses once, forwards the use case exactly once, and translates `SessionError` exactly once on the way back out.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` has a focused regression test proving that the initial attach render prefers the full `rendered` payload over the plain `screenshot` fallback when both are present.
+
+Findings:
+
+- Region filtering is exposed end to end but never implemented or rejected. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` accepts `--region`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs` preserve it as a raw string, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` forwards it into `SnapshotInput`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs` ignores it entirely. `agent-tui screenshot --region ...` can therefore succeed while still returning the full screen.
+- Freshness signaling is optimistic. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs` waits on `request_flush()` and discards timeout or disconnect results, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs` treats `session.update()?` as a trustworthy refresh barrier before reading screen and cursor buffers. Snapshot callers can therefore receive stale screen state after a failed or timed-out flush with no indication that the refresh never completed.
+- Snapshot rendering coverage still stops short of rendered-screen snapshots. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs` only pin narrow helper behavior, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs` only tests the no-session error path, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs` uses substring checks, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mock_session.rs` returns the same text for raw and rendered output. ANSI, whitespace, and layout regressions in screenshot presentation remain under-protected.
+
+Contextual non-applicability:
+
+- `tui-drop-guard-panic-hook-chain`, `tui-event-broker-pause-resume`, and `tui-schedule-frame-coalescer` are not direct fits for this tranche because the audited path is request/response screen capture, not raw-mode ownership or a local frame scheduler.
+- The codex sandbox rules are not direct fits for this slice because screenshot rendering itself does not spawn or isolate new subprocesses beyond the already-audited session runtime.
+
 ## Next Queue
 
-- `F02` Snapshot and screenshot rendering
 - `F03` Input injection
 - `F04` Wait and assert semantics
+- `F06` Interactive attach session
 
 ## Notes
 

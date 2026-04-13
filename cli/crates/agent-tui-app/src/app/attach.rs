@@ -31,6 +31,7 @@ use crossterm::cursor;
 use crossterm::event;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
+use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
 use crossterm::execute;
 use crossterm::queue;
@@ -903,6 +904,10 @@ fn stream_output_loop(
 }
 
 fn key_event_to_bytes(key_event: &event::KeyEvent) -> Option<Vec<u8>> {
+    if key_event.kind == KeyEventKind::Release {
+        return None;
+    }
+
     match key_event.code {
         KeyCode::Char(c) => key_char_to_bytes(c, key_event.modifiers),
         KeyCode::F(n) => {
@@ -1104,6 +1109,16 @@ mod tests {
     fn test_key_event_to_bytes_f1() {
         let event = event::KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
         assert_eq!(key_event_to_bytes(&event), key_to_escape_sequence("F1"));
+    }
+
+    #[test]
+    fn test_key_event_to_bytes_ignores_release_events() {
+        let event = event::KeyEvent::new_with_kind(
+            KeyCode::Char('q'),
+            KeyModifiers::CONTROL,
+            KeyEventKind::Release,
+        );
+        assert_eq!(key_event_to_bytes(&event), None);
     }
 
     #[test]

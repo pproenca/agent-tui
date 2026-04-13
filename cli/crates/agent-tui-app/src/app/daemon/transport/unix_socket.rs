@@ -22,16 +22,11 @@ const DEFAULT_MAX_REQUEST_SIZE: usize = 1024 * 1024;
 struct SizeLimitedReader<R> {
     inner: R,
     max_size: usize,
-    read_count: usize,
 }
 
 impl<R> SizeLimitedReader<R> {
     fn new(inner: R, max_size: usize) -> Self {
-        Self {
-            inner,
-            max_size,
-            read_count: 0,
-        }
+        Self { inner, max_size }
     }
 }
 
@@ -41,8 +36,7 @@ impl<R: BufRead> SizeLimitedReader<R> {
         match self.inner.read_line(&mut line) {
             Ok(0) => Ok(None),
             Ok(n) => {
-                self.read_count += n;
-                if self.read_count > self.max_size {
+                if n > self.max_size {
                     return Err(TransportError::SizeLimit {
                         max_bytes: self.max_size,
                     });
@@ -311,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn test_size_limited_reader_cumulative_limit() {
+    fn test_size_limited_reader_applies_limit_per_request_line() {
         let data = "aaa\nbbb\nccc\n";
         let cursor = Cursor::new(data);
         let buf_reader = BufReader::new(cursor);
@@ -325,7 +319,37 @@ mod tests {
             reader.read_line().expect("second line should read"),
             Some("bbb".to_string())
         );
-        let result = reader.read_line();
-        assert!(matches!(result, Err(TransportError::SizeLimit { .. })));
+        assert_eq!(
+            reader.read_line().expect("third line should read"),
+            Some("ccc".to_string())
+        );
+        assert_eq!(reader.read_line().expect("reader should reach EOF"), None);
+    }
+
+    #[test]
+    fn test_unix_socket_connection_reads_multiple_requests_with_per_request_limit() {
+        use std::os::unix::net::UnixStream;
+
+        let (mut client_stream, server_stream) =
+            UnixStream::pair().expect("unix stream pair should be created");
+        let mut conn = UnixSocketConnection::new_with_max(server_stream, 64)
+            .expect("server connection should wrap");
+
+        writeln!(
+            client_stream,
+            "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"one\"}}"
+        )
+        .expect("first request should write");
+        writeln!(
+            client_stream,
+            "{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"two\"}}"
+        )
+        .expect("second request should write");
+
+        let first = conn.read_request().expect("first request should read");
+        let second = conn.read_request().expect("second request should read");
+
+        assert_eq!(first.method, "one");
+        assert_eq!(second.method, "two");
     }
 }

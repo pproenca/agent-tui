@@ -7,6 +7,14 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
 use crate::common::DaemonError;
+use crate::infra::ipc::current_process_identity;
+
+#[derive(serde::Serialize)]
+struct LockFilePayload {
+    pid: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    process_started_at: Option<u64>,
+}
 
 pub struct LockFile {
     _file: File,
@@ -51,8 +59,20 @@ impl LockFile {
         })?;
 
         let mut lock_file = lock_file;
-        writeln!(lock_file, "{}", std::process::id()).map_err(|e| DaemonError::LockFailed {
-            operation: "write PID",
+        let identity = current_process_identity();
+        serde_json::to_writer_pretty(
+            &mut lock_file,
+            &LockFilePayload {
+                pid: identity.pid,
+                process_started_at: identity.started_at,
+            },
+        )
+        .map_err(|e| DaemonError::LockFailed {
+            operation: "write daemon identity",
+            source: Box::new(e),
+        })?;
+        writeln!(lock_file).map_err(|e| DaemonError::LockFailed {
+            operation: "flush daemon identity",
             source: Box::new(e),
         })?;
 
@@ -91,8 +111,13 @@ mod tests {
         let _lock = LockFile::acquire(&path).expect("lock should be acquired");
 
         let contents = std::fs::read_to_string(&path).expect("lock file should be readable");
-        let pid: u32 = contents.trim().parse().expect("pid should parse");
-        assert_eq!(pid, std::process::id());
+        let payload: serde_json::Value =
+            serde_json::from_str(&contents).expect("identity payload should parse");
+        assert_eq!(payload["pid"].as_u64(), Some(u64::from(std::process::id())));
+        assert!(
+            payload.get("process_started_at").is_some(),
+            "lock file should carry process identity metadata"
+        );
     }
 
     #[test]

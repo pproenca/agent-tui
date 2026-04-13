@@ -1523,6 +1523,7 @@ mod tests {
                     message: "resize failed".to_string(),
                     category: None,
                     retryable: false,
+                    retry_delay_ms: None,
                     context: None,
                     suggestion: Some("check daemon".to_string()),
                 });

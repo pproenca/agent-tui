@@ -5,6 +5,7 @@
 
 //! IPC client implementation.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
@@ -21,6 +22,7 @@ use tracing::trace;
 use crate::common::Colors;
 use crate::common::error_codes;
 use crate::infra::ipc::error::ClientError;
+use crate::infra::ipc::process::ProcessIdentity;
 use crate::infra::ipc::socket::socket_path;
 use crate::infra::ipc::transport::ClientConnection;
 use crate::infra::ipc::transport::IpcTransport;
@@ -78,6 +80,11 @@ impl DaemonClientConfig {
 
     pub fn with_max_retries(mut self, retries: u32) -> Self {
         self.max_retries = retries;
+        self
+    }
+
+    pub fn with_initial_retry_delay(mut self, delay: Duration) -> Self {
+        self.initial_retry_delay = delay;
         self
     }
 }
@@ -215,6 +222,38 @@ fn is_timeout_error(error: &ClientError) -> bool {
     }
 }
 
+fn is_retryable_call_error(error: &ClientError) -> bool {
+    match error {
+        ClientError::ConnectionFailed(_) => true,
+        ClientError::RpcError { retryable, .. } => *retryable,
+        _ => false,
+    }
+}
+
+fn retry_delay_ms_from_data(data: Option<&Value>) -> Option<u64> {
+    let data = data?;
+    ["retry_delay_ms", "retry_after_ms"]
+        .into_iter()
+        .find_map(|key| data.get(key).and_then(Value::as_u64))
+}
+
+fn next_retry_delay(
+    error: &ClientError,
+    default_delay: Duration,
+    current_delay: Duration,
+) -> Duration {
+    error
+        .retry_delay_ms()
+        .map(Duration::from_millis)
+        .unwrap_or_else(|| {
+            if current_delay.is_zero() {
+                default_delay
+            } else {
+                current_delay
+            }
+        })
+}
+
 fn response_to_result(response: Response) -> Result<Value, ClientError> {
     if let Some(rpc_error) = response.error {
         let (category, retryable, context, suggestion) = if let Some(data) = rpc_error.data.as_ref()
@@ -241,12 +280,14 @@ fn response_to_result(response: Response) -> Result<Value, ClientError> {
                 None,
             )
         };
+        let retry_delay_ms = retry_delay_ms_from_data(rpc_error.data.as_ref());
 
         return Err(ClientError::RpcError {
             code: rpc_error.code,
             message: rpc_error.message,
             category,
             retryable,
+            retry_delay_ms,
             context,
             suggestion,
         });
@@ -267,51 +308,92 @@ impl DaemonClient for UnixSocketClient {
         config: &DaemonClientConfig,
     ) -> Result<Value, ClientError> {
         let request_id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
-        let start = Instant::now();
-        debug!(
-            request_id,
-            method = %method,
-            read_timeout_ms = config.read_timeout().as_millis(),
-            write_timeout_ms = config.write_timeout().as_millis(),
-            "RPC call started"
-        );
-        let mut connection = self.transport.connect_connection()?;
-        connection.set_read_timeout(Some(config.read_timeout()))?;
-        connection.set_write_timeout(Some(config.write_timeout()))?;
-
         let request = Request {
             jsonrpc: "2.0".to_string(),
             id: request_id,
             method: method.to_string(),
             params,
         };
-
         let request_json = serde_json::to_string(&request)?;
-        trace!(
-            request_id,
-            bytes = request_json.len(),
-            "RPC request serialized"
-        );
+        let start = Instant::now();
+        let mut attempt = 0;
+        let mut retry_delay = config.initial_retry_delay();
 
-        connection.send_message(&request_json)?;
-        let response_line = connection
-            .read_message()?
-            .ok_or(ClientError::InvalidResponse)?;
-        trace!(
-            request_id,
-            bytes = response_line.len(),
-            "RPC response received"
-        );
+        loop {
+            debug!(
+                request_id,
+                method = %method,
+                attempt,
+                read_timeout_ms = config.read_timeout().as_millis(),
+                write_timeout_ms = config.write_timeout().as_millis(),
+                "RPC call started"
+            );
 
-        let response: Response = serde_json::from_str(&response_line)?;
-        let result = response_to_result(response);
-        debug!(
-            request_id,
-            method = %method,
-            elapsed_ms = start.elapsed().as_millis(),
-            "RPC call finished"
-        );
-        result
+            let result = (|| {
+                let mut connection = self.transport.connect_connection()?;
+                connection.set_read_timeout(Some(config.read_timeout()))?;
+                connection.set_write_timeout(Some(config.write_timeout()))?;
+
+                trace!(
+                    request_id,
+                    attempt,
+                    bytes = request_json.len(),
+                    "RPC request serialized"
+                );
+                connection.send_message(&request_json)?;
+
+                let response_line = connection
+                    .read_message()?
+                    .ok_or(ClientError::InvalidResponse)?;
+                trace!(
+                    request_id,
+                    attempt,
+                    bytes = response_line.len(),
+                    "RPC response received"
+                );
+
+                let response: Response = serde_json::from_str(&response_line)?;
+                response_to_result(response)
+            })();
+
+            match result {
+                Ok(value) => {
+                    debug!(
+                        request_id,
+                        method = %method,
+                        attempt,
+                        elapsed_ms = start.elapsed().as_millis(),
+                        "RPC call finished"
+                    );
+                    return Ok(value);
+                }
+                Err(err) if attempt < config.max_retries() && is_retryable_call_error(&err) => {
+                    let delay = next_retry_delay(&err, config.initial_retry_delay(), retry_delay);
+                    debug!(
+                        request_id,
+                        method = %method,
+                        attempt,
+                        retry_in_ms = delay.as_millis(),
+                        error = %err,
+                        "RPC call failed; retrying"
+                    );
+                    std::thread::park_timeout(delay);
+                    retry_delay = delay.saturating_mul(2);
+                    attempt += 1;
+                }
+                Err(err) => {
+                    debug!(
+                        request_id,
+                        method = %method,
+                        attempt,
+                        elapsed_ms = start.elapsed().as_millis(),
+                        error = %err,
+                        "RPC call finished with error"
+                    );
+                    return Err(err);
+                }
+            }
+        }
     }
 
     fn call_stream(
@@ -379,27 +461,74 @@ pub enum PidLookupResult {
     Error(String),
 }
 
-pub fn get_daemon_pid() -> PidLookupResult {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DaemonProcessLookupResult {
+    Found(ProcessIdentity),
+    NotRunning,
+    InvalidState { path: PathBuf, message: String },
+}
+
+#[derive(Debug, Deserialize)]
+struct DaemonLockFile {
+    pid: u32,
+    #[serde(default)]
+    process_started_at: Option<u64>,
+}
+
+pub fn get_daemon_process_identity() -> DaemonProcessLookupResult {
     let lock_path = socket_path().with_extension("lock");
     if !lock_path.exists() {
-        return PidLookupResult::NotRunning;
+        return DaemonProcessLookupResult::NotRunning;
     }
 
-    match std::fs::read_to_string(&lock_path) {
-        Err(e) => PidLookupResult::Error(format!(
-            "Failed to read lock file {}: {}",
-            lock_path.display(),
-            e
-        )),
-        Ok(content) => match content.trim().parse::<u32>() {
-            Ok(pid) => PidLookupResult::Found(pid),
-            Err(e) => PidLookupResult::Error(format!(
-                "Lock file contains invalid PID '{}': {}",
-                content.trim(),
-                e
-            )),
+    let content = match std::fs::read_to_string(&lock_path) {
+        Ok(content) => content,
+        Err(err) => {
+            return DaemonProcessLookupResult::InvalidState {
+                path: lock_path,
+                message: format!("failed to read lock file: {err}"),
+            };
+        }
+    };
+
+    parse_daemon_lock_file(&content).map_or_else(
+        |message| DaemonProcessLookupResult::InvalidState {
+            path: lock_path,
+            message,
         },
+        DaemonProcessLookupResult::Found,
+    )
+}
+
+pub fn get_daemon_pid() -> PidLookupResult {
+    match get_daemon_process_identity() {
+        DaemonProcessLookupResult::Found(identity) => PidLookupResult::Found(identity.pid),
+        DaemonProcessLookupResult::NotRunning => PidLookupResult::NotRunning,
+        DaemonProcessLookupResult::InvalidState { path, message } => PidLookupResult::Error(
+            format!("Invalid daemon lock state {}: {message}", path.display()),
+        ),
     }
+}
+
+fn parse_daemon_lock_file(content: &str) -> Result<ProcessIdentity, String> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return Err("lock file is empty".to_string());
+    }
+
+    if let Ok(pid) = trimmed.parse::<u32>() {
+        return Ok(ProcessIdentity {
+            pid,
+            started_at: None,
+        });
+    }
+
+    let payload: DaemonLockFile = serde_json::from_str(trimmed)
+        .map_err(|err| format!("lock file is not a valid daemon identity payload: {err}"))?;
+    Ok(ProcessIdentity {
+        pid: payload.pid,
+        started_at: payload.process_started_at,
+    })
 }
 
 #[cfg(test)]
@@ -475,6 +604,7 @@ mod tests {
             message: "Method not found".to_string(),
             category: None,
             retryable: false,
+            retry_delay_ms: None,
             context: None,
             suggestion: None,
         };
@@ -495,10 +625,43 @@ mod tests {
         let config = DaemonClientConfig::default()
             .with_read_timeout(Duration::from_secs(30))
             .with_write_timeout(Duration::from_secs(5))
-            .with_max_retries(5);
+            .with_max_retries(5)
+            .with_initial_retry_delay(Duration::from_millis(25));
         assert_eq!(config.read_timeout(), Duration::from_secs(30));
         assert_eq!(config.write_timeout(), Duration::from_secs(5));
         assert_eq!(config.max_retries(), 5);
+        assert_eq!(config.initial_retry_delay(), Duration::from_millis(25));
+    }
+
+    #[test]
+    fn test_parse_daemon_lock_file_supports_legacy_pid_only_format() {
+        let identity = parse_daemon_lock_file("1234").expect("legacy lock file should parse");
+        assert_eq!(
+            identity,
+            ProcessIdentity {
+                pid: 1234,
+                started_at: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_daemon_lock_file_supports_identity_payload() {
+        let identity = parse_daemon_lock_file(r#"{"pid":1234,"process_started_at":42}"#)
+            .expect("identity lock file should parse");
+        assert_eq!(
+            identity,
+            ProcessIdentity {
+                pid: 1234,
+                started_at: Some(42),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_daemon_lock_file_rejects_invalid_payload() {
+        let err = parse_daemon_lock_file("not-a-pid").expect_err("invalid payload should fail");
+        assert!(err.contains("not a valid daemon identity payload"));
     }
 
     static ENV_MUTEX: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
@@ -574,5 +737,187 @@ mod tests {
             .call("version", None)
             .expect("transport-backed call should succeed");
         assert_eq!(result["ok"], true);
+    }
+
+    #[test]
+    fn test_call_with_config_retries_retryable_rpc_error() {
+        let attempts = Arc::new(Mutex::new(0u32));
+        let transport =
+            std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new({
+                let attempts = Arc::clone(&attempts);
+                move |request| {
+                    let value: serde_json::Value =
+                        serde_json::from_str(request.trim()).expect("request json");
+                    let id = value
+                        .get("id")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!(1));
+                    let mut count = mutex_lock_or_recover(&attempts);
+                    *count += 1;
+                    if *count == 1 {
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": {
+                                "code": -32000,
+                                "message": "busy",
+                                "data": {
+                                    "retryable": true,
+                                    "retry_delay_ms": 0
+                                }
+                            }
+                        })
+                        .to_string()
+                    } else {
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": { "ok": true }
+                        })
+                        .to_string()
+                    }
+                }
+            }));
+
+        let mut client = UnixSocketClient::connect_with_transport(transport)
+            .expect("transport-backed client should connect");
+        let config = DaemonClientConfig::default()
+            .with_max_retries(1)
+            .with_initial_retry_delay(Duration::ZERO);
+
+        let result = client
+            .call_with_config("version", None, &config)
+            .expect("retryable RPC error should be retried");
+
+        assert_eq!(result["ok"], true);
+        assert_eq!(*mutex_lock_or_recover(&attempts), 2);
+    }
+
+    #[test]
+    fn test_call_with_config_does_not_retry_non_retryable_rpc_error() {
+        let attempts = Arc::new(Mutex::new(0u32));
+        let transport =
+            std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new({
+                let attempts = Arc::clone(&attempts);
+                move |request| {
+                    let value: serde_json::Value =
+                        serde_json::from_str(request.trim()).expect("request json");
+                    let id = value
+                        .get("id")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!(1));
+                    let mut count = mutex_lock_or_recover(&attempts);
+                    *count += 1;
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32001,
+                            "message": "fatal",
+                            "data": {
+                                "retryable": false
+                            }
+                        }
+                    })
+                    .to_string()
+                }
+            }));
+
+        let mut client = UnixSocketClient::connect_with_transport(transport)
+            .expect("transport-backed client should connect");
+        let config = DaemonClientConfig::default()
+            .with_max_retries(3)
+            .with_initial_retry_delay(Duration::ZERO);
+
+        let err = client
+            .call_with_config("version", None, &config)
+            .expect_err("non-retryable RPC error should be returned");
+
+        assert!(matches!(
+            err,
+            ClientError::RpcError {
+                message,
+                retry_delay_ms: None,
+                ..
+            } if message == "fatal"
+        ));
+        assert_eq!(*mutex_lock_or_recover(&attempts), 1);
+    }
+
+    #[test]
+    fn test_client_error_to_json_includes_retry_delay() {
+        let err = ClientError::RpcError {
+            code: -32000,
+            message: "busy".to_string(),
+            category: None,
+            retryable: true,
+            retry_delay_ms: Some(250),
+            context: None,
+            suggestion: None,
+        };
+
+        let json = err.to_json();
+        assert_eq!(json["retry_delay_ms"], 250);
+    }
+
+    #[test]
+    fn test_unix_socket_client_round_trip_over_real_socket() {
+        use std::io::BufRead;
+        use std::io::BufReader;
+        use std::io::Write;
+        use std::os::unix::net::UnixListener;
+
+        let _guard = mutex_lock_or_recover(ENV_MUTEX.get_or_init(|| Mutex::new(())));
+        let temp_dir = tempfile::Builder::new()
+            .prefix("agent-tui-ipc-")
+            .tempdir_in("/tmp")
+            .expect("temp dir should be created");
+        let socket_path = temp_dir.path().join("daemon.sock");
+
+        let listener = UnixListener::bind(&socket_path).expect("listener should bind");
+        // SAFETY: Test-only environment override to isolate the Unix socket path.
+        unsafe {
+            std::env::set_var("AGENT_TUI_SOCKET", &socket_path);
+        }
+
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("server should accept");
+            let reader_stream = stream.try_clone().expect("server stream should clone");
+            let mut reader = BufReader::new(reader_stream);
+            let mut writer = stream;
+
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("request should read");
+            let request: serde_json::Value =
+                serde_json::from_str(line.trim()).expect("request JSON should parse");
+            let id = request
+                .get("id")
+                .cloned()
+                .expect("request should include id");
+            assert_eq!(request["method"], "version");
+
+            let response = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "ok": true }
+            });
+            writeln!(writer, "{response}").expect("response should write");
+            writer.flush().expect("response should flush");
+        });
+
+        let mut client = UnixSocketClient {
+            transport: std::sync::Arc::new(crate::infra::ipc::transport::UnixSocketTransport),
+        };
+        let result = client
+            .call("version", None)
+            .expect("real socket call should succeed");
+
+        assert_eq!(result["ok"], true);
+        server.join().expect("server thread should join");
+
+        // SAFETY: Test-only cleanup of the Unix socket override.
+        unsafe {
+            std::env::remove_var("AGENT_TUI_SOCKET");
+        }
     }
 }

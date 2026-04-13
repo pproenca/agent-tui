@@ -2,6 +2,11 @@
 
 use std::process::Command;
 
+use sysinfo::Pid;
+use sysinfo::ProcessRefreshKind;
+use sysinfo::ProcessesToUpdate;
+use sysinfo::System;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
     Term,
@@ -15,10 +20,50 @@ pub enum ProcessStatus {
     NoPermission,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProcessIdentity {
+    pub pid: u32,
+    pub started_at: Option<u64>,
+}
+
+pub fn current_process_identity() -> ProcessIdentity {
+    let pid = std::process::id();
+    let controller = UnixProcessController;
+    match controller.process_identity(pid) {
+        Ok(Some(identity)) => identity,
+        Ok(None) | Err(_) => ProcessIdentity {
+            pid,
+            started_at: None,
+        },
+    }
+}
+
+pub fn check_expected_process<C: ProcessController>(
+    controller: &C,
+    expected: ProcessIdentity,
+) -> std::io::Result<ProcessStatus> {
+    let status = controller.check_process(expected.pid)?;
+    if !matches!(status, ProcessStatus::Running | ProcessStatus::NoPermission) {
+        return Ok(status);
+    }
+
+    let Some(expected_started_at) = expected.started_at else {
+        return Ok(status);
+    };
+
+    let actual = controller.process_identity(expected.pid)?;
+    match actual {
+        Some(actual) if actual.started_at == Some(expected_started_at) => Ok(status),
+        Some(_) | None => Ok(ProcessStatus::NotFound),
+    }
+}
+
 pub trait ProcessController: Send + Sync {
     fn check_process(&self, pid: u32) -> std::io::Result<ProcessStatus>;
 
     fn send_signal(&self, pid: u32, signal: Signal) -> std::io::Result<()>;
+
+    fn process_identity(&self, pid: u32) -> std::io::Result<Option<ProcessIdentity>>;
 }
 
 pub struct UnixProcessController;
@@ -65,6 +110,16 @@ impl ProcessController for UnixProcessController {
             Err(std::io::Error::last_os_error())
         }
     }
+
+    fn process_identity(&self, pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+        match self.check_process(pid)? {
+            ProcessStatus::NotFound => Ok(None),
+            ProcessStatus::Running | ProcessStatus::NoPermission => Ok(Some(ProcessIdentity {
+                pid,
+                started_at: process_started_at_secs(pid),
+            })),
+        }
+    }
 }
 
 fn is_defunct_process(pid: u32) -> bool {
@@ -83,6 +138,19 @@ fn process_status_code(pid: u32) -> Option<char> {
     String::from_utf8(output.stdout).ok()?.trim().chars().next()
 }
 
+fn process_started_at_secs(pid: u32) -> Option<u64> {
+    let pid = Pid::from_u32(pid);
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing(),
+    );
+    let process = system.process(pid)?;
+    let started_at = process.start_time();
+    (started_at > 0).then(|| System::boot_time().saturating_add(started_at))
+}
+
 #[allow(clippy::expect_used)]
 pub mod mock {
     use super::*;
@@ -90,8 +158,14 @@ pub mod mock {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
+    #[derive(Debug, Clone, Copy)]
+    struct MockProcessRecord {
+        status: ProcessStatus,
+        started_at: Option<u64>,
+    }
+
     pub struct MockProcessController {
-        process_states: Mutex<HashMap<u32, ProcessStatus>>,
+        process_states: Mutex<HashMap<u32, MockProcessRecord>>,
         signals_sent: Mutex<Vec<(u32, Signal)>>,
         check_error: Mutex<Option<std::io::Error>>,
         signal_error: Mutex<Option<std::io::Error>>,
@@ -126,7 +200,24 @@ pub mod mock {
         }
 
         pub fn with_process(self, pid: u32, status: ProcessStatus) -> Self {
-            mutex_lock_or_recover(&self.process_states).insert(pid, status);
+            mutex_lock_or_recover(&self.process_states).insert(
+                pid,
+                MockProcessRecord {
+                    status,
+                    started_at: None,
+                },
+            );
+            self
+        }
+
+        pub fn with_process_identity(
+            self,
+            pid: u32,
+            status: ProcessStatus,
+            started_at: Option<u64>,
+        ) -> Self {
+            mutex_lock_or_recover(&self.process_states)
+                .insert(pid, MockProcessRecord { status, started_at });
             self
         }
 
@@ -155,7 +246,7 @@ pub mod mock {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .get(&pid)
-                .copied()
+                .map(|record| record.status)
                 .unwrap_or(ProcessStatus::NotFound))
         }
 
@@ -169,6 +260,19 @@ pub mod mock {
             }
             Ok(())
         }
+
+        fn process_identity(&self, pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+            let record = self
+                .process_states
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(&pid)
+                .copied();
+            Ok(record.map(|record| ProcessIdentity {
+                pid,
+                started_at: record.started_at,
+            }))
+        }
     }
 }
 
@@ -179,6 +283,13 @@ mod tests {
     use std::process::Command;
     use std::time::Duration;
     use std::time::Instant;
+
+    fn identity(pid: u32, started_at: u64) -> ProcessIdentity {
+        ProcessIdentity {
+            pid,
+            started_at: Some(started_at),
+        }
+    }
 
     #[test]
     fn test_signal_variants() {
@@ -246,6 +357,53 @@ mod tests {
             .with_process(1234, ProcessStatus::Running)
             .with_signal_error(std::io::Error::other("test error"));
         assert!(mock.send_signal(1234, Signal::Term).is_err());
+    }
+
+    #[test]
+    fn test_check_expected_process_matches_identity() {
+        let mock = MockProcessController::new().with_process_identity(
+            1234,
+            ProcessStatus::Running,
+            Some(42),
+        );
+
+        assert_eq!(
+            check_expected_process(&mock, identity(1234, 42))
+                .expect("identity check should succeed"),
+            ProcessStatus::Running
+        );
+    }
+
+    #[test]
+    fn test_check_expected_process_rejects_reused_pid() {
+        let mock = MockProcessController::new().with_process_identity(
+            1234,
+            ProcessStatus::Running,
+            Some(99),
+        );
+
+        assert_eq!(
+            check_expected_process(&mock, identity(1234, 42))
+                .expect("identity check should succeed"),
+            ProcessStatus::NotFound
+        );
+    }
+
+    #[test]
+    fn test_check_expected_process_allows_legacy_pid_only_records() {
+        let mock = MockProcessController::new().with_process(1234, ProcessStatus::Running);
+
+        assert_eq!(
+            check_expected_process(
+                &mock,
+                ProcessIdentity {
+                    pid: 1234,
+                    started_at: None,
+                }
+            )
+            .expect("identity check should succeed"),
+            ProcessStatus::Running
+        );
     }
 
     #[test]

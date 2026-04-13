@@ -36,6 +36,7 @@ use crate::adapters::rpc::RpcResponse;
 use crate::app::daemon::rpc_core::RpcCore;
 use crate::app::daemon::rpc_core::RpcCoreError;
 use crate::app::daemon::rpc_core::RpcResponseWriter;
+use crate::infra::ipc::current_process_identity;
 
 const DEFAULT_WS_LISTEN: &str = "127.0.0.1:0";
 const DEFAULT_MAX_CONNECTIONS: usize = 32;
@@ -628,6 +629,8 @@ struct WsStateFile<'a> {
     ui_url: &'a str,
     listen: &'a str,
     started_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    process_started_at: Option<u64>,
 }
 
 fn write_state_file(
@@ -644,13 +647,15 @@ fn write_state_file(
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let identity = current_process_identity();
 
     let payload = WsStateFile {
-        pid: std::process::id(),
+        pid: identity.pid,
         ws_url,
         ui_url,
         listen,
         started_at,
+        process_started_at: identity.started_at,
     };
 
     let tmp_path = path.with_extension("tmp");

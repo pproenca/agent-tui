@@ -2,6 +2,9 @@
 
 ## Open Findings
 
+- `[F04][errors-boundary-error-translator]` Wait freshness is checked through a duplicate refresh path that masks failures: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait.rs` calls `session.update()?` at the top of every poll iteration, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait_condition.rs` immediately calls `let _ = session.update();` inside `check_condition()` and discards the result. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs` currently makes `SessionHandleImpl::update()` optimistic even when flush acknowledgement times out or disconnects, so the second refresh both doubles the flush demand and guarantees any future `SessionOps` refresh error is silently ignored while wait continues against possibly stale screen text.
+- `[F04][testing-paused-runtime-advance]` Wait timing and stability behavior still lacks deterministic regression coverage: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait.rs` only tests construction and basic error paths, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait_condition.rs` only exercises static predicate/hash helpers, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs` only checks method routing plus the `--assert` timeout exit code. The wait use case already depends on a `Clock`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/{test_harness,mock_daemon}.rs` already support delayed responses plus manual time advancement, but poll interval behavior, stream wakeups, stability convergence, and timeout boundaries are not covered.
+- `[F04][types-try-from-newtype-validation]` The malformed explicit-session-selector issue from `F07` applies directly to wait/assert too: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` feeds both `parse_wait_input()` and `parse_assert_input()` through the lossy `parse_session_selector()` helper, so an invalid explicit `session` parameter is still coerced to the active session instead of being rejected at parse time.
 - `[F03][errors-boundary-error-translator]` Modifier hold/release is translated into dead state only: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` expose `press Shift --hold/--release`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/input.rs` routes those requests successfully, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` only toggles `held_modifiers` in `keydown`/`keyup`. The subsequent `keystroke`, `type_text`, and raw write paths never consult that state, so a held modifier does not affect later injected input.
 - `[F03][tui-paste-burst-state-machine]` Attach input still assumes the terminal will emit explicit paste events: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` batches `Event::Paste(data)` into `pty_write`, but every `Event::Key` char is immediately translated via `key_event_to_bytes()` and fed through `DetachDetector`. On terminals that emit rapid per-character key events for paste instead of `Event::Paste`, pasted input can be fragmented and can accidentally trigger detach or other shortcut handling mid-paste.
 - `[F02][errors-boundary-error-translator]` Snapshot region filtering is exposed as a ghost API: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` advertises `--region`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs` carry a raw `region`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` forwards it into `SnapshotInput`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs` never branches on it. Snapshot requests can therefore succeed and return the full screen even when the caller explicitly asked for a named region.
@@ -433,11 +436,48 @@ Contextual non-applicability:
 - `testing-insta-snapshot-tui-rendering` is not a direct fit for this tranche because the audited behavior is byte/escape-sequence semantics and attach event handling rather than rendered screen output.
 - `async-bounded-vs-unbounded-channel-split` is not a direct fit for the CLI `press` and `scroll` loops because they synchronously issue one RPC at a time instead of owning a long-lived submission/event pair; the main input-specific risk here sits in semantic translation rather than channel topology.
 
+### `2026-04-13 08:27Z` `F04` Wait and assert semantics
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/wait.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait_condition.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/test_harness.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/mock_daemon.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait_condition.rs`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs` keep wait/assert condition handling future-proof: the public enums are `#[non_exhaustive]`, and the use-case layer turns unexpected future variants into explicit unsupported-condition errors instead of assuming the current variant set is complete.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/{wait,session}.rs` remain thin wait/assert boundary translators: each handler parses once, executes one use case, and maps `SessionError` exactly once on the way back out.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs` still exposes the wait path through object-safe `SessionHandle` and `StreamWaiterHandle` traits instead of concrete daemon-session types, so the use cases stay decoupled from the runtime implementation details below them.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs` already covers the public wait surface against `MockDaemon` over real JSON-RPC frames, including route selection for text/stable/gone wait modes and exit-code `75` for `wait --assert` timeouts.
+
+Findings:
+
+- Wait freshness is checked through a duplicated refresh path that masks failures. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait.rs` calls `session.update()?` at the top of each poll iteration, then `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait_condition.rs` immediately calls `let _ = session.update();` inside `check_condition()` and discards the result. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs` currently makes `SessionHandleImpl::update()` optimistic even when flush acknowledgement times out or disconnects, so the second refresh both doubles the flush demand and guarantees any future `SessionOps` refresh error is silently ignored while wait continues against possibly stale screen text.
+- The malformed explicit-session-selector issue already recorded in `F07` applies directly to wait/assert too: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` feeds both `parse_wait_input()` and `parse_assert_input()` through the same lossy `parse_session_selector()` helper, so an invalid explicit `session` parameter is still coerced to the active session instead of being rejected at parse time.
+- Timing behavior is under-tested despite existing deterministic seams. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait.rs` only tests construction and basic error paths, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait_condition.rs` only exercises static predicate/hash helpers, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs` only checks routing plus the `--assert` timeout exit code even though the wait use case already depends on a `Clock` and the mock-daemon harness already supports delayed responses plus manual time advancement. Poll interval behavior, stream wakeups, stability convergence, and timeout boundaries are therefore not regression-protected.
+
+Contextual non-applicability:
+
+- `testing-insta-snapshot-tui-rendering` is not a direct fit for this tranche because the audited behavior is predicate evaluation, freshness, and timeout semantics rather than full rendered-screen diffs.
+- `async-bounded-vs-unbounded-channel-split` is not a direct fit here because the wait path consumes an existing `StreamWaiter` subscription instead of designing a new submission/event channel pair.
+
 ## Next Queue
 
-- `F04` Wait and assert semantics
 - `F06` Interactive attach session
 - `F09` Live preview control plane
+- `F10` Live preview data plane
 
 ## Notes
 

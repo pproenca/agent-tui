@@ -2,6 +2,9 @@
 
 ## Open Findings
 
+- `[F06][errors-boundary-error-translator]` Interactive attach can proceed after terminal setup already failed: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` enables raw mode in `TerminalGuard::new()`, then does `let _ = prepare_terminal(&mut stdout);` and still returns `Ok(Self)`. If entering the alternate screen or enabling bracketed paste fails, attach continues in a partially configured terminal and only surfaces later symptoms.
+- `[F06][async-graceful-then-forceful-cancel]` Attach output teardown only aborts the stream on the explicit detach path: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/rpc_client.rs` exposes `RpcStream::abort_handle()`, but `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` only calls it after the detach-key sequence completes. PTY-write failure, event-read failure, EOF, and stream-mode stdin shutdown all fall back to `AttachOutputWorker::drop()`, which waits `500ms` and then drops the `JoinHandle` with only a warning if `StreamResponse::next_result()` is still blocked.
+- `[F06][tui-drop-guard-panic-hook-chain]` Attach restores the terminal on normal unwinding but still lacks the panic-hook half of the codex pattern: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` has a `TerminalGuard` drop restore, yet the repository currently has no `panic::set_hook` or `panic::take_hook` usage. A panic during attach can therefore still print while raw mode and the alternate screen are active before the guard runs.
 - `[F04][errors-boundary-error-translator]` Wait freshness is checked through a duplicate refresh path that masks failures: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait.rs` calls `session.update()?` at the top of every poll iteration, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait_condition.rs` immediately calls `let _ = session.update();` inside `check_condition()` and discards the result. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs` currently makes `SessionHandleImpl::update()` optimistic even when flush acknowledgement times out or disconnects, so the second refresh both doubles the flush demand and guarantees any future `SessionOps` refresh error is silently ignored while wait continues against possibly stale screen text.
 - `[F04][testing-paused-runtime-advance]` Wait timing and stability behavior still lacks deterministic regression coverage: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait.rs` only tests construction and basic error paths, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/wait_condition.rs` only exercises static predicate/hash helpers, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs` only checks method routing plus the `--assert` timeout exit code. The wait use case already depends on a `Clock`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/{test_harness,mock_daemon}.rs` already support delayed responses plus manual time advancement, but poll interval behavior, stream wakeups, stability convergence, and timeout boundaries are not covered.
 - `[F04][types-try-from-newtype-validation]` The malformed explicit-session-selector issue from `F07` applies directly to wait/assert too: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` feeds both `parse_wait_input()` and `parse_assert_input()` through the lossy `parse_session_selector()` helper, so an invalid explicit `session` parameter is still coerced to the active session instead of being rejected at parse time.
@@ -473,11 +476,39 @@ Contextual non-applicability:
 - `testing-insta-snapshot-tui-rendering` is not a direct fit for this tranche because the audited behavior is predicate evaluation, freshness, and timeout semantics rather than full rendered-screen diffs.
 - `async-bounded-vs-unbounded-channel-split` is not a direct fit here because the wait path consumes an existing `StreamWaiter` subscription instead of designing a new submission/event channel pair.
 
+### `2026-04-13 08:37Z` `F06` Interactive attach session
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/rpc_client.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs` still keeps attach failures structured instead of flattening them into one display string: `AttachError` exposes stable `code`, `category`, `retryable`, `context`, and `suggestion` data through `AttachErrorPayload`.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` keeps the attach-stream server boundary narrow: it parses once, resolves the session once, emits explicit `ready`/`output`/`dropped`/`heartbeat`/`closed` events, and translates parse/session/update failures back into JSON-RPC responses at the edge instead of leaking transport details through the loop.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs` already cover the happy detach surface with real PTY interaction: slow end-to-end tests exercise both default and custom detach keys, and the interactive PTY helper deliberately breaks a full sync-channel send before joining its reader thread during teardown.
+
+Findings:
+
+- Terminal setup failures are still swallowed before attach starts. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` enables raw mode and then ignores `prepare_terminal()` errors, so attach can continue after alternate-screen or bracketed-paste setup has already failed.
+- Attach output teardown is only graceful on the explicit detach path. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/rpc_client.rs` exposes an abort handle, but `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` only uses it when the detach-key sequence completes. Other exits rely on `AttachOutputWorker::drop()`, which waits briefly and then detaches the helper thread if `StreamResponse::next_result()` is still blocked.
+- Terminal restoration still lacks a chained panic hook. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` restores terminal state via `Drop`, but there is still no repo-wide `panic::set_hook`/`take_hook` chain to restore the terminal before panic output is emitted.
+
+Contextual non-applicability:
+
+- `testing-paused-runtime-advance` is not a direct fit for this tranche because the attach runtime and its PTY harness rely on real terminal I/O, `crossterm` polling, and std threads rather than tokio timer-driven tasks.
+- `tui-schedule-frame-coalescer` and `tui-two-gear-hysteresis-chunking` remain non-applicable here because attach is a passthrough stream consumer, not a local redraw scheduler or backlog chunker.
+
 ## Next Queue
 
-- `F06` Interactive attach session
 - `F09` Live preview control plane
 - `F10` Live preview data plane
+- `A06` Process control and isolation boundary
 
 ## Notes
 

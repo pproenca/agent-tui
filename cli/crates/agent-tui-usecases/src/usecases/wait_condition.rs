@@ -89,7 +89,6 @@ pub fn check_condition<S: SessionOps + ?Sized>(
     condition: &WaitCondition,
     stable_tracker: &mut StableTracker,
 ) -> bool {
-    let _ = session.update();
     let screen = session.screen_text();
 
     match condition {
@@ -103,6 +102,7 @@ pub fn check_condition<S: SessionOps + ?Sized>(
 mod tests {
     use super::*;
     use crate::test_support::MockSession;
+    use crate::usecases::ports::SessionError;
 
     #[test]
     fn test_check_condition_text_found() {
@@ -190,6 +190,23 @@ mod tests {
             &WaitCondition::Stable,
             &mut tracker
         ));
+    }
+
+    #[test]
+    fn test_check_condition_does_not_attempt_hidden_refresh() {
+        let session = MockSession::builder("test")
+            .with_screen_text("Ready")
+            .with_update_error(SessionError::NoActiveSession)
+            .build();
+        let mut tracker = StableTracker::new(3);
+
+        let result = check_condition(
+            &session,
+            &WaitCondition::Text("Ready".to_string()),
+            &mut tracker,
+        );
+
+        assert!(result);
     }
 
     #[test]

@@ -30,6 +30,7 @@ pub struct MockSession {
     size: TerminalSize,
     cursor: CursorPosition,
     screen_text: String,
+    running: bool,
     update_error: Option<SessionError>,
     terminal_write_error: Option<SessionError>,
     written_data: Mutex<Vec<Vec<u8>>>,
@@ -47,6 +48,7 @@ impl MockSession {
                 visible: false,
             },
             screen_text: String::new(),
+            running: true,
             update_error: None,
             terminal_write_error: None,
             written_data: Mutex::new(Vec::new()),
@@ -138,7 +140,7 @@ impl SessionOps for MockSession {
     }
 
     fn is_running(&self) -> bool {
-        true
+        self.running
     }
 
     fn resize(&self, size: TerminalSize) -> Result<(), SessionError> {
@@ -185,6 +187,11 @@ impl MockSessionBuilder {
 
     pub fn with_screen_text(mut self, text: impl Into<String>) -> Self {
         self.session.screen_text = text.into();
+        self
+    }
+
+    pub fn with_running(mut self, running: bool) -> Self {
+        self.session.running = running;
         self
     }
 

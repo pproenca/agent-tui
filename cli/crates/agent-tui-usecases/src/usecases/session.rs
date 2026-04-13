@@ -175,10 +175,9 @@ impl<R: SessionRepository> AttachUseCase for AttachUseCaseImpl<R> {
         let session = self.repository.resolve(Some(&input.session_id))?;
 
         if !session.is_running() {
-            return Err(SessionError::NotFound(format!(
-                "{} (session not running)",
-                input.session_id
-            )));
+            return Err(SessionError::NotRunning {
+                session_id: input.session_id.to_string(),
+            });
         }
 
         self.repository.set_active(&input.session_id)?;
@@ -306,6 +305,7 @@ mod tests {
     use crate::domain::SessionInfo;
     use crate::domain::TerminalSize;
     use crate::test_support::MockError;
+    use crate::test_support::MockSession;
     use crate::test_support::MockSessionRepository;
     use std::collections::HashMap;
 
@@ -736,6 +736,29 @@ mod tests {
         };
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NotFound(id)) if id == "target-session"));
+    }
+
+    #[test]
+    fn test_attach_usecase_returns_error_when_session_is_not_running() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_session_handle(Arc::new(
+                    MockSession::builder("target-session")
+                        .with_running(false)
+                        .build(),
+                ))
+                .build(),
+        );
+        let usecase = AttachUseCaseImpl::new(repo);
+
+        let input = AttachInput {
+            session_id: SessionId::try_new("target-session").expect("valid session id"),
+        };
+        let result = usecase.execute(input);
+        assert!(matches!(
+            result,
+            Err(SessionError::NotRunning { session_id }) if session_id == "target-session"
+        ));
     }
 
     #[test]

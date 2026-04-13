@@ -46,7 +46,10 @@ pub fn handle_spawn<U: SpawnUseCase>(usecase: &U, request: RpcRequest) -> RpcRes
 
 pub fn handle_kill<U: KillUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "kill").entered();
-    let input = parse_session_input(&request);
+    let input = match parse_session_input(&request) {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
 
     match usecase.execute(input) {
         Ok(output) => kill_output_to_response(request.id, output),
@@ -59,7 +62,10 @@ pub fn handle_kill<U: KillUseCase>(usecase: &U, request: RpcRequest) -> RpcRespo
 
 pub fn handle_restart<U: RestartUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "restart").entered();
-    let input = parse_session_input(&request);
+    let input = match parse_session_input(&request) {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
 
     match usecase.execute(input) {
         Ok(output) => restart_output_to_response(request.id, output),

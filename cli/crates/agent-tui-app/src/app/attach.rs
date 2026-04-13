@@ -5,6 +5,7 @@
 use std::io;
 use std::io::Read;
 use std::io::Write;
+use std::panic;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -42,25 +43,77 @@ use crossterm::terminal::enable_raw_mode;
 
 pub use crate::app::error::AttachError;
 
+type PanicHook = Box<dyn Fn(&panic::PanicHookInfo<'_>) + Sync + Send + 'static>;
+type SharedPanicHook = Arc<Mutex<Option<PanicHook>>>;
+
 /// Restores terminal state on drop to avoid leaving the user's shell in a broken mode.
 #[must_use = "TerminalGuard must be held for the duration of the attach session"]
-struct TerminalGuard;
+struct TerminalGuard {
+    panic_hook_guard: TerminalPanicHookGuard,
+}
 
 impl TerminalGuard {
     fn new() -> Result<Self, AttachError> {
         enable_raw_mode().map_err(AttachError::Terminal)?;
+        let panic_hook_guard = TerminalPanicHookGuard::install();
         let mut stdout = io::stdout();
         prepare_terminal_with_rollback(&mut stdout, prepare_terminal)
             .map_err(AttachError::Terminal)?;
-        Ok(Self)
+        Ok(Self { panic_hook_guard })
     }
 }
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        let _ = disable_raw_mode();
-        let mut stdout = io::stdout();
-        let _ = reset_terminal_modes(&mut stdout);
+        restore_terminal_silently();
+    }
+}
+
+#[must_use = "TerminalPanicHookGuard must be held for the duration of the attach session"]
+struct TerminalPanicHookGuard {
+    previous_hook: Option<SharedPanicHook>,
+}
+
+impl TerminalPanicHookGuard {
+    fn install() -> Self {
+        Self {
+            previous_hook: Some(install_terminal_panic_hook()),
+        }
+    }
+
+    fn restore(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
+        let Some(previous_hook) = self.previous_hook.take() else {
+            return;
+        };
+
+        let current_hook = panic::take_hook();
+        drop(current_hook);
+
+        let previous_hook = {
+            let mut previous_hook_guard = previous_hook
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            previous_hook_guard.take()
+        };
+
+        if let Some(previous_hook) = previous_hook {
+            panic::set_hook(previous_hook);
+        }
+    }
+
+    #[cfg(test)]
+    fn has_previous_hook(&self) -> bool {
+        self.previous_hook.is_some()
+    }
+}
+
+impl Drop for TerminalPanicHookGuard {
+    fn drop(&mut self) {
+        self.restore();
     }
 }
 
@@ -481,6 +534,28 @@ where
     }
 
     Ok(())
+}
+
+fn restore_terminal_silently() {
+    let _ = disable_raw_mode();
+    let mut stdout = io::stdout();
+    let _ = reset_terminal_modes(&mut stdout);
+}
+
+fn install_terminal_panic_hook() -> SharedPanicHook {
+    let previous_hook: SharedPanicHook = Arc::new(Mutex::new(Some(panic::take_hook())));
+    let previous_hook_for_panic = Arc::clone(&previous_hook);
+    panic::set_hook(Box::new(move |panic_info| {
+        restore_terminal_silently();
+        let previous_hook_guard = previous_hook_for_panic
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(previous_hook) = previous_hook_guard.as_ref() {
+            previous_hook(panic_info);
+        }
+    }));
+
+    previous_hook
 }
 
 fn reset_terminal_modes(stdout: &mut impl Write) -> io::Result<()> {
@@ -1102,6 +1177,15 @@ mod tests {
     use super::*;
     use crate::test_support::MockClient;
 
+    static PANIC_HOOK_TEST_LOCK: std::sync::LazyLock<Mutex<()>> =
+        std::sync::LazyLock::new(|| Mutex::new(()));
+
+    fn lock_panic_hook_tests() -> std::sync::MutexGuard<'static, ()> {
+        PANIC_HOOK_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     #[test]
     fn test_key_event_to_bytes_char() {
         let event = event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
@@ -1378,6 +1462,53 @@ mod tests {
         assert!(aborted.load(Ordering::Relaxed));
         assert!(worker.join.is_none());
         assert!(worker.shutdown_signal.is_none());
+    }
+
+    #[test]
+    fn terminal_panic_hook_guard_chains_previous_hook() {
+        let _hook_lock = lock_panic_hook_tests();
+        let original_hook = panic::take_hook();
+        let previous_hook_called = Arc::new(AtomicBool::new(false));
+        let previous_hook_called_for_hook = Arc::clone(&previous_hook_called);
+        panic::set_hook(Box::new(move |_| {
+            previous_hook_called_for_hook.store(true, Ordering::Relaxed);
+        }));
+
+        {
+            let _guard = TerminalPanicHookGuard::install();
+            let result = panic::catch_unwind(|| panic!("attach panic"));
+            assert!(result.is_err());
+        }
+
+        assert!(previous_hook_called.load(Ordering::Relaxed));
+
+        let current_hook = panic::take_hook();
+        drop(current_hook);
+        panic::set_hook(original_hook);
+    }
+
+    #[test]
+    fn terminal_panic_hook_guard_restore_reinstates_previous_hook() {
+        let _hook_lock = lock_panic_hook_tests();
+        let original_hook = panic::take_hook();
+        let previous_hook_called = Arc::new(AtomicBool::new(false));
+        let previous_hook_called_for_hook = Arc::clone(&previous_hook_called);
+        panic::set_hook(Box::new(move |_| {
+            previous_hook_called_for_hook.store(true, Ordering::Relaxed);
+        }));
+
+        let mut guard = TerminalPanicHookGuard::install();
+        assert!(guard.has_previous_hook());
+        guard.restore();
+        assert!(!guard.has_previous_hook());
+
+        let result = panic::catch_unwind(|| panic!("attach panic after restore"));
+        assert!(result.is_err());
+        assert!(previous_hook_called.load(Ordering::Relaxed));
+
+        let current_hook = panic::take_hook();
+        drop(current_hook);
+        panic::set_hook(original_hook);
     }
 
     #[test]

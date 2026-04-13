@@ -20,6 +20,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - [x] (2026-04-13 07:48Z) Complete the session lifecycle management tranche (`F07`) and record findings.
 - [x] (2026-04-13 08:04Z) Complete the snapshot and screenshot rendering tranche (`F02`) and record findings.
 - [x] (2026-04-13 08:13Z) Complete the input injection tranche (`F03`) and record findings.
+- [x] (2026-04-13 08:27Z) Complete the wait and assert semantics tranche (`F04`) and record findings.
 - [ ] Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
 - [ ] Close the plan by filling the retrospective and moving it to `completed/`.
 
@@ -38,6 +39,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 07:48Z` The session lifecycle surface relies on two lossy selector/state shorthands that are easy to miss in review: malformed `session` parameters are silently treated as "active", and lock-timed-out sessions are surfaced to cleanup as synthetic stopped `"(locked)"` entries even though the underlying process may still be running.
 - `2026-04-13 08:04Z` The screenshot boundary has two optimistic-success holes that sit on top of otherwise solid rendering helpers: `--region` and the RPC `region` field are wired through the CLI, DTO, and adapter layers but ignored by `SnapshotUseCaseImpl`, and `SessionHandleImpl::update()` treats flush acknowledgement as best-effort even though the screenshot path depends on that barrier for freshness.
 - `2026-04-13 08:13Z` The input slice hides two different semantic traps: the advertised modifier hold/release path only toggles unused booleans in `Session`, and attach correctly batches explicit `Event::Paste` frames but has no fallback burst detector for terminals that emit pasted text as rapid key events instead.
+- `2026-04-13 08:27Z` The wait/assert slice currently relies on two hidden shortcuts at once: each wait iteration issues two refreshes but discards the second result, and the existing tests stop at routing plus timeout exit code even though the wait use case and mock-daemon harness already have deterministic timing seams for convergence and timeout behavior.
 
 ## Decision Log
 
@@ -57,12 +59,13 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 07:48Z` Queue `F02` ahead of `F03` after `F07` because the session lifecycle audit revalidated the need for trustworthy rendered-session state, and the next highest-yield slice is the screenshot/rendering boundary that sits directly on the `render`/`vterm` guarantees already mapped in `A04`.
 - `2026-04-13 08:04Z` Queue `F03` ahead of `F04` after `F02` because the snapshot audit exposed optimistic refresh semantics at the same session boundary used by input injection, so the next highest-yield slice is the write path before validating wait/assert behavior that depends on post-input state convergence.
 - `2026-04-13 08:13Z` Queue `F04` ahead of `F06` after `F03` because the input audit exposed semantic gaps in what terminal writes actually do, so the next highest-yield slice is the wait/assert boundary that decides whether those writes are observed correctly before returning to the more UI-heavy attach path.
+- `2026-04-13 08:27Z` Queue `F06` ahead of `F09` after `F04` because the wait/assert audit completed the remaining state-convergence slice around the core CLI loop, so the next highest-yield review is the interactive attach runtime that consumes those same input, render, and session-state guarantees before moving on to live-preview control-plane behavior.
 
 ## Next Queue
 
-- `F04` Wait and assert semantics
 - `F06` Interactive attach session
 - `F09` Live preview control plane
+- `F10` Live preview data plane
 
 ## Outcomes & Retrospective
 

@@ -25,6 +25,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - [x] (2026-04-13 08:48Z) Complete the live preview control plane tranche (`F09`) and record findings.
 - [x] (2026-04-13 08:54Z) Complete the live preview data plane tranche (`F10`) and record findings.
 - [x] (2026-04-13 09:04Z) Complete the Rust-to-web contract boundary tranche (`A11`) and record findings.
+- [x] (2026-04-13 09:16Z) Complete the IPC transport and client/server RPC tranche (`F11`) and record findings.
 - [ ] Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
 - [ ] Close the plan by filling the retrospective and moving it to `completed/`.
 
@@ -48,6 +49,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 08:48Z` The live-preview control plane is less local-only than it first appears: the listener itself stays on loopback by default, but `AGENT_TUI_UI_URL` can hand the full authenticated localhost WS URL to an arbitrary browser target, and the published OpenAPI contract has drifted far enough that it now describes unauthenticated routes and parameters the runtime does not actually serve.
 - `2026-04-13 08:54Z` The data-plane spec drift is even wider than the control-plane doc drift suggested: the published AsyncAPI still describes `hello`, `command`, `error`, and binary `output` messages with query-selected encoding, while the runtime only ships token-authenticated JSON-RPC text responses with base64 `output` events and no binary mode.
 - `2026-04-13 09:04Z` The first-party web UI has now drifted enough from the published docs to expose two contract layers at once: the browser is coded for token-authenticated JSON-RPC envelopes with `active_session`, while direct `/ui` fallback still silently tries unauthenticated same-origin `/ws` and surfaces the resulting auth failure only as generic disconnected/load errors.
+- `2026-04-13 09:16Z` The transport/RPC layer contains two easy-to-miss mismatches: the client advertises retry knobs that no call path ever consumes, and the daemon's Unix-socket request-size limit is cumulative across the whole connection rather than per request, which means long-lived clients can fail later small RPCs for the wrong reason.
 
 ## Decision Log
 
@@ -72,12 +74,13 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 08:48Z` Queue `F10` ahead of `A11` and `A06` after `F09` because the control-plane audit exposed both wire-contract drift and credential-sharing behavior on the same live-preview subsystem, so the next highest-yield step is the live-preview data plane itself before lifting to the broader Rust-to-web contract boundary and remaining process/isolation review.
 - `2026-04-13 08:54Z` Queue `A11` ahead of `F11` and `A06` after `F10` because the data-plane audit confirmed the highest-yield remaining risk is now the Rust-to-web contract boundary that consumes these stream payloads, then the underlying transport and RPC surface, and only after that the broader process and isolation boundary.
 - `2026-04-13 09:04Z` Queue `F11` ahead of `A06` and `F12` after `A11` because the web-boundary audit confirmed the next highest-yield unresolved work is the transport and RPC surface that feeds those browser contracts, then the remaining process/isolation boundary, before finishing the operator-facing admin UX.
+- `2026-04-13 09:16Z` Queue `A06` ahead of `F12` and `A07` after `F11` because the transport audit finished the client/server framing surface and left the deeper process-spawn, environment-inheritance, and local-bind safety guarantees as the next unresolved boundary underneath it; operator UX and runtime diagnostics come after that substrate is mapped.
 
 ## Next Queue
 
-- `F11` IPC transport and client/server RPC
 - `A06` Process control and isolation boundary
 - `F12` CLI admin and operator UX
+- `A07` Observability and runtime diagnostics
 
 ## Outcomes & Retrospective
 

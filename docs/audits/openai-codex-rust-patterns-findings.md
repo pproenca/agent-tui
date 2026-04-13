@@ -2,6 +2,9 @@
 
 ## Open Findings
 
+- `[F11][errors-carry-retry-delay-in-variant]` The IPC client advertises retry controls but never uses them. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` exposes `DaemonClientConfig.max_retries` plus `initial_retry_delay`, and `response_to_result()` records a `retryable` flag on `ClientError::RpcError`, but `call_with_config()` and `call_stream()` remain single-shot transports that never consult either retry knob or preserve any backoff hint from the wire payload.
+- `[F11][defensive-head-tail-output-buffer]` The daemon's Unix-socket request cap is tracked at the wrong granularity. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs` accumulates `SizeLimitedReader.read_count` across the whole connection instead of resetting per request line, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` intentionally loops over multiple RPCs on one connection. A client that reuses a socket can therefore hit the 1 MB request limit on aggregate traffic and start getting parse-size failures for later small requests.
+- `[F11][testing-wiremock-sse-fakes]` IPC transport coverage still stops short of a real client/server boundary test. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` only checks an in-memory transport round-trip, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs` only unit-tests the line reader and a socket pair, and no test boots the daemon listener and drives the real Unix or WebSocket client path to validate timeout framing, multi-request size accounting, or the client-side response contract end to end.
 - `[A11][proto-internal-vs-wire-error-split]` The first-party web client now depends on a different wire contract than the published API docs describe. `/Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts` opens JSON-RPC WebSocket calls, matches `id` plus `result`/`error` envelopes, maps `active_session` into the session view model, and still carries a dead `command` event branch even though `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` explicitly does not emit command events for live preview. `/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml` and `/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml` still describe `active`, raw stream payloads, query-selected stream parameters, and unauthenticated flows that the shipped browser client does not actually consume.
 - `[A11][errors-boundary-error-translator]` The browser contract still hides a real auth/configuration failure behind generic UI errors. `/Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts` falls back to same-origin `/ws` when the `ws` query is absent, but `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` requires `token` query auth before upgrade. Opening `/ui` without a tokenized `ws` query therefore fails the handshake and is surfaced as generic `"websocket error"`, `"Disconnected"`, or `"Failed to load"` states instead of a structured auth/config boundary failure.
 - `[A11][testing-wiremock-sse-fakes]` The Rust-to-web boundary still lacks a real browser-facing contract test. `/Users/pedroproenca/Documents/Projects/agent-tui/web/src/session_view_model.test.ts` only exercises pure session-selection reducers, `/Users/pedroproenca/Documents/Projects/agent-tui/web/src/ui_layout_regression.test.ts` only asserts source snippets, and no test feeds real `RpcResponse` envelopes or boots a WebSocket/browser harness to prove tokenized endpoints, `active_session` mapping, `result.event` dispatch, reconnect behavior, or the auth failure path end to end.
@@ -591,11 +594,42 @@ Contextual non-applicability:
 - `proto-sse-idle-timeout-terminator` is not a direct fit for this tranche because the Rust-to-web boundary here is WebSocket plus JSON-RPC, not SSE framing.
 - `tui-schedule-frame-coalescer` and `tui-two-gear-hysteresis-chunking` are not a direct fit here because this slice audits browser contract semantics and wire payload assumptions rather than a local Ratatui redraw scheduler.
 
+### `2026-04-13 09:16Z` `F11` IPC transport and client/server RPC
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/error.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/socket.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/polling.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/rpc_client.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/error.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/error.rs` keeps the daemon-side transport taxonomy explicit: timeout, closed-connection, parse, serialize, size-limit, and raw I/O failures are represented as separate variants before `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` translates them once at the RPC boundary.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/error.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` preserve useful structured RPC error metadata on the client side: code, category, retryable, context, and suggestion survive parsing and can be rendered as JSON or surfaced to the operator without flattening everything into a single string.
+
+Findings:
+
+- The IPC client's retry contract is mostly dead code. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` advertises retry counts and initial delay, but the call paths never consume those fields and never preserve any server-directed backoff hint beyond a boolean retryable flag.
+- The daemon's request-size guard is cumulative across the whole socket instead of per request. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs` increments a single `read_count` forever, so a long-lived client connection can trip the maximum on aggregate traffic even when each request is individually small.
+- Transport tests stop below the real boundary. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs` have useful unit coverage, but there is still no listener-plus-client integration test that proves real Unix or WebSocket transport framing, timeout handling, or multi-request behavior end to end.
+
+Contextual non-applicability:
+
+- `proto-sse-idle-timeout-terminator` is not a direct fit for this tranche because the IPC boundary is line-delimited JSON-RPC over Unix sockets and WebSocket, not SSE.
+- `sandbox-three-layer-network-isolation` is not a direct fit here because the remaining transport findings are about framing, retry, and request accounting; the bind and process-isolation policy sits in `A06` and the browser-exposure review already landed in `F09`.
+
 ## Next Queue
 
-- `F11` IPC transport and client/server RPC
 - `A06` Process control and isolation boundary
 - `F12` CLI admin and operator UX
+- `A07` Observability and runtime diagnostics
 
 ## Notes
 

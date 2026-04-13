@@ -559,6 +559,130 @@ impl ModifierState {
             ModifierKey::Meta => self.meta = value,
         }
     }
+
+    fn is_empty(&self) -> bool {
+        !(self.ctrl || self.alt || self.shift || self.meta)
+    }
+
+    fn has_alt_like(&self) -> bool {
+        self.alt || self.meta
+    }
+
+    fn keystroke_bytes(&self, key: &str) -> Result<Vec<u8>, SessionError> {
+        if self.is_empty() || key.contains('+') {
+            return key_to_escape_sequence(key)
+                .ok_or_else(|| SessionError::InvalidKey(key.to_string()));
+        }
+
+        if key.chars().count() == 1 {
+            let key_char = key
+                .chars()
+                .next()
+                .ok_or_else(|| SessionError::InvalidKey(key.to_string()))?;
+            return Ok(self.modified_key_char_bytes(key_char));
+        }
+
+        let base_key = if self.shift && key.eq_ignore_ascii_case("tab") {
+            "Shift+Tab"
+        } else {
+            key
+        };
+
+        let sequence = key_to_escape_sequence(base_key)
+            .ok_or_else(|| SessionError::InvalidKey(key.to_string()))?;
+        Ok(prefix_escape_if_needed(self.has_alt_like(), sequence))
+    }
+
+    fn typed_bytes(&self, text: &str) -> Vec<u8> {
+        if self.is_empty() {
+            return text.as_bytes().to_vec();
+        }
+
+        let mut bytes = Vec::with_capacity(text.len());
+        for ch in text.chars() {
+            bytes.extend(self.modified_text_char_bytes(ch));
+        }
+        bytes
+    }
+
+    fn modified_key_char_bytes(&self, ch: char) -> Vec<u8> {
+        let shifted = if self.shift { shifted_key_char(ch) } else { ch };
+        self.modified_char_bytes(shifted)
+    }
+
+    fn modified_text_char_bytes(&self, ch: char) -> Vec<u8> {
+        let shifted = if self.shift && ch.is_ascii_alphabetic() {
+            ch.to_ascii_uppercase()
+        } else {
+            ch
+        };
+        self.modified_char_bytes(shifted)
+    }
+
+    fn modified_char_bytes(&self, ch: char) -> Vec<u8> {
+        let bytes = if self.ctrl {
+            control_byte_for_char(ch)
+                .map(|byte| vec![byte])
+                .unwrap_or_else(|| ch.to_string().into_bytes())
+        } else {
+            ch.to_string().into_bytes()
+        };
+        prefix_escape_if_needed(self.has_alt_like(), bytes)
+    }
+}
+
+fn prefix_escape_if_needed(needs_escape_prefix: bool, bytes: Vec<u8>) -> Vec<u8> {
+    if !needs_escape_prefix {
+        return bytes;
+    }
+
+    let mut prefixed = Vec::with_capacity(bytes.len() + 1);
+    prefixed.push(0x1b);
+    prefixed.extend(bytes);
+    prefixed
+}
+
+fn shifted_key_char(ch: char) -> char {
+    match ch {
+        'a'..='z' => ch.to_ascii_uppercase(),
+        '1' => '!',
+        '2' => '@',
+        '3' => '#',
+        '4' => '$',
+        '5' => '%',
+        '6' => '^',
+        '7' => '&',
+        '8' => '*',
+        '9' => '(',
+        '0' => ')',
+        '-' => '_',
+        '=' => '+',
+        '[' => '{',
+        ']' => '}',
+        '\\' => '|',
+        ';' => ':',
+        '\'' => '"',
+        ',' => '<',
+        '.' => '>',
+        '/' => '?',
+        '`' => '~',
+        _ => ch,
+    }
+}
+
+fn control_byte_for_char(ch: char) -> Option<u8> {
+    match ch {
+        'a'..='z' => Some((ch as u8) - b'a' + 1),
+        'A'..='Z' => Some((ch as u8) - b'A' + 1),
+        '@' | ' ' => Some(0),
+        '[' => Some(27),
+        '\\' => Some(28),
+        ']' => Some(29),
+        '^' => Some(30),
+        '_' => Some(31),
+        '?' => Some(127),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -721,8 +845,7 @@ impl Session {
     }
 
     pub fn keystroke(&mut self, key: &str) -> Result<(), SessionError> {
-        let seq =
-            key_to_escape_sequence(key).ok_or_else(|| SessionError::InvalidKey(key.to_string()))?;
+        let seq = self.held_modifiers.keystroke_bytes(key)?;
         self.pty.write(&seq)?;
         self.record_command_timeline_entry("press", key.to_string());
         Ok(())
@@ -751,7 +874,12 @@ impl Session {
     }
 
     pub fn type_text(&mut self, text: &str) -> Result<(), SessionError> {
-        self.pty.write_str(text)?;
+        if self.held_modifiers.is_empty() {
+            self.pty.write_str(text)?;
+        } else {
+            let bytes = self.held_modifiers.typed_bytes(text);
+            self.pty.write(&bytes)?;
+        }
         self.record_command_timeline_entry("type", sanitize_command_timeline_value(text));
         Ok(())
     }
@@ -2859,6 +2987,62 @@ mod tests {
 
         let sessions = persistence.load();
         assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn test_modifier_state_applies_shift_to_keystroke_characters_and_tab() {
+        let mut state = ModifierState::default();
+        state.set(ModifierKey::Shift, true);
+
+        assert_eq!(
+            state
+                .keystroke_bytes("a")
+                .expect("shifted character keystroke should encode"),
+            vec![b'A']
+        );
+        assert_eq!(
+            state
+                .keystroke_bytes("1")
+                .expect("shifted punctuation keystroke should encode"),
+            vec![b'!']
+        );
+        assert_eq!(
+            state
+                .keystroke_bytes("Tab")
+                .expect("shifted tab keystroke should encode"),
+            vec![0x1b, b'[', b'Z']
+        );
+    }
+
+    #[test]
+    fn test_modifier_state_applies_ctrl_alt_to_keystroke_characters() {
+        let mut state = ModifierState::default();
+        state.set(ModifierKey::Ctrl, true);
+        state.set(ModifierKey::Alt, true);
+
+        assert_eq!(
+            state
+                .keystroke_bytes("c")
+                .expect("alt+ctrl keystroke should encode"),
+            vec![0x1b, 3]
+        );
+    }
+
+    #[test]
+    fn test_modifier_state_applies_shift_to_typed_letters_without_remapping_punctuation() {
+        let mut state = ModifierState::default();
+        state.set(ModifierKey::Shift, true);
+
+        assert_eq!(state.typed_bytes("ab-1"), b"AB-1".to_vec());
+    }
+
+    #[test]
+    fn test_modifier_state_applies_ctrl_meta_to_typed_text() {
+        let mut state = ModifierState::default();
+        state.set(ModifierKey::Ctrl, true);
+        state.set(ModifierKey::Meta, true);
+
+        assert_eq!(state.typed_bytes("c["), vec![0x1b, 3, 0x1b, 27]);
     }
 
     #[cfg(unix)]

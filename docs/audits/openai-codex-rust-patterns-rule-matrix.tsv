@@ -1818,7 +1818,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/error.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/error.rs	errors-struct-display-payload	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/error.rs	errors-tool-call-respond-vs-fatal	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/error.rs	errors-transient-permanent-type-split	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/error.rs	errors-transient-permanent-type-split	errors	pass	applicable	F11	2026-04-13 09:16Z	Daemon transport keeps timeout, connection-closed, parse, serialize, size-limit, and raw I/O failures as distinct variants before the server translates them at the RPC boundary.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/error.rs	otel-field-empty-then-record	otel	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/error.rs	otel-instrument-at-trace-level	otel	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/error.rs	otel-layered-subscribers-env-filter	otel	pending	unreviewed			
@@ -1929,7 +1929,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs	defensive-debug-assert-with-early-return	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs	defensive-deny-unwrap-workspace-wide	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs	defensive-head-tail-output-buffer	defensive	finding	applicable	F11	2026-04-13 09:16Z	SizeLimitedReader tracks bytes cumulatively for the whole connection instead of resetting per request, so a multi-request client can hit the 1 MB guard on aggregate traffic and get later small requests rejected.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs	errors-boundary-error-translator	errors	pending	unreviewed			
@@ -4093,7 +4093,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-boundary-error-translator	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-carry-retry-delay-in-variant	errors	finding	applicable	F11	2026-04-13 09:16Z	DaemonClientConfig exposes max_retries and initial_retry_delay, but call_with_config and call_stream never consult them and RpcError preserves only a retryable boolean without any backoff hint from the wire payload.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-struct-display-payload	errors	finding	applicable	F08	2026-04-13 07:33Z	PidLookupResult::Error(String) preformats lock-file read and parse failures, losing structured path and operation context before callers translate the error.
@@ -4121,7 +4121,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	testing-wiremock-sse-fakes	testing	finding	applicable	F11	2026-04-13 09:16Z	Client coverage stops at the in-memory transport round-trip; there is no real daemon-listener plus Unix or WebSocket client test for timeout framing, response validation, or multi-request connection behavior.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	tui-paste-burst-state-machine	tui	pending	unreviewed			
@@ -4216,7 +4216,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/error.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/error.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/error.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/error.rs	errors-struct-display-payload	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/error.rs	errors-struct-display-payload	errors	pass	applicable	F11	2026-04-13 09:16Z	ClientError::RpcError preserves structured code, category, retryable, context, and suggestion fields and can re-render them as JSON without collapsing the payload into a preformatted string.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/error.rs	errors-tool-call-respond-vs-fatal	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/error.rs	errors-transient-permanent-type-split	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/error.rs	otel-field-empty-then-record	otel	pending	unreviewed			

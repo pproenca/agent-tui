@@ -63,6 +63,7 @@ once_cell = "1.19"
 cargo_metadata = "0.23"
 sha2 = "0.10"
 walkdir = "2.5"
+insta = "1.43"
 
 [workspace.lints]
 rust = {}

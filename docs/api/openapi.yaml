@@ -1,171 +1,149 @@
 openapi: 3.0.3
 info:
-  title: agent-tui Daemon API
+  title: agent-tui Live Preview HTTP Surface
   version: "1"
   description: |
-    HTTP API exposed by the agent-tui daemon.
-    Authentication is not currently enforced.
+    HTTP surface exposed by the local daemon for live preview.
+
+    The built-in browser UI is served at `/ui`. Live-preview and flightdeck streams run over
+    JSON-RPC on authenticated WebSocket endpoints at `/ws` and `/api/v1/stream`.
+
+    Browser clients must use the daemon-provided `ws` query parameter when opening `/ui`.
+    WebSocket upgrades require the `token` query parameter and browser requests are limited to
+    the daemon's own origin.
 servers:
   - url: http://127.0.0.1:{port}
     description: |
-      Local daemon endpoint. Read the effective port from the daemon WS state file
-      (`AGENT_TUI_WS_STATE`, default `~/.agent-tui/api.json`).
+      Local daemon endpoint. Read the effective port and authenticated websocket URL from the
+      daemon WS state file (`AGENT_TUI_WS_STATE`, default `~/.agent-tui/api.json`).
     variables:
       port:
         default: "0"
 paths:
-  /api/v1/sessions:
+  /:
     get:
-      summary: List sessions
-      description: Returns all known sessions and the active session id.
+      summary: Redirect to the built-in live preview UI
       responses:
-        '200':
-          description: Sessions payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SessionsResponse'
-  /api/v1/sessions/{id}/snapshot:
+        '307':
+          description: Redirect to `/ui?ws=<encoded-authenticated-ws-url>`
+  /ui:
     get:
-      summary: Live preview snapshot
-      description: Returns the current terminal snapshot for a session.
-      parameters:
-        - $ref: '#/components/parameters/sessionId'
-      responses:
-        '200':
-          description: Snapshot payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SnapshotResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '502':
-          $ref: '#/components/responses/BadGateway'
-  /api/v1/stream:
-    get:
-      summary: Live preview stream (WebSocket)
+      summary: Built-in live preview web UI
       description: |
-        WebSocket upgrade endpoint. Use AsyncAPI for the detailed stream schema.
-        JSON-RPC stream methods supported on this socket:
-        - `live_preview_stream` (single-session terminal output)
-        - `flightdeck_stream` (session inventory updates for the web flightdeck)
+        Serves the browser client for live preview and flightdeck session inspection.
+        The browser contract expects the daemon-provided authenticated websocket URL in the
+        `ws` query parameter.
       parameters:
-        - $ref: '#/components/parameters/session'
-        - $ref: '#/components/parameters/encoding'
+        - name: ws
+          in: query
+          required: true
+          description: Authenticated daemon websocket URL emitted by the local daemon.
+          schema:
+            type: string
+            format: uri
+        - name: session
+          in: query
+          required: false
+          description: Session selector for the built-in client. `"active"` follows the active session.
+          schema:
+            type: string
+            default: active
+        - name: auto
+          in: query
+          required: false
+          description: Auto-connect toggle for the built-in client.
+          schema:
+            type: string
+            enum: ["0", "1", "false", "true"]
+            default: "1"
+      responses:
+        '200':
+          description: HTML document for the built-in live preview UI.
+  /ws:
+    get:
+      summary: Authenticated JSON-RPC WebSocket endpoint
+      description: |
+        WebSocket upgrade endpoint for live-preview and flightdeck streams.
+
+        Clients send JSON-RPC requests such as `live_preview_stream` and `flightdeck_stream`
+        after the upgrade succeeds. See `asyncapi.yaml` for the request and response envelopes.
+      security:
+        - WsTokenQuery: []
       responses:
         '101':
           description: Switching Protocols
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '401':
+          description: Missing or invalid websocket token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcErrorEnvelope'
+        '403':
+          description: Browser `Origin` does not match the daemon UI origin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcErrorEnvelope'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          description: Too many websocket connections.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcErrorEnvelope'
+  /api/v1/stream:
+    get:
+      summary: Legacy alias for `/ws`
+      description: |
+        Authenticated JSON-RPC WebSocket endpoint equivalent to `/ws`.
+        Existing clients may continue to use this alias.
+      security:
+        - WsTokenQuery: []
+      responses:
+        '101':
+          description: Switching Protocols
+        '401':
+          description: Missing or invalid websocket token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcErrorEnvelope'
+        '403':
+          description: Browser `Origin` does not match the daemon UI origin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcErrorEnvelope'
+        '503':
+          description: Too many websocket connections.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcErrorEnvelope'
 components:
-  parameters:
-    session:
-      name: session
+  securitySchemes:
+    WsTokenQuery:
+      type: apiKey
       in: query
-      description: Session id or "active" to target the active session.
-      required: false
-      schema:
-        type: string
-        default: active
-    encoding:
-      name: encoding
-      in: query
-      description: Output encoding for WebSocket stream.
-      required: false
-      schema:
-        type: string
-        enum: [base64, binary]
-        default: base64
-    sessionId:
-      name: id
-      in: path
-      required: true
-      description: Session id or "active".
-      schema:
-        type: string
-  responses:
-    NotFound:
-      description: Session not found.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    BadGateway:
-      description: Backend failed to refresh session state.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    BadRequest:
-      description: Invalid request.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-    ServiceUnavailable:
-      description: Too many WebSocket connections.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
+      name: token
+      description: |
+        Authenticated websocket token from the daemon WS state file.
   schemas:
-    SessionsResponse:
+    JsonRpcErrorEnvelope:
       type: object
-      required: [active, sessions]
+      required: [jsonrpc, id, error]
       properties:
-        active:
+        jsonrpc:
           type: string
-          nullable: true
-        sessions:
-          type: array
-          items:
-            $ref: '#/components/schemas/SessionInfo'
-    SessionInfo:
-      type: object
-      required: [id, command, pid, running, created_at, size]
-      properties:
+          enum: ["2.0"]
         id:
-          type: string
-        command:
-          type: string
-        pid:
           type: integer
           format: int64
-        running:
-          type: boolean
-        created_at:
-          type: string
-          description: Creation timestamp as stored by the daemon.
-        size:
-          type: object
-          required: [cols, rows]
-          properties:
-            cols:
-              type: integer
-              format: int32
-            rows:
-              type: integer
-              format: int32
-    SnapshotResponse:
-      type: object
-      required: [cols, rows, init]
-      properties:
-        cols:
-          type: integer
-          format: int32
-        rows:
-          type: integer
-          format: int32
-        init:
-          type: string
-    ErrorResponse:
-      type: object
-      required: [error]
-      properties:
         error:
-          type: string
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: integer
+              format: int32
+            message:
+              type: string

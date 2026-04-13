@@ -3,11 +3,17 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::error::Error as StdError;
+use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::io::Write;
+use std::os::fd::AsRawFd;
+use std::os::fd::FromRawFd;
+use std::os::fd::RawFd;
+use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -15,6 +21,8 @@ use crossbeam_channel as channel;
 use crossterm::event::KeyCode;
 use libc::POLLERR;
 use libc::POLLHUP;
+use libc::POLLIN;
+use libc::POLLNVAL;
 use libc::POLLOUT;
 use libc::poll;
 use libc::pollfd;
@@ -38,6 +46,7 @@ pub struct PtyHandle {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     size: PtySize,
     read_rx: Option<channel::Receiver<ReadEvent>>,
+    reader_worker: Option<ReaderWorker>,
     read_buffer: VecDeque<u8>,
     read_closed: bool,
     read_error: Option<String>,
@@ -46,12 +55,40 @@ pub struct PtyHandle {
 const TERMINATE_TIMEOUT: Duration = Duration::from_millis(500);
 const KILL_TIMEOUT: Duration = Duration::from_millis(500);
 const KILL_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const READER_JOIN_TIMEOUT: Duration = Duration::from_millis(500);
+const READER_JOIN_POLL_INTERVAL: Duration = Duration::from_millis(20);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReaderJoinOutcome {
+    Joined,
+    ReapingInBackground,
+}
+
+struct ReaderWorker {
+    shutdown_writer: UnixStream,
+    join: Option<thread::JoinHandle<()>>,
+}
+
+impl ReaderWorker {
+    fn shutdown(&mut self) -> ReaderJoinOutcome {
+        if let Err(err) = self.shutdown_writer.write_all(&[1]) {
+            if err.kind() != io::ErrorKind::BrokenPipe {
+                warn!(error = %err, "Failed to signal PTY reader shutdown");
+            }
+        }
+
+        let Some(join) = self.join.take() else {
+            return ReaderJoinOutcome::Joined;
+        };
+
+        join_thread_with_timeout_or_reap(join, READER_JOIN_TIMEOUT, "pty reader thread")
+    }
+}
 
 impl Drop for PtyHandle {
     fn drop(&mut self) {
-        if self.is_running() {
-            let _ = self.kill();
-        }
+        let _ = self.kill_process();
+        self.shutdown_reader();
     }
 }
 
@@ -92,22 +129,25 @@ impl PtyHandle {
 
         cmd.env("TERM", "xterm-256color");
 
-        let child = pair.slave.spawn_command(cmd).map_err(|e| {
+        let mut child = pair.slave.spawn_command(cmd).map_err(|e| {
             let reason = e.to_string();
             let kind = classify_spawn_error(e.as_ref(), &reason);
             PtyError::Spawn { reason, kind }
         })?;
 
-        let reader = pair.master.try_clone_reader().map_err(|e| PtyError::Open {
-            reason: e.to_string(),
-            source: None,
-        })?;
-        let read_rx = spawn_reader(reader);
-
         let writer = pair.master.take_writer().map_err(|e| PtyError::Open {
             reason: e.to_string(),
             source: None,
         })?;
+
+        let (read_rx, reader_worker) = match spawn_reader(pair.master.as_raw_fd()) {
+            Ok(parts) => parts,
+            Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(err);
+            }
+        };
 
         Ok(Self {
             master: pair.master,
@@ -115,6 +155,7 @@ impl PtyHandle {
             writer: Arc::new(Mutex::new(writer)),
             size,
             read_rx: Some(read_rx),
+            reader_worker: Some(reader_worker),
             read_buffer: VecDeque::new(),
             read_closed: false,
             read_error: None,
@@ -307,6 +348,20 @@ impl PtyHandle {
     }
 
     pub fn kill(&mut self) -> Result<(), PtyError> {
+        let result = self.kill_process();
+        if result.is_ok() {
+            self.shutdown_reader();
+        }
+        result
+    }
+
+    pub(crate) fn take_read_rx(&mut self) -> Option<channel::Receiver<ReadEvent>> {
+        self.read_rx.take()
+    }
+}
+
+impl PtyHandle {
+    fn kill_process(&mut self) -> Result<(), PtyError> {
         if !self.is_running() {
             return Ok(());
         }
@@ -365,13 +420,6 @@ impl PtyHandle {
         let _ = self.wait_for_exit(KILL_TIMEOUT);
         Ok(())
     }
-
-    pub(crate) fn take_read_rx(&mut self) -> Option<channel::Receiver<ReadEvent>> {
-        self.read_rx.take()
-    }
-}
-
-impl PtyHandle {
     fn wait_for_exit(&mut self, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
         loop {
@@ -385,6 +433,13 @@ impl PtyHandle {
                 return false;
             }
             std::thread::park_timeout(KILL_POLL_INTERVAL);
+        }
+    }
+
+    fn shutdown_reader(&mut self) {
+        let _ = self.read_rx.take();
+        if let Some(mut worker) = self.reader_worker.take() {
+            let _ = worker.shutdown();
         }
     }
 
@@ -440,40 +495,231 @@ pub(crate) enum ReadEvent {
     Error(String),
 }
 
-const PTY_READ_CHANNEL_CAPACITY: usize = 256;
+fn join_thread_with_timeout_or_reap(
+    handle: thread::JoinHandle<()>,
+    timeout: Duration,
+    thread_label: &'static str,
+) -> ReaderJoinOutcome {
+    let deadline = Instant::now() + timeout;
+    while !handle.is_finished() {
+        if Instant::now() >= deadline {
+            warn!(
+                thread = thread_label,
+                timeout_ms = timeout.as_millis(),
+                "Timed out joining thread; handing ownership to background reaper"
+            );
+            return spawn_join_reaper(handle, thread_label);
+        }
+        thread::park_timeout(READER_JOIN_POLL_INTERVAL);
+    }
+    let _ = handle.join();
+    ReaderJoinOutcome::Joined
+}
 
-fn spawn_reader(mut reader: Box<dyn Read + Send>) -> channel::Receiver<ReadEvent> {
-    let (tx, rx) = channel::bounded(PTY_READ_CHANNEL_CAPACITY);
+fn spawn_join_reaper(
+    handle: thread::JoinHandle<()>,
+    thread_label: &'static str,
+) -> ReaderJoinOutcome {
+    let handle_cell = Arc::new(Mutex::new(Some(handle)));
+    let handle_for_thread = Arc::clone(&handle_cell);
+    match thread::Builder::new()
+        .name("pty-reader-reaper".to_string())
+        .spawn(move || {
+            let Some(handle) = handle_for_thread
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+            else {
+                return;
+            };
+
+            if handle.join().is_err() {
+                warn!(
+                    thread = thread_label,
+                    "Background reaper observed thread panic"
+                );
+            }
+        }) {
+        Ok(_) => ReaderJoinOutcome::ReapingInBackground,
+        Err(err) => {
+            warn!(
+                thread = thread_label,
+                error = %err,
+                "Failed to spawn background join reaper; joining synchronously"
+            );
+            if let Some(handle) = handle_cell
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+            {
+                let _ = handle.join();
+            }
+            ReaderJoinOutcome::Joined
+        }
+    }
+}
+
+fn spawn_reader(
+    master_fd: Option<RawFd>,
+) -> Result<(channel::Receiver<ReadEvent>, ReaderWorker), PtyError> {
+    let Some(master_fd) = master_fd else {
+        return Err(PtyError::Open {
+            reason: "PTY master file descriptor is unavailable".to_string(),
+            source: None,
+        });
+    };
+    spawn_reader_from_fd(master_fd)
+}
+
+fn spawn_reader_from_fd(
+    master_fd: RawFd,
+) -> Result<(channel::Receiver<ReadEvent>, ReaderWorker), PtyError> {
+    let reader_fd = duplicate_fd(master_fd).map_err(|err| PtyError::Open {
+        reason: format!("failed to duplicate PTY reader fd: {err}"),
+        source: None,
+    })?;
+    let reader = {
+        // SAFETY: `duplicate_fd` returns a new owned file descriptor that belongs
+        // exclusively to this `File`.
+        unsafe { File::from_raw_fd(reader_fd) }
+    };
+    let (mut shutdown_reader, shutdown_writer) =
+        UnixStream::pair().map_err(|err| PtyError::Open {
+            reason: format!("failed to create PTY reader shutdown signal: {err}"),
+            source: None,
+        })?;
+    shutdown_reader
+        .set_nonblocking(true)
+        .map_err(|err| PtyError::Open {
+            reason: format!("failed to configure PTY reader shutdown signal: {err}"),
+            source: None,
+        })?;
+
+    #[allow(clippy::disallowed_methods)]
+    let (tx, rx) = channel::unbounded();
     let span = tracing::debug_span!("pty_reader");
-    let builder = std::thread::Builder::new().name("pty-reader".to_string());
-    let tx_thread = tx.clone();
-    if let Err(err) = builder.spawn(move || {
-        let _guard = span.enter();
-        let mut buf = [0u8; 8192];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) => {
-                    let _ = tx_thread.send(ReadEvent::Eof);
-                    debug!("PTY reader EOF");
-                    break;
-                }
-                Ok(n) => {
-                    if tx_thread.send(ReadEvent::Data(buf[..n].to_vec())).is_err() {
-                        break;
-                    }
-                }
-                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                Err(e) => {
-                    warn!(error = %e, "PTY reader error");
-                    let _ = tx_thread.send(ReadEvent::Error(e.to_string()));
+    let join = thread::Builder::new()
+        .name("pty-reader".to_string())
+        .spawn(move || {
+            let _guard = span.enter();
+            reader_loop(reader, &mut shutdown_reader, tx);
+        })
+        .map_err(|err| PtyError::Open {
+            reason: format!("failed to spawn PTY reader thread: {err}"),
+            source: None,
+        })?;
+
+    Ok((
+        rx,
+        ReaderWorker {
+            shutdown_writer,
+            join: Some(join),
+        },
+    ))
+}
+
+fn reader_loop(mut reader: File, shutdown_reader: &mut UnixStream, tx: channel::Sender<ReadEvent>) {
+    let mut buf = [0u8; 8192];
+    loop {
+        match wait_for_reader_or_shutdown(reader.as_raw_fd(), shutdown_reader.as_raw_fd()) {
+            Ok(ReaderPoll::Shutdown) => {
+                drain_shutdown_signal(shutdown_reader);
+                debug!("PTY reader shutdown");
+                break;
+            }
+            Ok(ReaderPoll::Readable) => {
+                if !forward_read_event(&mut reader, &tx, &mut buf) {
                     break;
                 }
             }
+            Err(err) => {
+                warn!(error = %err, "PTY reader poll error");
+                let _ = tx.send(ReadEvent::Error(err.to_string()));
+                break;
+            }
         }
-    }) {
-        let _ = tx.send(ReadEvent::Error(err.to_string()));
     }
-    rx
+}
+
+fn forward_read_event<R: Read>(
+    reader: &mut R,
+    tx: &channel::Sender<ReadEvent>,
+    buf: &mut [u8; 8192],
+) -> bool {
+    match reader.read(buf) {
+        Ok(0) => {
+            let _ = tx.send(ReadEvent::Eof);
+            debug!("PTY reader EOF");
+            false
+        }
+        Ok(n) => tx.send(ReadEvent::Data(buf[..n].to_vec())).is_ok(),
+        Err(err) if err.kind() == io::ErrorKind::Interrupted => true,
+        Err(err) => {
+            warn!(error = %err, "PTY reader error");
+            let _ = tx.send(ReadEvent::Error(err.to_string()));
+            false
+        }
+    }
+}
+
+enum ReaderPoll {
+    Readable,
+    Shutdown,
+}
+
+fn wait_for_reader_or_shutdown(reader_fd: RawFd, shutdown_fd: RawFd) -> io::Result<ReaderPoll> {
+    let mut fds = [
+        pollfd {
+            fd: shutdown_fd,
+            events: POLLIN,
+            revents: 0,
+        },
+        pollfd {
+            fd: reader_fd,
+            events: POLLIN | POLLHUP | POLLERR | POLLNVAL,
+            revents: 0,
+        },
+    ];
+    loop {
+        // SAFETY: `poll` is called with a valid pointer to two live `pollfd`
+        // entries whose storage outlives the call.
+        let rc = unsafe { poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, -1) };
+        if rc < 0 {
+            let err = io::Error::last_os_error();
+            if err.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(err);
+        }
+        if fds[0].revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL) != 0 {
+            return Ok(ReaderPoll::Shutdown);
+        }
+        if fds[1].revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL) != 0 {
+            return Ok(ReaderPoll::Readable);
+        }
+    }
+}
+
+fn drain_shutdown_signal(reader: &mut UnixStream) {
+    let mut buf = [0u8; 64];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(_) => continue,
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
+            Err(_) => break,
+        }
+    }
+}
+
+fn duplicate_fd(fd: RawFd) -> io::Result<RawFd> {
+    // SAFETY: `fd` is borrowed for the duration of this syscall and the returned
+    // descriptor is independent from the original on success.
+    let duplicated = unsafe { libc::dup(fd) };
+    if duplicated < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(duplicated)
 }
 
 pub fn key_to_escape_sequence(key: &str) -> Option<Vec<u8>> {
@@ -609,67 +855,5 @@ fn find_spawn_error_kind_in_chain(error: &(dyn StdError + 'static)) -> Option<Sp
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::domain::session_types::TerminalSize;
-    #[cfg(unix)]
-    use std::process::Command;
-
-    #[test]
-    fn test_key_to_escape_sequence() {
-        assert_eq!(key_to_escape_sequence("Enter"), Some(vec![b'\r']));
-        assert_eq!(key_to_escape_sequence("Tab"), Some(vec![b'\t']));
-        assert_eq!(key_to_escape_sequence("Escape"), Some(vec![0x1b]));
-        assert_eq!(
-            key_to_escape_sequence("ArrowUp"),
-            Some(vec![0x1b, b'[', b'A'])
-        );
-        assert_eq!(key_to_escape_sequence("Ctrl+C"), Some(vec![3]));
-        assert_eq!(key_to_escape_sequence("a"), Some(vec![b'a']));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn can_signal_process_group_is_false_for_non_group_leader() {
-        let mut child = Command::new("sh")
-            .arg("-c")
-            .arg("sleep 5")
-            .spawn()
-            .expect("spawn child");
-        let pid = child.id();
-        let can_signal = can_signal_process_group(pid).expect("getpgid should succeed");
-        assert!(
-            !can_signal,
-            "regular child process should not be treated as process-group leader"
-        );
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-
-    #[test]
-    fn spawn_missing_command_is_classified_as_not_found() {
-        let result = PtyHandle::spawn(
-            "agent-tui-command-that-should-not-exist-for-tests",
-            &[],
-            None,
-            None,
-            TerminalSize::default(),
-        );
-
-        match result {
-            Err(PtyError::Spawn { kind, reason }) => {
-                assert_eq!(kind, SpawnErrorKind::NotFound);
-                assert!(
-                    reason.contains("PATH")
-                        || reason.to_ascii_lowercase().contains("not found")
-                        || reason
-                            .to_ascii_lowercase()
-                            .contains("no such file or directory"),
-                    "unexpected spawn reason: {reason}"
-                );
-            }
-            Err(other) => panic!("expected spawn error, got {other:?}"),
-            Ok(_) => panic!("expected missing command to fail"),
-        }
-    }
-}
+#[path = "pty_tests.rs"]
+mod tests;

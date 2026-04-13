@@ -1,0 +1,23 @@
+---
+source: crates/agent-tui-usecases/src/usecases/snapshot.rs
+expression: output
+---
+SnapshotOutput {
+    session_id: SessionId(
+        "test-session",
+    ),
+    screenshot: "plain text\n",
+    cursor: Some(
+        CursorPosition {
+            row: 0,
+            col: 0,
+            visible: false,
+        },
+    ),
+    rendered: Some(
+        "\u{1b}[31mplain text\u{1b}[0m\r\n",
+    ),
+    compact_rendered: Some(
+        "plain text\n",
+    ),
+}

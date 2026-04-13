@@ -1,6 +1,12 @@
 [graph]
 all-features = false
 no-default-features = false
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnu",
+]
 
 [output]
 feature-depth = 1
@@ -20,7 +26,6 @@ allow = [
     "BSD-3-Clause",
     "CC0-1.0",
     "MIT",
-    "NCSA",
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "Unlicense",
@@ -42,7 +47,18 @@ workspace-default-features = "allow"
 external-default-features = "allow"
 allow = []
 deny = []
-skip = []
+skip = [
+    { crate = "bitflags@1.3.2", reason = "portable-pty and the tattoy/wezterm rendering stack still depend on bitflags 1.x while crossterm and newer nix consumers require 2.x" },
+    { crate = "cfg_aliases@0.1.1", reason = "portable-pty is still pinned to nix 0.28 and its older cfg_aliases build dependency while the tattoy/wezterm stack has already moved to nix 0.29" },
+    { crate = "getrandom@0.2.17", reason = "rand 0.8 remains transitively required by tungstenite and the image/tattoy stack while tempfile and uuid already pull getrandom 0.3" },
+    { crate = "miniz_oxide@0.7.4", reason = "tattoy-wezterm-term still pulls the older flate/miniz chain while image and png have moved to miniz_oxide 0.8" },
+    { crate = "nix@0.28.0", reason = "portable-pty is still pinned to nix 0.28 while the tattoy/wezterm stack requires nix 0.29" },
+    { crate = "nom@7.1.3", reason = "terminfo still depends on nom 7 while the ravif/rav1e image stack has moved to nom 8" },
+    { crate = "signal-hook@0.3.18", reason = "crossterm and tattoy-termwiz still depend on signal-hook 0.3 while this workspace depends directly on signal-hook 0.4" },
+    { crate = "syn@1.0.109", reason = "wezterm-dynamic-derive remains on syn 1 while the modern proc-macro ecosystem in this workspace uses syn 2" },
+    { crate = "thiserror@1.0.69", reason = "filedescriptor, tungstenite, and the tattoy/wezterm stack still depend on thiserror 1 while the workspace has standardized on thiserror 2" },
+    { crate = "thiserror-impl@1.0.69", reason = "proc-macro half of the thiserror 1.x dependency that is still required by upstream portable-pty/tattoy transitive crates" },
+]
 skip-tree = []
 
 [sources]

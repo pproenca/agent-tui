@@ -386,6 +386,7 @@ pub(crate) fn handle_spawn<C: DaemonClient>(
     command: String,
     args: Vec<String>,
     cwd: Option<PathBuf>,
+    env: Option<HashMap<String, String>>,
     cols: u16,
     rows: u16,
 ) -> HandlerResult {
@@ -411,6 +412,7 @@ pub(crate) fn handle_spawn<C: DaemonClient>(
         command,
         args,
         cwd,
+        env,
         session: ctx.session.clone(),
         size,
     };
@@ -973,9 +975,15 @@ pub(crate) fn handle_live_start_standalone(
 
     if args.open {
         let open_base_url = open_base_url.as_deref().unwrap_or(&daemon_ui_url);
-        let target = build_ui_url(open_base_url, &state);
-        if let Err(err) = open_in_browser(&target, args.browser.as_deref()) {
-            eprintln!("Warning: failed to open browser: {err}");
+        match build_ui_url(open_base_url, &state) {
+            Ok(target) => {
+                if let Err(err) = open_in_browser(&target, args.browser.as_deref()) {
+                    eprintln!("Warning: failed to open browser: {err}");
+                }
+            }
+            Err(err) => {
+                eprintln!("Warning: failed to build live preview URL: {err}");
+            }
         }
     }
 
@@ -2064,48 +2072,52 @@ fn stop_ui_server_with_controller_and_timeouts<C: ProcessController>(
     ))
 }
 
-fn build_ui_url(base: &str, state: &WsState) -> String {
+fn ui_urls_share_origin(left: &url::Url, right: &url::Url) -> bool {
+    left.scheme() == right.scheme()
+        && left.host_str() == right.host_str()
+        && left.port_or_known_default() == right.port_or_known_default()
+}
+
+fn build_ui_url(base: &str, state: &WsState) -> Result<String> {
     let (base, fragment) = base.split_once('#').unwrap_or((base, ""));
-    if let Ok(mut url) = url::Url::parse(base) {
-        let existing: Vec<(String, String)> = url
-            .query_pairs()
-            .map(|(key, value)| (key.into_owned(), value.into_owned()))
-            .collect();
-        {
-            let mut pairs = url.query_pairs_mut();
-            pairs.clear();
-            for (key, value) in existing {
-                match key.as_ref() {
-                    "ws" | "session" | "auto" => {}
-                    _ => {
-                        pairs.append_pair(&key, &value);
-                    }
+    let daemon_ui_url = state.resolved_ui_url();
+    let daemon_url = url::Url::parse(&daemon_ui_url)
+        .with_context(|| format!("Invalid daemon UI URL: {daemon_ui_url}"))?;
+
+    let mut url = if let Ok(parsed) = url::Url::parse(base) {
+        if !ui_urls_share_origin(&parsed, &daemon_url) {
+            anyhow::bail!("AGENT_TUI_UI_URL must use the same origin as the local live preview UI");
+        }
+        parsed
+    } else {
+        daemon_url
+            .join(base)
+            .with_context(|| format!("Invalid AGENT_TUI_UI_URL override: {base}"))?
+    };
+
+    let existing: Vec<(String, String)> = url
+        .query_pairs()
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect();
+    {
+        let mut pairs = url.query_pairs_mut();
+        pairs.clear();
+        for (key, value) in existing {
+            match key.as_ref() {
+                "ws" | "session" | "auto" => {}
+                _ => {
+                    pairs.append_pair(&key, &value);
                 }
             }
-            pairs.append_pair("ws", &state.ws_url);
-            pairs.append_pair("session", "active");
-            pairs.append_pair("auto", "1");
         }
-        if !fragment.is_empty() {
-            url.set_fragment(Some(fragment));
-        }
-        return url.to_string();
+        pairs.append_pair("ws", &state.ws_url);
+        pairs.append_pair("session", "active");
+        pairs.append_pair("auto", "1");
     }
-
-    warn!(base = %base, "Failed to parse UI URL; falling back to string concatenation");
-
-    let separator = if base.contains('?') { "&" } else { "?" };
-    let mut url = String::with_capacity(base.len() + 96);
-    url.push_str(base);
-    url.push_str(separator);
-    url.push_str("ws=");
-    url.push_str(&state.ws_url);
-    url.push_str("&session=active&auto=1");
     if !fragment.is_empty() {
-        url.push('#');
-        url.push_str(fragment);
+        url.set_fragment(Some(fragment));
     }
-    url
+    Ok(url.to_string())
 }
 
 fn open_in_browser(url: &str, browser_override: Option<&str>) -> Result<()> {
@@ -2679,553 +2691,5 @@ pub(crate) fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) ->
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::adapters::RpcValue;
-    use crate::adapters::presenter::ClientErrorView;
-    use crate::adapters::presenter::Presenter;
-    use crate::adapters::presenter::TextPresenter;
-    use crate::app::commands::OutputFormat;
-    use crate::infra::ipc::MockClient;
-    use crate::infra::ipc::ProcessStatus;
-    use crate::test_support::env_lock;
-    use std::cell::RefCell;
-    use std::fs;
-    use std::rc::Rc;
-    use std::sync::Mutex;
-    use tempfile::TempDir;
-
-    struct EnvVarGuard {
-        key: &'static str,
-        prev: Option<String>,
-    }
-
-    impl EnvVarGuard {
-        fn set(key: &'static str, value: impl Into<String>) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: test-only environment mutation under env_lock.
-            unsafe {
-                std::env::set_var(key, value.into());
-            }
-            Self { key, prev }
-        }
-
-        fn remove(key: &'static str) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: test-only environment mutation under env_lock.
-            unsafe {
-                std::env::remove_var(key);
-            }
-            Self { key, prev }
-        }
-    }
-
-    impl Drop for EnvVarGuard {
-        fn drop(&mut self) {
-            // SAFETY: test-only environment restoration under env_lock.
-            unsafe {
-                if let Some(prev) = self.prev.take() {
-                    std::env::set_var(self.key, prev);
-                } else {
-                    std::env::remove_var(self.key);
-                }
-            }
-        }
-    }
-
-    struct StopUiController {
-        status: Mutex<ProcessStatus>,
-        signals: Mutex<Vec<Signal>>,
-        kill_on_term: bool,
-        kill_on_kill: bool,
-        started_at: Option<u64>,
-    }
-
-    impl StopUiController {
-        fn new(
-            status: ProcessStatus,
-            kill_on_term: bool,
-            kill_on_kill: bool,
-            started_at: Option<u64>,
-        ) -> Self {
-            Self {
-                status: Mutex::new(status),
-                signals: Mutex::new(Vec::new()),
-                kill_on_term,
-                kill_on_kill,
-                started_at,
-            }
-        }
-
-        fn signals(&self) -> Vec<Signal> {
-            self.signals
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone()
-        }
-    }
-
-    impl ProcessController for StopUiController {
-        fn check_process(&self, _pid: u32) -> std::io::Result<crate::infra::ipc::ProcessStatus> {
-            Ok(*self
-                .status
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner))
-        }
-
-        fn send_signal(&self, _pid: u32, signal: Signal) -> std::io::Result<()> {
-            self.signals
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(signal);
-            let should_stop = match signal {
-                Signal::Term => self.kill_on_term,
-                Signal::Kill => self.kill_on_kill,
-            };
-            if should_stop {
-                *self
-                    .status
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = ProcessStatus::NotFound;
-            }
-            Ok(())
-        }
-
-        fn process_identity(&self, pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
-            Ok(Some(ProcessIdentity {
-                pid,
-                started_at: self.started_at,
-            }))
-        }
-    }
-
-    struct MockPresenter {
-        output: Rc<RefCell<Vec<String>>>,
-    }
-
-    impl MockPresenter {
-        fn new() -> (Self, Rc<RefCell<Vec<String>>>) {
-            let output = Rc::new(RefCell::new(Vec::new()));
-            (
-                Self {
-                    output: output.clone(),
-                },
-                output,
-            )
-        }
-    }
-
-    impl Presenter for MockPresenter {
-        fn present_success(&self, message: &str, warning: Option<&str>) {
-            self.output.borrow_mut().push(format!("success: {message}"));
-            if let Some(w) = warning {
-                self.output.borrow_mut().push(format!("warning: {w}"));
-            }
-        }
-
-        fn present_error(&self, message: &str) {
-            self.output.borrow_mut().push(format!("error: {message}"));
-        }
-
-        fn present_value(&self, value: &RpcValue) {
-            self.output
-                .borrow_mut()
-                .push(format!("value: {}", value.to_pretty_json()));
-        }
-
-        fn present_client_error(&self, error: &ClientErrorView) {
-            self.output
-                .borrow_mut()
-                .push(format!("client_error: {}", error.message));
-        }
-
-        fn present_kv(&self, key: &str, value: &str) {
-            self.output.borrow_mut().push(format!("kv: {key}={value}"));
-        }
-
-        fn present_session_id(&self, session_id: &str, label: Option<&str>) {
-            self.output
-                .borrow_mut()
-                .push(format!("session: {session_id} {label:?}"));
-        }
-
-        fn present_list_header(&self, title: &str) {
-            self.output.borrow_mut().push(format!("header: {title}"));
-        }
-
-        fn present_list_item(&self, item: &str) {
-            self.output.borrow_mut().push(format!("item: {item}"));
-        }
-
-        fn present_info(&self, message: &str) {
-            self.output.borrow_mut().push(format!("info: {message}"));
-        }
-
-        fn present_header(&self, text: &str) {
-            self.output.borrow_mut().push(format!("bold: {text}"));
-        }
-
-        fn present_raw(&self, text: &str) {
-            self.output.borrow_mut().push(format!("raw: {text}"));
-        }
-
-        fn present_wait_result(&self, result: &crate::adapters::presenter::WaitResult) {
-            self.output.borrow_mut().push(format!(
-                "wait: found={}, elapsed={}ms",
-                result.found, result.elapsed_ms
-            ));
-        }
-
-        fn present_assert_result(&self, result: &crate::adapters::presenter::AssertResult) {
-            self.output.borrow_mut().push(format!(
-                "assert: passed={}, condition={}",
-                result.passed, result.condition
-            ));
-        }
-
-        fn present_cleanup(&self, result: &crate::adapters::presenter::CleanupResult) {
-            self.output.borrow_mut().push(format!(
-                "cleanup: cleaned={}, failed={}",
-                result.cleaned,
-                result.failures.len()
-            ));
-        }
-    }
-
-    #[test]
-    fn test_handler_context_has_presenter() {
-        let presenter = TextPresenter;
-
-        let _: &dyn Presenter = &presenter;
-    }
-
-    #[test]
-    fn test_mock_presenter_captures_output() {
-        let (presenter, output) = MockPresenter::new();
-
-        presenter.present_success("Operation completed", None);
-        presenter.present_error("Something failed");
-        presenter.present_kv("key", "value");
-
-        let captured = output.borrow();
-        assert!(captured.iter().any(|s| s.contains("success:")));
-        assert!(captured.iter().any(|s| s.contains("error:")));
-        assert!(captured.iter().any(|s| s.contains("kv:")));
-    }
-
-    #[test]
-    fn handle_spawn_uses_invocation_cwd_for_local_transport_when_cwd_omitted() {
-        let _env = env_lock();
-        let _transport_guard = EnvVarGuard::set("AGENT_TUI_TRANSPORT", "unix");
-        let temp_dir = TempDir::new_in("/tmp").expect("tempdir");
-        let expected_cwd = fs::canonicalize(temp_dir.path()).expect("canonical temp dir");
-
-        let mut client = MockClient::new();
-        client.set_response(
-            "spawn",
-            serde_json::json!({
-                "session_id": "session-1",
-                "pid": 42
-            }),
-        );
-
-        let (presenter, _output) = MockPresenter::new();
-        let mut ctx = HandlerContext {
-            client: &mut client,
-            session: None,
-            format: OutputFormat::Json,
-            no_input: false,
-            presenter: Box::new(presenter),
-            current_dir_override: Some(expected_cwd.clone()),
-        };
-
-        handle_spawn(&mut ctx, "bash".to_string(), Vec::new(), None, 120, 40)
-            .expect("spawn should succeed");
-
-        let params = client
-            .last_call("spawn")
-            .and_then(|(_, params)| params)
-            .expect("spawn params");
-        assert_eq!(params["cwd"], expected_cwd.display().to_string());
-    }
-
-    #[test]
-    fn handle_spawn_omits_default_cwd_for_websocket_transport() {
-        let _env = env_lock();
-        let _transport_guard = EnvVarGuard::set("AGENT_TUI_TRANSPORT", "ws");
-
-        let mut client = MockClient::new();
-        client.set_response(
-            "spawn",
-            serde_json::json!({
-                "session_id": "session-1",
-                "pid": 42
-            }),
-        );
-
-        let (presenter, _output) = MockPresenter::new();
-        let mut ctx = HandlerContext {
-            client: &mut client,
-            session: None,
-            format: OutputFormat::Json,
-            no_input: false,
-            presenter: Box::new(presenter),
-            current_dir_override: None,
-        };
-
-        handle_spawn(&mut ctx, "bash".to_string(), Vec::new(), None, 120, 40)
-            .expect("spawn should succeed");
-
-        let params = client
-            .last_call("spawn")
-            .and_then(|(_, params)| params)
-            .expect("spawn params");
-        assert!(
-            params.get("cwd").is_none(),
-            "cwd should be omitted for ws transport"
-        );
-    }
-
-    #[test]
-    fn handle_spawn_rejects_invalid_terminal_size_before_rpc() {
-        let mut client = MockClient::new();
-        let (presenter, _output) = MockPresenter::new();
-        let mut ctx = HandlerContext {
-            client: &mut client,
-            session: None,
-            format: OutputFormat::Json,
-            no_input: false,
-            presenter: Box::new(presenter),
-            current_dir_override: None,
-        };
-
-        let err = handle_spawn(&mut ctx, "bash".to_string(), Vec::new(), None, 9, 40)
-            .expect_err("invalid size should fail");
-        let cli_error = err.downcast::<CliError>().expect("cli error");
-        assert!(cli_error.message.contains("Invalid terminal size"));
-        assert!(
-            client.last_call("spawn").is_none(),
-            "spawn RPC should not be sent for invalid sizes"
-        );
-    }
-
-    #[test]
-    fn test_assert_condition_parsing_text() {
-        let condition = "text:Submit";
-        let (kind, value) = condition.split_once(':').expect("expected separator");
-        assert_eq!(kind, "text");
-        assert_eq!(value, "Submit");
-    }
-
-    #[test]
-    fn test_assert_condition_parsing_session() {
-        let condition = "session:my-session";
-        let (kind, value) = condition.split_once(':').expect("expected separator");
-        assert_eq!(kind, "session");
-        assert_eq!(value, "my-session");
-    }
-
-    #[test]
-    fn test_assert_condition_parsing_with_colon_in_value() {
-        let condition = "text:URL: https://example.com";
-        let (kind, value) = condition.split_once(':').expect("expected separator");
-        assert_eq!(kind, "text");
-        assert_eq!(value, "URL: https://example.com");
-    }
-
-    #[test]
-    fn test_assert_condition_parsing_invalid() {
-        let condition = "invalid_format";
-        assert!(condition.split_once(':').is_none());
-    }
-
-    #[test]
-    fn test_wait_condition_stable() {
-        let params = WaitParams {
-            stable: true,
-            ..Default::default()
-        };
-        let cond = resolve_wait_condition(&params);
-        assert_eq!(cond, Some("stable".to_string()));
-    }
-
-    #[test]
-    fn test_wait_condition_text_gone() {
-        let params = WaitParams {
-            text: Some("Loading...".to_string()),
-            gone: true,
-            ..Default::default()
-        };
-        let cond = resolve_wait_condition(&params);
-        assert_eq!(cond, Some("text_gone".to_string()));
-    }
-
-    #[test]
-    fn test_wait_condition_none() {
-        let params = WaitParams::default();
-        let cond = resolve_wait_condition(&params);
-        assert_eq!(cond, None);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn daemon_start_standalone_recovers_from_stale_local_socket() {
-        use std::os::unix::net::UnixListener;
-        use std::sync::atomic::Ordering;
-
-        let _env = env_lock();
-        let temp = TempDir::new_in("/tmp").expect("tempdir");
-        let socket = temp.path().join("daemon.sock");
-        let _socket_guard = EnvVarGuard::set("AGENT_TUI_SOCKET", socket.display().to_string());
-
-        let listener = UnixListener::bind(&socket).expect("bind stale socket");
-        drop(listener);
-
-        crate::infra::ipc::transport::USE_DAEMON_START_STUB.store(true, Ordering::SeqCst);
-        let result = handle_daemon_start_standalone(OutputFormat::Json);
-        crate::infra::ipc::transport::USE_DAEMON_START_STUB.store(false, Ordering::SeqCst);
-        crate::infra::ipc::transport::clear_test_listener();
-
-        assert!(
-            result.is_ok(),
-            "daemon start should recover from stale socket"
-        );
-    }
-
-    #[test]
-    fn restart_daemon_core_errors_on_invalid_pid_lock() {
-        let _env = env_lock();
-        let temp = TempDir::new_in("/tmp").expect("tempdir");
-        let socket = temp.path().join("daemon.sock");
-        let lock = socket.with_extension("lock");
-        let _socket_guard = EnvVarGuard::set("AGENT_TUI_SOCKET", socket.display().to_string());
-        fs::write(&lock, "not-a-pid").expect("write invalid lock");
-
-        let err = restart_daemon_core().expect_err("restart should fail on invalid pid lock");
-        let client_error = err
-            .downcast_ref::<ClientError>()
-            .expect("restart error should preserve client error");
-
-        assert!(matches!(
-            client_error,
-            ClientError::DaemonStateInvalid { path, message }
-            if path.ends_with("daemon.lock")
-                && message.contains("not a valid daemon identity payload")
-        ));
-    }
-
-    #[test]
-    fn ws_state_path_ignores_deprecated_api_state_alias() {
-        let _env = env_lock();
-        let temp = TempDir::new_in("/tmp").expect("tempdir");
-        let home = temp.path().join("home");
-        fs::create_dir_all(&home).expect("create temp home");
-        let _home_guard = EnvVarGuard::set("HOME", home.display().to_string());
-        let _ws_state_guard = EnvVarGuard::remove("AGENT_TUI_WS_STATE");
-        let _api_state_guard =
-            EnvVarGuard::set("AGENT_TUI_API_STATE", "/tmp/deprecated-state.json");
-
-        let expected = home.join(".agent-tui").join("api.json");
-        assert_eq!(ws_state_path(), expected);
-    }
-
-    #[test]
-    fn stop_ui_server_escalates_to_sigkill_and_cleans_state() {
-        let _env = env_lock();
-        let temp = TempDir::new_in("/tmp").expect("tempdir");
-        let state_path = temp.path().join("ui.json");
-        let identity = crate::infra::ipc::current_process_identity();
-        fs::write(
-            &state_path,
-            format!(
-                r#"{{"pid":42,"url":"http://127.0.0.1:7777/ui","port":7777,"process_started_at":{}}}"#,
-                identity.started_at.unwrap_or(42)
-            ),
-        )
-        .expect("write ui state");
-        let _state_guard = EnvVarGuard::set("AGENT_TUI_UI_STATE", state_path.display().to_string());
-        let _external_guard = EnvVarGuard::set("AGENT_TUI_UI_URL", "");
-
-        let controller = StopUiController::new(
-            ProcessStatus::Running,
-            false,
-            true,
-            identity.started_at.or(Some(42)),
-        );
-        let result = stop_ui_server_with_controller_and_timeouts(
-            &controller,
-            Duration::from_millis(5),
-            Duration::from_millis(5),
-        )
-        .expect("ui stop should escalate and succeed");
-
-        assert!(matches!(result, StopUiResult::Stopped));
-        assert_eq!(controller.signals(), vec![Signal::Term, Signal::Kill]);
-        assert!(
-            !state_path.exists(),
-            "state file should be removed when stop succeeds"
-        );
-    }
-
-    #[test]
-    fn read_ws_state_running_removes_stale_identity_file() {
-        let _env = env_lock();
-        let temp = TempDir::new_in("/tmp").expect("tempdir");
-        let state_path = temp.path().join("api.json");
-        let data = serde_json::json!({
-            "pid": std::process::id(),
-            "ws_url": "ws://127.0.0.1:43210/ws",
-            "ui_url": "http://127.0.0.1:43210/ui",
-            "listen": "127.0.0.1:43210",
-            "started_at": 1735689600u64,
-            "process_started_at": 1u64,
-        });
-        fs::write(
-            &state_path,
-            serde_json::to_string_pretty(&data).expect("serialize ws state"),
-        )
-        .expect("write ws state");
-
-        let state = read_ws_state_running(&state_path);
-        assert!(state.is_none(), "stale ws state should be rejected");
-        assert!(
-            !state_path.exists(),
-            "stale ws state file should be removed after rejection"
-        );
-    }
-
-    #[test]
-    fn stop_ui_server_rejects_legacy_pid_only_state() {
-        let _env = env_lock();
-        let temp = TempDir::new_in("/tmp").expect("tempdir");
-        let state_path = temp.path().join("ui.json");
-        fs::write(
-            &state_path,
-            format!(
-                r#"{{"pid":{},"url":"http://127.0.0.1:7777/ui","port":7777}}"#,
-                std::process::id()
-            ),
-        )
-        .expect("write legacy ui state");
-        let _state_guard = EnvVarGuard::set("AGENT_TUI_UI_STATE", state_path.display().to_string());
-        let _external_guard = EnvVarGuard::set("AGENT_TUI_UI_URL", "");
-
-        let controller = StopUiController::new(ProcessStatus::Running, false, true, Some(42));
-        let result = stop_ui_server_with_controller_and_timeouts(
-            &controller,
-            Duration::from_millis(5),
-            Duration::from_millis(5),
-        )
-        .expect("legacy state should be treated as already stopped");
-
-        assert!(matches!(result, StopUiResult::AlreadyStopped));
-        assert!(
-            controller.signals().is_empty(),
-            "legacy pid-only ui state must not trigger signals"
-        );
-        assert!(
-            !state_path.exists(),
-            "legacy ui state file should be removed"
-        );
-    }
-}
+#[path = "handlers_tests.rs"]
+mod tests;

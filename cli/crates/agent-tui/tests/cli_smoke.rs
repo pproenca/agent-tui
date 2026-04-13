@@ -177,3 +177,22 @@ fn smoke_run_spawns_session() {
     harness.run(&["run", "bash"]).success();
     harness.assert_method_called("spawn");
 }
+
+#[test]
+fn smoke_run_forwards_env_overrides() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["run", "--env", "FOO=bar", "--env", "EMPTY=", "bash"])
+        .success();
+
+    harness.assert_method_called_with(
+        "spawn",
+        json!({
+            "env": {
+                "FOO": "bar",
+                "EMPTY": "",
+            }
+        }),
+    );
+}

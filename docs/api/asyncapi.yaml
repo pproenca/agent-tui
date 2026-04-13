@@ -1,263 +1,279 @@
 asyncapi: 2.6.0
 info:
-  title: agent-tui Live Preview Stream
+  title: agent-tui Live Preview WebSocket API
   version: "1"
   description: |
-    WebSocket stream for live terminal preview.
-    Authentication is not currently enforced.
-    Streams are selected via JSON-RPC methods sent to `/ws`:
-    `live_preview_stream` (terminal output) and `flightdeck_stream` (session inventory).
+    JSON-RPC WebSocket API for live-preview terminal output and flightdeck session inventory.
+
+    Authentication is required. Read the daemon WS state file to obtain the authenticated
+    websocket URL, then connect to `/ws` or `/api/v1/stream` with the `token` query parameter.
+
+    Browser requests are limited to the daemon's own origin. Binary frames are not part of the
+    live-preview data plane; terminal output is delivered as base64 in JSON-RPC `result` payloads.
 servers:
   local:
-    url: ws://127.0.0.1:{port}/api/v1/stream
+    url: ws://127.0.0.1:{port}/ws?token={token}
     protocol: ws
     description: |
-      Local daemon endpoint. Read the effective port from the daemon WS state file
+      Local daemon websocket endpoint. Read the effective URL and token from the daemon WS state file
       (`AGENT_TUI_WS_STATE`, default `~/.agent-tui/api.json`).
     variables:
       port:
         default: "0"
+      token:
+        default: "<token>"
 channels:
+  /ws:
+    description: Primary authenticated JSON-RPC websocket endpoint.
+    publish:
+      summary: Client sends JSON-RPC stream requests.
+      message:
+        oneOf:
+          - $ref: '#/components/messages/LivePreviewStreamRequest'
+          - $ref: '#/components/messages/FlightdeckStreamRequest'
+    subscribe:
+      summary: Daemon sends JSON-RPC success and error envelopes.
+      message:
+        oneOf:
+          - $ref: '#/components/messages/JsonRpcSuccessEnvelope'
+          - $ref: '#/components/messages/JsonRpcErrorEnvelope'
   /api/v1/stream:
-    description: Live preview event stream.
-    parameters:
-      session:
-        description: Session id or "active" to target the active session.
-        schema:
+    description: Legacy alias for `/ws`.
+    publish:
+      summary: Client sends JSON-RPC stream requests.
+      message:
+        oneOf:
+          - $ref: '#/components/messages/LivePreviewStreamRequest'
+          - $ref: '#/components/messages/FlightdeckStreamRequest'
+    subscribe:
+      summary: Daemon sends JSON-RPC success and error envelopes.
+      message:
+        oneOf:
+          - $ref: '#/components/messages/JsonRpcSuccessEnvelope'
+          - $ref: '#/components/messages/JsonRpcErrorEnvelope'
+components:
+  messages:
+    LivePreviewStreamRequest:
+      name: live_preview_stream_request
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/LivePreviewStreamRequestEnvelope'
+    FlightdeckStreamRequest:
+      name: flightdeck_stream_request
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/FlightdeckStreamRequestEnvelope'
+    JsonRpcSuccessEnvelope:
+      name: jsonrpc_success_envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/JsonRpcSuccessEnvelope'
+    JsonRpcErrorEnvelope:
+      name: jsonrpc_error_envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/JsonRpcErrorEnvelope'
+  schemas:
+    LivePreviewStreamRequestEnvelope:
+      type: object
+      required: [jsonrpc, id, method]
+      properties:
+        jsonrpc:
           type: string
-          default: active
-      encoding:
-        description: Output encoding; "binary" sends raw output frames.
-        schema:
+          enum: ["2.0"]
+        id:
+          type: integer
+          format: int64
+        method:
           type: string
-          enum: [base64, binary]
-          default: base64
-    bindings:
-      ws:
-        query:
+          enum: [live_preview_stream]
+        params:
           type: object
           properties:
             session:
               type: string
-            encoding:
+              description: Session id or `"active"` to follow the active session.
+    FlightdeckStreamRequestEnvelope:
+      type: object
+      required: [jsonrpc, id, method]
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          type: integer
+          format: int64
+        method:
+          type: string
+          enum: [flightdeck_stream]
+        params:
+          type: object
+          properties:
+            interval_ms:
+              type: integer
+              format: int64
+              minimum: 250
+              maximum: 5000
+              default: 1000
+    JsonRpcSuccessEnvelope:
+      type: object
+      required: [jsonrpc, id, result]
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          type: integer
+          format: int64
+        result:
+          oneOf:
+            - $ref: '#/components/schemas/LivePreviewReady'
+            - $ref: '#/components/schemas/FlightdeckReady'
+            - $ref: '#/components/schemas/FlightdeckSessions'
+            - $ref: '#/components/schemas/LivePreviewInit'
+            - $ref: '#/components/schemas/LivePreviewOutput'
+            - $ref: '#/components/schemas/LivePreviewDropped'
+            - $ref: '#/components/schemas/LivePreviewResize'
+            - $ref: '#/components/schemas/Heartbeat'
+            - $ref: '#/components/schemas/Closed'
+    JsonRpcErrorEnvelope:
+      type: object
+      required: [jsonrpc, id, error]
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          type: integer
+          format: int64
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: integer
+              format: int32
+            message:
               type: string
-    subscribe:
-      summary: Daemon publishes session preview events.
-      message:
-        oneOf:
-          - $ref: '#/components/messages/Hello'
-          - $ref: '#/components/messages/Ready'
-          - $ref: '#/components/messages/FlightdeckReady'
-          - $ref: '#/components/messages/FlightdeckSessions'
-          - $ref: '#/components/messages/Init'
-          - $ref: '#/components/messages/OutputBase64'
-          - $ref: '#/components/messages/OutputBinary'
-          - $ref: '#/components/messages/Command'
-          - $ref: '#/components/messages/Dropped'
-          - $ref: '#/components/messages/Resize'
-          - $ref: '#/components/messages/Heartbeat'
-          - $ref: '#/components/messages/Closed'
-          - $ref: '#/components/messages/Error'
-components:
-  messages:
-    Hello:
-      name: hello
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, api_version, daemon_version, daemon_commit, session_id, output_encoding]
-        properties:
-          event:
-            type: string
-            enum: [hello]
-          api_version:
-            type: string
-          daemon_version:
-            type: string
-          daemon_commit:
-            type: string
-          session_id:
-            type: string
-          output_encoding:
-            type: string
-            enum: [base64, binary]
-    Ready:
-      name: ready
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, session_id, cols, rows]
-        properties:
-          event:
-            type: string
-            enum: [ready]
-          session_id:
-            type: string
-          cols:
-            type: integer
-          rows:
-            type: integer
+    LivePreviewReady:
+      type: object
+      required: [event, session_id, cols, rows]
+      properties:
+        event:
+          type: string
+          enum: [ready]
+        session_id:
+          type: string
+        cols:
+          type: integer
+          format: int32
+        rows:
+          type: integer
+          format: int32
     FlightdeckReady:
-      name: flightdeck_ready
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, sessions]
-        properties:
-          event:
-            type: string
-            enum: [ready]
-          active_session:
-            type: string
-            nullable: true
-          sessions:
-            type: array
-            items:
-              $ref: '#/components/schemas/SessionInfo'
+      type: object
+      required: [event, sessions]
+      properties:
+        event:
+          type: string
+          enum: [ready]
+        active_session:
+          type: string
+          nullable: true
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionInfo'
     FlightdeckSessions:
-      name: flightdeck_sessions
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, sessions, time]
-        properties:
-          event:
-            type: string
-            enum: [sessions]
-          active_session:
-            type: string
-            nullable: true
-          sessions:
-            type: array
-            items:
-              $ref: '#/components/schemas/SessionInfo'
-          time:
-            type: number
-    Init:
-      name: init
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, time, cols, rows, init]
-        properties:
-          event:
-            type: string
-            enum: [init]
-          time:
-            type: number
-          cols:
-            type: integer
-          rows:
-            type: integer
-          init:
-            type: string
-    OutputBase64:
-      name: output_base64
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, time, data_b64]
-        properties:
-          event:
-            type: string
-            enum: [output]
-          time:
-            type: number
-          data_b64:
-            type: string
-            description: Base64-encoded output bytes.
-    OutputBinary:
-      name: output_binary
-      contentType: application/octet-stream
-      payload:
-        type: string
-        format: binary
-      description: |
-        Binary output frame when encoding=binary. First byte is 0x01, remaining bytes are raw output.
-    Command:
-      name: command
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, time, kind, value]
-        properties:
-          event:
-            type: string
-            enum: [command]
-          time:
-            type: number
-          kind:
-            type: string
-            enum: [press, type, keydown, keyup, write]
-          value:
-            type: string
-    Dropped:
-      name: dropped
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, time, dropped_bytes]
-        properties:
-          event:
-            type: string
-            enum: [dropped]
-          time:
-            type: number
-          dropped_bytes:
-            type: integer
-    Resize:
-      name: resize
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, time, cols, rows]
-        properties:
-          event:
-            type: string
-            enum: [resize]
-          time:
-            type: number
-          cols:
-            type: integer
-          rows:
-            type: integer
+      type: object
+      required: [event, sessions, time]
+      properties:
+        event:
+          type: string
+          enum: [sessions]
+        active_session:
+          type: string
+          nullable: true
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionInfo'
+        time:
+          type: number
+    LivePreviewInit:
+      type: object
+      required: [event, time, cols, rows, init]
+      properties:
+        event:
+          type: string
+          enum: [init]
+        time:
+          type: number
+        cols:
+          type: integer
+          format: int32
+        rows:
+          type: integer
+          format: int32
+        init:
+          type: string
+          description: Full terminal render for stream initialization or re-sync after dropped bytes.
+    LivePreviewOutput:
+      type: object
+      required: [event, time, data_b64]
+      properties:
+        event:
+          type: string
+          enum: [output]
+        time:
+          type: number
+        data_b64:
+          type: string
+          description: Base64-encoded terminal output bytes.
+    LivePreviewDropped:
+      type: object
+      required: [event, time, dropped_bytes]
+      properties:
+        event:
+          type: string
+          enum: [dropped]
+        time:
+          type: number
+        dropped_bytes:
+          type: integer
+    LivePreviewResize:
+      type: object
+      required: [event, time, cols, rows]
+      properties:
+        event:
+          type: string
+          enum: [resize]
+        time:
+          type: number
+        cols:
+          type: integer
+          format: int32
+        rows:
+          type: integer
+          format: int32
     Heartbeat:
-      name: heartbeat
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, time]
-        properties:
-          event:
-            type: string
-            enum: [heartbeat]
-          time:
-            type: number
+      type: object
+      required: [event, time]
+      properties:
+        event:
+          type: string
+          enum: [heartbeat]
+        time:
+          type: number
     Closed:
-      name: closed
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, time]
-        properties:
-          event:
-            type: string
-            enum: [closed]
-          time:
-            type: number
-    Error:
-      name: error
-      contentType: application/json
-      payload:
-        type: object
-        required: [event, message]
-        properties:
-          event:
-            type: string
-            enum: [error]
-          message:
-            type: string
-  schemas:
+      type: object
+      required: [event, time]
+      properties:
+        event:
+          type: string
+          enum: [closed]
+        time:
+          type: number
     SessionInfo:
       type: object
       required: [id, command, pid, running, created_at, size]

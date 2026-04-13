@@ -1,0 +1,5 @@
+---
+source: crates/agent-tui-infra/src/infra/terminal/render.rs
+expression: rendered.escape_debug().to_string()
+---
+\u{1b}[0m\u{1b}[m\u{1b}[mA\u{1b}[0m\u{1b}[1m\u{1b}[4m\u{1b}[m\u{1b}[mBC\r\n\u{1b}[0m\u{1b}[7m\u{1b}[m\u{1b}[mD\u{1b}[0m\u{1b}[m\u{1b}[m \u{1b}[0m\u{1b}[1m\u{1b}[4m\u{1b}[m\u{1b}[mE\u{1b}[0m

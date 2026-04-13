@@ -10,17 +10,17 @@ function readSrcFile(name: string): string {
 }
 
 describe("live preview layout hooks", () => {
-  test("keeps sidebar and timeline hooks in markup", () => {
+  test("keeps sidebar hooks in markup and removes dead command timeline chrome", () => {
     const html = readSrcFile("index.html");
     expect(html).toContain('class="sidebar__header"');
     expect(html).toContain('id="sessionCount"');
-    expect(html).toContain('id="commandTimeline"');
+    expect(html).not.toContain('id="commandTimeline"');
   });
 
-  test("keeps terminal/timeline layout resilient and visible", () => {
+  test("keeps terminal layout resilient and visible", () => {
     const css = readSrcFile("styles.css");
-    expect(css).toContain("grid-template-rows: minmax(0, 1fr) auto;");
     expect(css).toContain(".terminal {");
+    expect(css).toContain(".main {\n  grid-area: main;\n  display: flex;");
     expect(css).toContain("min-height: 0;");
     expect(css).toContain("grid-template-areas:");
     expect(css).toContain('"main"');
@@ -83,5 +83,10 @@ describe("live preview layout hooks", () => {
   test("keeps UI session selection preview-local without mutating active session", () => {
     const app = readSrcFile("app.ts");
     expect(app).not.toContain('rpcCall("attach"');
+  });
+
+  test("does not carry a dead command-event branch in the browser stream handler", () => {
+    const app = readSrcFile("app.ts");
+    expect(app).not.toContain('case "command":');
   });
 });

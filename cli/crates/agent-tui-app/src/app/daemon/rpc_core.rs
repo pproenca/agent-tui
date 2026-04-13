@@ -39,6 +39,61 @@ const FLIGHTDECK_STREAM_DEFAULT_INTERVAL_MS: u64 = 1000;
 const FLIGHTDECK_STREAM_MIN_INTERVAL_MS: u64 = 250;
 const FLIGHTDECK_STREAM_MAX_INTERVAL_MS: u64 = 5000;
 const FLIGHTDECK_STREAM_HEARTBEAT: Duration = Duration::from_secs(5);
+const STREAM_WAIT_SLICE: Duration = Duration::from_millis(250);
+
+#[derive(Debug, Clone, Copy)]
+struct StreamTiming {
+    attach_heartbeat: Duration,
+    live_preview_heartbeat: Duration,
+    flightdeck_heartbeat: Duration,
+    wait_slice: Duration,
+}
+
+impl Default for StreamTiming {
+    fn default() -> Self {
+        Self {
+            attach_heartbeat: ATTACH_STREAM_HEARTBEAT,
+            live_preview_heartbeat: LIVE_PREVIEW_STREAM_HEARTBEAT,
+            flightdeck_heartbeat: FLIGHTDECK_STREAM_HEARTBEAT,
+            wait_slice: STREAM_WAIT_SLICE,
+        }
+    }
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RpcCoreTestConfig {
+    pub stream_max_buffer_bytes: usize,
+    pub attach_heartbeat: Duration,
+    pub live_preview_heartbeat: Duration,
+    pub flightdeck_heartbeat: Duration,
+    pub wait_slice: Duration,
+}
+
+#[cfg(test)]
+impl Default for RpcCoreTestConfig {
+    fn default() -> Self {
+        Self {
+            stream_max_buffer_bytes: 8 * 1024 * 1024,
+            attach_heartbeat: ATTACH_STREAM_HEARTBEAT,
+            live_preview_heartbeat: LIVE_PREVIEW_STREAM_HEARTBEAT,
+            flightdeck_heartbeat: FLIGHTDECK_STREAM_HEARTBEAT,
+            wait_slice: STREAM_WAIT_SLICE,
+        }
+    }
+}
+
+#[cfg(test)]
+impl RpcCoreTestConfig {
+    fn stream_timing(self) -> StreamTiming {
+        StreamTiming {
+            attach_heartbeat: self.attach_heartbeat,
+            live_preview_heartbeat: self.live_preview_heartbeat,
+            flightdeck_heartbeat: self.flightdeck_heartbeat,
+            wait_slice: self.wait_slice,
+        }
+    }
+}
 
 fn validated_terminal_size(cols: u16, rows: u16) -> TerminalSize {
     match TerminalSize::try_new(cols, rows) {
@@ -58,8 +113,6 @@ fn validated_terminal_size(cols: u16, rows: u16) -> TerminalSize {
         }
     }
 }
-const STREAM_WAIT_SLICE: Duration = Duration::from_millis(250);
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StreamWaitStatus {
     Notified,
@@ -99,15 +152,16 @@ pub(crate) struct RpcCore {
     session_manager: Arc<SessionManager>,
     usecases: UseCaseContainer<SessionManager>,
     shutdown_flag: Arc<AtomicBool>,
+    stream_timing: StreamTiming,
 }
 
 impl RpcCore {
-    pub fn with_config(
-        config: DaemonConfig,
+    fn build(
+        session_manager: Arc<SessionManager>,
         shutdown_flag: Arc<AtomicBool>,
         shutdown_notifier: ShutdownNotifierHandle,
+        stream_timing: StreamTiming,
     ) -> Self {
-        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions()));
         let clock = Arc::new(SystemClock::new());
         let usecases = UseCaseContainer::new(
             Arc::clone(&session_manager),
@@ -119,7 +173,41 @@ impl RpcCore {
             session_manager,
             usecases,
             shutdown_flag,
+            stream_timing,
         }
+    }
+
+    pub fn with_config(
+        config: DaemonConfig,
+        shutdown_flag: Arc<AtomicBool>,
+        shutdown_notifier: ShutdownNotifierHandle,
+    ) -> Result<Self, crate::infra::daemon::SessionError> {
+        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions())?);
+        Ok(Self::build(
+            session_manager,
+            shutdown_flag,
+            shutdown_notifier,
+            StreamTiming::default(),
+        ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_test_config(
+        config: DaemonConfig,
+        shutdown_flag: Arc<AtomicBool>,
+        shutdown_notifier: ShutdownNotifierHandle,
+        test_config: RpcCoreTestConfig,
+    ) -> Result<Self, crate::infra::daemon::SessionError> {
+        let session_manager = Arc::new(SessionManager::with_test_limits(
+            config.max_sessions(),
+            test_config.stream_max_buffer_bytes,
+        )?);
+        Ok(Self::build(
+            session_manager,
+            shutdown_flag,
+            shutdown_notifier,
+            test_config.stream_timing(),
+        ))
     }
 
     pub fn session_repository_handle(&self) -> Arc<dyn SessionRepository> {
@@ -194,7 +282,7 @@ impl RpcCore {
             }
             let wait = deadline
                 .saturating_duration_since(now)
-                .min(STREAM_WAIT_SLICE);
+                .min(self.stream_timing.wait_slice);
             if subscription.wait(Some(wait)) {
                 return StreamWaitStatus::Notified;
             }
@@ -364,7 +452,7 @@ impl RpcCore {
 
             match self.wait_for_stream_event_or_tick(
                 &subscription,
-                ATTACH_STREAM_HEARTBEAT,
+                self.stream_timing.attach_heartbeat,
                 connection_cancelled,
             ) {
                 StreamWaitStatus::Notified => {}
@@ -634,7 +722,7 @@ impl RpcCore {
 
             match self.wait_for_stream_event_or_tick(
                 &subscription,
-                LIVE_PREVIEW_STREAM_HEARTBEAT,
+                self.stream_timing.live_preview_heartbeat,
                 connection_cancelled,
             ) {
                 StreamWaitStatus::Notified => {}
@@ -737,7 +825,7 @@ impl RpcCore {
         ))?;
 
         let mut next_snapshot_deadline = Instant::now() + interval;
-        let mut next_heartbeat_deadline = Instant::now() + FLIGHTDECK_STREAM_HEARTBEAT;
+        let mut next_heartbeat_deadline = Instant::now() + self.stream_timing.flightdeck_heartbeat;
 
         loop {
             if self.should_stream_terminate(connection_cancelled) {
@@ -778,7 +866,7 @@ impl RpcCore {
                         time: start_time.elapsed().as_secs_f64(),
                     },
                 ))?;
-                next_heartbeat_deadline = now + FLIGHTDECK_STREAM_HEARTBEAT;
+                next_heartbeat_deadline = now + self.stream_timing.flightdeck_heartbeat;
                 continue;
             }
 
@@ -789,7 +877,7 @@ impl RpcCore {
             };
             let wait = next_deadline
                 .saturating_duration_since(now)
-                .min(STREAM_WAIT_SLICE);
+                .min(self.stream_timing.wait_slice);
             std::thread::park_timeout(wait);
         }
     }
@@ -849,471 +937,5 @@ fn live_preview_initial_cursor(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::Value;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-    use std::time::Duration;
-    use std::time::Instant;
-
-    fn make_request(params_json: Option<&str>) -> RpcRequest {
-        let request_json = match params_json {
-            Some(params) => {
-                format!(
-                    r#"{{"jsonrpc":"2.0","id":1,"method":"live_preview_stream","params":{params}}}"#
-                )
-            }
-            None => r#"{"jsonrpc":"2.0","id":1,"method":"live_preview_stream"}"#.to_string(),
-        };
-        serde_json::from_str(&request_json).expect("valid rpc request")
-    }
-
-    fn make_flightdeck_request(params_json: Option<&str>) -> RpcRequest {
-        let request_json = match params_json {
-            Some(params) => {
-                format!(
-                    r#"{{"jsonrpc":"2.0","id":7,"method":"flightdeck_stream","params":{params}}}"#
-                )
-            }
-            None => r#"{"jsonrpc":"2.0","id":7,"method":"flightdeck_stream"}"#.to_string(),
-        };
-        serde_json::from_str(&request_json).expect("valid rpc request")
-    }
-
-    #[derive(Clone, Default)]
-    struct RecordingWriterHandle {
-        values: Arc<Mutex<Vec<Value>>>,
-    }
-
-    impl RecordingWriterHandle {
-        fn snapshot(&self) -> Vec<Value> {
-            self.values
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone()
-        }
-
-        fn wait_for_event(&self, event: &str, timeout: Duration) -> Option<Value> {
-            let deadline = Instant::now() + timeout;
-            loop {
-                let values = self.snapshot();
-                if let Some(found) = values
-                    .into_iter()
-                    .find(|value| value["result"]["event"] == event)
-                {
-                    return Some(found);
-                }
-                if Instant::now() >= deadline {
-                    return None;
-                }
-                std::thread::park_timeout(Duration::from_millis(20));
-            }
-        }
-    }
-
-    struct RecordingWriter {
-        handle: RecordingWriterHandle,
-    }
-
-    impl RecordingWriter {
-        fn new() -> (Self, RecordingWriterHandle) {
-            let handle = RecordingWriterHandle::default();
-            (
-                Self {
-                    handle: handle.clone(),
-                },
-                handle,
-            )
-        }
-    }
-
-    impl RpcResponseWriter for RecordingWriter {
-        fn write_response(&mut self, response: &RpcResponse) -> Result<(), RpcCoreError> {
-            let value = serde_json::to_value(response)
-                .map_err(|err| RpcCoreError::Other(format!("serialize response: {err}")))?;
-            self.handle
-                .values
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(value);
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn live_preview_selector_maps_active_to_none() {
-        let request = make_request(Some(r#"{"session":"active"}"#));
-        let parsed = parse_live_preview_session_selector(&request).expect("active selector");
-        assert!(parsed.is_none());
-    }
-
-    #[test]
-    fn live_preview_selector_defaults_to_none_when_omitted() {
-        let request = make_request(None);
-        let parsed = parse_live_preview_session_selector(&request).expect("omitted selector");
-        assert!(parsed.is_none());
-    }
-
-    #[test]
-    fn live_preview_selector_keeps_explicit_session_id() {
-        let request = make_request(Some(r#"{"session":"sess-1"}"#));
-        let parsed = parse_live_preview_session_selector(&request)
-            .expect("valid selector")
-            .expect("session id");
-        assert_eq!(parsed.as_str(), "sess-1");
-    }
-
-    #[test]
-    fn live_preview_selector_rejects_blank_explicit_session_id() {
-        let request = make_request(Some(r#"{"session":" "}"#));
-        let response =
-            parse_live_preview_session_selector(&request).expect_err("blank selector should fail");
-        let value = serde_json::to_value(response).expect("response should serialize");
-        assert_eq!(value["error"]["code"], -32602);
-    }
-
-    #[test]
-    fn live_preview_initial_cursor_uses_snapshot_stream_seq() {
-        let snapshot = crate::usecases::ports::LivePreviewSnapshot {
-            cols: 80,
-            rows: 24,
-            seq: String::new(),
-            stream_seq: 123,
-        };
-        let cursor = live_preview_initial_cursor(&snapshot);
-        assert_eq!(cursor.seq, 123);
-    }
-
-    struct SleepWaiter;
-
-    impl crate::usecases::ports::StreamWaiter for SleepWaiter {
-        fn wait(&self, timeout: Option<Duration>) -> bool {
-            if let Some(timeout) = timeout {
-                std::thread::park_timeout(timeout);
-            }
-            false
-        }
-    }
-
-    #[test]
-    fn stream_wait_exits_early_when_connection_is_cancelled() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
-        let core = RpcCore::with_config(
-            crate::infra::daemon::DaemonConfig::default(),
-            shutdown,
-            notifier,
-        );
-
-        let subscription: crate::usecases::ports::StreamWaiterHandle = Arc::new(SleepWaiter);
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let cancelled_for_thread = Arc::clone(&cancelled);
-        let join = std::thread::spawn(move || {
-            std::thread::park_timeout(Duration::from_millis(100));
-            cancelled_for_thread.store(true, Ordering::Relaxed);
-        });
-
-        let start = Instant::now();
-        let status = core.wait_for_stream_event_or_tick(
-            &subscription,
-            Duration::from_secs(30),
-            Some(cancelled.as_ref()),
-        );
-        let _ = join.join();
-
-        assert_eq!(status, StreamWaitStatus::Terminated);
-        assert!(
-            start.elapsed() < Duration::from_secs(2),
-            "wait should terminate quickly once cancelled"
-        );
-    }
-
-    #[test]
-    fn stream_kind_recognizes_flightdeck_stream() {
-        assert_eq!(
-            RpcCore::stream_kind_for_method("flightdeck_stream"),
-            Some(StreamKind::Flightdeck)
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn live_preview_stream_does_not_emit_command_events_for_session_input() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
-        let core = Arc::new(RpcCore::with_config(
-            crate::infra::daemon::DaemonConfig::default(),
-            shutdown,
-            notifier,
-        ));
-
-        let spawn_result = core.session_manager.spawn(
-            "sh",
-            &[],
-            None,
-            None,
-            Some(
-                crate::domain::SessionId::try_new("timeline-session")
-                    .expect("timeline session id should be valid"),
-            ),
-            TerminalSize::default(),
-        );
-        if spawn_result.is_err() {
-            return;
-        }
-
-        let (mut writer, handle) = RecordingWriter::new();
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let request = make_request(Some(r#"{"session":"timeline-session"}"#));
-
-        let core_for_stream = Arc::clone(&core);
-        let cancelled_for_stream = Arc::clone(&cancelled);
-        let join = std::thread::spawn(move || {
-            let _ = core_for_stream.handle_stream(
-                &mut writer,
-                request,
-                StreamKind::LivePreview,
-                Some(cancelled_for_stream.as_ref()),
-            );
-        });
-
-        let _ = handle.wait_for_event("ready", Duration::from_secs(2));
-
-        if let Ok(session) = core.session_manager.get(
-            &crate::domain::SessionId::try_new("timeline-session")
-                .expect("timeline session id should be valid"),
-        ) {
-            let mut guard = session
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let _ = guard.type_text("echo timeline\n");
-        }
-
-        let command = handle.wait_for_event("command", Duration::from_millis(300));
-        cancelled.store(true, Ordering::Relaxed);
-        let _ = join.join();
-        core.shutdown_all_sessions();
-
-        assert!(
-            command.is_none(),
-            "live preview stream should not emit command events"
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn live_preview_stream_emits_resize_event_for_resize() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
-        let core = Arc::new(RpcCore::with_config(
-            crate::infra::daemon::DaemonConfig::default(),
-            shutdown,
-            notifier,
-        ));
-
-        let spawn_result = core.session_manager.spawn(
-            "sh",
-            &[],
-            None,
-            None,
-            Some(
-                crate::domain::SessionId::try_new("timeline-resize-session")
-                    .expect("timeline resize session id should be valid"),
-            ),
-            TerminalSize::default(),
-        );
-        if spawn_result.is_err() {
-            return;
-        }
-
-        let (mut writer, handle) = RecordingWriter::new();
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let request = make_request(Some(r#"{"session":"timeline-resize-session"}"#));
-
-        let core_for_stream = Arc::clone(&core);
-        let cancelled_for_stream = Arc::clone(&cancelled);
-        let join = std::thread::spawn(move || {
-            let _ = core_for_stream.handle_stream(
-                &mut writer,
-                request,
-                StreamKind::LivePreview,
-                Some(cancelled_for_stream.as_ref()),
-            );
-        });
-
-        let _ = handle.wait_for_event("ready", Duration::from_secs(2));
-
-        if let Ok(session) = core.session_manager.get(
-            &crate::domain::SessionId::try_new("timeline-resize-session")
-                .expect("timeline resize session id should be valid"),
-        ) {
-            let mut guard = session
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let _ = guard.resize(TerminalSize::try_new(120, 40).expect("valid terminal size"));
-        }
-
-        let resize = handle.wait_for_event("resize", Duration::from_secs(2));
-        cancelled.store(true, Ordering::Relaxed);
-        let _ = join.join();
-        core.shutdown_all_sessions();
-
-        let Some(resize) = resize else {
-            panic!("live preview stream did not emit resize event");
-        };
-        assert_eq!(resize["result"]["cols"], 120);
-        assert_eq!(resize["result"]["rows"], 40);
-    }
-
-    #[test]
-    fn flightdeck_stream_emits_ready_with_sessions_payload() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
-        let core = Arc::new(RpcCore::with_config(
-            crate::infra::daemon::DaemonConfig::default(),
-            shutdown,
-            notifier,
-        ));
-
-        let (mut writer, handle) = RecordingWriter::new();
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let request = make_flightdeck_request(Some(r#"{"interval_ms":250}"#));
-
-        let core_for_stream = Arc::clone(&core);
-        let cancelled_for_stream = Arc::clone(&cancelled);
-        let join = std::thread::spawn(move || {
-            let _ = core_for_stream.handle_stream(
-                &mut writer,
-                request,
-                StreamKind::Flightdeck,
-                Some(cancelled_for_stream.as_ref()),
-            );
-        });
-
-        let ready = handle.wait_for_event("ready", Duration::from_secs(2));
-        cancelled.store(true, Ordering::Relaxed);
-        let _ = join.join();
-
-        let Some(ready) = ready else {
-            panic!("flightdeck stream did not emit ready event");
-        };
-        assert!(ready["result"]["sessions"].is_array());
-        assert!(
-            ready["result"].get("active_session").is_some(),
-            "ready payload should include active_session"
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn flightdeck_stream_emits_sessions_event_when_inventory_changes() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
-        let core = Arc::new(RpcCore::with_config(
-            crate::infra::daemon::DaemonConfig::default(),
-            shutdown,
-            notifier,
-        ));
-
-        let (mut writer, handle) = RecordingWriter::new();
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let request = make_flightdeck_request(Some(r#"{"interval_ms":250}"#));
-
-        let core_for_stream = Arc::clone(&core);
-        let cancelled_for_stream = Arc::clone(&cancelled);
-        let join = std::thread::spawn(move || {
-            let _ = core_for_stream.handle_stream(
-                &mut writer,
-                request,
-                StreamKind::Flightdeck,
-                Some(cancelled_for_stream.as_ref()),
-            );
-        });
-
-        let _ = handle.wait_for_event("ready", Duration::from_secs(2));
-        let spawn_result = core.session_manager.spawn(
-            "sh",
-            &[],
-            None,
-            None,
-            Some(
-                crate::domain::SessionId::try_new("flightdeck-new")
-                    .expect("flightdeck session id should be valid"),
-            ),
-            TerminalSize::default(),
-        );
-        if spawn_result.is_err() {
-            cancelled.store(true, Ordering::Relaxed);
-            let _ = join.join();
-            return;
-        }
-
-        let sessions = handle.wait_for_event("sessions", Duration::from_secs(3));
-        cancelled.store(true, Ordering::Relaxed);
-        let _ = join.join();
-        core.shutdown_all_sessions();
-
-        let Some(sessions) = sessions else {
-            panic!("flightdeck stream did not emit sessions event");
-        };
-        let contains_new = sessions["result"]["sessions"]
-            .as_array()
-            .map(|items| {
-                items
-                    .iter()
-                    .any(|item| item.get("id").and_then(|v| v.as_str()) == Some("flightdeck-new"))
-            })
-            .unwrap_or(false);
-        assert!(
-            contains_new,
-            "sessions event should include newly spawned session"
-        );
-    }
-
-    #[test]
-    fn flightdeck_stream_emits_closed_and_exits_on_cancellation() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
-        let core = Arc::new(RpcCore::with_config(
-            crate::infra::daemon::DaemonConfig::default(),
-            shutdown,
-            notifier,
-        ));
-
-        let (mut writer, handle) = RecordingWriter::new();
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let request = make_flightdeck_request(Some(r#"{"interval_ms":250}"#));
-
-        let core_for_stream = Arc::clone(&core);
-        let cancelled_for_stream = Arc::clone(&cancelled);
-        let start = Instant::now();
-        let join = std::thread::spawn(move || {
-            let _ = core_for_stream.handle_stream(
-                &mut writer,
-                request,
-                StreamKind::Flightdeck,
-                Some(cancelled_for_stream.as_ref()),
-            );
-        });
-
-        let _ = handle.wait_for_event("ready", Duration::from_secs(2));
-        cancelled.store(true, Ordering::Relaxed);
-        let _ = join.join();
-
-        let closed = handle.wait_for_event("closed", Duration::from_secs(1));
-        assert!(closed.is_some(), "expected closed event on cancellation");
-        assert!(
-            start.elapsed() < Duration::from_secs(2),
-            "stream should exit quickly when cancelled"
-        );
-    }
-}
+#[path = "rpc_core_tests.rs"]
+mod tests;

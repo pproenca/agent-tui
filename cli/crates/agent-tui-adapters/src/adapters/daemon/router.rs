@@ -73,6 +73,7 @@ mod tests {
     use super::*;
     use crate::domain::SessionId;
     use crate::domain::SessionInfo;
+    use crate::domain::TerminalSize;
     use crate::domain::core::CursorPosition;
     use crate::usecases::ports::Clock;
     use crate::usecases::ports::LivePreviewSnapshot;
@@ -180,7 +181,7 @@ mod tests {
             true
         }
 
-        fn resize(&self, _cols: u16, _rows: u16) -> Result<(), SessionError> {
+        fn resize(&self, _size: TerminalSize) -> Result<(), SessionError> {
             Ok(())
         }
 
@@ -200,8 +201,8 @@ mod tests {
             "test".to_string()
         }
 
-        fn size(&self) -> (u16, u16) {
-            (80, 24)
+        fn size(&self) -> TerminalSize {
+            TerminalSize::default()
         }
 
         fn live_preview_snapshot(&self) -> LivePreviewSnapshot {
@@ -228,8 +229,7 @@ mod tests {
             _cwd: Option<&str>,
             _env: Option<&HashMap<String, String>>,
             session_id: Option<SessionId>,
-            _cols: u16,
-            _rows: u16,
+            _size: TerminalSize,
         ) -> Result<(SessionId, u32), SessionError> {
             let id = session_id.unwrap_or_else(|| {
                 SessionId::try_new("test-session").expect("default test session id should be valid")

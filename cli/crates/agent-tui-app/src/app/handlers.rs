@@ -49,6 +49,7 @@ use crate::app::error::CliError;
 use crate::app::error::DaemonNotRunningError;
 use crate::app::rpc_client::call_no_params;
 use crate::app::rpc_client::call_with_params;
+use crate::domain::session_types::TerminalSize;
 
 pub(crate) type HandlerResult = Result<()>;
 
@@ -1224,9 +1225,16 @@ pub(crate) fn handle_resize<C: DaemonClient>(
     cols: u16,
     rows: u16,
 ) -> HandlerResult {
+    let size = TerminalSize::try_new(cols, rows).map_err(|err| {
+        usage_cli_error(
+            ctx.format,
+            format!("Invalid terminal size: {}", err),
+            Some("Use a terminal size within the supported range.".to_string()),
+            Some(serde_json::json!({ "cols": cols, "rows": rows })),
+        )
+    })?;
     let rpc_params = params::ResizeParams {
-        cols,
-        rows,
+        size,
         session: ctx.session.clone(),
     };
     let result = call_with_params(ctx.client, "resize", rpc_params)?;
@@ -1235,8 +1243,8 @@ pub(crate) fn handle_resize<C: DaemonClient>(
         println!(
             "Session {} resized to {}x{}",
             Colors::session_id(result.str_or("session_id", "?")),
-            cols,
-            rows
+            size.cols(),
+            size.rows()
         );
     })
 }

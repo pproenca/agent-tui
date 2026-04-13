@@ -2,6 +2,8 @@
 
 ## Open Findings
 
+- `[A05][async-graceful-then-forceful-cancel]` Bounded shutdown still detaches owner threads instead of forcefully cancelling them: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` drains `stream_threads` and drops any `JoinHandle` that misses the deadline in `join_stream_threads`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` does the same in `WsServerHandle::shutdown` while still deleting the WS state file. Timed-out daemon stream threads or the outer WS runtime thread can therefore outlive shutdown with no remaining owner to join or signal.
+- `[A05][errors-boundary-error-translator]` Shutdown requests are acknowledged even if the wakeup path fails: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/shutdown.rs` always returns `acknowledged: true`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/shutdown_notifier.rs` makes `notify()` infallible, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` ignores lock/write failures in `ShutdownNotify::notify`. If the wake byte is not delivered, `run_accept_loop` can stay blocked in `poll()` on an otherwise idle daemon after the caller has already been told shutdown succeeded.
 - `[A04][async-bounded-vs-unbounded-channel-split]` PTY output delivery still blocks on an internal bounded event queue: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs` uses `channel::bounded(PTY_READ_CHANNEL_CAPACITY)` for `ReadEvent`s and `spawn_reader` calls blocking `send(ReadEvent::Data(...))`. If `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` cannot keep `pump_loop` moving because the session lock is contended or output bursts outrun processing, the reader stops draining the PTY master and the child process is backpressured by its own output.
 - `[A04][defensive-io-drain-timeout-grandchildren]` PTY shutdown still has no reader-drain timeout or join path: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs` spawns a detached `pty-reader` thread but `PtyHandle::kill` and `Drop` never join or time out that thread. When process-group signaling falls back to direct child kill, or descendants keep the slave side open, the reader can stay blocked on `read()` indefinitely and leak a stuck background thread even after the session is considered dead.
 - `[A03][errors-boundary-error-translator]` Session persistence is still treated as best-effort even though startup cleanup depends on it: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` suppresses `cleanup_stale_sessions()` failure in `SessionManager::with_max_sessions`, and `spawn`, `restart`, and `kill` only warn when `add_session` or `remove_session` fail. The CLI/RPC path can therefore report success while the JSONL store diverges from live state, leaving the next daemon startup to recover from stale or missing metadata with no operator-visible signal.
@@ -258,9 +260,38 @@ Contextual non-applicability:
 - `async-abort-on-drop-handle` and `async-shared-boxfuture-joinhandle` are not direct fits because this slice uses std threads and crossbeam channels rather than a tokio task tree with shared join futures.
 - `types-non-exhaustive-public-enums` and `types-unknown-variant-forward-compat` are not direct fits for `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/core/{screen,style}.rs` because those types model internal screen state, not versioned external wire enums.
 
+### `2026-04-13 06:59Z` `A05` Concurrency, shutdown, and thread/task ownership
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/shutdown.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/shutdown_notifier.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/sync.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` applies bounded backpressure at the listener boundary: accepted Unix connections enter a bounded `sync_channel` via `try_send`, so overload drops work at the edge instead of stalling the accept loop or worker runtime.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` rechecks shutdown and connection cancellation before every `STREAM_WAIT_SLICE`, and the stream-wait tests show that long-heartbeat streams still terminate promptly once cancellation flips.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` has a solid per-connection cancellation path: `cancel_stream_task` drops the bounded receiver to release blocked `blocking_send`, `wait_for_stream_task` bounds the grace wait, and timed-out stream tasks are explicitly aborted instead of hanging teardown.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/sync.rs` recovers poisoned mutex and `RwLock` guards with logging instead of panicking, keeping the daemon runtime alive after a background thread unwinds while preserving a recovery breadcrumb.
+
+Findings:
+
+- The daemon's owner-thread shutdown paths stop at detachment: `DaemonServer::join_stream_threads` and `WsServerHandle::shutdown` bound their waits but then drop unfinished `JoinHandle`s, which means still-running stream/runtime threads can outlive daemon shutdown with no remaining owner.
+- Shutdown acknowledgement is optimistic because notifier delivery failures are swallowed even though the accept loop depends on the wake byte to break out of `poll()`.
+- The previously recorded wall-clock timing gap remains visible in this slice: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` still test bounded shutdown and cancellation with `park_timeout`, `recv_timeout`, and elapsed-time assertions instead of deterministic virtual-time control.
+
+Contextual non-applicability:
+
+- `async-child-cancellation-tokens` and `async-shared-boxfuture-joinhandle` are not direct fits because this slice mainly uses std threads, watch channels, condvars, and atomics rather than nested tokio task trees with shared join futures.
+- `testing-wiremock-sse-fakes` is not a direct fit because the concurrency boundary under review is local daemon/runtime coordination rather than an outbound protocol fake.
+
 ## Next Queue
 
-- `A05` Concurrency, shutdown, and thread/task ownership
+- `F08` Daemon lifecycle control plane
 - `F07` Session lifecycle management
 - `F02` Snapshot and screenshot rendering
 

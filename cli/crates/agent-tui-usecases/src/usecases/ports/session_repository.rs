@@ -8,6 +8,7 @@ use crate::domain::RestartOutput;
 use crate::domain::core::CursorPosition;
 use crate::domain::session_types::SessionId;
 use crate::domain::session_types::SessionInfo;
+use crate::domain::session_types::TerminalSize;
 
 use super::SessionError;
 
@@ -58,11 +59,11 @@ pub trait SessionOps: Send + Sync {
     fn keydown(&self, key: &str) -> Result<(), SessionError>;
     fn keyup(&self, key: &str) -> Result<(), SessionError>;
     fn is_running(&self) -> bool;
-    fn resize(&self, cols: u16, rows: u16) -> Result<(), SessionError>;
+    fn resize(&self, size: TerminalSize) -> Result<(), SessionError>;
     fn cursor(&self) -> CursorPosition;
     fn session_id(&self) -> SessionId;
     fn command(&self) -> String;
-    fn size(&self) -> (u16, u16);
+    fn size(&self) -> TerminalSize;
     fn live_preview_snapshot(&self) -> LivePreviewSnapshot;
 }
 
@@ -77,8 +78,7 @@ pub trait SessionRepository: Send + Sync {
         cwd: Option<&str>,
         env: Option<&HashMap<String, String>>,
         session_id: Option<SessionId>,
-        cols: u16,
-        rows: u16,
+        size: TerminalSize,
     ) -> Result<(SessionId, u32), SessionError>;
 
     fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError>;

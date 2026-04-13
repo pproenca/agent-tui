@@ -3,6 +3,8 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::domain::session_types::TerminalSize;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpawnParams {
     #[serde(default)]
@@ -98,8 +100,8 @@ impl Default for WaitParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResizeParams {
-    pub cols: u16,
-    pub rows: u16,
+    #[serde(flatten)]
+    pub size: TerminalSize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
 }

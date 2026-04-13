@@ -4,6 +4,7 @@ use crate::infra::terminal::PtyHandle;
 use crate::infra::terminal::ReadEvent;
 use crossbeam_channel::Receiver;
 
+use crate::domain::session_types::TerminalSize;
 use crate::infra::daemon::SessionError;
 
 pub struct PtySession {
@@ -45,9 +46,9 @@ impl PtySession {
         self.handle.take_read_rx()
     }
 
-    pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), SessionError> {
+    pub fn resize(&mut self, size: TerminalSize) -> Result<(), SessionError> {
         self.handle
-            .resize(cols, rows)
+            .resize(size)
             .map_err(|err| SessionError::Terminal(err.into_port_error()))
     }
 

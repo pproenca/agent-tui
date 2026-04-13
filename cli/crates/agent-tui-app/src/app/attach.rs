@@ -20,6 +20,7 @@ use crate::app::rpc_client::RpcStream;
 use crate::app::rpc_client::call_stream_with_params;
 use crate::app::rpc_client::call_with_params;
 use crate::common::Colors;
+use crate::domain::session_types::TerminalSize;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::DaemonClient;
 use crate::infra::terminal::key_to_escape_sequence;
@@ -172,12 +173,13 @@ pub fn attach_ipc<C: DaemonClient>(
             let term_guard = TerminalGuard::new()?;
 
             let (cols, rows) = terminal::size().map_err(AttachError::Terminal)?;
-            let resize_params = params::ResizeParams {
-                cols,
-                rows,
-                session: Some(session_id.to_string()),
-            };
-            let _ = call_with_params(client, "resize", resize_params);
+            if let Ok(size) = TerminalSize::try_new(cols, rows) {
+                let resize_params = params::ResizeParams {
+                    size,
+                    session: Some(session_id.to_string()),
+                };
+                let _ = call_with_params(client, "resize", resize_params);
+            }
 
             let stdout = Arc::new(Mutex::new(io::stdout()));
             if let Ok(mut guard) = stdout.lock() {
@@ -362,12 +364,13 @@ fn attach_ipc_loop<C: DaemonClient>(
                         }
                     }
                     Ok(EventMessage::Event(Event::Resize(cols, rows))) => {
-                        let params = params::ResizeParams {
-                            cols,
-                            rows,
-                            session: Some(session_id.to_string()),
-                        };
-                        let _ = call_with_params(client, "resize", params);
+                        if let Ok(size) = TerminalSize::try_new(cols, rows) {
+                            let params = params::ResizeParams {
+                                size,
+                                session: Some(session_id.to_string()),
+                            };
+                            let _ = call_with_params(client, "resize", params);
+                        }
                     }
                     Ok(EventMessage::Event(_)) => {}
                     Ok(EventMessage::Error) => return Err(AttachError::EventRead),

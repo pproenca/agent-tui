@@ -7,7 +7,7 @@ use tattoy_wezterm_surface::CursorVisibility;
 use tattoy_wezterm_term::Intensity;
 use tattoy_wezterm_term::Terminal;
 use tattoy_wezterm_term::TerminalConfiguration;
-use tattoy_wezterm_term::TerminalSize;
+use tattoy_wezterm_term::TerminalSize as WeztermTerminalSize;
 use tattoy_wezterm_term::Underline;
 use tattoy_wezterm_term::color::ColorAttribute;
 use tattoy_wezterm_term::color::ColorPalette;
@@ -16,6 +16,7 @@ use crate::domain::core::CellStyle;
 use crate::domain::core::Color;
 use crate::domain::core::ScreenGrid;
 use crate::domain::core::ScreenSnapshot;
+use crate::domain::session_types::TerminalSize;
 use crate::usecases::ports::TerminalEngine;
 
 #[derive(Debug, Clone)]
@@ -102,28 +103,22 @@ impl TerminalConfiguration for DefaultTerminalConfig {
 
 pub struct VirtualTerminal {
     terminal: Terminal,
-    cols: u16,
-    rows: u16,
+    size: TerminalSize,
 }
 
 impl VirtualTerminal {
-    pub fn new(cols: u16, rows: u16) -> Self {
-        let size = TerminalSize {
-            rows: rows as usize,
-            cols: cols as usize,
-            pixel_width: 0,
-            pixel_height: 0,
-            dpi: 0,
-        };
+    pub fn new(size: TerminalSize) -> Self {
         let config: Arc<dyn TerminalConfiguration + Send + Sync> =
             Arc::new(DefaultTerminalConfig::default());
         let writer: Box<dyn io::Write + Send> = Box::new(io::sink());
-        let terminal = Terminal::new(size, config, "agent-tui", env!("CARGO_PKG_VERSION"), writer);
-        Self {
-            terminal,
-            cols,
-            rows,
-        }
+        let terminal = Terminal::new(
+            wezterm_terminal_size(size),
+            config,
+            "agent-tui",
+            env!("CARGO_PKG_VERSION"),
+            writer,
+        );
+        Self { terminal, size }
     }
 
     pub fn process(&mut self, data: &[u8]) {
@@ -203,21 +198,13 @@ impl VirtualTerminal {
         }
     }
 
-    pub fn resize(&mut self, cols: u16, rows: u16) {
-        let size = TerminalSize {
-            rows: rows as usize,
-            cols: cols as usize,
-            pixel_width: 0,
-            pixel_height: 0,
-            dpi: 0,
-        };
-        self.terminal.resize(size);
-        self.cols = cols;
-        self.rows = rows;
+    pub fn resize(&mut self, size: TerminalSize) {
+        self.terminal.resize(wezterm_terminal_size(size));
+        self.size = size;
     }
 
-    pub fn size(&self) -> (u16, u16) {
-        (self.cols, self.rows)
+    pub fn size(&self) -> TerminalSize {
+        self.size
     }
 }
 
@@ -226,15 +213,15 @@ impl TerminalEngine for VirtualTerminal {
         self.process(bytes);
     }
 
-    fn resize(&mut self, cols: u16, rows: u16) {
-        self.resize(cols, rows);
+    fn resize(&mut self, size: TerminalSize) {
+        self.resize(size);
     }
 
     fn snapshot(&self) -> ScreenSnapshot {
         let buffer = self.screen_buffer();
         ScreenSnapshot {
-            cols: self.cols,
-            rows: self.rows,
+            cols: self.size.cols(),
+            rows: self.size.rows(),
             cells: buffer
                 .cells
                 .into_iter()
@@ -253,6 +240,16 @@ impl TerminalEngine for VirtualTerminal {
 
     fn plain_text(&self) -> String {
         self.screen_text()
+    }
+}
+
+fn wezterm_terminal_size(size: TerminalSize) -> WeztermTerminalSize {
+    WeztermTerminalSize {
+        rows: size.rows() as usize,
+        cols: size.cols() as usize,
+        pixel_width: 0,
+        pixel_height: 0,
+        dpi: 0,
     }
 }
 
@@ -288,10 +285,11 @@ fn convert_color(color: ColorAttribute) -> Option<Color> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::session_types::TerminalSize;
 
     #[test]
     fn test_basic_terminal() {
-        let mut term = VirtualTerminal::new(80, 24);
+        let mut term = VirtualTerminal::new(TerminalSize::default());
         term.process(b"Hello, World!");
         let text = term.screen_text();
         assert!(text.contains("Hello, World!"));
@@ -299,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_cursor_position() {
-        let mut term = VirtualTerminal::new(80, 24);
+        let mut term = VirtualTerminal::new(TerminalSize::default());
         term.process(b"ABC");
         let cursor = term.cursor();
         assert_eq!(cursor.col, 3);
@@ -308,7 +306,7 @@ mod tests {
 
     #[test]
     fn test_screen_buffer() {
-        let mut term = VirtualTerminal::new(80, 24);
+        let mut term = VirtualTerminal::new(TerminalSize::default());
         term.process(b"\x1b[1mBold\x1b[0m Normal");
         let buffer = term.screen_buffer();
 

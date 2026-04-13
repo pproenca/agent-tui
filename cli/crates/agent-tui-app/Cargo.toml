@@ -26,11 +26,11 @@ url.workspace = true
 shell-words.workspace = true
 crossbeam-channel.workspace = true
 uuid.workspace = true
-agent-tui-common = { path = "../agent-tui-common" }
-agent-tui-domain = { path = "../agent-tui-domain" }
-agent-tui-usecases = { path = "../agent-tui-usecases" }
-agent-tui-adapters = { path = "../agent-tui-adapters" }
-agent-tui-infra = { path = "../agent-tui-infra" }
+agent-tui-common.workspace = true
+agent-tui-domain.workspace = true
+agent-tui-usecases.workspace = true
+agent-tui-adapters.workspace = true
+agent-tui-infra.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

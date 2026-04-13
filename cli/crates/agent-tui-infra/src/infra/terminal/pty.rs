@@ -27,6 +27,7 @@ use tracing::debug;
 use tracing::warn;
 
 use crate::common::mutex_lock_or_recover;
+use crate::domain::session_types::TerminalSize;
 use crate::usecases::ports::SpawnErrorKind;
 
 pub use crate::infra::terminal::error::PtyError;
@@ -60,14 +61,13 @@ impl PtyHandle {
         args: &[String],
         cwd: Option<&str>,
         env: Option<&HashMap<String, String>>,
-        cols: u16,
-        rows: u16,
+        size: TerminalSize,
     ) -> Result<Self, PtyError> {
         let pty_system = native_pty_system();
 
         let size = PtySize {
-            rows,
-            cols,
+            rows: size.rows(),
+            cols: size.cols(),
             pixel_width: 0,
             pixel_height: 0,
         };
@@ -293,10 +293,10 @@ impl PtyHandle {
         Ok(total)
     }
 
-    pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), PtyError> {
+    pub fn resize(&mut self, size: TerminalSize) -> Result<(), PtyError> {
         self.size = PtySize {
-            rows,
-            cols,
+            rows: size.rows(),
+            cols: size.cols(),
             pixel_width: 0,
             pixel_height: 0,
         };
@@ -612,6 +612,7 @@ fn find_spawn_error_kind_in_chain(error: &(dyn StdError + 'static)) -> Option<Sp
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::session_types::TerminalSize;
     #[cfg(unix)]
     use std::process::Command;
 
@@ -653,8 +654,7 @@ mod tests {
             &[],
             None,
             None,
-            80,
-            24,
+            TerminalSize::default(),
         );
 
         match result {

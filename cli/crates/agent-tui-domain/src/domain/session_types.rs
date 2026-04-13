@@ -1,5 +1,7 @@
 //! Session identifier and terminal size types.
 
+use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
@@ -96,8 +98,15 @@ pub enum TerminalSizeError {
     RowsTooLarge { rows: u16, max: u16 },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "TerminalSizeWire", into = "TerminalSizeWire")]
 pub struct TerminalSize {
+    cols: u16,
+    rows: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+struct TerminalSizeWire {
     cols: u16,
     rows: u16,
 }
@@ -152,6 +161,23 @@ impl TerminalSize {
 impl Default for TerminalSize {
     fn default() -> Self {
         Self { cols: 80, rows: 24 }
+    }
+}
+
+impl TryFrom<TerminalSizeWire> for TerminalSize {
+    type Error = TerminalSizeError;
+
+    fn try_from(value: TerminalSizeWire) -> Result<Self, Self::Error> {
+        Self::try_new(value.cols, value.rows)
+    }
+}
+
+impl From<TerminalSize> for TerminalSizeWire {
+    fn from(value: TerminalSize) -> Self {
+        Self {
+            cols: value.cols,
+            rows: value.rows,
+        }
     }
 }
 

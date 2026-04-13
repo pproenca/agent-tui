@@ -201,6 +201,23 @@ mod e2e {
 
     #[test]
     #[ignore = "slow e2e"]
+    fn e2e_screenshot_rejects_named_region() {
+        let _lock = slow_e2e_lock();
+        let harness = RealTestHarness::new();
+        let session_id = spawn_session(&harness, "bash");
+
+        harness
+            .run(&["--session", &session_id, "screenshot", "--region", "modal"])
+            .failure()
+            .stderr(predicate::str::contains("Invalid input for region"));
+
+        harness
+            .run(&["--session", &session_id, "kill", "--yes"])
+            .success();
+    }
+
+    #[test]
+    #[ignore = "slow e2e"]
     fn e2e_sessions_attach_interactive_default_detach_keys() {
         let _lock = slow_e2e_lock();
         let harness = RealTestHarness::new();

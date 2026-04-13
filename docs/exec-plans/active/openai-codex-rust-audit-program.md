@@ -28,6 +28,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - [x] (2026-04-13 09:16Z) Complete the IPC transport and client/server RPC tranche (`F11`) and record findings.
 - [x] (2026-04-13 09:24Z) Complete the process control and isolation tranche (`A06`) and record findings.
 - [x] (2026-04-13 09:31Z) Complete the CLI admin and operator UX tranche (`F12`) and record findings.
+- [x] (2026-04-13 09:40Z) Complete the observability and runtime diagnostics tranche (`A07`) and record findings.
 - [ ] Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
 - [ ] Close the plan by filling the retrospective and moving it to `completed/`.
 
@@ -54,6 +55,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 09:16Z` The transport/RPC layer contains two easy-to-miss mismatches: the client advertises retry knobs that no call path ever consumes, and the daemon's Unix-socket request-size limit is cumulative across the whole connection rather than per request, which means long-lived clients can fail later small RPCs for the wrong reason.
 - `2026-04-13 09:24Z` The process-control boundary still lacks a stable notion of process identity: daemon and UI control paths trust bare PIDs from lock or state files, treat `kill(pid, 0)` as sufficient validation, and can therefore report or signal an unrelated process after PID reuse even though the lower-level signal translation itself is typed and explicit.
 - `2026-04-13 09:31Z` The operator-facing CLI still has one whole-surface contract drift that the lower layers do not reveal: global help promises `--format json` for machine-readable output, but the standalone `completions` flow bypasses the presenter layer entirely, while `live stop` still prints and returns the same UI-stop failure through two separate text paths.
+- `2026-04-13 09:40Z` The observability slice has a sharper credential-leak edge than expected: the live-preview server logs the full tokenized `ws_url`, transport debug logs can repeat the same address, and the telemetry bootstrap both suppresses targets and installs only one sink, so there is no built-in log-only versus trace-safe path to contain sensitive diagnostics.
 
 ## Decision Log
 
@@ -81,10 +83,10 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 09:16Z` Queue `A06` ahead of `F12` and `A07` after `F11` because the transport audit finished the client/server framing surface and left the deeper process-spawn, environment-inheritance, and local-bind safety guarantees as the next unresolved boundary underneath it; operator UX and runtime diagnostics come after that substrate is mapped.
 - `2026-04-13 09:24Z` Queue `F12` ahead of `A07` and `A09` after `A06` because the process/isolation audit closed the remaining OS-boundary substrate, so the next highest-yield work is the operator-facing CLI UX that reports those states, then runtime diagnostics, and finally build or release tooling.
 - `2026-04-13 09:31Z` Queue `A07` ahead of `A09` after `F12` because the CLI admin audit closed the remaining operator-facing command surface, so the next highest-yield unresolved work is the observability and diagnostics substrate those commands rely on before finishing the build/release tooling tranche.
+- `2026-04-13 09:40Z` Queue `A09` as the final remaining tranche after `A07` because the observability audit closed the last shared-runtime surface outside build and release tooling, leaving versioning, packaging, and distribution as the only unfinished inventory unit before the retrospective.
 
 ## Next Queue
 
-- `A07` Observability and runtime diagnostics
 - `A09` Build, version, release, and dist tooling
 
 ## Outcomes & Retrospective

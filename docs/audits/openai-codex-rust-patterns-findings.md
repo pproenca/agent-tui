@@ -2,6 +2,9 @@
 
 ## Open Findings
 
+- `[A07][otel-log-only-vs-trace-safe-targets]` Runtime diagnostics still route sensitive live-preview credentials and high-cardinality selectors through ordinary logs. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` logs the full `ws_url` with `?token=...` during startup, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs` debug-logs the raw WebSocket address it connects to, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` attaches raw `session` selectors to request spans, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/telemetry.rs` suppresses tracing targets entirely. Token-bearing URLs and unbounded selector strings therefore have no `log_only` versus trace-safe route separation.
+- `[A07][otel-layered-subscribers-env-filter]` Telemetry bootstrap is still a single coarse-grained sink. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/telemetry.rs` constructs exactly one `fmt()` subscriber, chooses exactly one writer (file or stdout/stderr), and applies one `EnvFilter::try_from_default_env()` fallback, so operators cannot keep human stderr output at one threshold while capturing richer JSON/file diagnostics or future trace-safe exports at another.
+- `[A07][testing-wiremock-sse-fakes]` Observability coverage still stops before the real logging boundary. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/telemetry.rs` only tests env parsing, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` never captures emitted startup logs, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs` has no integration test that proves WebSocket connection diagnostics avoid leaking tokenized addresses. Sink selection, redaction, and runtime diagnostics semantics therefore are not regression-covered end to end.
 - `[F12][errors-boundary-error-translator]` The global machine-readable CLI contract still has a hole in `completions`. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` tells operators to use `--format json` for machine-readable output, but `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` handles `completions` as a standalone path that prints shell scripts or human guidance directly and never translates through the selected presenter or output format. Automation therefore cannot rely on the whole CLI surface honoring the advertised JSON contract.
 - `[F12][errors-boundary-error-translator]` `live stop` still double-reports one class of operator failure. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` prints a warning when stopping the managed UI helper fails and then returns a `CliError`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` renders that error again at the top level. Text-mode operators therefore see both an inline warning and a second fatal error line for the same UI-stop problem.
 - `[F12][testing-wiremock-sse-fakes]` CLI admin UX coverage still misses the highest-risk standalone paths. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs` covers `version`, `env`, shell-script printing, and happy-path live-preview admin commands, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` mainly proves standalone routing. No test exercises `agent-tui --format json completions ...`, shell detection plus `--no-input` install behavior, or the failing `live stop` output and exit-path contract end to end.
@@ -692,9 +695,36 @@ Contextual non-applicability:
 - `testing-insta-snapshot-tui-rendering` is not a direct fit for this tranche because the audited surface is plain text or JSON CLI output plus shell-completion scripts, not a Ratatui render tree.
 - `workspace-layered-transport-api-core` is not a direct fit for this tranche because the remaining questions are operator-facing command contracts and error presentation, not transport/api/core crate factoring.
 
+### `2026-04-13 09:40Z` `A07` Observability and runtime diagnostics
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/telemetry.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/error_codes.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/telemetry.rs` still keeps tracing bootstrap centralized and failure-tolerant: log format, stream, and file selection are environment-driven in one place, file-open failure degrades to stderr with a warning instead of panicking, and a second subscriber installation simply disables the guard instead of crashing.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` already emits useful operational spans and timings around the daemon boundary: worker, connection, request, and stream handling each have dedicated spans, and request or stream completion records `elapsed_ms` so slow-path diagnostics are at least visible when tracing is enabled.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/error_codes.rs` preserve structured diagnostic payloads across CLI, daemon, and attach surfaces instead of reducing runtime failures to opaque strings.
+
+Findings:
+
+- The current observability surface still logs token-bearing URLs and raw selectors in ordinary events. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` writes the full `ws_url` plus token at startup, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs` logs the raw WebSocket address it connects to, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` records raw `session` selectors in request spans.
+- Telemetry configuration is still coarse-grained. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/telemetry.rs` installs a single `fmt()` subscriber with one `EnvFilter` and one writer selection, so there is no per-sink filtering or clean separation between human-readable operator logs and richer or safer diagnostic exports.
+- Observability regression coverage remains shallow. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/telemetry.rs` only tests env parsing defaults, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs` do not capture or assert emitted diagnostics under a real listener/client flow.
+
+Contextual non-applicability:
+
+- `otel-w3c-traceparent-propagation` is not a direct fit for this tranche because the reviewed daemon/UI diagnostics slice is still local-only: the current RPC and WebSocket payloads do not carry trace context, and there is no outbound HTTP or trace-export pipeline in this surface to correlate with a wider distributed trace.
+
 ## Next Queue
 
-- `A07` Observability and runtime diagnostics
 - `A09` Build, version, release, and dist tooling
 
 ## Notes

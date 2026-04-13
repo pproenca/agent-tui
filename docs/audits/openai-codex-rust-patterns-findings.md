@@ -2,6 +2,8 @@
 
 ## Open Findings
 
+- `[F08][async-graceful-then-forceful-cancel]` Daemon control-plane shutdown still never escalates from graceful to forcible automatically: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs` logs the second signal as "forcing shutdown" but only reissues the same shutdown flag and notifier, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs` treats acknowledged RPC shutdown as success after a bounded socket wait and then unlinks socket and lock files if they still exist, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` returns that result to the operator without re-checking process liveness. A wedged daemon can therefore survive a reported graceful stop while its coordination files are removed.
+- `[F08][errors-boundary-error-translator]` Daemon PID and lock corruption is flattened and misclassified: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` exposes lock-file failures as `PidLookupResult::Error(String)`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` maps them to `ClientError::SignalFailed { pid: 0, ... }`. Status, stop, and restart errors therefore report stale local coordination metadata as a signal failure instead of a structured daemon-state problem.
 - `[A05][async-graceful-then-forceful-cancel]` Bounded shutdown still detaches owner threads instead of forcefully cancelling them: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` drains `stream_threads` and drops any `JoinHandle` that misses the deadline in `join_stream_threads`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` does the same in `WsServerHandle::shutdown` while still deleting the WS state file. Timed-out daemon stream threads or the outer WS runtime thread can therefore outlive shutdown with no remaining owner to join or signal.
 - `[A05][errors-boundary-error-translator]` Shutdown requests are acknowledged even if the wakeup path fails: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/shutdown.rs` always returns `acknowledged: true`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/shutdown_notifier.rs` makes `notify()` infallible, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` ignores lock/write failures in `ShutdownNotify::notify`. If the wake byte is not delivered, `run_accept_loop` can stay blocked in `poll()` on an otherwise idle daemon after the caller has already been told shutdown succeeded.
 - `[A04][async-bounded-vs-unbounded-channel-split]` PTY output delivery still blocks on an internal bounded event queue: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs` uses `channel::bounded(PTY_READ_CHANNEL_CAPACITY)` for `ReadEvent`s and `spawn_reader` calls blocking `send(ReadEvent::Data(...))`. If `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` cannot keep `pump_loop` moving because the session lock is contended or output bursts outrun processing, the reader stops draining the PTY master and the child process is backpressured by its own output.
@@ -289,11 +291,41 @@ Contextual non-applicability:
 - `async-child-cancellation-tokens` and `async-shared-boxfuture-joinhandle` are not direct fits because this slice mainly uses std threads, watch channels, condvars, and atomics rather than nested tokio task trees with shared join futures.
 - `testing-wiremock-sse-fakes` is not a direct fit because the concurrency boundary under review is local daemon/runtime coordination rather than an outbound protocol fake.
 
+### `2026-04-13 07:33Z` `F08` Daemon lifecycle control plane
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` keeps the daemon operator UX idempotent and structured: start/stop/restart/status all have dedicated JSON outputs plus dry-run and confirmation flows, and `daemon start` only auto-starts after retryable local connect failures instead of masking arbitrary transport errors.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs` already uses single-build test hooks for daemon autostart, with `USE_DAEMON_START_STUB` and `DAEMON_START_TEST_REAPED` covering stale-socket recovery, early child exit, recursive-spawn refusal, and reaper fallback without introducing a cargo feature split.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs` keeps lock-file failures structured: `open`, `flock`, `truncate`, and PID-write errors all become `DaemonError::LockFailed { operation, source }`, so the lifecycle boundary does not have to reverse-engineer raw `io::Error` strings later.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs` use an explicit wake pipe so signal-triggered shutdown can break the accept loop out of `poll()` without waiting for another client connection.
+
+Findings:
+
+- The daemon lifecycle still lacks a true graceful-then-forceful shutdown path: the second signal path only reissues the same notifier, the bounded stream-thread join gap from `A05` still applies, and the RPC stop helper can report success after unlinking daemon coordination files even if the daemon process never exited.
+- PID lookup and lock-file corruption are flattened too early, then translated into the wrong operator-facing category. Invalid or unreadable lock metadata loses structured file context in `PidLookupResult::Error(String)` and is later surfaced as `ClientError::SignalFailed { pid: 0, ... }`.
+- The previously recorded timing-test gap extends into this slice too: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` still verify shutdown and startup timeouts with real polling and elapsed-time bounds instead of deterministic time control.
+
+Contextual non-applicability:
+
+- `sandbox-env-clear-pre-exec`, `sandbox-three-layer-network-isolation`, and the other codex sandbox-helper rules are not direct fits for `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs` because this slice is spawning the daemon itself, which is intentionally supposed to inherit operator environment and outlive the initiating CLI process rather than act like a tightly sandboxed child workload.
+- `async-abort-on-drop-handle`, `async-child-cancellation-tokens`, and `async-shared-boxfuture-joinhandle` are not direct fits because this control plane is primarily std-process and std-thread lifecycle code, not a nested tokio task tree.
+
 ## Next Queue
 
-- `F08` Daemon lifecycle control plane
 - `F07` Session lifecycle management
 - `F02` Snapshot and screenshot rendering
+- `F03` Input injection
 
 ## Notes
 

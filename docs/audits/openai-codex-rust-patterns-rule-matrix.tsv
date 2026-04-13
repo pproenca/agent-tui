@@ -1743,7 +1743,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	async-biased-select-for-cancellation	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	async-bounded-vs-unbounded-channel-split	async	pass	applicable	A05	2026-04-13 06:59Z	Accepted Unix connections enter a bounded sync_channel via try_send, so overload is handled at the listener boundary instead of stalling worker/runtime threads.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	async-child-cancellation-tokens	async	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	async-graceful-then-forceful-cancel	async	finding	applicable	A05	2026-04-13 06:59Z	join_stream_threads only waits until the deadline then drops unfinished JoinHandles, detaching still-running stream threads instead of forcing termination or retaining ownership for later cleanup.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	async-graceful-then-forceful-cancel	async	finding	applicable	A05,F08	2026-04-13 07:33Z	join_stream_threads only waits until the deadline then drops unfinished JoinHandles, detaching still-running stream threads instead of forcing termination or retaining ownership for later cleanup; F08 revalidated that daemon stop still depends on this detached-thread shutdown path.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	async-shared-boxfuture-joinhandle	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
@@ -1752,7 +1752,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	errors-boundary-error-translator	errors	finding	applicable	A05	2026-04-13 06:59Z	ShutdownNotify::notify ignores mutex and write failures even though shutdown requests rely on the wake byte to break the accept loop out of poll().
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	errors-boundary-error-translator	errors	finding	applicable	A05,F08	2026-04-13 07:33Z	ShutdownNotify::notify ignores mutex and write failures even though shutdown requests rely on the wake byte to break the accept loop out of poll(); F08 revalidated that the daemon control plane still depends on this wake path for graceful stop.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -1780,7 +1780,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	server.rs keeps an inline #[cfg(test)] mod tests block instead of a sibling server_tests.rs child module.
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-paused-runtime-advance	testing	finding	applicable	A10,A05	2026-04-13 06:59Z	Shutdown and join-timeout tests still use park_timeout, recv_timeout, and elapsed-time bounds instead of deterministic virtual-time control.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-paused-runtime-advance	testing	finding	applicable	A10,A05,F08	2026-04-13 07:33Z	Shutdown and join-timeout tests still use park_timeout, recv_timeout, and elapsed-time bounds instead of deterministic virtual-time control, and F08 revalidated the same gap for daemon stop/start behavior.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
@@ -2103,7 +2103,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	async-biased-select-for-cancellation	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	async-bounded-vs-unbounded-channel-split	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	async-child-cancellation-tokens	async	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	async-graceful-then-forceful-cancel	async	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	async-graceful-then-forceful-cancel	async	finding	applicable	F08	2026-04-13 07:33Z	stop_daemon_core accepts an acknowledged RPC shutdown as success and returns after removing WS state without proving the daemon exited or escalating automatically after the grace window.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	async-shared-boxfuture-joinhandle	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
@@ -2112,7 +2112,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	errors-boundary-error-translator	errors	finding	applicable	F08	2026-04-13 07:33Z	restart_daemon_core and stop_daemon_core collapse PidLookupResult::Error(msg) into ClientError::SignalFailed { pid: 0, ... }, reporting stale daemon lock metadata as a signal failure.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -3555,7 +3555,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs	errors-boundary-error-translator	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs	errors-io-error-with-context-struct	errors	pass	applicable	F08	2026-04-13 07:33Z	LockFile::acquire wraps open, flock, truncate, and PID-write failures in DaemonError::LockFailed { operation, source } instead of flattening them into anyhow strings.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs	errors-struct-display-payload	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs	errors-tool-call-respond-vs-fatal	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/file_lock.rs	errors-transient-permanent-type-split	errors	pending	unreviewed			
@@ -3903,7 +3903,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs	async-biased-select-for-cancellation	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs	async-bounded-vs-unbounded-channel-split	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs	async-child-cancellation-tokens	async	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs	async-graceful-then-forceful-cancel	async	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs	async-graceful-then-forceful-cancel	async	finding	applicable	F08	2026-04-13 07:33Z	setup logs the second signal as forcing shutdown but only reissues the same shutdown flag and notifier, so the control plane never adds a stronger stop path on repeated SIGINT or SIGTERM.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs	async-shared-boxfuture-joinhandle	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
@@ -4096,7 +4096,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-struct-display-payload	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-struct-display-payload	errors	finding	applicable	F08	2026-04-13 07:33Z	PidLookupResult::Error(String) preformats lock-file read and parse failures, losing structured path and operation context before callers translate the error.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-tool-call-respond-vs-fatal	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	errors-transient-permanent-type-split	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs	otel-field-empty-then-record	otel	pending	unreviewed			
@@ -4143,7 +4143,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	async-biased-select-for-cancellation	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	async-bounded-vs-unbounded-channel-split	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	async-child-cancellation-tokens	async	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	async-graceful-then-forceful-cancel	async	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	async-graceful-then-forceful-cancel	async	finding	applicable	F08	2026-04-13 07:33Z	stop_daemon_via_rpc waits only for socket disappearance after shutdown acknowledgement; if the socket persists it unlinks socket and lock files and returns success instead of re-checking process liveness or escalating to signal-based stop.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	async-shared-boxfuture-joinhandle	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
@@ -4180,7 +4180,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	testing-paused-runtime-advance	testing	finding	applicable	F08	2026-04-13 07:33Z	Stop and restart tests rely on real polling and wall-clock waits around socket removal and signal shutdown rather than deterministic time control.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
@@ -4592,15 +4592,15 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	proto-sse-idle-timeout-terminator	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	sandbox-argv0-multiplex-binary	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	sandbox-dev-null-first-missing-mount	sandbox	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	sandbox-env-clear-pre-exec	sandbox	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	sandbox-env-clear-pre-exec	sandbox	not_applicable	contextual	F08	2026-04-13 07:33Z	Background daemon self-spawn intentionally inherits operator environment and is supposed to outlive the initiating CLI process, so codex sandbox child-scrubbing and parent-death-signal guidance is not a direct fit.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	sandbox-shared-policy-data-model	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	sandbox-staged-restrictions-re-exec	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-atomic-bool-test-opt-in	testing	pass	applicable	A10	2026-04-12 22:12Z	USE_DAEMON_START_STUB provides single-build test-only daemon autostart stubbing without a cargo feature split.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-atomic-bool-test-opt-in	testing	pass	applicable	A10,F08	2026-04-13 07:33Z	USE_DAEMON_START_STUB and DAEMON_START_TEST_REAPED provide single-build daemon-start test hooks without a cargo feature split.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	transport.rs keeps an inline #[cfg(test)] mod tests block instead of a sibling transport_tests.rs child module.
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-paused-runtime-advance	testing	finding	applicable	A10	2026-04-12 22:12Z	Daemon startup tests use elapsed-time bounds around wall-clock polling instead of deterministic virtual-time control.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-paused-runtime-advance	testing	finding	applicable	A10,F08	2026-04-13 07:33Z	Daemon startup tests use elapsed-time bounds around wall-clock polling and child reaping instead of deterministic virtual-time control.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			

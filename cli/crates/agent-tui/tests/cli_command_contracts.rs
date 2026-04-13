@@ -389,9 +389,62 @@ fn standalone_version_env_and_completions_contract() {
             .stdout(predicate::str::is_empty().not());
     }
 
+    let printed = env
+        .run(&["--format", "json", "completions", "--print", "bash"])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let printed: Value = serde_json::from_slice(&printed).expect("valid completions json");
+    assert_eq!(printed["action"], "print");
+    assert_eq!(printed["shell"], "bash");
+    assert!(
+        printed["script"]
+            .as_str()
+            .is_some_and(|script| !script.is_empty())
+    );
+
+    let status = env
+        .run(&["--format", "json", "completions", "bash"])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status: Value = serde_json::from_slice(&status).expect("valid completions status json");
+    assert_eq!(status["action"], "status");
+    assert_eq!(status["shell"], "bash");
+    assert!(status["install_supported"].is_boolean());
+
     env.run(&["completions", "--print", "bash", "--install"])
         .failure()
         .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn standalone_completions_json_reports_shell_detection_failures_structurally() {
+    let env = StandaloneEnv::new();
+    let output = env
+        .cli_command()
+        .env_remove("SHELL")
+        .args(["--format", "json", "completions", "--no-input"])
+        .assert()
+        .failure()
+        .get_output()
+        .stderr
+        .clone();
+
+    let parsed: Value = serde_json::from_slice(&output).expect("valid completions error json");
+    assert_eq!(parsed["category"], "invalid_input");
+    assert_eq!(parsed["code"], 64);
+    assert!(
+        parsed["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("Shell not detected"))
+    );
+    assert_eq!(
+        parsed["context"]["supported_shells"],
+        json!(["bash", "zsh", "fish", "elvish"])
+    );
 }
 
 #[test]
@@ -506,6 +559,32 @@ fn standalone_live_status_and_stop_contract() {
         .stdout(predicate::str::contains(
             "Live preview is served by the daemon; run 'agent-tui daemon stop --yes' to stop.",
         ));
+}
+
+#[test]
+fn standalone_live_stop_reports_ui_failure_once() {
+    let env = StandaloneEnv::new();
+    fs::write(
+        &env.ui_state_path,
+        r#"{"pid":1,"url":"http://127.0.0.1:43210/ui","port":43210}"#,
+    )
+    .expect("write ui state");
+
+    let output = env
+        .cli_command()
+        .args(["live", "stop"])
+        .assert()
+        .failure()
+        .get_output()
+        .stderr
+        .clone();
+    let stderr = String::from_utf8_lossy(&output);
+
+    assert_eq!(
+        stderr.matches("Failed to stop UI server").count(),
+        1,
+        "live stop should report the UI failure once"
+    );
 }
 
 #[test]

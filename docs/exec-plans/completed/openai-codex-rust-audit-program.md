@@ -29,8 +29,8 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - [x] (2026-04-13 09:24Z) Complete the process control and isolation tranche (`A06`) and record findings.
 - [x] (2026-04-13 09:31Z) Complete the CLI admin and operator UX tranche (`F12`) and record findings.
 - [x] (2026-04-13 09:40Z) Complete the observability and runtime diagnostics tranche (`A07`) and record findings.
-- [ ] Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
-- [ ] Close the plan by filling the retrospective and moving it to `completed/`.
+- [x] (2026-04-13 09:47Z) Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
+- [x] (2026-04-13 09:47Z) Close the plan by filling the retrospective and moving it to `completed/`.
 
 ## Surprises & Discoveries
 
@@ -56,6 +56,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 09:24Z` The process-control boundary still lacks a stable notion of process identity: daemon and UI control paths trust bare PIDs from lock or state files, treat `kill(pid, 0)` as sufficient validation, and can therefore report or signal an unrelated process after PID reuse even though the lower-level signal translation itself is typed and explicit.
 - `2026-04-13 09:31Z` The operator-facing CLI still has one whole-surface contract drift that the lower layers do not reveal: global help promises `--format json` for machine-readable output, but the standalone `completions` flow bypasses the presenter layer entirely, while `live stop` still prints and returns the same UI-stop failure through two separate text paths.
 - `2026-04-13 09:40Z` The observability slice has a sharper credential-leak edge than expected: the live-preview server logs the full tokenized `ws_url`, transport debug logs can repeat the same address, and the telemetry bootstrap both suppresses targets and installs only one sink, so there is no built-in log-only versus trace-safe path to contain sensitive diagnostics.
+- `2026-04-13 09:47Z` The build and release slice turned out to be half-finished in two different directions: version synchronization is stricter than expected across Cargo, npm, and optional platform packages, but the actual `xtask release` path bypasses those validation helpers entirely, and all three build scripts silently stamp `unknown` metadata when version or git discovery fails.
 
 ## Decision Log
 
@@ -84,14 +85,19 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 09:24Z` Queue `F12` ahead of `A07` and `A09` after `A06` because the process/isolation audit closed the remaining OS-boundary substrate, so the next highest-yield work is the operator-facing CLI UX that reports those states, then runtime diagnostics, and finally build or release tooling.
 - `2026-04-13 09:31Z` Queue `A07` ahead of `A09` after `F12` because the CLI admin audit closed the remaining operator-facing command surface, so the next highest-yield unresolved work is the observability and diagnostics substrate those commands rely on before finishing the build/release tooling tranche.
 - `2026-04-13 09:40Z` Queue `A09` as the final remaining tranche after `A07` because the observability audit closed the last shared-runtime surface outside build and release tooling, leaving versioning, packaging, and distribution as the only unfinished inventory unit before the retrospective.
+- `2026-04-13 09:47Z` Mark the audit program complete after `A09` because the inventory is exhausted, the findings ledger and matrix are synchronized, and the remaining work is remediation rather than coverage.
 
 ## Next Queue
 
-- `A09` Build, version, release, and dist tooling
+- `(none - audit inventory exhausted)`
 
 ## Outcomes & Retrospective
 
-(fill when complete)
+The audit program completed all inventory units defined in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` and left the repository with four durable artifacts: this completed exec plan, the findings ledger, the file-by-rule matrix, and the automation memory checkpoint. The main outcome is not code changes but an auditable map of where the repository matches Codex Rust patterns and where it diverges.
+
+The highest-risk gaps clustered around optimistic-success boundaries and contract drift instead of obvious panic sites: ignored region and modifier APIs, duplicated wait refreshes, detached shutdown paths, stale protocol docs, PID-only process identity, token-bearing live-preview URLs, and release tooling that can tag or stamp incomplete metadata. The audit also found several places where the codebase is stronger than it first appears, including the real socket-based mock daemon, the version synchronization between Cargo and npm packaging, and the explicit connection or stream timing spans.
+
+Remaining work is implementation remediation, not audit coverage. The open findings in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-findings.md` are the prioritized follow-up queue; the audit inventory itself is exhausted, so this plan moves to `completed/` and future sessions should reference the findings ledger or start separate remediation plans instead of reopening audit discovery.
 
 ## Context and Orientation
 

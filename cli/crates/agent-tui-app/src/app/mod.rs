@@ -41,6 +41,7 @@ use crate::app::commands::CompletionShell;
 use crate::app::commands::DaemonCommand;
 use crate::app::commands::LiveCommand;
 use crate::app::commands::LiveStartArgs;
+use crate::app::error::CliError;
 use crate::app::error::DaemonNotRunningError;
 use crate::app::handlers::HandlerContext;
 
@@ -91,9 +92,13 @@ fn handle_completions_command(
     yes: bool,
     no_input: bool,
 ) -> Result<()> {
+    if format == OutputFormat::Json {
+        return handle_completions_command_json(shell, print, install);
+    }
+
     if install {
         let shell = resolve_shell(shell).ok_or_else(|| {
-            crate::app::error::CliError::new(
+            CliError::new(
                 format,
                 "Shell not specified. Re-run with `agent-tui completions --install <bash|zsh|fish|elvish>`."
                     .to_string(),
@@ -108,7 +113,7 @@ fn handle_completions_command(
     let stdout_tty = io::stdout().is_terminal();
     if print || !stdout_tty {
         let shell = resolve_shell(shell).ok_or_else(|| {
-            crate::app::error::CliError::new(
+            CliError::new(
                 format,
                 "Shell not specified. Re-run with `agent-tui completions --print <bash|zsh|fish|elvish>`."
                     .to_string(),
@@ -128,7 +133,7 @@ fn handle_completions_command(
 
     if no_input {
         let shell = resolve_shell(shell).ok_or_else(|| {
-            crate::app::error::CliError::new(
+            CliError::new(
                 format,
                 "Shell not detected. Re-run with `agent-tui completions <bash|zsh|fish|elvish> --no-input` or `agent-tui completions --print <shell>`."
                     .to_string(),
@@ -149,6 +154,173 @@ fn handle_completions_command(
     };
 
     run_completions_wizard(shell, install, yes, false)?;
+    Ok(())
+}
+
+fn completions_cli_error(
+    exit_code: i32,
+    message: impl Into<String>,
+    category: &'static str,
+    suggestion: Option<String>,
+    context: Option<serde_json::Value>,
+) -> CliError {
+    let message = message.into();
+    let mut output = serde_json::json!({
+        "code": exit_code,
+        "message": message.as_str(),
+        "category": category,
+        "retryable": false,
+    });
+    if let Some(context) = context {
+        output["context"] = context;
+    }
+    if let Some(suggestion) = suggestion.as_deref() {
+        output["suggestion"] = serde_json::json!(suggestion);
+    }
+
+    CliError::new(
+        OutputFormat::Json,
+        message,
+        Some(serde_json::to_string_pretty(&output).unwrap_or_default()),
+        exit_code,
+    )
+}
+
+fn completions_usage_error(
+    message: impl Into<String>,
+    suggestion: Option<String>,
+    context: Option<serde_json::Value>,
+) -> CliError {
+    completions_cli_error(
+        exit_codes::USAGE,
+        message,
+        "invalid_input",
+        suggestion,
+        context,
+    )
+}
+
+fn completions_unavailable_error(
+    message: impl Into<String>,
+    suggestion: Option<String>,
+    context: Option<serde_json::Value>,
+) -> CliError {
+    completions_cli_error(
+        exit_codes::UNAVAILABLE,
+        message,
+        "not_found",
+        suggestion,
+        context,
+    )
+}
+
+fn handle_completions_command_json(
+    shell: Option<CompletionShell>,
+    print: bool,
+    install: bool,
+) -> Result<()> {
+    #[derive(Serialize)]
+    struct CompletionJsonOutput {
+        action: &'static str,
+        shell: String,
+        install_supported: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        install_path: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status: Option<&'static str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<&'static str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        install_recommended: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        suggested_install_command: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        script: Option<String>,
+    }
+
+    let shell = resolve_shell(shell).ok_or_else(|| {
+        completions_usage_error(
+            "Shell not detected. Re-run with `agent-tui completions <bash|zsh|fish|elvish> --no-input` or `agent-tui completions --print <shell>`.",
+            Some("Specify one of bash, zsh, fish, or elvish.".to_string()),
+            Some(serde_json::json!({
+                "supported_shells": ["bash", "zsh", "fish", "elvish"]
+            })),
+        )
+    })?;
+
+    let script = generate_completions_bytes(shell)?;
+    let shell_name = shell_label(shell).to_string();
+
+    if print {
+        let output = CompletionJsonOutput {
+            action: "print",
+            shell: shell_name,
+            install_supported: default_completion_path(shell).is_some(),
+            install_path: default_completion_path(shell).map(|path| path.display().to_string()),
+            status: None,
+            result: None,
+            install_recommended: None,
+            suggested_install_command: None,
+            script: Some(
+                String::from_utf8(script).context("generated completions were not valid UTF-8")?,
+            ),
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    let install_path = default_completion_path(shell);
+    let install_path_string = install_path.as_ref().map(|path| path.display().to_string());
+
+    if install {
+        let path = install_path.ok_or_else(|| {
+            completions_unavailable_error(
+                "Automatic completion install is not available because the home directory could not be determined.",
+                Some("Set HOME or use `agent-tui completions --print <shell>` instead.".to_string()),
+                None,
+            )
+        })?;
+
+        let outcome = install_completions(&script, &path)?;
+        let result = install_outcome_label(&outcome);
+        let output = CompletionJsonOutput {
+            action: "install",
+            shell: shell_name,
+            install_supported: true,
+            install_path: Some(path.display().to_string()),
+            status: Some(result),
+            result: Some(result),
+            install_recommended: Some(false),
+            suggested_install_command: None,
+            script: None,
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    let status = install_path
+        .as_ref()
+        .map(|path| completion_status(&script, path))
+        .transpose()?;
+    let install_recommended = status
+        .as_ref()
+        .map(|status| !matches!(status, CompletionStatus::UpToDate));
+    let suggested_install_command = install_recommended
+        .filter(|recommended| *recommended)
+        .map(|_| format!("{PROGRAM_NAME} completions --install {shell_name}"));
+
+    let output = CompletionJsonOutput {
+        action: "status",
+        shell: shell_name,
+        install_supported: install_path.is_some(),
+        install_path: install_path_string,
+        status: status.as_ref().map(completion_status_label),
+        result: None,
+        install_recommended,
+        suggested_install_command,
+        script: None,
+    };
+    println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
 }
 
@@ -384,6 +556,22 @@ fn install_completions(script: &[u8], path: &PathBuf) -> Result<InstallOutcome> 
         CompletionStatus::OutOfDate => InstallOutcome::Updated(path),
         CompletionStatus::UpToDate => InstallOutcome::AlreadyUpToDate(path),
     })
+}
+
+fn completion_status_label(status: &CompletionStatus) -> &'static str {
+    match status {
+        CompletionStatus::Missing => "missing",
+        CompletionStatus::UpToDate => "up_to_date",
+        CompletionStatus::OutOfDate => "out_of_date",
+    }
+}
+
+fn install_outcome_label(outcome: &InstallOutcome) -> &'static str {
+    match outcome {
+        InstallOutcome::Installed(_) => "installed",
+        InstallOutcome::Updated(_) => "updated",
+        InstallOutcome::AlreadyUpToDate(_) => "already_up_to_date",
+    }
 }
 
 fn print_install_outcome(outcome: InstallOutcome) {

@@ -1,5 +1,7 @@
 //! Process control utilities.
 
+use std::process::Command;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
     Term,
@@ -31,6 +33,9 @@ impl ProcessController for UnixProcessController {
         // `pid_t` is derived from a validated u32 and is safe for libc calls.
         let result = unsafe { libc::kill(pid_t, 0) };
         if result == 0 {
+            if is_defunct_process(pid) {
+                return Ok(ProcessStatus::NotFound);
+            }
             return Ok(ProcessStatus::Running);
         }
 
@@ -62,6 +67,22 @@ impl ProcessController for UnixProcessController {
     }
 }
 
+fn is_defunct_process(pid: u32) -> bool {
+    matches!(process_status_code(pid), Some('Z' | 'X'))
+}
+
+fn process_status_code(pid: u32) -> Option<char> {
+    let output = Command::new("ps")
+        .args(["-o", "stat=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    String::from_utf8(output.stdout).ok()?.trim().chars().next()
+}
+
 #[allow(clippy::expect_used)]
 pub mod mock {
     use super::*;
@@ -74,7 +95,7 @@ pub mod mock {
         signals_sent: Mutex<Vec<(u32, Signal)>>,
         check_error: Mutex<Option<std::io::Error>>,
         signal_error: Mutex<Option<std::io::Error>>,
-        signal_kills_process: bool,
+        signal_kills_process_on: Option<Signal>,
     }
 
     impl Default for MockProcessController {
@@ -90,12 +111,17 @@ pub mod mock {
                 signals_sent: Mutex::new(Vec::new()),
                 check_error: Mutex::new(None),
                 signal_error: Mutex::new(None),
-                signal_kills_process: false,
+                signal_kills_process_on: None,
             }
         }
 
         pub fn with_signal_kills_process(mut self) -> Self {
-            self.signal_kills_process = true;
+            self.signal_kills_process_on = Some(Signal::Term);
+            self
+        }
+
+        pub fn with_signal_kills_process_on(mut self, signal: Signal) -> Self {
+            self.signal_kills_process_on = Some(signal);
             self
         }
 
@@ -138,7 +164,7 @@ pub mod mock {
                 return Err(err);
             }
             mutex_lock_or_recover(&self.signals_sent).push((pid, signal));
-            if self.signal_kills_process {
+            if self.signal_kills_process_on == Some(signal) {
                 mutex_lock_or_recover(&self.process_states).remove(&pid);
             }
             Ok(())
@@ -150,6 +176,9 @@ pub mod mock {
 mod tests {
     use super::*;
     use mock::MockProcessController;
+    use std::process::Command;
+    use std::time::Duration;
+    use std::time::Instant;
 
     #[test]
     fn test_signal_variants() {
@@ -217,5 +246,36 @@ mod tests {
             .with_process(1234, ProcessStatus::Running)
             .with_signal_error(std::io::Error::other("test error"));
         assert!(mock.send_signal(1234, Signal::Term).is_err());
+    }
+
+    #[test]
+    fn test_check_process_treats_zombie_as_not_found() {
+        let mut child = Command::new("sleep")
+            .arg("0.1")
+            .spawn()
+            .expect("spawn should succeed");
+        let pid = child.id();
+
+        std::thread::park_timeout(Duration::from_millis(300));
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            if matches!(process_status_code(pid), Some('Z')) {
+                break;
+            }
+            std::thread::park_timeout(Duration::from_millis(20));
+        }
+
+        assert_eq!(process_status_code(pid), Some('Z'));
+
+        let controller = UnixProcessController;
+        assert_eq!(
+            controller
+                .check_process(pid)
+                .expect("check_process should succeed"),
+            ProcessStatus::NotFound
+        );
+
+        let _ = child.wait();
     }
 }

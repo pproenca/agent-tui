@@ -2591,24 +2591,14 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
 
     let socket = socket_path();
 
-    if !force {
-        // Try graceful RPC shutdown first (needs connection but doesn't auto-start)
-        let rpc_stop_result = match UnixSocketClient::connect_local() {
-            Ok(mut client) => daemon_lifecycle::stop_daemon_via_rpc(&mut client, &socket).ok(),
-            Err(_) => None,
-        };
-        if let Some(result) = rpc_stop_result {
-            remove_ws_state_file();
-            return Ok(StopResult::Stopped {
-                pid,
-                warnings: result.warnings,
-            });
-        }
-    }
-
-    // Fall back to signal-based stop
     let controller = UnixProcessController;
-    let stop_result = match daemon_lifecycle::stop_daemon(&controller, pid, &socket, force) {
+    let stop_result = match daemon_lifecycle::stop_daemon_graceful(
+        UnixSocketClient::connect_local,
+        &controller,
+        pid,
+        &socket,
+        force,
+    ) {
         Ok(result) => StopResult::Stopped {
             pid,
             warnings: result.warnings,

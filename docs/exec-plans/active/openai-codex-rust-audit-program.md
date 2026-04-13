@@ -26,6 +26,8 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - [x] (2026-04-13 08:54Z) Complete the live preview data plane tranche (`F10`) and record findings.
 - [x] (2026-04-13 09:04Z) Complete the Rust-to-web contract boundary tranche (`A11`) and record findings.
 - [x] (2026-04-13 09:16Z) Complete the IPC transport and client/server RPC tranche (`F11`) and record findings.
+- [x] (2026-04-13 09:24Z) Complete the process control and isolation tranche (`A06`) and record findings.
+- [x] (2026-04-13 09:31Z) Complete the CLI admin and operator UX tranche (`F12`) and record findings.
 - [ ] Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
 - [ ] Close the plan by filling the retrospective and moving it to `completed/`.
 
@@ -50,6 +52,8 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 08:54Z` The data-plane spec drift is even wider than the control-plane doc drift suggested: the published AsyncAPI still describes `hello`, `command`, `error`, and binary `output` messages with query-selected encoding, while the runtime only ships token-authenticated JSON-RPC text responses with base64 `output` events and no binary mode.
 - `2026-04-13 09:04Z` The first-party web UI has now drifted enough from the published docs to expose two contract layers at once: the browser is coded for token-authenticated JSON-RPC envelopes with `active_session`, while direct `/ui` fallback still silently tries unauthenticated same-origin `/ws` and surfaces the resulting auth failure only as generic disconnected/load errors.
 - `2026-04-13 09:16Z` The transport/RPC layer contains two easy-to-miss mismatches: the client advertises retry knobs that no call path ever consumes, and the daemon's Unix-socket request-size limit is cumulative across the whole connection rather than per request, which means long-lived clients can fail later small RPCs for the wrong reason.
+- `2026-04-13 09:24Z` The process-control boundary still lacks a stable notion of process identity: daemon and UI control paths trust bare PIDs from lock or state files, treat `kill(pid, 0)` as sufficient validation, and can therefore report or signal an unrelated process after PID reuse even though the lower-level signal translation itself is typed and explicit.
+- `2026-04-13 09:31Z` The operator-facing CLI still has one whole-surface contract drift that the lower layers do not reveal: global help promises `--format json` for machine-readable output, but the standalone `completions` flow bypasses the presenter layer entirely, while `live stop` still prints and returns the same UI-stop failure through two separate text paths.
 
 ## Decision Log
 
@@ -75,12 +79,13 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 08:54Z` Queue `A11` ahead of `F11` and `A06` after `F10` because the data-plane audit confirmed the highest-yield remaining risk is now the Rust-to-web contract boundary that consumes these stream payloads, then the underlying transport and RPC surface, and only after that the broader process and isolation boundary.
 - `2026-04-13 09:04Z` Queue `F11` ahead of `A06` and `F12` after `A11` because the web-boundary audit confirmed the next highest-yield unresolved work is the transport and RPC surface that feeds those browser contracts, then the remaining process/isolation boundary, before finishing the operator-facing admin UX.
 - `2026-04-13 09:16Z` Queue `A06` ahead of `F12` and `A07` after `F11` because the transport audit finished the client/server framing surface and left the deeper process-spawn, environment-inheritance, and local-bind safety guarantees as the next unresolved boundary underneath it; operator UX and runtime diagnostics come after that substrate is mapped.
+- `2026-04-13 09:24Z` Queue `F12` ahead of `A07` and `A09` after `A06` because the process/isolation audit closed the remaining OS-boundary substrate, so the next highest-yield work is the operator-facing CLI UX that reports those states, then runtime diagnostics, and finally build or release tooling.
+- `2026-04-13 09:31Z` Queue `A07` ahead of `A09` after `F12` because the CLI admin audit closed the remaining operator-facing command surface, so the next highest-yield unresolved work is the observability and diagnostics substrate those commands rely on before finishing the build/release tooling tranche.
 
 ## Next Queue
 
-- `A06` Process control and isolation boundary
-- `F12` CLI admin and operator UX
 - `A07` Observability and runtime diagnostics
+- `A09` Build, version, release, and dist tooling
 
 ## Outcomes & Retrospective
 

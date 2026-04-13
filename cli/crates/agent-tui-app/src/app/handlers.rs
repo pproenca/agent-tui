@@ -385,6 +385,14 @@ pub(crate) fn handle_spawn<C: DaemonClient>(
     cols: u16,
     rows: u16,
 ) -> HandlerResult {
+    let size = TerminalSize::try_new(cols, rows).map_err(|err| {
+        usage_cli_error(
+            ctx.format,
+            format!("Invalid terminal size: {}", err),
+            Some("Use a terminal size within the supported range.".to_string()),
+            Some(serde_json::json!({ "cols": cols, "rows": rows })),
+        )
+    })?;
     let cwd = match cwd {
         Some(path) => Some(path.to_string_lossy().into_owned()),
         None if daemon_uses_client_working_directory() => Some(
@@ -400,8 +408,7 @@ pub(crate) fn handle_spawn<C: DaemonClient>(
         args,
         cwd,
         session: ctx.session.clone(),
-        cols,
-        rows,
+        size: Some(size),
     };
     let result = call_with_params(ctx.client, "spawn", rpc_params)?;
 
@@ -2941,6 +2948,29 @@ mod tests {
         assert!(
             params.get("cwd").is_none(),
             "cwd should be omitted for ws transport"
+        );
+    }
+
+    #[test]
+    fn handle_spawn_rejects_invalid_terminal_size_before_rpc() {
+        let mut client = MockClient::new();
+        let (presenter, _output) = MockPresenter::new();
+        let mut ctx = HandlerContext {
+            client: &mut client,
+            session: None,
+            format: OutputFormat::Json,
+            no_input: false,
+            presenter: Box::new(presenter),
+            current_dir_override: None,
+        };
+
+        let err = handle_spawn(&mut ctx, "bash".to_string(), Vec::new(), None, 9, 40)
+            .expect_err("invalid size should fail");
+        let cli_error = err.downcast::<CliError>().expect("cli error");
+        assert!(cli_error.message.contains("Invalid terminal size"));
+        assert!(
+            client.last_call("spawn").is_none(),
+            "spawn RPC should not be sent for invalid sizes"
         );
     }
 

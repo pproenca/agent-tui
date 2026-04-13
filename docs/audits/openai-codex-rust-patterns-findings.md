@@ -2,6 +2,9 @@
 
 ## Open Findings
 
+- `[F07][types-try-from-newtype-validation]` Invalid explicit session selectors are silently coerced to "active": `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` makes `parse_session_selector()` return `None` when `SessionId::try_new()` fails, and `parse_session_input()` then feeds that selector into `kill`, `restart`, and the other session-targeted RPCs as though the caller had asked for the active session. A malformed `session` parameter can therefore mutate the wrong session instead of being rejected at the boundary.
+- `[F07][errors-struct-display-payload]` Stopped-session switch errors are flattened into a fake "not found" identifier: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs` returns `SessionError::NotFound(format!("{} (session not running)", input.session_id))` from `AttachUseCase`. The adapter and CLI layers therefore lose the ability to distinguish "missing session" from "known session that has stopped" and can only surface a preformatted string.
+- `[F07][errors-boundary-error-translator]` Session lifecycle state is flattened into misleading stopped/absent outputs: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` turns lock-timeout sessions into synthetic `running: false` / `"(locked)"` entries in `list()`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` both trust that lossy state during cleanup, and `SessionManager::kill()` removes a session from the registry before `sess.kill()` succeeds. A locked or kill-failing session can therefore be reported as stopped/cleaned or disappear from `sessions` while its process is still alive.
 - `[F08][async-graceful-then-forceful-cancel]` Daemon control-plane shutdown still never escalates from graceful to forcible automatically: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/signal_handler.rs` logs the second signal as "forcing shutdown" but only reissues the same shutdown flag and notifier, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs` treats acknowledged RPC shutdown as success after a bounded socket wait and then unlinks socket and lock files if they still exist, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` returns that result to the operator without re-checking process liveness. A wedged daemon can therefore survive a reported graceful stop while its coordination files are removed.
 - `[F08][errors-boundary-error-translator]` Daemon PID and lock corruption is flattened and misclassified: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` exposes lock-file failures as `PidLookupResult::Error(String)`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` maps them to `ClientError::SignalFailed { pid: 0, ... }`. Status, stop, and restart errors therefore report stale local coordination metadata as a signal failure instead of a structured daemon-state problem.
 - `[A05][async-graceful-then-forceful-cancel]` Bounded shutdown still detaches owner threads instead of forcefully cancelling them: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` drains `stream_threads` and drops any `JoinHandle` that misses the deadline in `join_stream_threads`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` does the same in `WsServerHandle::shutdown` while still deleting the WS state file. Timed-out daemon stream threads or the outer WS runtime thread can therefore outlive shutdown with no remaining owner to join or signal.
@@ -321,11 +324,43 @@ Contextual non-applicability:
 - `sandbox-env-clear-pre-exec`, `sandbox-three-layer-network-isolation`, and the other codex sandbox-helper rules are not direct fits for `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs` because this slice is spawning the daemon itself, which is intentionally supposed to inherit operator environment and outlive the initiating CLI process rather than act like a tightly sandboxed child workload.
 - `async-abort-on-drop-handle`, `async-child-cancellation-tokens`, and `async-shared-boxfuture-joinhandle` are not direct fits because this control plane is primarily std-process and std-thread lifecycle code, not a nested tokio task tree.
 
+### `2026-04-13 07:48Z` `F07` Session lifecycle management
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/router.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mock_repository.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` keeps the destructive lifecycle commands operator-safe at the CLI boundary: `kill`, `restart`, and `sessions cleanup` all expose `--dry-run` previews and require explicit confirmation before mutating live sessions.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs` keep the lifecycle boundary thin and object-safe by delegating `resolve`, `set_active`, `list`, `kill`, and `restart` straight through the port instead of mixing session-state policy into adapter code.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` already repairs stale active-session pointers defensively: `resolve(None)` falls back to the most recent running session, clears `active_session` when none remain, and has focused tests for stale-active repair, explicit-session resolution, fallback promotion, and the no-running-sessions case.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` preserves launch context across restart. The restart path reuses the prior command, args, cwd, env, and terminal size, promotes the replacement session to active, and has a regression test that proves the restarted process inherits the original working directory and environment.
+
+Findings:
+
+- Invalid explicit session selectors are silently treated as "active" because `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` drops `SessionId::try_new()` failures inside `parse_session_selector()` and `parse_session_input()` instead of returning an RPC validation error. `kill`, `restart`, and the other selector-based lifecycle RPCs can therefore target the wrong session when given malformed ids.
+- Stopped-session lifecycle errors are flattened into a display string in `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs`: `AttachUseCase` reports `SessionError::NotFound(format!("{} (session not running)", input.session_id))` rather than a structured stopped-session variant. `sessions switch` and other attach callers cannot distinguish "missing" from "stopped" or preserve structured remediation context.
+- Session lifecycle state is translated too aggressively at the runtime boundary. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` maps lock-acquisition failure in `list()` to a fake stopped `"(locked)"` row, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` both trust that lossy `running` bit during cleanup, and `SessionManager::kill()` drops the registry entry before `sess.kill()` succeeds. A temporarily locked or kill-failing session can therefore be shown as stopped, selected for cleanup, or disappear from `sessions` while its process is still alive.
+
+Contextual non-applicability:
+
+- `async-abort-on-drop-handle`, `async-child-cancellation-tokens`, and `async-shared-boxfuture-joinhandle` are not direct fits for this tranche because the lifecycle surface is primarily lock/PTY/session-manager code over std threads and shared state, not a nested tokio task tree with owned join futures.
+- `testing-wiremock-sse-fakes`, `testing-insta-snapshot-tui-rendering`, and the TUI-specific rendering rules are not direct fits here because this slice is session selection and metadata mutation rather than outbound protocol fakes or rendered-screen correctness.
+
 ## Next Queue
 
-- `F07` Session lifecycle management
 - `F02` Snapshot and screenshot rendering
 - `F03` Input injection
+- `F04` Wait and assert semantics
 
 ## Notes
 

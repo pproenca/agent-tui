@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 pub use crate::adapters::presenter::OutputFormat;
 use crate::app::attach::DetachKeys;
+use crate::domain::TerminalSize;
 
 const AFTER_HELP: &str =
     "Use --help for full details and examples. Use --format json for machine-readable output.";
@@ -79,6 +80,42 @@ PLATFORM SUPPORT:
     Unsupported: Windows and non-Unix runtimes.
 
     "#;
+
+fn parse_terminal_cols(value: &str) -> Result<u16, String> {
+    let cols = value
+        .parse::<u16>()
+        .map_err(|err| format!("invalid column count '{value}': {err}"))?;
+
+    if cols < TerminalSize::MIN_COLS {
+        return Err(format!(
+            "columns must be at least {}",
+            TerminalSize::MIN_COLS
+        ));
+    }
+    if cols > TerminalSize::MAX_COLS {
+        return Err(format!(
+            "columns must be at most {}",
+            TerminalSize::MAX_COLS
+        ));
+    }
+
+    Ok(cols)
+}
+
+fn parse_terminal_rows(value: &str) -> Result<u16, String> {
+    let rows = value
+        .parse::<u16>()
+        .map_err(|err| format!("invalid row count '{value}': {err}"))?;
+
+    if rows < TerminalSize::MIN_ROWS {
+        return Err(format!("rows must be at least {}", TerminalSize::MIN_ROWS));
+    }
+    if rows > TerminalSize::MAX_ROWS {
+        return Err(format!("rows must be at most {}", TerminalSize::MAX_ROWS));
+    }
+
+    Ok(rows)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum CompletionShell {
@@ -202,6 +239,7 @@ EXAMPLES:
             long,
             default_value_t = 120,
             value_name = "COLS",
+            value_parser = parse_terminal_cols,
             help_heading = "Terminal Size"
         )]
         cols: u16,
@@ -211,6 +249,7 @@ EXAMPLES:
             long,
             default_value_t = 40,
             value_name = "ROWS",
+            value_parser = parse_terminal_rows,
             help_heading = "Terminal Size"
         )]
         rows: u16,
@@ -251,11 +290,11 @@ EXAMPLES:
     agent-tui resize --cols 120 --rows 40")]
     Resize {
         /// Terminal columns
-        #[arg(long, value_name = "COLS")]
+        #[arg(long, value_name = "COLS", value_parser = parse_terminal_cols)]
         cols: u16,
 
         /// Terminal rows
-        #[arg(long, value_name = "ROWS")]
+        #[arg(long, value_name = "ROWS", value_parser = parse_terminal_rows)]
         rows: u16,
     },
 
@@ -854,6 +893,22 @@ mod tests {
         assert_eq!(cols, 80);
         assert_eq!(rows, 24);
         assert_eq!(command, "vim");
+    }
+
+    #[test]
+    fn test_run_rejects_out_of_range_cols() {
+        let err = Cli::try_parse_from(["agent-tui", "run", "--cols", "9", "vim"])
+            .err()
+            .expect("expected parse error");
+        assert_eq!(err.kind(), ErrorKind::ValueValidation);
+    }
+
+    #[test]
+    fn test_resize_rejects_out_of_range_rows() {
+        let err = Cli::try_parse_from(["agent-tui", "resize", "--cols", "80", "--rows", "1"])
+            .err()
+            .expect("expected parse error");
+        assert_eq!(err.kind(), ErrorKind::ValueValidation);
     }
 
     #[test]

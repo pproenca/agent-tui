@@ -2,6 +2,8 @@
 
 ## Open Findings
 
+- `[F10][proto-internal-vs-wire-error-split]` The published live-preview stream schema no longer matches the actual data plane. `/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml` says authentication is not enforced, treats `/api/v1/stream` as query-selected via `session` and `encoding`, and promises `hello`, `command`, `error`, and binary `output` messages. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` actually requires `token` query auth and rejects binary inbound frames, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` only emits JSON-RPC result envelopes for `ready`, `init`, `output` with `data_b64`, `dropped`, `resize`, `heartbeat`, and `closed`, plus `flightdeck` `ready` and `sessions` events.
+- `[F10][testing-wiremock-sse-fakes]` Live-preview data-plane tests still bypass the real WebSocket boundary. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` exercises `live_preview_stream` and `flightdeck_stream` through an in-process `RecordingWriter`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` only covers env parsing and cancellation helpers, and no test boots the axum listener with a WebSocket client to validate token auth, JSON-RPC stream selection, dropped-bytes reinit, heartbeat cadence, close semantics, or the published stream schemas end to end.
 - `[F09][sandbox-three-layer-network-isolation]` External UI overrides bridge the local authenticated WebSocket endpoint into arbitrary web origins: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` accepts `AGENT_TUI_UI_URL`, `build_ui_url()` appends `ws=<state.ws_url>` plus `session=active&auto=1`, and `open_in_browser()` launches that URL when `live start --open` is used. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` puts the bearer token directly into `ws_url` query strings and validates only that token, with no `Origin` check, so any remote UI host used as an override receives a reusable local WebSocket credential.
 - `[F09][proto-internal-vs-wire-error-split]` The published live-preview API contract no longer matches the actual wire surface: `/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml` says authentication is not enforced, documents HTTP `/api/v1/sessions` and `/api/v1/sessions/{id}/snapshot` routes, and advertises `session`/`encoding` query parameters for `/api/v1/stream`; `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` only exposes `/`, `/ui`, assets, `/ws`, and `/api/v1/stream`, requires `token` query auth, and returns JSON-RPC error envelopes on unauthorized or saturated connections.
 - `[F09][testing-wiremock-sse-fakes]` Live-preview control-plane behavior still lacks a real listener-level test surface: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` only tests env parsing, URL formatting, bounded cancellation, and non-loopback rejection, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs` seeds handcrafted WS state files for `live start/status/stop`. No test boots the axum listener and exercises `/`, `/ui`, `/ws`, or `/api/v1/stream` auth and redirect behavior end to end.
@@ -527,11 +529,42 @@ Contextual non-applicability:
 - `proto-sse-idle-timeout-terminator` is not a direct fit for this tranche because the live preview control plane uses WebSocket plus JSON-RPC rather than SSE framing or terminators.
 - `testing-insta-snapshot-tui-rendering` is not a direct fit here because this slice is about URLs, auth, state files, and browser/control-plane behavior rather than terminal rendering diffs.
 
+### `2026-04-13 08:54Z` `F10` Live preview data plane
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` keeps the live-preview and flightdeck stream boundary narrow: it translates `SessionError` values back into JSON-RPC error envelopes exactly at the stream edge, while successful `ready`/`init`/`output`/`dropped`/`resize`/`heartbeat`/`closed` payloads stay as separate wire events.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` already applies the Codex debug-assert pattern for invalid preview dimensions. `validated_terminal_size()` raises a `debug_assert!` in debug builds, logs the bad payload, and falls back to `TerminalSize::default()` instead of panicking in release.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs` keep the stream semantics explicit for the wire layer: subscribers own independent cursors, dropped bytes are surfaced numerically, and `live_preview_snapshot()` couples a full-screen init frame with the current stream sequence so the data plane can resynchronize after buffer loss.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` already bounds the inner stream bridge: `run_stream_connection()` uses a bounded queue, cancels cooperatively by setting a flag and dropping the receiver to release blocked senders, and then aborts the blocking stream task if it misses the shutdown deadline.
+
+Findings:
+
+- The published stream contract is stale relative to the runtime. `/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml` still advertises unauthenticated subscriptions, query-level `session` and `encoding` selection, `hello` and `command` events, binary output frames, and an `error` event shape, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` plus `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` only implement token-authenticated JSON-RPC text messages with base64 `output` payloads and JSON-RPC error envelopes.
+- Data-plane coverage still stops short of the real listener boundary. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` tests stream behavior through a local `RecordingWriter`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` never boots the axum listener with a WebSocket client, so auth, JSON-RPC stream selection, heartbeat cadence, `dropped` to `init` resynchronization, and close semantics are not exercised end to end.
+- The existing timing-determinism gap from `A10` remains directly relevant here. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` still drives live-preview and flightdeck timing with `Instant::now()` and `park_timeout`, and the current tests rely on elapsed wall-clock waits rather than virtual-time control for heartbeat and interval behavior.
+
+Contextual non-applicability:
+
+- `proto-sse-idle-timeout-terminator` is not a direct fit for this tranche because the live-preview data plane is WebSocket plus JSON-RPC with explicit heartbeat events rather than SSE framing and terminators.
+- `tui-schedule-frame-coalescer` and `tui-two-gear-hysteresis-chunking` are not a direct fit here because this slice forwards PTY bytes and full-screen init snapshots rather than running a local Ratatui redraw scheduler or chunk-hysteresis backlog.
+
 ## Next Queue
 
-- `F10` Live preview data plane
-- `A06` Process control and isolation boundary
 - `A11` Rust-to-web contract boundary
+- `F11` IPC transport and client/server RPC
+- `A06` Process control and isolation boundary
 
 ## Notes
 

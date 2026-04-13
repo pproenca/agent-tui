@@ -31,6 +31,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - [x] (2026-04-13 09:40Z) Complete the observability and runtime diagnostics tranche (`A07`) and record findings.
 - [x] (2026-04-13 09:47Z) Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
 - [x] (2026-04-13 09:47Z) Close the plan by filling the retrospective and moving it to `completed/`.
+- [x] (2026-04-13 18:28Z) Synchronize the completed findings ledger and rule matrix by clearing `89` stale `finding` cells after remediation and reconfirm that the remaining queue is empty.
 
 ## Surprises & Discoveries
 

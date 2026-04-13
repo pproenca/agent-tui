@@ -2,6 +2,10 @@
 
 ## Open Findings
 
+- `[A03][errors-boundary-error-translator]` Session persistence is still treated as best-effort even though startup cleanup depends on it: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` suppresses `cleanup_stale_sessions()` failure in `SessionManager::with_max_sessions`, and `spawn`, `restart`, and `kill` only warn when `add_session` or `remove_session` fail. The CLI/RPC path can therefore report success while the JSONL store diverges from live state, leaving the next daemon startup to recover from stale or missing metadata with no operator-visible signal.
+- `[F05][types-try-from-newtype-validation]` The resize path still bypasses the `TerminalSize` invariant end to end: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` accepts unrestricted `u16`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs` model resize DTOs as raw integers, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` forwards them without `TerminalSize::try_new`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs` accept raw sizes, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` later masks invalid live sizes in `list()` via `TerminalSize::try_new(cols, rows).unwrap_or_default()`.
+- `[F05][errors-boundary-error-translator]` Attach-triggered resize failures are silently discarded in `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs`: both the initial `terminal::size()` sync and the `Event::Resize` branch ignore `call_with_params(..., "resize", ...)` errors, so the operator gets no warning when the local terminal and remote session diverge on size.
+- `[F05][testing-insta-snapshot-tui-rendering]` Resize/reflow coverage stops before rendered-screen correctness: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` only asserts that a resize event is emitted, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs` checks trimming/reset behavior with hand-built buffers, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs` has no resize/reflow assertions, and the relevant test manifests still omit `insta`, so wrapped content and whitespace regressions after resize are not snapshot-protected.
 - `[A08][workspace-single-source-dependencies]` Internal workspace crate edges are still repeated as per-crate path dependencies instead of using `workspace = true` from `/Users/pedroproenca/Documents/Projects/agent-tui/cli/Cargo.toml`. Reviewed examples: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/Cargo.toml`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/Cargo.toml`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/Cargo.toml`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/Cargo.toml`.
 - `[A08][workspace-test-support-as-member-crates]` Shared test helpers are split between `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/` instead of a dedicated workspace member test-support crate.
 - `[A01][types-try-from-newtype-validation]` Terminal size invariants are encoded in `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs` as `TerminalSize`, but `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs` still models spawn and resize inputs as raw `u16` pairs, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` still accepts raw `u16` run dimensions, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` clamps or forwards raw values instead of constructing a validated type. This was directly revalidated in `F01`.
@@ -151,11 +155,77 @@ Contextual non-applicability:
 - The codex sandbox rules about re-exec helpers, argv[0] binary multiplexing, and three-layer network isolation are not a direct fit for `agent-tui run`, which intentionally launches the operator-requested interactive process instead of a tightly sandboxed helper binary.
 - The codex closure-builder fixture rule is not a strong fit for this tranche because the existing spawn harness surface is narrow and scenario-oriented rather than a large mutable configuration object.
 
+### `2026-04-12 23:19Z` `F05` Resize and terminal reflow
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/session_types.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/terminal_engine.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/error.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/error.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/errors.rs` keep resize as a dedicated error variant with structured `operation` and `reason` payloads instead of collapsing it into opaque strings.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/session.rs` still translates the resize use case exactly once at the RPC handler boundary.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs` already has a focused regression test proving that live preview subscribers receive a `resize` event with the updated `cols` and `rows`.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs` trims trailing blank rows and resets styles at the end of rendered output, which reduces stale-style leakage when the screen is re-rendered after a resize.
+
+Findings:
+
+- The `TerminalSize` invariant from `A01` remains bypassed across the full resize/reflow path, from CLI and RPC DTOs down through the session, PTY, and virtual-terminal layers.
+- Attach-triggered resize RPC failures are dropped silently, so a failed daemon-side resize can leave the operator attached to a terminal whose local and remote dimensions no longer match.
+- Resize/reflow behavior still lacks full-screen snapshot coverage, leaving wrapped-text and whitespace regressions under-protected.
+
+Contextual non-applicability:
+
+- The codex `FrameRequester` and hysteresis chunking rules are not a direct fit for this tranche because resize propagation here is event-driven attach/live-preview signaling, not a local Ratatui animation loop or streamed line-chunk backlog.
+
+### `2026-04-13 00:20Z` `A03` Session repository and persistence internals
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/terminal_state.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/system_clock.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/session_repository.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs` keep `SessionRepository` object-safe by routing all live-session behavior through `SessionHandle`, `SessionOps`, and `StreamWaiterHandle`, and the local tests pin both object safety and generic usability.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` preserves forward compatibility for the JSONL session store even with a strict `SessionEvent` enum: unknown records increment `unknown_records`, compaction is skipped when those records exist, destructive `save()` rewrites are refused, and `cleanup_stale_sessions()` appends `remove` events instead of rewriting away future entries.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` uses identity-aware stale-session cleanup rather than killing by PID alone. Startup cleanup cross-checks the persisted `created_at` and command against live process metadata before terminating a process group, and the tests cover both orphan cleanup and future-record preservation.
+
+Findings:
+
+- Persistence failures are still best-effort after the live runtime mutates: `SessionManager::with_max_sessions` suppresses `cleanup_stale_sessions()` failure, while `spawn`, `restart`, and `kill` only log `add_session` and `remove_session` failures. Operators can therefore get a successful result while the persisted session log no longer matches the live daemon state.
+- The existing `TerminalSize` validation gap remains visible inside the persistence/runtime internals: `Session::new`, `SessionManager::persisted_session`, `PersistedSession`, and `TerminalState::{new, resize}` still store raw `u16` dimensions, so this tranche revalidates the broader `A01` and `F05` finding instead of closing it.
+
+Contextual non-applicability:
+
+- `async-abort-on-drop-handle` and `async-shared-boxfuture-joinhandle` are not a direct fit here because this slice uses a dedicated std-thread pump with a single explicit join owner, not a tokio task tree with multi-waiter futures.
+- `testing-paused-runtime-advance` is not a direct fit for the persistence cleanup tests because they exercise real OS processes, file locks, and blocking waits instead of tokio timers.
+
 ## Next Queue
 
-- `F05` Resize and terminal reflow
-- `A03` Session repository and persistence internals
+- `A04` PTY and virtual terminal engine
 - `F07` Session lifecycle management
+- `A05` Concurrency, shutdown, and thread/task ownership
 
 ## Notes
 

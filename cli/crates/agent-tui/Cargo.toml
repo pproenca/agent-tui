@@ -35,3 +35,4 @@ tokio.workspace = true
 uuid.workspace = true
 once_cell.workspace = true
 portable-pty.workspace = true
+sysinfo.workspace = true

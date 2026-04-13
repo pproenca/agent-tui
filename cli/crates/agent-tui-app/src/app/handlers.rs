@@ -26,13 +26,15 @@ use crate::adapters::rpc::params;
 use crate::common::Colors;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::DaemonClient;
-use crate::infra::ipc::PidLookupResult;
+use crate::infra::ipc::DaemonProcessLookupResult;
 use crate::infra::ipc::ProcessController;
+use crate::infra::ipc::ProcessIdentity;
 use crate::infra::ipc::Signal;
 use crate::infra::ipc::UnixProcessController;
 use crate::infra::ipc::UnixSocketClient;
+use crate::infra::ipc::check_expected_process;
 use crate::infra::ipc::daemon_uses_client_working_directory;
-use crate::infra::ipc::get_daemon_pid;
+use crate::infra::ipc::get_daemon_process_identity;
 use crate::infra::ipc::socket_path;
 use crate::infra::ipc::start_daemon_background;
 
@@ -66,9 +68,11 @@ fn format_elapsed_secs(elapsed_secs: u64) -> String {
 }
 
 fn daemon_pid(ws_state: Option<&WsState>) -> Option<u32> {
-    match get_daemon_pid() {
-        PidLookupResult::Found(pid) => Some(pid),
-        PidLookupResult::NotRunning | PidLookupResult::Error(_) => ws_state.map(|state| state.pid),
+    match get_daemon_process_identity() {
+        DaemonProcessLookupResult::Found(identity) => Some(identity.pid),
+        DaemonProcessLookupResult::NotRunning | DaemonProcessLookupResult::InvalidState { .. } => {
+            ws_state.map(|state| state.pid)
+        }
     }
 }
 
@@ -1755,10 +1759,19 @@ struct WsState {
     #[serde(default)]
     started_at: Option<u64>,
     #[serde(default)]
+    process_started_at: Option<u64>,
+    #[serde(default)]
     http_url: Option<String>,
 }
 
 impl WsState {
+    fn process_identity(&self) -> ProcessIdentity {
+        ProcessIdentity {
+            pid: self.pid,
+            started_at: self.process_started_at,
+        }
+    }
+
     fn resolved_ui_url(&self) -> String {
         if let Some(url) = self
             .ui_url
@@ -1801,6 +1814,7 @@ struct UiState {
     pid: u32,
     url: String,
     port: u16,
+    process_started_at: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1809,6 +1823,17 @@ struct UiStateFile {
     url: String,
     #[serde(default)]
     port: Option<u16>,
+    #[serde(default)]
+    process_started_at: Option<u64>,
+}
+
+impl UiState {
+    fn process_identity(&self) -> Option<ProcessIdentity> {
+        self.process_started_at.map(|started_at| ProcessIdentity {
+            pid: self.pid,
+            started_at: Some(started_at),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1840,18 +1865,28 @@ fn read_ws_state(path: &PathBuf) -> Option<WsState> {
     serde_json::from_str(&contents).ok()
 }
 
-fn is_process_running(pid: u32) -> bool {
+fn process_running(expected: ProcessIdentity) -> bool {
     let controller = UnixProcessController;
-    matches!(
-        controller.check_process(pid),
-        Ok(crate::infra::ipc::ProcessStatus::Running)
-            | Ok(crate::infra::ipc::ProcessStatus::NoPermission)
-    )
+    process_running_with_controller(&controller, expected)
+}
+
+fn expected_ws_process_identity(state: &WsState) -> Option<ProcessIdentity> {
+    match get_daemon_process_identity() {
+        DaemonProcessLookupResult::Found(identity) if identity.pid == state.pid => Some(identity),
+        DaemonProcessLookupResult::Found(_) | DaemonProcessLookupResult::InvalidState { .. } => {
+            None
+        }
+        DaemonProcessLookupResult::NotRunning => Some(state.process_identity()),
+    }
 }
 
 fn read_ws_state_running(path: &PathBuf) -> Option<WsState> {
     let state = read_ws_state(path)?;
-    if is_process_running(state.pid) {
+    let Some(expected) = expected_ws_process_identity(&state) else {
+        let _ = std::fs::remove_file(path);
+        return None;
+    };
+    if process_running(expected) {
         Some(state)
     } else {
         let _ = std::fs::remove_file(path);
@@ -1890,12 +1925,17 @@ fn read_ui_state(path: &PathBuf) -> Option<UiState> {
         pid: file.pid,
         url: file.url,
         port,
+        process_started_at: file.process_started_at,
     })
 }
 
 fn read_ui_state_running(path: &PathBuf) -> Option<UiState> {
     let state = read_ui_state(path)?;
-    if is_process_running(state.pid) {
+    let Some(expected) = state.process_identity() else {
+        let _ = std::fs::remove_file(path);
+        return None;
+    };
+    if process_running(expected) {
         Some(state)
     } else {
         let _ = std::fs::remove_file(path);
@@ -1937,12 +1977,12 @@ fn remove_ws_state_file() {
 
 fn wait_for_process_exit_with_controller<C: ProcessController>(
     controller: &C,
-    pid: u32,
+    expected: ProcessIdentity,
     timeout: Duration,
 ) -> bool {
     let deadline = Instant::now() + timeout;
     loop {
-        match controller.check_process(pid) {
+        match check_expected_process(controller, expected) {
             Ok(crate::infra::ipc::ProcessStatus::NotFound) => return true,
             Ok(_) => {}
             Err(_) => {}
@@ -1954,14 +1994,12 @@ fn wait_for_process_exit_with_controller<C: ProcessController>(
     }
 }
 
-fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
-    let controller = UnixProcessController;
-    wait_for_process_exit_with_controller(&controller, pid, timeout)
-}
-
-fn process_running_with_controller<C: ProcessController>(controller: &C, pid: u32) -> bool {
+fn process_running_with_controller<C: ProcessController>(
+    controller: &C,
+    expected: ProcessIdentity,
+) -> bool {
     matches!(
-        controller.check_process(pid),
+        check_expected_process(controller, expected),
         Ok(crate::infra::ipc::ProcessStatus::Running)
             | Ok(crate::infra::ipc::ProcessStatus::NoPermission)
     )
@@ -1993,8 +2031,12 @@ fn stop_ui_server_with_controller_and_timeouts<C: ProcessController>(
     let Some(state) = read_ui_state(&state_path) else {
         return Ok(StopUiResult::AlreadyStopped);
     };
+    let Some(expected) = state.process_identity() else {
+        let _ = std::fs::remove_file(&state_path);
+        return Ok(StopUiResult::AlreadyStopped);
+    };
 
-    if !process_running_with_controller(controller, state.pid) {
+    if !process_running_with_controller(controller, expected) {
         let _ = std::fs::remove_file(&state_path);
         return Ok(StopUiResult::AlreadyStopped);
     }
@@ -2003,7 +2045,7 @@ fn stop_ui_server_with_controller_and_timeouts<C: ProcessController>(
         .send_signal(state.pid, Signal::Term)
         .with_context(|| format!("Failed to stop UI server (pid {})", state.pid))?;
 
-    if wait_for_process_exit_with_controller(controller, state.pid, term_timeout) {
+    if wait_for_process_exit_with_controller(controller, expected, term_timeout) {
         let _ = std::fs::remove_file(&state_path);
         return Ok(StopUiResult::Stopped);
     }
@@ -2012,7 +2054,7 @@ fn stop_ui_server_with_controller_and_timeouts<C: ProcessController>(
         .send_signal(state.pid, Signal::Kill)
         .with_context(|| format!("Failed to force-stop UI server (pid {})", state.pid))?;
 
-    if wait_for_process_exit_with_controller(controller, state.pid, kill_timeout) {
+    if wait_for_process_exit_with_controller(controller, expected, kill_timeout) {
         let _ = std::fs::remove_file(&state_path);
         return Ok(StopUiResult::Stopped);
     }
@@ -2531,25 +2573,24 @@ pub enum StopResult {
 
 /// Core daemon restart logic that doesn't require an active client connection.
 pub(crate) fn restart_daemon_core() -> Result<Vec<String>> {
-    use crate::infra::ipc::PidLookupResult;
+    use crate::infra::ipc::DaemonProcessLookupResult;
     use crate::infra::ipc::daemon_lifecycle;
-    use crate::infra::ipc::get_daemon_pid;
+    use crate::infra::ipc::get_daemon_process_identity;
     use crate::infra::ipc::start_daemon_background;
 
-    let pid = match get_daemon_pid() {
-        PidLookupResult::Found(pid) => Some(pid),
-        PidLookupResult::NotRunning => None,
-        PidLookupResult::Error(msg) => {
-            return Err(anyhow::Error::new(ClientError::SignalFailed {
-                pid: 0,
-                message: msg,
-                source: None,
+    let daemon = match get_daemon_process_identity() {
+        DaemonProcessLookupResult::Found(identity) => Some(identity),
+        DaemonProcessLookupResult::NotRunning => None,
+        DaemonProcessLookupResult::InvalidState { path, message } => {
+            return Err(anyhow::Error::new(ClientError::DaemonStateInvalid {
+                path: path.display().to_string(),
+                message,
             }));
         }
     };
 
     let controller = UnixProcessController;
-    let get_pid = move || pid;
+    let get_pid = move || daemon;
     let restart_warnings = daemon_lifecycle::restart_daemon(
         &controller,
         get_pid,
@@ -2562,25 +2603,25 @@ pub(crate) fn restart_daemon_core() -> Result<Vec<String>> {
 /// Core daemon stop logic that doesn't require an active client connection.
 /// Returns `Ok(StopResult)` on success, including when daemon is already stopped (idempotent).
 pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
-    use crate::infra::ipc::PidLookupResult;
+    use crate::infra::ipc::DaemonProcessLookupResult;
     use crate::infra::ipc::UnixSocketClient;
     use crate::infra::ipc::daemon_lifecycle;
-    use crate::infra::ipc::get_daemon_pid;
+    use crate::infra::ipc::get_daemon_process_identity;
 
-    let pid = match get_daemon_pid() {
-        PidLookupResult::Found(pid) => pid,
-        PidLookupResult::NotRunning => {
+    let daemon = match get_daemon_process_identity() {
+        DaemonProcessLookupResult::Found(identity) => identity,
+        DaemonProcessLookupResult::NotRunning => {
             remove_ws_state_file();
             return Ok(StopResult::AlreadyStopped);
         }
-        PidLookupResult::Error(msg) => {
-            return Err(anyhow::Error::new(ClientError::SignalFailed {
-                pid: 0,
-                message: msg,
-                source: None,
+        DaemonProcessLookupResult::InvalidState { path, message } => {
+            return Err(anyhow::Error::new(ClientError::DaemonStateInvalid {
+                path: path.display().to_string(),
+                message,
             }));
         }
     };
+    let pid = daemon.pid;
 
     let socket = socket_path();
 
@@ -2588,7 +2629,7 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
     let stop_result = match daemon_lifecycle::stop_daemon_graceful(
         UnixSocketClient::connect_local,
         &controller,
-        pid,
+        daemon,
         &socket,
         force,
     ) {
@@ -2697,15 +2738,22 @@ mod tests {
         signals: Mutex<Vec<Signal>>,
         kill_on_term: bool,
         kill_on_kill: bool,
+        started_at: Option<u64>,
     }
 
     impl StopUiController {
-        fn new(status: ProcessStatus, kill_on_term: bool, kill_on_kill: bool) -> Self {
+        fn new(
+            status: ProcessStatus,
+            kill_on_term: bool,
+            kill_on_kill: bool,
+            started_at: Option<u64>,
+        ) -> Self {
             Self {
                 status: Mutex::new(status),
                 signals: Mutex::new(Vec::new()),
                 kill_on_term,
                 kill_on_kill,
+                started_at,
             }
         }
 
@@ -2741,6 +2789,13 @@ mod tests {
                     .unwrap_or_else(std::sync::PoisonError::into_inner) = ProcessStatus::NotFound;
             }
             Ok(())
+        }
+
+        fn process_identity(&self, pid: u32) -> std::io::Result<Option<ProcessIdentity>> {
+            Ok(Some(ProcessIdentity {
+                pid,
+                started_at: self.started_at,
+            }))
         }
     }
 
@@ -3053,8 +3108,9 @@ mod tests {
 
         assert!(matches!(
             client_error,
-            ClientError::SignalFailed { pid: 0, message, .. }
-            if message.contains("invalid PID")
+            ClientError::DaemonStateInvalid { path, message }
+            if path.ends_with("daemon.lock")
+                && message.contains("not a valid daemon identity payload")
         ));
     }
 
@@ -3078,15 +3134,24 @@ mod tests {
         let _env = env_lock();
         let temp = TempDir::new_in("/tmp").expect("tempdir");
         let state_path = temp.path().join("ui.json");
+        let identity = crate::infra::ipc::current_process_identity();
         fs::write(
             &state_path,
-            r#"{"pid":42,"url":"http://127.0.0.1:7777/ui","port":7777}"#,
+            format!(
+                r#"{{"pid":42,"url":"http://127.0.0.1:7777/ui","port":7777,"process_started_at":{}}}"#,
+                identity.started_at.unwrap_or(42)
+            ),
         )
         .expect("write ui state");
         let _state_guard = EnvVarGuard::set("AGENT_TUI_UI_STATE", state_path.display().to_string());
         let _external_guard = EnvVarGuard::set("AGENT_TUI_UI_URL", "");
 
-        let controller = StopUiController::new(ProcessStatus::Running, false, true);
+        let controller = StopUiController::new(
+            ProcessStatus::Running,
+            false,
+            true,
+            identity.started_at.or(Some(42)),
+        );
         let result = stop_ui_server_with_controller_and_timeouts(
             &controller,
             Duration::from_millis(5),
@@ -3099,6 +3164,68 @@ mod tests {
         assert!(
             !state_path.exists(),
             "state file should be removed when stop succeeds"
+        );
+    }
+
+    #[test]
+    fn read_ws_state_running_removes_stale_identity_file() {
+        let _env = env_lock();
+        let temp = TempDir::new_in("/tmp").expect("tempdir");
+        let state_path = temp.path().join("api.json");
+        let data = serde_json::json!({
+            "pid": std::process::id(),
+            "ws_url": "ws://127.0.0.1:43210/ws",
+            "ui_url": "http://127.0.0.1:43210/ui",
+            "listen": "127.0.0.1:43210",
+            "started_at": 1735689600u64,
+            "process_started_at": 1u64,
+        });
+        fs::write(
+            &state_path,
+            serde_json::to_string_pretty(&data).expect("serialize ws state"),
+        )
+        .expect("write ws state");
+
+        let state = read_ws_state_running(&state_path);
+        assert!(state.is_none(), "stale ws state should be rejected");
+        assert!(
+            !state_path.exists(),
+            "stale ws state file should be removed after rejection"
+        );
+    }
+
+    #[test]
+    fn stop_ui_server_rejects_legacy_pid_only_state() {
+        let _env = env_lock();
+        let temp = TempDir::new_in("/tmp").expect("tempdir");
+        let state_path = temp.path().join("ui.json");
+        fs::write(
+            &state_path,
+            format!(
+                r#"{{"pid":{},"url":"http://127.0.0.1:7777/ui","port":7777}}"#,
+                std::process::id()
+            ),
+        )
+        .expect("write legacy ui state");
+        let _state_guard = EnvVarGuard::set("AGENT_TUI_UI_STATE", state_path.display().to_string());
+        let _external_guard = EnvVarGuard::set("AGENT_TUI_UI_URL", "");
+
+        let controller = StopUiController::new(ProcessStatus::Running, false, true, Some(42));
+        let result = stop_ui_server_with_controller_and_timeouts(
+            &controller,
+            Duration::from_millis(5),
+            Duration::from_millis(5),
+        )
+        .expect("legacy state should be treated as already stopped");
+
+        assert!(matches!(result, StopUiResult::AlreadyStopped));
+        assert!(
+            controller.signals().is_empty(),
+            "legacy pid-only ui state must not trigger signals"
+        );
+        assert!(
+            !state_path.exists(),
+            "legacy ui state file should be removed"
         );
     }
 }

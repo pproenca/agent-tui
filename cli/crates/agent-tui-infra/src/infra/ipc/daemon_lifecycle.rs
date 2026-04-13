@@ -9,8 +9,10 @@ use crate::infra::ipc::DaemonClientConfig;
 use crate::infra::ipc::error::ClientError;
 use crate::infra::ipc::polling;
 use crate::infra::ipc::process::ProcessController;
+use crate::infra::ipc::process::ProcessIdentity;
 use crate::infra::ipc::process::ProcessStatus;
 use crate::infra::ipc::process::Signal;
+use crate::infra::ipc::process::check_expected_process;
 
 const RPC_EXIT_GRACE: Duration = Duration::from_millis(250);
 const FORCE_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
@@ -23,13 +25,14 @@ pub struct StopResult {
 
 pub fn stop_daemon<P: ProcessController>(
     controller: &P,
-    pid: u32,
+    expected: ProcessIdentity,
     socket_path: &Path,
     force: bool,
 ) -> Result<StopResult, ClientError> {
     let mut warnings = Vec::new();
+    let pid = expected.pid;
 
-    match check_process_status(controller, pid)? {
+    match check_process_status(controller, expected)? {
         ProcessStatus::NotFound => {
             cleanup_daemon_files_with_warnings(socket_path, &mut warnings);
             return Err(ClientError::DaemonNotRunning);
@@ -54,14 +57,14 @@ pub fn stop_daemon<P: ProcessController>(
         }
     })?;
 
-    let mut status = wait_for_socket_removal_or_process_exit(controller, pid, socket_path)?;
+    let mut status = wait_for_socket_removal_or_process_exit(controller, expected, socket_path)?;
     if matches!(status, ProcessStatus::Running) {
         let grace = if force {
             FORCE_EXIT_TIMEOUT
         } else {
             RPC_EXIT_GRACE
         };
-        status = wait_for_process_exit(controller, pid, grace)?;
+        status = wait_for_process_exit(controller, expected, grace)?;
     }
 
     if matches!(status, ProcessStatus::Running) && !force {
@@ -75,7 +78,7 @@ pub fn stop_daemon<P: ProcessController>(
                 source: Some(e),
             }
         })?;
-        status = wait_for_process_exit(controller, pid, FORCE_EXIT_TIMEOUT)?;
+        status = wait_for_process_exit(controller, expected, FORCE_EXIT_TIMEOUT)?;
     }
 
     match status {
@@ -139,7 +142,7 @@ pub fn stop_daemon_via_rpc(
 pub fn stop_daemon_graceful<F, P, C>(
     client_factory: F,
     controller: &P,
-    pid: u32,
+    expected: ProcessIdentity,
     socket_path: &Path,
     force: bool,
 ) -> Result<StopResult, ClientError>
@@ -149,8 +152,9 @@ where
     C: DaemonClient,
 {
     if force {
-        return stop_daemon(controller, pid, socket_path, true);
+        return stop_daemon(controller, expected, socket_path, true);
     }
+    let pid = expected.pid;
 
     let rpc_stop_result = match client_factory() {
         Ok(mut client) => stop_daemon_via_rpc(&mut client, socket_path).ok(),
@@ -159,7 +163,7 @@ where
 
     if let Some(mut result) = rpc_stop_result {
         result.pid = pid;
-        match wait_for_process_exit(controller, pid, RPC_EXIT_GRACE)? {
+        match wait_for_process_exit(controller, expected, RPC_EXIT_GRACE)? {
             ProcessStatus::NotFound => return Ok(result),
             ProcessStatus::NoPermission => {
                 return Err(ClientError::SignalFailed {
@@ -173,14 +177,14 @@ where
                     "RPC shutdown was acknowledged but the daemon was still running; sent SIGTERM."
                         .to_string(),
                 );
-                let signal_result = stop_daemon(controller, pid, socket_path, false)?;
+                let signal_result = stop_daemon(controller, expected, socket_path, false)?;
                 result.warnings.extend(signal_result.warnings);
                 return Ok(result);
             }
         }
     }
 
-    stop_daemon(controller, pid, socket_path, false)
+    stop_daemon(controller, expected, socket_path, false)
 }
 
 fn cleanup_daemon_files_with_warnings(socket: &Path, warnings: &mut Vec<String>) {
@@ -211,12 +215,12 @@ fn wait_for_socket_removal(socket: &Path) {
 
 fn check_process_status<P: ProcessController>(
     controller: &P,
-    pid: u32,
+    expected: ProcessIdentity,
 ) -> Result<ProcessStatus, ClientError> {
-    controller.check_process(pid).map_err(|e| {
+    check_expected_process(controller, expected).map_err(|e| {
         let message = e.to_string();
         ClientError::SignalFailed {
-            pid,
+            pid: expected.pid,
             message,
             source: Some(e),
         }
@@ -225,14 +229,14 @@ fn check_process_status<P: ProcessController>(
 
 fn wait_for_process_exit<P: ProcessController>(
     controller: &P,
-    pid: u32,
+    expected: ProcessIdentity,
     timeout: Duration,
 ) -> Result<ProcessStatus, ClientError> {
     let start = Instant::now();
     let mut delay = polling::INITIAL_POLL_INTERVAL;
 
     loop {
-        let status = check_process_status(controller, pid)?;
+        let status = check_process_status(controller, expected)?;
         if status != ProcessStatus::Running || start.elapsed() >= timeout {
             return Ok(status);
         }
@@ -244,14 +248,14 @@ fn wait_for_process_exit<P: ProcessController>(
 
 fn wait_for_socket_removal_or_process_exit<P: ProcessController>(
     controller: &P,
-    pid: u32,
+    expected: ProcessIdentity,
     socket: &Path,
 ) -> Result<ProcessStatus, ClientError> {
     let start = Instant::now();
     let mut delay = polling::INITIAL_POLL_INTERVAL;
 
     loop {
-        let status = check_process_status(controller, pid)?;
+        let status = check_process_status(controller, expected)?;
         if !socket.exists()
             || status != ProcessStatus::Running
             || start.elapsed() >= polling::SHUTDOWN_TIMEOUT
@@ -272,13 +276,13 @@ pub fn restart_daemon<P, F, S>(
 ) -> Result<Vec<String>, ClientError>
 where
     P: ProcessController,
-    F: Fn() -> Option<u32>,
+    F: Fn() -> Option<ProcessIdentity>,
     S: Fn() -> Result<(), ClientError>,
 {
     let mut all_warnings = Vec::new();
 
-    if let Some(pid) = get_pid() {
-        match stop_daemon(controller, pid, socket_path, false) {
+    if let Some(expected) = get_pid() {
+        match stop_daemon(controller, expected, socket_path, false) {
             Ok(result) => all_warnings.extend(result.warnings),
             Err(ClientError::DaemonNotRunning) => {}
             Err(e) => return Err(e),
@@ -299,13 +303,20 @@ mod tests {
     use crate::test_support::MockProcessController;
     use tempfile::tempdir;
 
+    fn identity(pid: u32) -> ProcessIdentity {
+        ProcessIdentity {
+            pid,
+            started_at: None,
+        }
+    }
+
     #[test]
     fn test_stop_daemon_not_running() {
         let mock = MockProcessController::new();
         let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
-        let result = stop_daemon(&mock, 1234, &socket, false);
+        let result = stop_daemon(&mock, identity(1234), &socket, false);
         assert!(matches!(result, Err(ClientError::DaemonNotRunning)));
     }
 
@@ -317,7 +328,7 @@ mod tests {
         let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
-        let result = stop_daemon(&mock, 1234, &socket, false);
+        let result = stop_daemon(&mock, identity(1234), &socket, false);
         assert!(result.is_ok());
         let stop_result = result.expect("stop_daemon should succeed");
         assert_eq!(stop_result.pid, 1234);
@@ -333,7 +344,7 @@ mod tests {
         let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
-        let result = stop_daemon(&mock, 1234, &socket, true);
+        let result = stop_daemon(&mock, identity(1234), &socket, true);
         assert!(result.is_ok());
         assert_eq!(mock.signals_sent(), vec![(1234, Signal::Kill)]);
     }
@@ -344,7 +355,7 @@ mod tests {
         let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("missing.sock");
 
-        let result = stop_daemon(&mock, 1234, &socket, false);
+        let result = stop_daemon(&mock, identity(1234), &socket, false);
 
         assert!(matches!(
             result,
@@ -364,7 +375,8 @@ mod tests {
         let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("missing.sock");
 
-        let result = stop_daemon(&mock, 1234, &socket, false).expect("stop_daemon should escalate");
+        let result = stop_daemon(&mock, identity(1234), &socket, false)
+            .expect("stop_daemon should escalate");
 
         assert_eq!(result.pid, 1234);
         assert_eq!(
@@ -383,7 +395,7 @@ mod tests {
         let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
-        let result = stop_daemon(&mock, 1234, &socket, false);
+        let result = stop_daemon(&mock, identity(1234), &socket, false);
         assert!(matches!(
             result,
             Err(ClientError::SignalFailed {
@@ -392,6 +404,33 @@ mod tests {
                 ..
             }) if message.contains("Permission denied")
         ));
+    }
+
+    #[test]
+    fn test_stop_daemon_does_not_signal_reused_pid() {
+        let mock = MockProcessController::new().with_process_identity(
+            1234,
+            ProcessStatus::Running,
+            Some(99),
+        );
+        let dir = tempdir().expect("temp dir should be created");
+        let socket = dir.path().join("test.sock");
+
+        let result = stop_daemon(
+            &mock,
+            ProcessIdentity {
+                pid: 1234,
+                started_at: Some(42),
+            },
+            &socket,
+            false,
+        );
+
+        assert!(matches!(result, Err(ClientError::DaemonNotRunning)));
+        assert!(
+            mock.signals_sent().is_empty(),
+            "stop_daemon must not signal a reused pid"
+        );
     }
 
     #[test]
@@ -404,7 +443,7 @@ mod tests {
         std::fs::write(&socket, "stale").expect("stale socket should be written");
         std::fs::write(&lock, "1234").expect("stale lock should be written");
 
-        let result = stop_daemon(&mock, 1234, &socket, false);
+        let result = stop_daemon(&mock, identity(1234), &socket, false);
         assert!(matches!(result, Err(ClientError::DaemonNotRunning)));
 
         assert!(!socket.exists());
@@ -443,7 +482,7 @@ mod tests {
 
         let result = restart_daemon(
             &mock,
-            || Some(1234),
+            || Some(identity(1234)),
             &socket,
             || {
                 started.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -466,7 +505,7 @@ mod tests {
 
         let result = restart_daemon(
             &mock,
-            || Some(1234),
+            || Some(identity(1234)),
             &socket,
             || Err(ClientError::DaemonNotRunning),
         );
@@ -597,9 +636,14 @@ mod tests {
         let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
-        let result =
-            stop_daemon_graceful(|| Ok(MockDaemonClient::new()), &mock, 1234, &socket, false)
-                .expect("graceful stop should fall back to signal");
+        let result = stop_daemon_graceful(
+            || Ok(MockDaemonClient::new()),
+            &mock,
+            identity(1234),
+            &socket,
+            false,
+        )
+        .expect("graceful stop should fall back to signal");
 
         assert_eq!(result.pid, 1234);
         assert_eq!(

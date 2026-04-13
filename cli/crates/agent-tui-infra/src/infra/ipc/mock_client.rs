@@ -109,6 +109,7 @@ impl DaemonClient for MockClient {
                 message: format!("Method not found: {method}"),
                 category: None,
                 retryable: false,
+                retry_delay_ms: None,
                 context: None,
                 suggestion: None,
             })

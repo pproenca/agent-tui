@@ -20,12 +20,16 @@ pub enum ClientError {
         message: String,
         category: Option<ErrorCategory>,
         retryable: bool,
+        retry_delay_ms: Option<u64>,
         context: Option<Value>,
         suggestion: Option<String>,
     },
 
     #[error("Daemon not running")]
     DaemonNotRunning,
+
+    #[error("Invalid daemon state in {path}: {message}")]
+    DaemonStateInvalid { path: String, message: String },
 
     #[error("Invalid response from daemon")]
     InvalidResponse,
@@ -50,6 +54,13 @@ impl ClientError {
         }
     }
 
+    pub fn retry_delay_ms(&self) -> Option<u64> {
+        match self {
+            ClientError::RpcError { retry_delay_ms, .. } => *retry_delay_ms,
+            _ => None,
+        }
+    }
+
     pub fn category(&self) -> Option<ErrorCategory> {
         match self {
             ClientError::RpcError { category, .. } => *category,
@@ -61,6 +72,9 @@ impl ClientError {
         match self {
             ClientError::RpcError { suggestion, .. } => suggestion.as_deref(),
             ClientError::DaemonNotRunning => Some("Start daemon with: agent-tui daemon start"),
+            ClientError::DaemonStateInvalid { .. } => {
+                Some("Remove the stale daemon lock file and retry.")
+            }
             _ => None,
         }
     }
@@ -72,6 +86,7 @@ impl ClientError {
                 message,
                 category,
                 retryable,
+                retry_delay_ms,
                 context,
                 suggestion,
             } => {
@@ -80,6 +95,9 @@ impl ClientError {
                     "message": message,
                     "retryable": retryable,
                 });
+                if let Some(delay_ms) = retry_delay_ms {
+                    obj["retry_delay_ms"] = serde_json::json!(delay_ms);
+                }
                 if let Some(cat) = category {
                     obj["category"] = serde_json::json!(cat.as_str());
                 }
@@ -103,6 +121,13 @@ impl ClientError {
                 "category": "external",
                 "retryable": false,
                 "suggestion": "Start daemon with: agent-tui daemon start",
+            }),
+            ClientError::DaemonStateInvalid { path, message } => serde_json::json!({
+                "code": -32000,
+                "message": format!("Invalid daemon state in {}: {}", path, message),
+                "category": "internal",
+                "retryable": false,
+                "suggestion": "Remove the stale daemon lock file and retry.",
             }),
             ClientError::InvalidResponse => serde_json::json!({
                 "code": -32000,

@@ -18,6 +18,10 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command as StdCommand;
+use sysinfo::Pid;
+use sysinfo::ProcessRefreshKind;
+use sysinfo::ProcessesToUpdate;
+use sysinfo::System;
 use tempfile::TempDir;
 
 struct CommandCase {
@@ -113,12 +117,14 @@ impl StandaloneEnv {
     }
 
     fn write_ws_state(&self) {
+        let process_started_at = current_process_started_at();
         let data = json!({
             "pid": std::process::id(),
             "ws_url": "ws://127.0.0.1:43210/ws",
             "ui_url": "http://127.0.0.1:43210/ui",
             "listen": "127.0.0.1:43210",
-            "started_at": 1735689600
+            "started_at": 1735689600,
+            "process_started_at": process_started_at,
         });
         fs::write(
             &self.ws_state_path,
@@ -140,6 +146,19 @@ impl Drop for StandaloneEnv {
     fn drop(&mut self) {
         self.stop_daemon_best_effort();
     }
+}
+
+fn current_process_started_at() -> Option<u64> {
+    let pid = Pid::from_u32(std::process::id());
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing(),
+    );
+    let process = system.process(pid)?;
+    let started_at = process.start_time();
+    (started_at > 0).then(|| System::boot_time().saturating_add(started_at))
 }
 
 fn collect_command_paths(
@@ -562,7 +581,7 @@ fn standalone_live_status_and_stop_contract() {
 }
 
 #[test]
-fn standalone_live_stop_reports_ui_failure_once() {
+fn standalone_live_stop_ignores_legacy_ui_state_without_identity() {
     let env = StandaloneEnv::new();
     fs::write(
         &env.ui_state_path,
@@ -570,21 +589,9 @@ fn standalone_live_stop_reports_ui_failure_once() {
     )
     .expect("write ui state");
 
-    let output = env
-        .cli_command()
-        .args(["live", "stop"])
-        .assert()
-        .failure()
-        .get_output()
-        .stderr
-        .clone();
-    let stderr = String::from_utf8_lossy(&output);
-
-    assert_eq!(
-        stderr.matches("Failed to stop UI server").count(),
-        1,
-        "live stop should report the UI failure once"
-    );
+    env.run(&["live", "stop"])
+        .success()
+        .stdout(predicate::str::contains("UI server is not running."));
 }
 
 #[test]

@@ -27,6 +27,7 @@ dependencies = [
  "predicates",
  "serde",
  "serde_json",
+ "sysinfo",
  "tempfile",
  "tokio",
  "uuid",

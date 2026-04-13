@@ -42,8 +42,6 @@ use crate::domain::WaitInput;
 use crate::domain::WaitOutput;
 use crate::usecases::ports::SessionError;
 
-use crate::domain::session_types::TerminalSize;
-
 pub fn to_value<T: Serialize>(value: T) -> Result<serde_json::Value, serde_json::Error> {
     serde_json::to_value(value)
 }
@@ -110,21 +108,6 @@ pub fn parse_session_input(request: &RpcRequest) -> SessionInput {
     SessionInput { session_id }
 }
 
-#[allow(clippy::result_large_err)]
-fn parse_terminal_size(
-    request: &RpcRequest,
-    cols: u16,
-    rows: u16,
-) -> Result<TerminalSize, RpcResponse> {
-    TerminalSize::try_new(cols, rows).map_err(|err| {
-        RpcResponse::error(
-            request.id,
-            -32602,
-            &format!("Invalid terminal size: {}", err),
-        )
-    })
-}
-
 pub fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
     RpcResponse::domain_error(
         id,
@@ -163,7 +146,7 @@ pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse
         cwd: rpc_params.cwd,
         env: None,
         session_id: parse_session_id(rpc_params.session),
-        size: parse_terminal_size(request, rpc_params.cols, rpc_params.rows)?,
+        size: rpc_params.size.unwrap_or_default(),
     })
 }
 
@@ -468,6 +451,7 @@ pub fn parse_terminal_write_input(request: &RpcRequest) -> Result<TerminalWriteI
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::TerminalSize;
 
     fn make_request(id: u64, method: &str, params: Option<serde_json::Value>) -> RpcRequest {
         RpcRequest::new(id, method.to_string(), params)

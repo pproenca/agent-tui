@@ -17,6 +17,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - [x] (2026-04-13 06:53Z) Complete the PTY and virtual terminal engine tranche (`A04`) and record findings.
 - [x] (2026-04-13 06:59Z) Complete the concurrency, shutdown, and thread/task ownership tranche (`A05`) and record findings.
 - [x] (2026-04-13 07:33Z) Complete the daemon lifecycle control plane tranche (`F08`) and record findings.
+- [x] (2026-04-13 07:48Z) Complete the session lifecycle management tranche (`F07`) and record findings.
 - [ ] Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
 - [ ] Close the plan by filling the retrospective and moving it to `completed/`.
 
@@ -32,6 +33,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 06:53Z` The session runtime already caps retained stream bytes in `StreamBuffer`, but the lower-level PTY hop still blocks on a bounded `ReadEvent` channel and never joins or times out the detached `pty-reader` thread, so the remaining risk sits below the existing ring buffer rather than inside it.
 - `2026-04-13 06:59Z` The concurrency layer splits cleanly into two shutdown qualities: per-connection WebSocket stream tasks already do timeout-plus-abort correctly, but the daemon's owner threads still stop at "warn and detach", and the shutdown use case treats wakeup delivery as infallible even though the accept loop depends on a byte written into `ShutdownWaker`.
 - `2026-04-13 07:33Z` The graceful daemon-stop helper is less safe than it first looks: `stop_daemon_via_rpc()` only waits for socket disappearance after an acknowledged shutdown, and if the socket never goes away it deletes the socket and lock files anyway without proving the daemon process exited.
+- `2026-04-13 07:48Z` The session lifecycle surface relies on two lossy selector/state shorthands that are easy to miss in review: malformed `session` parameters are silently treated as "active", and lock-timed-out sessions are surfaced to cleanup as synthetic stopped `"(locked)"` entries even though the underlying process may still be running.
 
 ## Decision Log
 
@@ -48,12 +50,13 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 06:53Z` Queue `A05` ahead of `F07` after `A04` because the bounded PTY event channel and missing reader-drain timeout are shared ownership and shutdown guarantees, then return to lifecycle behavior and screenshot rendering once those runtime semantics are better mapped.
 - `2026-04-13 06:59Z` Queue `F08` ahead of `F07` after `A05` because the concurrency audit exposed control-plane shutdown risks in the daemon and WS runtime owners themselves (silent wakeup failure and detached threads after timeout), so the daemon lifecycle surface is now the highest-yield next feature slice.
 - `2026-04-13 07:33Z` Queue `F07` ahead of `F02` after `F08` because the daemon control-plane audit completed the start/stop/restart boundary and exposed no new session-model prerequisites, so the next highest-yield slice is the still-unaudited session lifecycle surface that sits directly on the same persistence and stop paths.
+- `2026-04-13 07:48Z` Queue `F02` ahead of `F03` after `F07` because the session lifecycle audit revalidated the need for trustworthy rendered-session state, and the next highest-yield slice is the screenshot/rendering boundary that sits directly on the `render`/`vterm` guarantees already mapped in `A04`.
 
 ## Next Queue
 
-- `F07` Session lifecycle management
 - `F02` Snapshot and screenshot rendering
 - `F03` Input injection
+- `F04` Wait and assert semantics
 
 ## Outcomes & Retrospective
 

@@ -775,6 +775,10 @@ fn ci(root: &Path) -> Result<()> {
         run_command("cargo", &["test", "--workspace"], Some(root))
     })?;
 
+    run_step("Running bash cli tests", || {
+        run_command("bash", &["../cli-tests/run.sh"], Some(root))
+    })?;
+
     run_step("Running tui-explorer tests", || {
         run_command("bash", &["../scripts/check-tui-explorer.sh"], Some(root))
     })?;

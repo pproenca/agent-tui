@@ -1,5 +1,6 @@
 use super::*;
 use crate::domain::session_types::TerminalSize;
+use crossbeam_channel as channel;
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
 #[cfg(unix)]
@@ -150,15 +151,14 @@ fn reader_channel_is_unbounded_for_output_events() {
         remaining_chunks: PTY_READ_BACKPRESSURE_REGRESSION_EVENT_COUNT,
     });
 
-    let deadline = Instant::now() + Duration::from_secs(1);
-    while !join.is_finished() && Instant::now() < deadline {
-        thread::park_timeout(Duration::from_millis(10));
-    }
-    assert!(
-        join.is_finished(),
-        "reader thread should not block behind an internal bounded channel"
-    );
-    let _ = join.join();
+    let (done_tx, done_rx) = channel::bounded(1);
+    thread::spawn(move || {
+        let _ = done_tx.send(join.join());
+    });
+    done_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("reader thread should not block behind an internal bounded channel")
+        .expect("reader thread should not panic");
 
     let mut data_events = 0usize;
     let mut saw_eof = false;

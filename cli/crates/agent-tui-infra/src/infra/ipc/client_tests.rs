@@ -1,5 +1,6 @@
 use super::*;
 use crate::common::mutex_lock_or_recover;
+use crossbeam_channel as channel;
 use std::io::ErrorKind;
 use std::sync::Mutex;
 
@@ -453,6 +454,7 @@ fn test_call_with_config_times_out_over_real_socket() {
     unsafe {
         std::env::set_var("AGENT_TUI_SOCKET", &socket_path);
     }
+    let (release_tx, release_rx) = channel::bounded(1);
 
     let server = std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("server should accept");
@@ -461,7 +463,7 @@ fn test_call_with_config_times_out_over_real_socket() {
 
         let mut line = String::new();
         reader.read_line(&mut line).expect("request should read");
-        std::thread::park_timeout(Duration::from_millis(200));
+        let _ = release_rx.recv();
         drop(stream);
     });
 
@@ -485,6 +487,9 @@ fn test_call_with_config_times_out_over_real_socket() {
                 ErrorKind::TimedOut | ErrorKind::WouldBlock
             )
     ));
+    release_tx
+        .send(())
+        .expect("server release signal should send");
     server.join().expect("server thread should join");
 
     // SAFETY: Test-only cleanup of the Unix socket override.

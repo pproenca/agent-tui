@@ -4,6 +4,10 @@
 
 - None.
 
+## Follow-up Probe
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-timing-probe-followup.md` records the post-remediation audit of the remaining timing-based sibling tests. The surviving waits are narrowed to OS-bound integration probes and lock-backoff behavior, not open `codex-rs` findings.
+
 ## Completed Tranches
 
 ### `2026-04-12 22:03Z` `A08` Workspace architecture and crate graph

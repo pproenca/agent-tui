@@ -8,20 +8,31 @@ Probe the remaining real-time polling tests in `/Users/pedroproenca/Documents/Pr
 
 - [x] (2026-04-13 16:59Z) Re-establish the green base and inventory all remaining `park_timeout` / `elapsed` usage under sibling `*_tests.rs` files.
 - [x] (2026-04-13 17:00Z) Classify the remaining uses into deterministic placeholders versus OS-bound integration probes.
-- [ ] Remove the low-value synchronization sleeps from the remaining unit-style tests.
-- [ ] Update the audit documentation with the surviving OS-bound probes and rerun the full green gate.
+- [x] (2026-04-13 18:34Z) Remove the low-value synchronization sleeps from the remaining unit-style tests.
+- [x] (2026-04-13 18:34Z) Update the audit documentation with the surviving OS-bound probes and rerun the full green gate.
 
 ## Surprises & Discoveries
 
 - `2026-04-13 17:00Z` The remaining timing list is small, but it is mixed: a few tests still use sleeps only as handshakes, while the rest are genuinely observing file visibility, process exit, zombie state, socket timeout, or lock backoff against the real OS.
+- `2026-04-13 18:34Z` This repo's Clippy policy caught the first rewrite immediately: `std::sync::mpsc::channel` is disallowed even in tests, so the handshake conversions had to use bounded `crossbeam-channel` and, for `agent-tui`, a new test-only dependency edge.
 
 ## Decision Log
 
 - `2026-04-13 17:00Z` Do not pretend every remaining wall-clock wait is the same problem. Pure synchronization placeholders should be removed; kernel-visible integration probes should be audited and justified rather than forced into fake virtual-time abstractions.
+- `2026-04-13 18:34Z` Keep the residual timing inventory narrow and honest. `process_tests`, `session_tests`, and `lock_helpers_tests` remain because they are directly probing kernel-visible state or the real backoff algorithm, not because the repo still lacks deterministic test seams.
 
 ## Outcomes & Retrospective
 
-(fill when complete)
+This follow-up pass removed the last incidental timing placeholders from the sibling test tree without reopening the formal findings ledger.
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty_tests.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach_tests.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty_tests.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client_tests.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process_tests.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session_tests.rs`
+
+The surviving timing-based tests are now explicitly audited in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-timing-probe-followup.md` as OS-bound integration probes or direct lock-backoff behavior. The repo finished green again under `just ready` and `just test-core-e2e`.
 
 ## Context and Orientation
 

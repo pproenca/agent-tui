@@ -89,6 +89,19 @@ impl Drop for SessionCleanup<'_> {
 }
 
 #[cfg(unix)]
+fn set_session_created_at(
+    manager: &SessionManager,
+    session_id: &SessionId,
+    created_at: DateTime<Utc>,
+) {
+    let sessions = rwlock_read_or_recover(&manager.sessions);
+    let session = sessions
+        .get(session_id)
+        .expect("session should exist while test mutates ordering");
+    mutex_lock_or_recover(session).created_at = created_at;
+}
+
+#[cfg(unix)]
 fn spawn_session_or_skip(manager: &SessionManager, session_id: &str) -> Option<SessionId> {
     match manager.spawn(
         "sh",
@@ -321,11 +334,13 @@ fn test_resolve_without_active_falls_back_to_most_recent_running_session() {
         Some(id) => cleanup.track(id),
         None => return,
     };
-    std::thread::park_timeout(Duration::from_millis(5));
     let newer = match spawn_session_or_skip(&manager, "newer-running") {
         Some(id) => cleanup.track(id),
         None => return,
     };
+    let now = Utc::now();
+    set_session_created_at(&manager, &older, now - chrono::Duration::seconds(1));
+    set_session_created_at(&manager, &newer, now);
 
     {
         let mut active = rwlock_write_or_recover(&manager.active_session);
@@ -395,11 +410,13 @@ fn test_kill_promotes_most_recent_remaining_running_session_to_active() {
         Some(id) => cleanup.track(id),
         None => return,
     };
-    std::thread::park_timeout(Duration::from_millis(5));
     let active = match spawn_session_or_skip(&manager, "active-to-kill") {
         Some(id) => cleanup.track(id),
         None => return,
     };
+    let now = Utc::now();
+    set_session_created_at(&manager, &older, now - chrono::Duration::seconds(1));
+    set_session_created_at(&manager, &active, now);
 
     assert_eq!(manager.active_session_id(), Some(active.clone()));
 

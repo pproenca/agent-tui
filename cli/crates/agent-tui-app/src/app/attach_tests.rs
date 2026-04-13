@@ -377,16 +377,15 @@ fn prepare_terminal_with_rollback_restores_terminal_after_failure() {
 #[test]
 fn attach_output_worker_shutdown_aborts_before_joining() {
     let aborted = Arc::new(AtomicBool::new(false));
-    let aborted_for_thread = Arc::clone(&aborted);
     let aborted_for_signal = Arc::clone(&aborted);
+    let (shutdown_tx, shutdown_rx) = channel::bounded(1);
     let shutdown_signal: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
         aborted_for_signal.store(true, Ordering::Relaxed);
+        let _ = shutdown_tx.send(());
     });
     let (tx, rx) = channel::bounded(1);
     let join = thread::spawn(move || {
-        while !aborted_for_thread.load(Ordering::Relaxed) {
-            thread::park_timeout(Duration::from_millis(10));
-        }
+        let _ = shutdown_rx.recv();
         let _ = tx.send(Ok(()));
     });
 

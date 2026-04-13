@@ -22,6 +22,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - [x] (2026-04-13 08:13Z) Complete the input injection tranche (`F03`) and record findings.
 - [x] (2026-04-13 08:27Z) Complete the wait and assert semantics tranche (`F04`) and record findings.
 - [x] (2026-04-13 08:37Z) Complete the interactive attach session tranche (`F06`) and record findings.
+- [x] (2026-04-13 08:48Z) Complete the live preview control plane tranche (`F09`) and record findings.
 - [ ] Execute the remaining feature-slice and shared-runtime audits until every audit unit in `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md` is marked complete.
 - [ ] Close the plan by filling the retrospective and moving it to `completed/`.
 
@@ -42,6 +43,7 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 08:13Z` The input slice hides two different semantic traps: the advertised modifier hold/release path only toggles unused booleans in `Session`, and attach correctly batches explicit `Event::Paste` frames but has no fallback burst detector for terminals that emit pasted text as rapid key events instead.
 - `2026-04-13 08:27Z` The wait/assert slice currently relies on two hidden shortcuts at once: each wait iteration issues two refreshes but discards the second result, and the existing tests stop at routing plus timeout exit code even though the wait use case and mock-daemon harness already have deterministic timing seams for convergence and timeout behavior.
 - `2026-04-13 08:37Z` The attach runtime already has the right raw ingredients for safer teardown, but they are not composed: `TerminalGuard` restores on ordinary drop yet ignores initial terminal-setup failure and lacks a chained panic hook, while `RpcStream` exposes an abort handle that the attach loops only use on the explicit detach path before falling back to warn-and-detach helper-thread shutdown.
+- `2026-04-13 08:48Z` The live-preview control plane is less local-only than it first appears: the listener itself stays on loopback by default, but `AGENT_TUI_UI_URL` can hand the full authenticated localhost WS URL to an arbitrary browser target, and the published OpenAPI contract has drifted far enough that it now describes unauthenticated routes and parameters the runtime does not actually serve.
 
 ## Decision Log
 
@@ -63,11 +65,13 @@ Create and execute a persistent, resumable audit program for `/Users/pedroproenc
 - `2026-04-13 08:13Z` Queue `F04` ahead of `F06` after `F03` because the input audit exposed semantic gaps in what terminal writes actually do, so the next highest-yield slice is the wait/assert boundary that decides whether those writes are observed correctly before returning to the more UI-heavy attach path.
 - `2026-04-13 08:27Z` Queue `F06` ahead of `F09` after `F04` because the wait/assert audit completed the remaining state-convergence slice around the core CLI loop, so the next highest-yield review is the interactive attach runtime that consumes those same input, render, and session-state guarantees before moving on to live-preview control-plane behavior.
 - `2026-04-13 08:37Z` Queue `F09` ahead of `F10` and `A06` after `F06` because the attach audit closed the last unaudited operator-facing interactive CLI path, so the next highest-yield work is the live-preview browser/control-plane surface and then the shared process/isolation boundary underneath it.
+- `2026-04-13 08:48Z` Queue `F10` ahead of `A11` and `A06` after `F09` because the control-plane audit exposed both wire-contract drift and credential-sharing behavior on the same live-preview subsystem, so the next highest-yield step is the live-preview data plane itself before lifting to the broader Rust-to-web contract boundary and remaining process/isolation review.
 
 ## Next Queue
 
 - `F09` Live preview control plane
 - `F10` Live preview data plane
+- `A11` Rust-to-web contract boundary
 - `A06` Process control and isolation boundary
 
 ## Outcomes & Retrospective

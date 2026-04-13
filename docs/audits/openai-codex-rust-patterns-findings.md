@@ -730,5 +730,6 @@ Contextual non-applicability:
 
 ## Notes
 
+- `2026-04-13 18:28Z` synchronization pass: the rule matrix cleared `89` stale `finding` cells to match the completed tranche ledger, and the audit queue remains exhausted.
 - This ledger is the human-readable companion to `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-rule-matrix.tsv`.
 - Use the audit-unit identifiers from `/Users/pedroproenca/Documents/Projects/agent-tui/docs/audits/openai-codex-rust-patterns-audit-inventory.md`.

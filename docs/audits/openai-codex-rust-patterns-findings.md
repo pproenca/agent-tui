@@ -2,6 +2,11 @@
 
 ## Open Findings
 
+- `[F12][errors-boundary-error-translator]` The global machine-readable CLI contract still has a hole in `completions`. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` tells operators to use `--format json` for machine-readable output, but `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` handles `completions` as a standalone path that prints shell scripts or human guidance directly and never translates through the selected presenter or output format. Automation therefore cannot rely on the whole CLI surface honoring the advertised JSON contract.
+- `[F12][errors-boundary-error-translator]` `live stop` still double-reports one class of operator failure. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` prints a warning when stopping the managed UI helper fails and then returns a `CliError`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` renders that error again at the top level. Text-mode operators therefore see both an inline warning and a second fatal error line for the same UI-stop problem.
+- `[F12][testing-wiremock-sse-fakes]` CLI admin UX coverage still misses the highest-risk standalone paths. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs` covers `version`, `env`, shell-script printing, and happy-path live-preview admin commands, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` mainly proves standalone routing. No test exercises `agent-tui --format json completions ...`, shell detection plus `--no-input` install behavior, or the failing `live stop` output and exit-path contract end to end.
+- `[A06][errors-boundary-error-translator]` Daemon and UI process identity is still reduced to “the PID exists”. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` reads the daemon lock file as a bare PID, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs` only checks that PID with `kill(pid, 0)` before sending `SIGTERM` or `SIGKILL`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` treats any still-running PID in `api.json` or `ui.json` as the correct owner when reporting status or stopping the UI helper. Stale PID reuse can therefore make daemon/UI control paths report or signal an unrelated process.
+- `[A06][testing-wiremock-sse-fakes]` Process-control coverage still misses the real stale-PID boundary. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` test stale-socket recovery plus SIGTERM/SIGKILL escalation with mocks, but no test simulates reused daemon/UI PIDs, validates process identity beyond `kill(pid, 0)`, or exercises browser-launch behavior as an actual subprocess boundary.
 - `[F11][errors-carry-retry-delay-in-variant]` The IPC client advertises retry controls but never uses them. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` exposes `DaemonClientConfig.max_retries` plus `initial_retry_delay`, and `response_to_result()` records a `retryable` flag on `ClientError::RpcError`, but `call_with_config()` and `call_stream()` remain single-shot transports that never consult either retry knob or preserve any backoff hint from the wire payload.
 - `[F11][defensive-head-tail-output-buffer]` The daemon's Unix-socket request cap is tracked at the wrong granularity. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs` accumulates `SizeLimitedReader.read_count` across the whole connection instead of resetting per request line, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/server.rs` intentionally loops over multiple RPCs on one connection. A client that reuses a socket can therefore hit the 1 MB request limit on aggregate traffic and start getting parse-size failures for later small requests.
 - `[F11][testing-wiremock-sse-fakes]` IPC transport coverage still stops short of a real client/server boundary test. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` only checks an in-memory transport round-trip, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/transport/unix_socket.rs` only unit-tests the line reader and a socket pair, and no test boots the daemon listener and drives the real Unix or WebSocket client path to validate timeout framing, multi-request size accounting, or the client-side response contract end to end.
@@ -625,11 +630,72 @@ Contextual non-applicability:
 - `proto-sse-idle-timeout-terminator` is not a direct fit for this tranche because the IPC boundary is line-delimited JSON-RPC over Unix sockets and WebSocket, not SSE.
 - `sandbox-three-layer-network-isolation` is not a direct fit here because the remaining transport findings are about framing, retry, and request accounting; the bind and process-isolation policy sits in `A06` and the browser-exposure review already landed in `F09`.
 
+### `2026-04-13 09:24Z` `A06` Process control and isolation boundary
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/build.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/src/main.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/src/lib.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/lib.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/lib.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` avoids the most obvious browser-launch injection trap: `open_in_browser()` parses the override with `shell_words` and executes an explicit program plus argv via `Command::new(...)` instead of routing through `sh -c`.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/ws_server.rs` still preserves the most important bind-safety guardrail on the live preview listener: `bind_listener()` rejects non-loopback addresses unless `AGENT_TUI_WS_ALLOW_REMOTE=1`, and that rejection already has a focused regression test.
+- Unix-only runtime assumptions remain explicit and compile-time enforced in `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/src/main.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/src/lib.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/lib.rs`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/lib.rs` via `#[cfg(not(unix))] compile_error!(...)`.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/process.rs` keeps the raw signal/liveness translation narrow: `kill(pid, 0)` results are converted into typed `Running`, `NotFound`, and `NoPermission` states before the higher-level daemon/UI control paths consume them.
+
+Findings:
+
+- Daemon and UI stop/status helpers still trust stale PID files as process identity. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/client.rs` reads the daemon lock file as a bare PID, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs` only validates that PID by existence or permission before signalling it, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` does the same for `api.json` and `ui.json` state files. PID reuse can therefore make the control plane act on an unrelated process.
+- Process-control tests stop before that identity boundary. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/daemon_lifecycle.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` cover stale-socket recovery and TERM-then-KILL escalation, but nothing simulates reused PIDs in daemon/UI state files or proves that browser-launch and stop paths are safe against stale process metadata.
+
+Contextual non-applicability:
+
+- `sandbox-env-clear-pre-exec` is not a direct fit for background daemon self-spawn here because `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/ipc/transport.rs` intentionally carries operator-selected environment configuration into the daemon child; the earlier `F01` finding remains the relevant env-propagation issue for spawned terminal sessions.
+- `sandbox-argv0-multiplex-binary` is not a direct fit for this tranche because the reviewed process launches use the current binary with an explicit subcommand or a direct browser opener command, not symlinked helper binaries selected through `argv[0]`.
+
+### `2026-04-13 09:31Z` `F12` CLI admin and operator UX
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/presenter.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/error_codes.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/daemon_error.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-common/src/common/error_codes.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/presenter.rs` keep the shared error and exit-surface mostly centralized: attach/client/daemon failures preserve category, retryability, suggestion, and context, and JSON mode wraps those structured payloads instead of flattening everything into ad hoc strings.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs` still preserve useful operator guidance on the command line itself: parse errors append a command-specific `Example:` help hint, help entrypoints are regression-tested across the subcommand tree, and the destructive daemon/session flows retain dry-run plus explicit confirmation semantics.
+
+Findings:
+
+- The `completions` command still breaks the advertised machine-readable contract. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` says to use `--format json` for machine-readable output, but `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` handles `completions` entirely outside the presenter/output-format layer and prints either raw shell script or interactive text guidance. A caller using `agent-tui --format json completions ...` therefore does not get JSON.
+- `live stop` still mixes inline warning output with top-level fatal rendering for the same failure. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` prints a warning when the managed UI helper does not stop cleanly and then returns a `CliError`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` renders that same error again. Text-mode operators therefore get duplicated failure messaging around one UI-stop error path.
+- Standalone CLI admin coverage stops short of these contract edges. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs` proves shell-script printing plus happy-path `live`/`daemon` commands, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` tests standalone routing, but nothing locks in `--format json completions`, shell detection plus `--no-input` completion install behavior, or the failing `live stop` output and exit semantics.
+
+Contextual non-applicability:
+
+- `testing-insta-snapshot-tui-rendering` is not a direct fit for this tranche because the audited surface is plain text or JSON CLI output plus shell-completion scripts, not a Ratatui render tree.
+- `workspace-layered-transport-api-core` is not a direct fit for this tranche because the remaining questions are operator-facing command contracts and error presentation, not transport/api/core crate factoring.
+
 ## Next Queue
 
-- `A06` Process control and isolation boundary
-- `F12` CLI admin and operator UX
 - `A07` Observability and runtime diagnostics
+- `A09` Build, version, release, and dist tooling
 
 ## Notes
 

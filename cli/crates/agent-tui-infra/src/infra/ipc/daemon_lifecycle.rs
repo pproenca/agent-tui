@@ -12,6 +12,10 @@ use crate::infra::ipc::process::ProcessController;
 use crate::infra::ipc::process::ProcessStatus;
 use crate::infra::ipc::process::Signal;
 
+const RPC_EXIT_GRACE: Duration = Duration::from_millis(250);
+const FORCE_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
+const SHUTDOWN_RPC_TIMEOUT: Duration = Duration::from_secs(15);
+
 pub struct StopResult {
     pub pid: u32,
     pub warnings: Vec<String>,
@@ -25,14 +29,7 @@ pub fn stop_daemon<P: ProcessController>(
 ) -> Result<StopResult, ClientError> {
     let mut warnings = Vec::new();
 
-    match controller.check_process(pid).map_err(|e| {
-        let message = e.to_string();
-        ClientError::SignalFailed {
-            pid,
-            message,
-            source: Some(e),
-        }
-    })? {
+    match check_process_status(controller, pid)? {
         ProcessStatus::NotFound => {
             cleanup_daemon_files_with_warnings(socket_path, &mut warnings);
             return Err(ClientError::DaemonNotRunning);
@@ -57,16 +54,31 @@ pub fn stop_daemon<P: ProcessController>(
         }
     })?;
 
-    wait_for_socket_removal(socket_path);
+    let mut status = wait_for_socket_removal_or_process_exit(controller, pid, socket_path)?;
+    if matches!(status, ProcessStatus::Running) {
+        let grace = if force {
+            FORCE_EXIT_TIMEOUT
+        } else {
+            RPC_EXIT_GRACE
+        };
+        status = wait_for_process_exit(controller, pid, grace)?;
+    }
 
-    match controller.check_process(pid).map_err(|e| {
-        let message = e.to_string();
-        ClientError::SignalFailed {
-            pid,
-            message,
-            source: Some(e),
-        }
-    })? {
+    if matches!(status, ProcessStatus::Running) && !force {
+        warnings
+            .push("Graceful shutdown timed out; forcing daemon shutdown with SIGKILL".to_string());
+        controller.send_signal(pid, Signal::Kill).map_err(|e| {
+            let message = e.to_string();
+            ClientError::SignalFailed {
+                pid,
+                message,
+                source: Some(e),
+            }
+        })?;
+        status = wait_for_process_exit(controller, pid, FORCE_EXIT_TIMEOUT)?;
+    }
+
+    match status {
         ProcessStatus::Running => {
             return Err(ClientError::SignalFailed {
                 pid,
@@ -98,8 +110,8 @@ pub fn stop_daemon_via_rpc(
     let mut warnings = Vec::new();
 
     let config = DaemonClientConfig::default()
-        .with_read_timeout(Duration::from_secs(5))
-        .with_write_timeout(Duration::from_secs(5))
+        .with_read_timeout(SHUTDOWN_RPC_TIMEOUT)
+        .with_write_timeout(SHUTDOWN_RPC_TIMEOUT)
         .with_max_retries(0);
 
     let result = client.call_with_config("shutdown", None, &config)?;
@@ -147,7 +159,25 @@ where
 
     if let Some(mut result) = rpc_stop_result {
         result.pid = pid;
-        return Ok(result);
+        match wait_for_process_exit(controller, pid, RPC_EXIT_GRACE)? {
+            ProcessStatus::NotFound => return Ok(result),
+            ProcessStatus::NoPermission => {
+                return Err(ClientError::SignalFailed {
+                    pid,
+                    message: "Permission denied".to_string(),
+                    source: None,
+                });
+            }
+            ProcessStatus::Running => {
+                result.warnings.push(
+                    "RPC shutdown was acknowledged but the daemon was still running; sent SIGTERM."
+                        .to_string(),
+                );
+                let signal_result = stop_daemon(controller, pid, socket_path, false)?;
+                result.warnings.extend(signal_result.warnings);
+                return Ok(result);
+            }
+        }
     }
 
     stop_daemon(controller, pid, socket_path, false)
@@ -174,6 +204,61 @@ fn wait_for_socket_removal(socket: &Path) {
     let mut delay = polling::INITIAL_POLL_INTERVAL;
 
     while socket.exists() && start.elapsed() < polling::SHUTDOWN_TIMEOUT {
+        std::thread::park_timeout(delay);
+        delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
+    }
+}
+
+fn check_process_status<P: ProcessController>(
+    controller: &P,
+    pid: u32,
+) -> Result<ProcessStatus, ClientError> {
+    controller.check_process(pid).map_err(|e| {
+        let message = e.to_string();
+        ClientError::SignalFailed {
+            pid,
+            message,
+            source: Some(e),
+        }
+    })
+}
+
+fn wait_for_process_exit<P: ProcessController>(
+    controller: &P,
+    pid: u32,
+    timeout: Duration,
+) -> Result<ProcessStatus, ClientError> {
+    let start = Instant::now();
+    let mut delay = polling::INITIAL_POLL_INTERVAL;
+
+    loop {
+        let status = check_process_status(controller, pid)?;
+        if status != ProcessStatus::Running || start.elapsed() >= timeout {
+            return Ok(status);
+        }
+
+        std::thread::park_timeout(delay);
+        delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
+    }
+}
+
+fn wait_for_socket_removal_or_process_exit<P: ProcessController>(
+    controller: &P,
+    pid: u32,
+    socket: &Path,
+) -> Result<ProcessStatus, ClientError> {
+    let start = Instant::now();
+    let mut delay = polling::INITIAL_POLL_INTERVAL;
+
+    loop {
+        let status = check_process_status(controller, pid)?;
+        if !socket.exists()
+            || status != ProcessStatus::Running
+            || start.elapsed() >= polling::SHUTDOWN_TIMEOUT
+        {
+            return Ok(status);
+        }
+
         std::thread::park_timeout(delay);
         delay = (delay * 2).min(polling::MAX_POLL_INTERVAL);
     }
@@ -244,7 +329,7 @@ mod tests {
     fn test_stop_daemon_force() {
         let mock = MockProcessController::new()
             .with_process(1234, ProcessStatus::Running)
-            .with_signal_kills_process();
+            .with_signal_kills_process_on(Signal::Kill);
         let dir = tempdir().expect("temp dir should be created");
         let socket = dir.path().join("test.sock");
 
@@ -269,6 +354,27 @@ mod tests {
                 ..
             }) if message.contains("did not shut down")
         ));
+    }
+
+    #[test]
+    fn test_stop_daemon_escalates_to_kill_after_graceful_timeout() {
+        let mock = MockProcessController::new()
+            .with_process(1234, ProcessStatus::Running)
+            .with_signal_kills_process_on(Signal::Kill);
+        let dir = tempdir().expect("temp dir should be created");
+        let socket = dir.path().join("missing.sock");
+
+        let result = stop_daemon(&mock, 1234, &socket, false).expect("stop_daemon should escalate");
+
+        assert_eq!(result.pid, 1234);
+        assert_eq!(
+            result.warnings,
+            vec!["Graceful shutdown timed out; forcing daemon shutdown with SIGKILL".to_string()]
+        );
+        assert_eq!(
+            mock.signals_sent(),
+            vec![(1234, Signal::Term), (1234, Signal::Kill)]
+        );
     }
 
     #[test]
@@ -481,5 +587,28 @@ mod tests {
         let result = stop_daemon_via_rpc(&mut client, &socket);
 
         assert!(matches!(result, Err(ClientError::ConnectionFailed(_))));
+    }
+
+    #[test]
+    fn test_stop_daemon_graceful_falls_back_to_signal_when_rpc_leaves_process_running() {
+        let mock = MockProcessController::new()
+            .with_process(1234, ProcessStatus::Running)
+            .with_signal_kills_process();
+        let dir = tempdir().expect("temp dir should be created");
+        let socket = dir.path().join("test.sock");
+
+        let result =
+            stop_daemon_graceful(|| Ok(MockDaemonClient::new()), &mock, 1234, &socket, false)
+                .expect("graceful stop should fall back to signal");
+
+        assert_eq!(result.pid, 1234);
+        assert_eq!(
+            result.warnings,
+            vec![
+                "RPC shutdown was acknowledged but the daemon was still running; sent SIGTERM."
+                    .to_string()
+            ]
+        );
+        assert_eq!(mock.signals_sent(), vec![(1234, Signal::Term)]);
     }
 }

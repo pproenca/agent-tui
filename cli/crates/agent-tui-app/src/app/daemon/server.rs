@@ -49,6 +49,12 @@ const CHANNEL_CAPACITY: usize = 128;
 const STREAM_JOIN_POLL_INTERVAL: Duration = Duration::from_millis(20);
 static CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThreadJoinOutcome {
+    Joined,
+    ReapingInBackground,
+}
+
 struct ShutdownWaker {
     reader: UnixStream,
     writer: Arc<std::sync::Mutex<UnixStream>>,
@@ -92,10 +98,12 @@ struct ShutdownNotify {
 }
 
 impl crate::usecases::ports::ShutdownNotifier for ShutdownNotify {
-    fn notify(&self) {
-        if let Ok(mut writer) = self.writer.lock() {
-            let _ = writer.write_all(&[1]);
-        }
+    fn notify(&self) -> Result<(), std::io::Error> {
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| std::io::Error::other("shutdown notifier mutex poisoned"))?;
+        writer.write_all(&[1])
     }
 }
 
@@ -284,20 +292,12 @@ impl DaemonServer {
         };
 
         for handle in handles {
-            let deadline = Instant::now() + timeout;
-            while !handle.is_finished() {
-                if Instant::now() >= deadline {
-                    warn!(
-                        timeout_ms = timeout.as_millis(),
-                        "Timed out joining stream thread"
-                    );
-                    break;
-                }
-                thread::park_timeout(STREAM_JOIN_POLL_INTERVAL);
-            }
-            if handle.is_finished() {
-                let _ = handle.join();
-            }
+            let _ = join_thread_with_timeout_or_reap(
+                handle,
+                timeout,
+                "stream thread",
+                "daemon-stream-reaper",
+            );
         }
     }
 
@@ -497,6 +497,73 @@ impl DaemonServer {
 
 fn init_logging() -> telemetry::TelemetryGuard {
     telemetry::init_tracing("info")
+}
+
+fn join_thread_with_timeout_or_reap(
+    handle: thread::JoinHandle<()>,
+    timeout: Duration,
+    thread_label: &'static str,
+    reaper_name: &'static str,
+) -> ThreadJoinOutcome {
+    let deadline = Instant::now() + timeout;
+    while !handle.is_finished() {
+        if Instant::now() >= deadline {
+            warn!(
+                thread = thread_label,
+                timeout_ms = timeout.as_millis(),
+                "Timed out joining thread; handing ownership to background reaper"
+            );
+            return spawn_join_reaper(handle, thread_label, reaper_name);
+        }
+        thread::park_timeout(STREAM_JOIN_POLL_INTERVAL);
+    }
+    let _ = handle.join();
+    ThreadJoinOutcome::Joined
+}
+
+fn spawn_join_reaper(
+    handle: thread::JoinHandle<()>,
+    thread_label: &'static str,
+    reaper_name: &'static str,
+) -> ThreadJoinOutcome {
+    let handle_cell = Arc::new(std::sync::Mutex::new(Some(handle)));
+    let handle_for_thread = Arc::clone(&handle_cell);
+    match thread::Builder::new()
+        .name(reaper_name.to_string())
+        .spawn(move || {
+            let Some(handle) = handle_for_thread
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+            else {
+                return;
+            };
+
+            if handle.join().is_err() {
+                warn!(
+                    thread = thread_label,
+                    "Background reaper observed thread panic"
+                );
+            }
+        }) {
+        Ok(_) => ThreadJoinOutcome::ReapingInBackground,
+        Err(err) => {
+            warn!(
+                thread = thread_label,
+                reaper = reaper_name,
+                error = %err,
+                "Failed to spawn background join reaper; joining synchronously"
+            );
+            if let Some(handle) = handle_cell
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+            {
+                let _ = handle.join();
+            }
+            ThreadJoinOutcome::Joined
+        }
+    }
 }
 
 fn bind_socket(
@@ -797,5 +864,27 @@ mod tests {
             "stream join should remain bounded on timeout"
         );
         assert!(mutex_lock_or_recover(&server.stream_threads).is_empty());
+    }
+
+    #[test]
+    fn join_thread_with_timeout_or_reap_spawns_background_reaper_on_timeout() {
+        let handle = std::thread::spawn(|| {
+            std::thread::park_timeout(Duration::from_millis(75));
+        });
+
+        let start = Instant::now();
+        let outcome = super::join_thread_with_timeout_or_reap(
+            handle,
+            Duration::from_millis(10),
+            "test thread",
+            "test-thread-reaper",
+        );
+
+        assert_eq!(outcome, super::ThreadJoinOutcome::ReapingInBackground);
+        assert!(
+            start.elapsed() < Duration::from_millis(250),
+            "reaper handoff should keep shutdown bounded"
+        );
+        std::thread::park_timeout(Duration::from_millis(100));
     }
 }

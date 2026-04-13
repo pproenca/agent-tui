@@ -7406,7 +7406,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml	otel-w3c-traceparent-propagation	otel	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml	proto-double-option-tri-state	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml	proto-experimental-runtime-gate	proto	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml	proto-internal-vs-wire-error-split	proto	finding	applicable	F10	2026-04-13 08:54Z	AsyncAPI still advertises unauthenticated query-selected subscriptions plus hello, command, error, and binary output messages even though the runtime only serves token-authenticated JSON-RPC text responses with base64 output events.
+/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml	proto-internal-vs-wire-error-split	proto	finding	applicable	F10,A11	2026-04-13 09:04Z	AsyncAPI still advertises unauthenticated query-selected subscriptions plus raw hello, command, error, and binary output messages even though the runtime and first-party web client use token-authenticated JSON-RPC text envelopes with base64 output events.
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml	proto-internally-tagged-rpc-dispatch	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml	proto-rename-alias-wire-migration	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/asyncapi.yaml	proto-sse-idle-timeout-terminator	proto	not_applicable	contextual	F10	2026-04-13 08:54Z	The documented live preview data plane is WebSocket-based rather than SSE-based.
@@ -7526,7 +7526,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	otel-w3c-traceparent-propagation	otel	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-double-option-tri-state	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-experimental-runtime-gate	proto	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-internal-vs-wire-error-split	proto	finding	applicable	F09,F10	2026-04-13 08:54Z	The published contract says authentication is unenforced, documents /api/v1/sessions and snapshot routes that the runtime does not serve, treats /api/v1/stream as query-selected by session and encoding, and models errors as plain ErrorResponse rather than the token-authenticated JSON-RPC envelopes returned by the runtime.
+/Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-internal-vs-wire-error-split	proto	finding	applicable	F09,F10,A11	2026-04-13 09:04Z	The published contract says authentication is unenforced, documents /api/v1/sessions and snapshot routes that the runtime does not serve, and still models session payloads as active plus raw HTTP or stream shapes even though the shipped browser client consumes token-authenticated JSON-RPC envelopes with active_session.
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-internally-tagged-rpc-dispatch	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-rename-alias-wire-migration	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/docs/api/openapi.yaml	proto-sse-idle-timeout-terminator	proto	not_applicable	contextual	F09	2026-04-13 08:48Z	The documented live preview control plane is WebSocket-based rather than SSE-based.
@@ -7572,7 +7572,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	errors-boundary-error-translator	errors	finding	applicable	A11	2026-04-13 09:04Z	buildWsEndpoint falls back to same-origin /ws when the ws query is absent, but ws_server requires token query auth before upgrade and the app collapses that handshake failure into generic websocket or disconnected or failed-to-load UI states.
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -7586,7 +7586,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	otel-w3c-traceparent-propagation	otel	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	proto-double-option-tri-state	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	proto-experimental-runtime-gate	proto	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	proto-internal-vs-wire-error-split	proto	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	proto-internal-vs-wire-error-split	proto	finding	applicable	A11	2026-04-13 09:04Z	app.ts consumes JSON-RPC id or result or error envelopes, maps active_session into the session view model, and still carries a dead command-event branch even though the published docs describe raw stream payloads and rpc_core does not emit command events.
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	proto-internally-tagged-rpc-dispatch	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	proto-rename-alias-wire-migration	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	proto-sse-idle-timeout-terminator	proto	pending	unreviewed			
@@ -7601,7 +7601,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	testing-paused-runtime-advance	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	testing-wiremock-sse-fakes	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	testing-wiremock-sse-fakes	testing	finding	applicable	A11	2026-04-13 09:04Z	There is no browser-level contract test that feeds real RpcResponse envelopes or runs a WebSocket harness for tokenized endpoints, active_session mapping, auth failure, or reconnect behavior.
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/app.ts	tui-paste-burst-state-machine	tui	pending	unreviewed			
@@ -7706,7 +7706,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/session_view_model.ts	otel-w3c-traceparent-propagation	otel	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/session_view_model.ts	proto-double-option-tri-state	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/session_view_model.ts	proto-experimental-runtime-gate	proto	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/web/src/session_view_model.ts	proto-internal-vs-wire-error-split	proto	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/web/src/session_view_model.ts	proto-internal-vs-wire-error-split	proto	pass	applicable	A11	2026-04-13 09:04Z	The view-model layer only depends on the narrow session fields Rust already publishes: id, command, pid, running, created_at, size, and the active session identifier.
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/session_view_model.ts	proto-internally-tagged-rpc-dispatch	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/session_view_model.ts	proto-rename-alias-wire-migration	proto	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/web/src/session_view_model.ts	proto-sse-idle-timeout-terminator	proto	pending	unreviewed			

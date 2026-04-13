@@ -2,6 +2,13 @@ import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { createElement, Plus, RefreshCw, X, type IconNode } from "lucide";
 
+import { resolveWsEndpoint } from "./connection_config";
+import {
+  mapSessionsResult,
+  readSessionsStreamEnvelope,
+  readTerminalStreamEnvelope,
+  type TerminalStreamEvent,
+} from "./live_preview_contract";
 import {
   buildSessionCards,
   decideTerminalSyncAction,
@@ -22,7 +29,6 @@ const RPC_TIMEOUT_MS = 5000;
 const POLL_REFRESH_INTERVAL_MS = 5000;
 const FLIGHTDECK_STREAM_INTERVAL_MS = 1000;
 const LIVE_PREVIEW_RESIZE_DEBOUNCE_MS = 120;
-const MAX_COMMAND_TIMELINE_ITEMS = 200;
 
 function setButtonIcon(button: HTMLButtonElement, iconDef: IconNode): void {
   const iconSlot = button.querySelector(".button__icon");
@@ -45,13 +51,6 @@ const sessionsRefreshBtn = document.getElementById("sessionsRefresh") as
   | HTMLButtonElement
   | null;
 const sessionsModeBadgeEl = document.getElementById("sessionsModeBadge") as
-  | HTMLSpanElement
-  | null;
-const commandTimelineEl = document.getElementById("commandTimeline") as HTMLDivElement | null;
-const commandTimelineEmptyEl = document.getElementById("commandTimelineEmpty") as
-  | HTMLDivElement
-  | null;
-const commandTimelineCountEl = document.getElementById("commandTimelineCount") as
   | HTMLSpanElement
   | null;
 
@@ -206,11 +205,6 @@ if (typeof ResizeObserver !== "undefined") {
 }
 
 type DisconnectReason = TerminalDisconnectReason;
-type RpcResponse = {
-  id?: number;
-  result?: any;
-  error?: { code?: number; message?: string };
-};
 
 let terminalSocket: WebSocket | null = null;
 let terminalSocketState: { reason: DisconnectReason | null; streamId: number | null } | null =
@@ -264,54 +258,6 @@ function setSessionsNotice(message: string) {
     sessionCountEl.textContent = "0";
   }
   latestSessions = null;
-}
-
-function updateCommandTimelineState(): void {
-  const count = commandTimelineEl?.childElementCount ?? 0;
-  if (commandTimelineCountEl) {
-    commandTimelineCountEl.textContent = String(count);
-  }
-  if (commandTimelineEmptyEl) {
-    commandTimelineEmptyEl.hidden = count > 0;
-  }
-}
-
-function resetCommandTimeline(): void {
-  commandTimelineEl?.replaceChildren();
-  updateCommandTimelineState();
-}
-
-function appendCommandTimelineEntry(kind: string, value: string, time: number | null): void {
-  if (!commandTimelineEl) {
-    return;
-  }
-
-  const item = document.createElement("div");
-  item.className = "timeline__item";
-
-  const kindEl = document.createElement("span");
-  kindEl.className = "timeline__item-kind";
-  kindEl.textContent = kind;
-
-  const valueEl = document.createElement("span");
-  valueEl.className = "timeline__item-value";
-  valueEl.textContent = value;
-
-  item.appendChild(kindEl);
-  item.appendChild(valueEl);
-
-  if (typeof time === "number" && Number.isFinite(time)) {
-    const timeEl = document.createElement("span");
-    timeEl.className = "timeline__item-time";
-    timeEl.textContent = `+${time.toFixed(2)}s`;
-    item.appendChild(timeEl);
-  }
-
-  commandTimelineEl.appendChild(item);
-  while (commandTimelineEl.childElementCount > MAX_COMMAND_TIMELINE_ITEMS) {
-    commandTimelineEl.firstElementChild?.remove();
-  }
-  updateCommandTimelineState();
 }
 
 function renderSessions(payload: SessionsResponse) {
@@ -426,17 +372,11 @@ function renderSessions(payload: SessionsResponse) {
 }
 
 function buildWsEndpoint(): string | null {
-  const wsValue = config.wsUrl.trim();
-  if (wsValue) {
-    try {
-      return new URL(wsValue).toString();
-    } catch {
-      return null;
-    }
-  }
+  return resolveWsEndpoint(config.wsUrl).endpoint;
+}
 
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/ws`;
+function wsEndpointErrorMessage(): string {
+  return resolveWsEndpoint(config.wsUrl).error ?? "Missing websocket endpoint";
 }
 
 async function rpcCall(method: string, params?: Record<string, unknown>): Promise<any> {
@@ -509,24 +449,13 @@ async function rpcCall(method: string, params?: Record<string, unknown>): Promis
   });
 }
 
-function mapSessionsResult(result: any): SessionsResponse {
-  const sessions = Array.isArray(result?.sessions)
-    ? (result.sessions as SessionInfo[])
-    : [];
-  const active =
-    typeof result?.active_session === "string" || result?.active_session === null
-      ? (result.active_session as string | null)
-      : null;
-  return { sessions, active };
-}
-
 async function refreshSessionsViaRpc() {
   if (sessionsLoading) {
     return;
   }
   const endpoint = buildWsEndpoint();
   if (!endpoint) {
-    setSessionsNotice("Waiting for daemon...");
+    setSessionsNotice(wsEndpointErrorMessage());
     return;
   }
 
@@ -628,7 +557,7 @@ function startSessionsFeed() {
   const endpoint = buildWsEndpoint();
   if (!endpoint) {
     activatePollingFallback();
-    setSessionsNotice("Waiting for daemon...");
+    setSessionsNotice(wsEndpointErrorMessage());
     return;
   }
 
@@ -669,18 +598,17 @@ function startSessionsFeed() {
     } catch {
       return;
     }
-
-    if (response.id !== sessionsSocketState.streamId) {
+    const dispatch = readSessionsStreamEnvelope(response, sessionsSocketState.streamId);
+    if (dispatch.kind === "ignore") {
       return;
     }
-    if (response.error) {
+    if (dispatch.kind === "error") {
       state.reason = "error";
       activatePollingFallback();
       ws.close();
       return;
     }
-
-    handleSessionsStreamResult(response.result);
+    handleSessionsStreamResult(dispatch.payload);
   });
 
   ws.addEventListener("close", () => {
@@ -753,64 +681,44 @@ function decodeBase64(data: string): string {
   return decoder.decode(bytes, { stream: true });
 }
 
-function handleTerminalPayload(payload: any) {
-  if (!payload || typeof payload !== "object") {
-    return;
-  }
-
-  switch (payload.event) {
+function handleTerminalPayload(payload: TerminalStreamEvent) {
+  switch (payload.type) {
     case "ready":
-      if (typeof payload.session_id === "string") {
-        connectedTerminalSessionId = payload.session_id;
+      if (payload.sessionId) {
+        connectedTerminalSessionId = payload.sessionId;
       }
       if (payload.cols && payload.rows) {
         setLivePreviewTerminalSize(payload.cols, payload.rows);
         requestLivePreviewResize();
       }
-      break;
+      return;
     case "init":
-      if (payload.init) {
-        terminalState = reduceTerminalStreamState(terminalState, { type: "reset_stream" });
-        term.reset();
-        term.write(payload.init);
-      }
-      break;
+      terminalState = reduceTerminalStreamState(terminalState, { type: "reset_stream" });
+      term.reset();
+      term.write(payload.init);
+      return;
     case "output":
-      if (payload.data_b64) {
-        term.write(decodeBase64(payload.data_b64));
-      } else if (payload.data) {
-        term.write(decodeBase64(payload.data));
-      }
-      break;
+      term.write(decodeBase64(payload.dataB64));
+      return;
     case "resize":
-      if (payload.cols && payload.rows) {
-        setLivePreviewTerminalSize(payload.cols, payload.rows);
-      }
-      break;
+      setLivePreviewTerminalSize(payload.cols, payload.rows);
+      return;
     case "closed":
       showTerminationNotice();
       if (sessionsFeedState.mode === "poll") {
         void refreshSessionsViaRpc();
       }
-      break;
-    case "command":
-      if (typeof payload.kind === "string" && typeof payload.value === "string") {
-        appendCommandTimelineEntry(
-          payload.kind,
-          payload.value,
-          typeof payload.time === "number" ? payload.time : null,
-        );
-      }
-      break;
-    default:
-      break;
+      return;
+    case "heartbeat":
+    case "dropped":
+      return;
   }
 }
 
 async function connect() {
   const endpoint = buildWsEndpoint();
   if (!endpoint) {
-    setStatus("No daemon", false);
+    setStatus(wsEndpointErrorMessage(), false);
     return;
   }
 
@@ -818,7 +726,6 @@ async function connect() {
   lastTerminalDisconnectReason = null;
   connectedTerminalSessionId = null;
   terminalState = reduceTerminalStreamState(terminalState, { type: "reset_stream" });
-  resetCommandTimeline();
   setStatus("Connecting...", false);
   clearLivePreviewTerminalSize();
 
@@ -863,16 +770,16 @@ async function connect() {
     } catch {
       return;
     }
-
-    if (response.id !== terminalSocketState.streamId) {
+    const dispatch = readTerminalStreamEnvelope(response, terminalSocketState.streamId);
+    if (dispatch.kind === "ignore") {
       return;
     }
-    if (response.error) {
-      setStatus(`Error: ${response.error.message ?? "rpc error"}`, false);
+    if (dispatch.kind === "error") {
+      setStatus(`Error: ${dispatch.message}`, false);
       disconnectTerminal("error");
       return;
     }
-    handleTerminalPayload(response.result);
+    handleTerminalPayload(dispatch.payload);
   });
 
   ws.addEventListener("close", () => {
@@ -907,7 +814,6 @@ function selectSession(targetId: string) {
     type: "switch_session",
     sessionId: targetId,
   });
-  resetCommandTimeline();
   if (terminalSocket) {
     void connect();
   }
@@ -940,7 +846,6 @@ document.addEventListener("keydown", (event) => {
 });
 
 async function init() {
-  updateCommandTimelineState();
   startSessionsFeed();
   if (autoConnectEnabled) {
     void connect();

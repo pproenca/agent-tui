@@ -13,3 +13,6 @@ workspace = true
 thiserror.workspace = true
 agent-tui-common.workspace = true
 agent-tui-domain.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

@@ -104,10 +104,10 @@ cli-docs:
 watch: _ensure-cargo-watch
     cargo watch -x "build"
 
-# Create and push a release tag (no version bump commit).
-# Usage: just release bump=patch|minor|major|x.y.z
-release bump="patch":
-    cargo run -p xtask -- release {{bump}}
+# Create and push a release tag after CI, release-build, and artifact verification.
+# Usage: just release bump=patch|minor|major|x.y.z artifacts=artifacts
+release bump="patch" artifacts="artifacts":
+    cargo run -p xtask -- release {{bump}} --artifacts {{artifacts}}
 
 # Internal: ensure bun is installed.
 _ensure-bun:

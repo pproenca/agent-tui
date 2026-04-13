@@ -120,10 +120,27 @@ impl RpcResponseWriter for UnixRpcWriter<'_> {
     }
 }
 
+fn session_selector_for_log(request: &crate::adapters::rpc::RpcRequest) -> &'static str {
+    match request.param_str("session") {
+        None => "implicit-active",
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                "blank"
+            } else if trimmed == "active" {
+                "explicit-active"
+            } else {
+                "explicit"
+            }
+        }
+    }
+}
+
 pub struct DaemonServer {
     core: Arc<RpcCore>,
     active_connections: Arc<AtomicUsize>,
     active_fds: Arc<std::sync::Mutex<HashSet<RawFd>>>,
+    active_fds_cv: Arc<std::sync::Condvar>,
     connection_wait_lock: Arc<std::sync::Mutex<()>>,
     connection_cv: Arc<std::sync::Condvar>,
     stream_threads: std::sync::Mutex<Vec<thread::JoinHandle<()>>>,
@@ -218,20 +235,21 @@ impl DaemonServer {
         config: DaemonConfig,
         shutdown_flag: Arc<AtomicBool>,
         shutdown_notifier: crate::usecases::ports::ShutdownNotifierHandle,
-    ) -> Self {
+    ) -> Result<Self, crate::infra::daemon::SessionError> {
         let core = Arc::new(RpcCore::with_config(
             config,
             shutdown_flag,
             shutdown_notifier,
-        ));
-        Self {
+        )?);
+        Ok(Self {
             core,
             active_connections: Arc::new(AtomicUsize::new(0)),
             active_fds: Arc::new(std::sync::Mutex::new(HashSet::new())),
+            active_fds_cv: Arc::new(std::sync::Condvar::new()),
             connection_wait_lock: Arc::new(std::sync::Mutex::new(())),
             connection_cv: Arc::new(std::sync::Condvar::new()),
             stream_threads: std::sync::Mutex::new(Vec::new()),
-        }
+        })
     }
 
     fn session_repository_handle(&self) -> Arc<dyn crate::usecases::ports::SessionRepository> {
@@ -248,6 +266,7 @@ impl DaemonServer {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         fds.insert(fd);
+        self.active_fds_cv.notify_all();
     }
 
     fn unregister_connection(&self, fd: RawFd) {
@@ -256,6 +275,20 @@ impl DaemonServer {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         fds.remove(&fd);
+        self.active_fds_cv.notify_all();
+    }
+
+    #[cfg(test)]
+    fn wait_for_registered_connection(&self, timeout: Duration) -> bool {
+        let fds = self
+            .active_fds
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let result = self
+            .active_fds_cv
+            .wait_timeout_while(fds, timeout, |fds| fds.is_empty())
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        !result.0.is_empty()
     }
 
     fn shutdown_connections(&self) {
@@ -353,12 +386,11 @@ impl DaemonServer {
 
             let request_id = request.id;
             let method = request.method.clone();
-            let session_field = request.param_str("session").unwrap_or("-");
             let request_span = tracing::debug_span!(
                 "rpc_request",
                 request_id,
                 method = %method,
-                session = %session_field
+                session_selector = session_selector_for_log(&request)
             );
             let _request_guard = request_span.enter();
             let start = Instant::now();
@@ -729,11 +761,17 @@ pub fn start_daemon() -> Result<(), DaemonError> {
         .map_err(|e| DaemonError::SignalSetup(format!("failed to create shutdown waker: {e}")))?;
     let shutdown_notifier = waker.notifier();
 
-    let server = Arc::new(DaemonServer::with_config(
-        config,
-        Arc::clone(&shutdown),
-        Arc::clone(&shutdown_notifier),
-    ));
+    let server = Arc::new(
+        DaemonServer::with_config(
+            config,
+            Arc::clone(&shutdown),
+            Arc::clone(&shutdown_notifier),
+        )
+        .map_err(|source| DaemonError::Startup {
+            operation: "initialize_sessions",
+            source: Box::new(source),
+        })?,
+    );
 
     let ws_handle = match start_ws_server(
         Arc::clone(&server.core),
@@ -770,121 +808,5 @@ pub fn start_daemon() -> Result<(), DaemonError> {
 }
 
 #[cfg(test)]
-mod tests {
-    #![allow(
-        clippy::expect_used,
-        reason = "Test-only assertions use expect for clarity."
-    )]
-
-    use super::*;
-    use crate::common::mutex_lock_or_recover;
-    use crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier;
-    use std::sync::mpsc;
-
-    #[test]
-    fn shutdown_connections_closes_idle_client() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(NoopShutdownNotifier);
-        let server = Arc::new(DaemonServer::with_config(
-            DaemonConfig::default(),
-            Arc::clone(&shutdown),
-            notifier,
-        ));
-
-        let (client, server_stream) = UnixStream::pair().expect("failed to create unix pair");
-        let conn = UnixSocketConnection::new(server_stream).expect("failed to wrap connection");
-
-        let (tx, rx) = mpsc::sync_channel(1);
-        let server_clone = Arc::clone(&server);
-        std::thread::spawn(move || {
-            server_clone.handle_client(conn);
-            let _ = tx.send(());
-        });
-
-        let deadline = Instant::now() + Duration::from_secs(1);
-        loop {
-            if !mutex_lock_or_recover(&server.active_fds).is_empty() {
-                break;
-            }
-            if Instant::now() >= deadline {
-                panic!("connection was not registered");
-            }
-            std::thread::park_timeout(Duration::from_millis(10));
-        }
-
-        server.shutdown_connections();
-
-        assert!(
-            rx.recv_timeout(Duration::from_secs(1)).is_ok(),
-            "client handler did not exit after shutdown"
-        );
-
-        drop(client);
-    }
-
-    #[test]
-    fn join_stream_threads_drains_handles() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(NoopShutdownNotifier);
-        let server = Arc::new(DaemonServer::with_config(
-            DaemonConfig::default(),
-            Arc::clone(&shutdown),
-            notifier,
-        ));
-
-        let handle = std::thread::spawn(|| {});
-        server.register_stream_thread(handle);
-        server.join_stream_threads(Duration::from_secs(1));
-
-        assert!(mutex_lock_or_recover(&server.stream_threads).is_empty());
-    }
-
-    #[test]
-    fn join_stream_threads_times_out_without_blocking_shutdown() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let notifier: crate::usecases::ports::ShutdownNotifierHandle =
-            Arc::new(NoopShutdownNotifier);
-        let server = Arc::new(DaemonServer::with_config(
-            DaemonConfig::default(),
-            Arc::clone(&shutdown),
-            notifier,
-        ));
-
-        let handle = std::thread::spawn(|| {
-            std::thread::park_timeout(Duration::from_secs(1));
-        });
-        server.register_stream_thread(handle);
-
-        let start = Instant::now();
-        server.join_stream_threads(Duration::from_millis(25));
-        assert!(
-            start.elapsed() < Duration::from_millis(500),
-            "stream join should remain bounded on timeout"
-        );
-        assert!(mutex_lock_or_recover(&server.stream_threads).is_empty());
-    }
-
-    #[test]
-    fn join_thread_with_timeout_or_reap_spawns_background_reaper_on_timeout() {
-        let handle = std::thread::spawn(|| {
-            std::thread::park_timeout(Duration::from_millis(75));
-        });
-
-        let start = Instant::now();
-        let outcome = super::join_thread_with_timeout_or_reap(
-            handle,
-            Duration::from_millis(10),
-            "test thread",
-            "test-thread-reaper",
-        );
-
-        assert_eq!(outcome, super::ThreadJoinOutcome::ReapingInBackground);
-        assert!(
-            start.elapsed() < Duration::from_millis(250),
-            "reaper handoff should keep shutdown bounded"
-        );
-        std::thread::park_timeout(Duration::from_millis(100));
-    }
-}
+#[path = "server_tests.rs"]
+mod tests;

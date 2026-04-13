@@ -65,7 +65,7 @@ pub use crate::domain::session_types::SessionInfo;
 use crate::domain::session_types::TerminalSize;
 pub use crate::infra::daemon::SessionError;
 
-const STREAM_MAX_BUFFER_BYTES: usize = 8 * 1024 * 1024;
+const DEFAULT_STREAM_MAX_BUFFER_BYTES: usize = 8 * 1024 * 1024;
 const COMMAND_TIMELINE_MAX_ENTRIES: usize = 512;
 pub(crate) const PUMP_FLUSH_TIMEOUT: Duration = Duration::from_millis(50);
 const SESSION_QUERY_LOCK_TIMEOUT: Duration = Duration::from_millis(100);
@@ -774,8 +774,14 @@ pub struct Session {
 }
 
 impl Session {
-    fn new(id: SessionId, launch: SessionLaunchSpec, pty: PtyHandle, size: TerminalSize) -> Self {
-        let stream = Arc::new(StreamBuffer::new(STREAM_MAX_BUFFER_BYTES));
+    fn new(
+        id: SessionId,
+        launch: SessionLaunchSpec,
+        pty: PtyHandle,
+        size: TerminalSize,
+        stream_max_buffer_bytes: usize,
+    ) -> Self {
+        let stream = Arc::new(StreamBuffer::new(stream_max_buffer_bytes));
         let mut pty = PtySession::new(pty);
         let pty_rx = pty.take_read_rx();
         Self {
@@ -997,33 +1003,41 @@ pub struct SessionManager {
     active_session: RwLock<Option<SessionId>>,
     persistence: SessionPersistence,
     max_sessions: usize,
+    stream_max_buffer_bytes: usize,
 }
 
 pub const DEFAULT_MAX_SESSIONS: usize = 16;
 
-impl Default for SessionManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl SessionManager {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, SessionError> {
         Self::with_max_sessions(DEFAULT_MAX_SESSIONS)
     }
 
-    pub fn with_max_sessions(max_sessions: usize) -> Self {
-        let persistence = SessionPersistence::new();
-        if let Err(e) = persistence.cleanup_stale_sessions() {
-            warn!(error = %e, "Failed to cleanup stale sessions");
-        }
+    pub fn with_max_sessions(max_sessions: usize) -> Result<Self, SessionError> {
+        Self::with_limits(max_sessions, DEFAULT_STREAM_MAX_BUFFER_BYTES)
+    }
 
-        Self {
+    fn with_limits(
+        max_sessions: usize,
+        stream_max_buffer_bytes: usize,
+    ) -> Result<Self, SessionError> {
+        let persistence = SessionPersistence::new();
+        persistence.cleanup_stale_sessions()?;
+
+        Ok(Self {
             sessions: RwLock::new(HashMap::new()),
             active_session: RwLock::new(None),
             persistence,
             max_sessions,
-        }
+            stream_max_buffer_bytes,
+        })
+    }
+
+    pub fn with_test_limits(
+        max_sessions: usize,
+        stream_max_buffer_bytes: usize,
+    ) -> Result<Self, SessionError> {
+        Self::with_limits(max_sessions, stream_max_buffer_bytes)
     }
 
     fn next_session_id(&self) -> SessionId {
@@ -1083,7 +1097,7 @@ impl SessionManager {
             env: env.cloned(),
         };
 
-        let pty = PtyHandle::spawn(
+        let mut pty = PtyHandle::spawn(
             &launch.command,
             &launch.args,
             launch.cwd.as_deref(),
@@ -1093,10 +1107,20 @@ impl SessionManager {
         .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
         let pid = pty.pid().unwrap_or(0);
 
-        let session = Session::new(id.clone(), launch.clone(), pty, size);
-        let session = Arc::new(Mutex::new(session));
-
         let persisted = Self::persisted_session(&id, &launch.command, pid, size);
+        if let Err(err) = self.persistence.add_session(persisted) {
+            let _ = pty.kill();
+            return Err(err);
+        }
+
+        let session = Session::new(id.clone(), launch, pty, size, self.stream_max_buffer_bytes);
+        let session = Arc::new(Mutex::new(session));
+        let thread_name = format!("session-pump-{}", id.as_str());
+        let (pump_tx, pump_join) = spawn_pump(Arc::clone(&session), thread_name);
+        {
+            let mut sess = mutex_lock_or_recover(&session);
+            sess.attach_pump(pump_tx, pump_join);
+        }
 
         {
             let mut sessions = rwlock_write_or_recover(&self.sessions);
@@ -1106,17 +1130,6 @@ impl SessionManager {
         {
             let mut active = rwlock_write_or_recover(&self.active_session);
             *active = Some(id.clone());
-        }
-
-        let thread_name = format!("session-pump-{}", id.as_str());
-        let (pump_tx, pump_join) = spawn_pump(Arc::clone(&session), thread_name);
-        {
-            let mut sess = mutex_lock_or_recover(&session);
-            sess.attach_pump(pump_tx, pump_join);
-        }
-
-        if let Err(e) = self.persistence.add_session(persisted) {
-            warn!(error = %e, "Failed to persist session metadata");
         }
 
         Ok((id, pid))
@@ -1196,6 +1209,11 @@ impl SessionManager {
         )
         .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
         let pid = replacement_pty.pid().unwrap_or(0);
+        let persisted = Self::persisted_session(&new_session_id, &launch.command, pid, size);
+        if let Err(err) = self.persistence.add_session(persisted) {
+            let _ = replacement_pty.kill();
+            return Err(err);
+        }
 
         let old_join = {
             let mut sess = mutex_lock_or_recover(&session);
@@ -1206,6 +1224,13 @@ impl SessionManager {
                     let _ = join.join();
                 }
                 let _ = replacement_pty.kill();
+                if let Err(cleanup_err) = self.persistence.remove_session(&new_session_id) {
+                    warn!(
+                        session_id = %new_session_id,
+                        error = %cleanup_err,
+                        "Failed to remove pre-persisted replacement session after restart abort",
+                    );
+                }
                 return Err(err);
             }
             join
@@ -1219,6 +1244,7 @@ impl SessionManager {
             launch.clone(),
             replacement_pty,
             size,
+            self.stream_max_buffer_bytes,
         )));
         let thread_name = format!("session-pump-{}", new_session_id.as_str());
         let (pump_tx, pump_join) = spawn_pump(Arc::clone(&new_session), thread_name);
@@ -1236,6 +1262,13 @@ impl SessionManager {
                 if let Some(join) = join {
                     let _ = join.join();
                 }
+                if let Err(cleanup_err) = self.persistence.remove_session(&new_session_id) {
+                    warn!(
+                        session_id = %new_session_id,
+                        error = %cleanup_err,
+                        "Failed to remove replacement session metadata after restart lookup failure",
+                    );
+                }
                 return Err(SessionError::NotFound(old_session_id.to_string()));
             }
             sessions.insert(new_session_id.clone(), Arc::clone(&new_session));
@@ -1246,14 +1279,7 @@ impl SessionManager {
             *active = Some(new_session_id.clone());
         }
 
-        if let Err(e) = self.persistence.remove_session(&old_session_id) {
-            warn!(session_id = %old_session_id, error = %e, "Failed to remove session from persistence");
-        }
-
-        let persisted = Self::persisted_session(&new_session_id, &launch.command, pid, size);
-        if let Err(e) = self.persistence.add_session(persisted) {
-            warn!(session_id = %new_session_id, error = %e, "Failed to persist restarted session metadata");
-        }
+        self.persistence.remove_session(&old_session_id)?;
 
         Ok(RestartOutput {
             old_session_id,
@@ -1266,6 +1292,13 @@ impl SessionManager {
     pub fn list(&self) -> Vec<SessionInfo> {
         use super::lock_helpers::acquire_session_lock;
 
+        let persisted_sessions = self
+            .persistence
+            .load()
+            .into_iter()
+            .map(|session| (session.id.clone(), session))
+            .collect::<HashMap<_, _>>();
+
         let session_refs: Vec<(SessionId, Arc<Mutex<Session>>)> = {
             let sessions = rwlock_read_or_recover(&self.sessions);
             sessions
@@ -1277,7 +1310,7 @@ impl SessionManager {
         session_refs
             .into_iter()
             .map(|(id, session)| {
-                if let Some(mut sess) = acquire_session_lock(&session, Duration::from_millis(100)) {
+                if let Some(mut sess) = acquire_session_lock(&session, SESSION_QUERY_LOCK_TIMEOUT) {
                     SessionInfo {
                         id,
                         command: sess.command.clone(),
@@ -1287,13 +1320,18 @@ impl SessionManager {
                         size: sess.size(),
                     }
                 } else {
+                    let persisted = persisted_sessions.get(id.as_str());
                     SessionInfo {
                         id,
-                        command: "(locked)".to_string(),
-                        pid: 0,
-                        running: false,
-                        created_at: String::new(),
-                        size: TerminalSize::default(),
+                        command: persisted
+                            .map(|session| session.command.clone())
+                            .unwrap_or_else(|| "(locked)".to_string()),
+                        pid: persisted.map(|session| session.pid).unwrap_or(0),
+                        running: true,
+                        created_at: persisted
+                            .map(|session| session.created_at.clone())
+                            .unwrap_or_default(),
+                        size: persisted.map(|session| session.size).unwrap_or_default(),
                     }
                 }
             })
@@ -1302,18 +1340,13 @@ impl SessionManager {
 
     pub fn kill(&self, session_id: &SessionId) -> Result<(), SessionError> {
         let (session, was_active) = {
-            let mut sessions = rwlock_write_or_recover(&self.sessions);
-            let mut active = rwlock_write_or_recover(&self.active_session);
-
+            let sessions = rwlock_read_or_recover(&self.sessions);
             let session = sessions
-                .remove(session_id)
+                .get(session_id)
+                .cloned()
                 .ok_or_else(|| SessionError::NotFound(session_id.to_string()))?;
-
+            let active = rwlock_read_or_recover(&self.active_session);
             let was_active = active.as_ref() == Some(session_id);
-            if was_active {
-                *active = None;
-            }
-
             (session, was_active)
         };
 
@@ -1327,15 +1360,17 @@ impl SessionManager {
             }
         }
 
-        if let Err(e) = self.persistence.remove_session(session_id) {
-            warn!(session_id = %session_id, error = %e, "Failed to remove session from persistence");
+        self.persistence.remove_session(session_id)?;
+
+        {
+            let mut sessions = rwlock_write_or_recover(&self.sessions);
+            let _ = sessions.remove(session_id);
         }
 
-        if let (true, Some((fallback_id, _fallback_session))) =
-            (was_active, self.most_recent_running_session())
-        {
+        if was_active {
+            let fallback_id = self.most_recent_running_session().map(|(id, _)| id);
             let mut active = rwlock_write_or_recover(&self.active_session);
-            *active = Some(fallback_id);
+            *active = fallback_id;
         }
 
         Ok(())
@@ -1995,6 +2030,7 @@ mod pump_tests {
             },
             pty,
             TerminalSize::default(),
+            super::DEFAULT_STREAM_MAX_BUFFER_BYTES,
         );
         let session = Arc::new(Mutex::new(session));
 
@@ -2320,831 +2356,5 @@ impl From<&SessionInfo> for PersistedSession {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_support::env_lock;
-    use tempfile::tempdir;
-
-    struct HomeGuard(Option<String>);
-
-    impl Drop for HomeGuard {
-        fn drop(&mut self) {
-            if let Some(home) = self.0.take() {
-                // SAFETY: Test-only environment restoration after HOME override.
-                unsafe {
-                    std::env::set_var("HOME", home);
-                }
-            } else {
-                // SAFETY: Test-only cleanup of HOME override.
-                unsafe {
-                    std::env::remove_var("HOME");
-                }
-            }
-        }
-    }
-
-    struct EnvGuard {
-        key: &'static str,
-        prev: Option<String>,
-    }
-
-    impl EnvGuard {
-        fn set(key: &'static str, value: &str) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: Test-only environment override.
-            unsafe {
-                std::env::set_var(key, value);
-            }
-            Self { key, prev }
-        }
-
-        fn remove(key: &'static str) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: Test-only environment override.
-            unsafe {
-                std::env::remove_var(key);
-            }
-            Self { key, prev }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            if let Some(prev) = self.prev.take() {
-                // SAFETY: Test-only environment restoration.
-                unsafe {
-                    std::env::set_var(self.key, prev);
-                }
-            } else {
-                // SAFETY: Test-only environment cleanup.
-                unsafe {
-                    std::env::remove_var(self.key);
-                }
-            }
-        }
-    }
-
-    struct SessionCleanup<'a> {
-        manager: &'a SessionManager,
-        session_ids: Vec<SessionId>,
-    }
-
-    impl<'a> SessionCleanup<'a> {
-        fn new(manager: &'a SessionManager) -> Self {
-            Self {
-                manager,
-                session_ids: Vec::new(),
-            }
-        }
-
-        fn track(&mut self, session_id: SessionId) -> SessionId {
-            self.session_ids.push(session_id.clone());
-            session_id
-        }
-    }
-
-    impl Drop for SessionCleanup<'_> {
-        fn drop(&mut self) {
-            for session_id in self.session_ids.drain(..) {
-                let _ = self.manager.kill(&session_id);
-            }
-        }
-    }
-
-    #[cfg(unix)]
-    fn spawn_session_or_skip(manager: &SessionManager, session_id: &str) -> Option<SessionId> {
-        match manager.spawn(
-            "sh",
-            &[],
-            None,
-            None,
-            Some(SessionId::try_new(session_id).expect("test session id should be valid")),
-            TerminalSize::default(),
-        ) {
-            Ok((id, _)) => Some(id),
-            Err(SessionError::Terminal(_)) => None,
-            Err(e) => panic!("unexpected spawn error: {e}"),
-        }
-    }
-
-    fn wait_for_file_contents(path: &std::path::Path, timeout: Duration) -> Option<String> {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            if let Ok(contents) = fs::read_to_string(path) {
-                return Some(contents);
-            }
-            std::thread::park_timeout(Duration::from_millis(25));
-        }
-        fs::read_to_string(path).ok()
-    }
-
-    #[test]
-    fn test_persisted_session_serialization() {
-        let session = PersistedSession {
-            id: "test123".to_string(),
-            command: "bash".to_string(),
-            pid: 12345,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: TerminalSize::default(),
-        };
-
-        let json = serde_json::to_string(&session).expect("session should serialize");
-        let parsed: PersistedSession =
-            serde_json::from_str(&json).expect("session JSON should parse");
-
-        assert_eq!(parsed.id, session.id);
-        assert_eq!(parsed.command, session.command);
-        assert_eq!(parsed.pid, session.pid);
-    }
-
-    #[test]
-    fn test_is_process_running() {
-        let current_pid = std::process::id();
-        assert!(is_process_running(current_pid));
-
-        assert!(!is_process_running(999999999));
-    }
-
-    #[test]
-    fn test_process_info_current_pid() {
-        let current_pid = std::process::id();
-        let info = process_info(current_pid);
-        assert!(info.is_some());
-    }
-
-    #[test]
-    fn test_spawn_rejects_duplicate_session_id() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-
-        let manager = SessionManager::with_max_sessions(2);
-        let session_id = SessionId::try_new("dup-session").expect("valid session id");
-        match manager.spawn(
-            "sh",
-            &[],
-            None,
-            None,
-            Some(session_id.clone()),
-            TerminalSize::default(),
-        ) {
-            Ok(_) => {}
-            Err(SessionError::Terminal(_)) => return, // PTY unavailable, skip
-            Err(e) => panic!("unexpected error from first spawn: {e}"),
-        }
-
-        let result = manager.spawn(
-            "sh",
-            &[],
-            None,
-            None,
-            Some(session_id.clone()),
-            TerminalSize::default(),
-        );
-
-        assert!(matches!(
-            result,
-            Err(SessionError::AlreadyExists(id)) if id == session_id.as_str()
-        ));
-
-        let _ = manager.kill(&session_id);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_resolve_without_active_falls_back_to_most_recent_running_session() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
-
-        let manager = SessionManager::with_max_sessions(4);
-        let mut cleanup = SessionCleanup::new(&manager);
-
-        let older = match spawn_session_or_skip(&manager, "older-running") {
-            Some(id) => cleanup.track(id),
-            None => return,
-        };
-        std::thread::park_timeout(Duration::from_millis(5));
-        let newer = match spawn_session_or_skip(&manager, "newer-running") {
-            Some(id) => cleanup.track(id),
-            None => return,
-        };
-
-        {
-            let mut active = rwlock_write_or_recover(&manager.active_session);
-            *active = None;
-        }
-
-        let resolved = manager
-            .resolve(None)
-            .expect("resolve should return fallback session");
-        let resolved_id = mutex_lock_or_recover(&resolved).id.clone();
-
-        assert_eq!(resolved_id, newer);
-        assert_ne!(resolved_id, older);
-        assert_eq!(manager.active_session_id(), Some(newer));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_resolve_repairs_stale_active_session_with_running_fallback() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
-
-        let manager = SessionManager::with_max_sessions(4);
-        let mut cleanup = SessionCleanup::new(&manager);
-
-        let fallback = match spawn_session_or_skip(&manager, "fallback-running") {
-            Some(id) => cleanup.track(id),
-            None => return,
-        };
-
-        {
-            let mut active = rwlock_write_or_recover(&manager.active_session);
-            *active = Some(SessionId::try_new("stale-active-id").expect("valid session id"));
-        }
-
-        let resolved = manager
-            .resolve(None)
-            .expect("resolve should repair stale active");
-        let resolved_id = mutex_lock_or_recover(&resolved).id.clone();
-
-        assert_eq!(resolved_id, fallback);
-        assert_eq!(manager.active_session_id(), Some(fallback));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_kill_promotes_most_recent_remaining_running_session_to_active() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
-
-        let manager = SessionManager::with_max_sessions(4);
-        let mut cleanup = SessionCleanup::new(&manager);
-
-        let older = match spawn_session_or_skip(&manager, "older-remaining") {
-            Some(id) => cleanup.track(id),
-            None => return,
-        };
-        std::thread::park_timeout(Duration::from_millis(5));
-        let active = match spawn_session_or_skip(&manager, "active-to-kill") {
-            Some(id) => cleanup.track(id),
-            None => return,
-        };
-
-        assert_eq!(manager.active_session_id(), Some(active.clone()));
-
-        manager
-            .kill(&active)
-            .expect("kill should succeed for active session");
-
-        assert_eq!(manager.active_session_id(), Some(older.clone()));
-        let resolved = manager
-            .resolve(None)
-            .expect("resolve should use promoted active");
-        assert_eq!(mutex_lock_or_recover(&resolved).id, older);
-    }
-
-    #[test]
-    fn test_resolve_without_running_sessions_returns_no_active_session() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
-
-        let manager = SessionManager::with_max_sessions(1);
-        {
-            let mut active = rwlock_write_or_recover(&manager.active_session);
-            *active = Some(SessionId::try_new("stale-active-id").expect("valid session id"));
-        }
-
-        let result = manager.resolve(None);
-        assert!(matches!(result, Err(SessionError::NoActiveSession)));
-        assert!(manager.active_session_id().is_none());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_resolve_with_explicit_session_id_does_not_reroute() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
-
-        let manager = SessionManager::with_max_sessions(4);
-        let mut cleanup = SessionCleanup::new(&manager);
-
-        let requested = match spawn_session_or_skip(&manager, "explicit-target") {
-            Some(id) => cleanup.track(id),
-            None => return,
-        };
-        let _other = match spawn_session_or_skip(&manager, "other-running") {
-            Some(id) => cleanup.track(id),
-            None => return,
-        };
-
-        {
-            let mut active = rwlock_write_or_recover(&manager.active_session);
-            *active = None;
-        }
-
-        let resolved = manager
-            .resolve(Some(&requested))
-            .expect("explicit session resolution should succeed");
-        assert_eq!(mutex_lock_or_recover(&resolved).id, requested);
-        assert!(manager.active_session_id().is_none());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_restart_preserves_launch_context_and_replaces_session() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
-
-        let working_dir = temp_home.path().join("restart-cwd");
-        fs::create_dir_all(&working_dir).expect("working dir should be created");
-        let marker_path = temp_home.path().join("restart-marker.txt");
-
-        let manager = SessionManager::with_max_sessions(4);
-        let mut cleanup = SessionCleanup::new(&manager);
-        let expected_working_dir =
-            fs::canonicalize(&working_dir).unwrap_or_else(|_| working_dir.clone());
-
-        let mut env = HashMap::new();
-        env.insert("MYVAR".to_string(), "preserved-env".to_string());
-        let args = vec![
-            "-c".to_string(),
-            format!(
-                "printf \"%s|%s\" \"$PWD\" \"$MYVAR\" > \"{}\"; sleep 30",
-                marker_path.display()
-            ),
-        ];
-
-        let initial_session_id = match manager.spawn(
-            "sh",
-            &args,
-            Some(
-                working_dir
-                    .to_str()
-                    .expect("working directory should be valid UTF-8"),
-            ),
-            Some(&env),
-            Some(SessionId::try_new("restart-src").expect("valid session id")),
-            TerminalSize::default(),
-        ) {
-            Ok((session_id, _pid)) => cleanup.track(session_id),
-            Err(SessionError::Terminal(_)) => return,
-            Err(e) => panic!("unexpected spawn error: {e}"),
-        };
-
-        let expected_marker = format!("{}|preserved-env", expected_working_dir.display());
-        let initial_contents = wait_for_file_contents(&marker_path, Duration::from_secs(2))
-            .expect("spawned session should write marker");
-        assert_eq!(initial_contents, expected_marker);
-        fs::remove_file(&marker_path).expect("marker file should be removed before restart");
-
-        let restarted = manager
-            .restart(Some(&initial_session_id))
-            .expect("restart should succeed");
-        cleanup.track(restarted.new_session_id.clone());
-
-        assert_eq!(restarted.old_session_id, initial_session_id);
-        assert_ne!(restarted.new_session_id, initial_session_id);
-        assert_eq!(
-            manager.active_session_id(),
-            Some(restarted.new_session_id.clone())
-        );
-        assert!(matches!(
-            manager.get(&initial_session_id),
-            Err(SessionError::NotFound(_))
-        ));
-
-        let restarted_contents = wait_for_file_contents(&marker_path, Duration::from_secs(2))
-            .expect("restarted session should write marker");
-        assert_eq!(restarted_contents, expected_marker);
-
-        let session = manager
-            .get(&restarted.new_session_id)
-            .expect("restarted session should exist");
-        let launch = mutex_lock_or_recover(&session).launch_spec();
-        let env_value = launch
-            .env
-            .as_ref()
-            .and_then(|vars| vars.get("MYVAR"))
-            .map(String::as_str);
-
-        assert_eq!(launch.command, "sh");
-        assert_eq!(launch.args, args);
-        assert_eq!(launch.cwd.as_deref(), working_dir.to_str());
-        assert_eq!(env_value, Some("preserved-env"));
-    }
-
-    #[test]
-    fn test_persistence_migration_from_json() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
-
-        let legacy_dir = temp_home.path().join(".agent-tui");
-        fs::create_dir_all(&legacy_dir).expect("legacy dir should be created");
-        let legacy_path = legacy_dir.join("sessions.json");
-        let sessions = vec![PersistedSession {
-            id: "legacy".to_string(),
-            command: "sh".to_string(),
-            pid: 1234,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: TerminalSize::default(),
-        }];
-        fs::write(
-            &legacy_path,
-            serde_json::to_string(&sessions).expect("legacy sessions should serialize"),
-        )
-        .expect("legacy session file should be written");
-
-        let persistence = SessionPersistence::new();
-        let loaded = persistence.load();
-        assert_eq!(loaded.len(), 1);
-
-        let jsonl_path = legacy_dir.join("sessions.jsonl");
-        let backup_path = legacy_dir.join("sessions.json.bak");
-        assert!(jsonl_path.exists());
-        assert!(backup_path.exists());
-    }
-
-    #[test]
-    fn test_jsonl_add_remove_roundtrip() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
-
-        let persistence = SessionPersistence::new();
-        let session = PersistedSession {
-            id: "roundtrip".to_string(),
-            command: "bash".to_string(),
-            pid: 777,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            size: TerminalSize::try_new(100, 40).expect("valid terminal size"),
-        };
-        persistence
-            .add_session(session.clone())
-            .expect("session should be added");
-        let loaded = persistence.load();
-        assert!(loaded.iter().any(|s| s.id == session.id));
-
-        persistence
-            .remove_session(&session.id)
-            .expect("session should be removed");
-        let loaded = persistence.load();
-        assert!(loaded.is_empty());
-    }
-
-    #[test]
-    fn test_compaction_skips_unknown_records_to_preserve_forward_compatibility() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-        let _store_guard = EnvGuard::remove("AGENT_TUI_SESSION_STORE");
-
-        let log_path = temp_home.path().join(".agent-tui").join("sessions.jsonl");
-        fs::create_dir_all(log_path.parent().expect("log path should have parent"))
-            .expect("log directory should be created");
-
-        let known = SessionEvent::Upsert {
-            session: PersistedSession {
-                id: "known".to_string(),
-                command: "sh".to_string(),
-                pid: 111,
-                created_at: "2024-01-01T00:00:00Z".to_string(),
-                size: TerminalSize::default(),
-            },
-        };
-        let unknown = serde_json::json!({
-            "type": "future_event",
-            "payload": "x".repeat(SESSION_STORE_COMPACT_THRESHOLD_BYTES as usize),
-        });
-
-        let before = format!(
-            "{}\n{}\n",
-            serde_json::to_string(&known).expect("known event should serialize"),
-            serde_json::to_string(&unknown).expect("unknown event should serialize"),
-        );
-        fs::write(&log_path, &before).expect("session log should be seeded");
-
-        let persistence = SessionPersistence::new();
-        persistence
-            .maybe_compact_unlocked()
-            .expect("compaction should skip without failing");
-
-        let after = fs::read_to_string(&log_path).expect("session log should still exist");
-        let loaded = persistence.load();
-
-        assert_eq!(after, before);
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].id, "known");
-    }
-
-    #[test]
-    fn test_session_store_env_override() {
-        let _env_lock = env_lock();
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-        let store_path = temp_home.path().join("custom-sessions.jsonl");
-        let _store_guard = EnvGuard::set(
-            "AGENT_TUI_SESSION_STORE",
-            store_path.to_string_lossy().as_ref(),
-        );
-
-        let persistence = SessionPersistence::new();
-        persistence
-            .add_session(PersistedSession {
-                id: "custom".to_string(),
-                command: "sh".to_string(),
-                pid: 456,
-                created_at: "2024-01-01T00:00:00Z".to_string(),
-                size: TerminalSize::default(),
-            })
-            .expect("custom session should be persisted");
-
-        assert!(store_path.exists());
-        let default_path = temp_home.path().join(".agent-tui").join("sessions.jsonl");
-        assert!(!default_path.exists());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_startup_cleanup_kills_persisted_session_process_group() {
-        let _env_lock = env_lock();
-        use std::os::unix::process::CommandExt;
-        use std::process::Command;
-
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg("sleep 10");
-        // SAFETY: pre-exec runs in the child before exec.
-        unsafe {
-            cmd.pre_exec(|| {
-                if libc::setsid() == -1 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
-
-        let mut child = cmd.spawn().expect("failed to spawn test child");
-        let pid = child.id();
-        assert!(pid > 0);
-
-        let persistence = SessionPersistence::new();
-        persistence
-            .add_session(PersistedSession {
-                id: "orphan".to_string(),
-                command: "sleep".to_string(),
-                pid,
-                created_at: Utc::now().to_rfc3339(),
-                size: TerminalSize::default(),
-            })
-            .expect("failed to persist session");
-
-        let _manager = SessionManager::with_max_sessions(1);
-
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while is_process_running(pid) && Instant::now() < deadline {
-            std::thread::park_timeout(Duration::from_millis(25));
-        }
-
-        if is_process_running(pid) {
-            let pid_t: libc::pid_t = pid.try_into().unwrap_or(0);
-            if pid_t > 0 {
-                // SAFETY: negative pid targets the process group for cleanup.
-                unsafe {
-                    libc::kill(-pid_t, libc::SIGKILL);
-                }
-            }
-        }
-
-        let _ = child.wait();
-
-        assert!(!is_process_running(pid));
-
-        let sessions = persistence.load();
-        assert!(sessions.is_empty());
-    }
-
-    #[test]
-    fn test_modifier_state_applies_shift_to_keystroke_characters_and_tab() {
-        let mut state = ModifierState::default();
-        state.set(ModifierKey::Shift, true);
-
-        assert_eq!(
-            state
-                .keystroke_bytes("a")
-                .expect("shifted character keystroke should encode"),
-            vec![b'A']
-        );
-        assert_eq!(
-            state
-                .keystroke_bytes("1")
-                .expect("shifted punctuation keystroke should encode"),
-            vec![b'!']
-        );
-        assert_eq!(
-            state
-                .keystroke_bytes("Tab")
-                .expect("shifted tab keystroke should encode"),
-            vec![0x1b, b'[', b'Z']
-        );
-    }
-
-    #[test]
-    fn test_modifier_state_applies_ctrl_alt_to_keystroke_characters() {
-        let mut state = ModifierState::default();
-        state.set(ModifierKey::Ctrl, true);
-        state.set(ModifierKey::Alt, true);
-
-        assert_eq!(
-            state
-                .keystroke_bytes("c")
-                .expect("alt+ctrl keystroke should encode"),
-            vec![0x1b, 3]
-        );
-    }
-
-    #[test]
-    fn test_modifier_state_applies_shift_to_typed_letters_without_remapping_punctuation() {
-        let mut state = ModifierState::default();
-        state.set(ModifierKey::Shift, true);
-
-        assert_eq!(state.typed_bytes("ab-1"), b"AB-1".to_vec());
-    }
-
-    #[test]
-    fn test_modifier_state_applies_ctrl_meta_to_typed_text() {
-        let mut state = ModifierState::default();
-        state.set(ModifierKey::Ctrl, true);
-        state.set(ModifierKey::Meta, true);
-
-        assert_eq!(state.typed_bytes("c["), vec![0x1b, 3, 0x1b, 27]);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_cleanup_stale_sessions_appends_remove_events_when_unknown_records_exist() {
-        let _env_lock = env_lock();
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        use std::os::unix::process::CommandExt;
-        use std::process::Command;
-
-        let temp_home = tempdir().expect("temp dir should be created");
-        let _home_guard = HomeGuard(std::env::var("HOME").ok());
-        // SAFETY: Test-only environment override for HOME directory.
-        unsafe {
-            std::env::set_var("HOME", temp_home.path());
-        }
-
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg("sleep 10");
-        // SAFETY: pre-exec runs in the child before exec.
-        unsafe {
-            cmd.pre_exec(|| {
-                if libc::setsid() == -1 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
-
-        let mut child = cmd.spawn().expect("failed to spawn test child");
-        let pid = child.id();
-        assert!(pid > 0);
-
-        let persistence = SessionPersistence::new();
-        persistence
-            .add_session(PersistedSession {
-                id: "orphan".to_string(),
-                command: "sleep".to_string(),
-                pid,
-                created_at: Utc::now().to_rfc3339(),
-                size: TerminalSize::default(),
-            })
-            .expect("failed to persist session");
-
-        let log_path = temp_home.path().join(".agent-tui").join("sessions.jsonl");
-        let mut log = OpenOptions::new()
-            .append(true)
-            .open(&log_path)
-            .expect("open session log");
-        writeln!(
-            log,
-            "{}",
-            serde_json::to_string(&serde_json::json!({
-                "type": "future_event",
-                "payload": "preserve-me",
-            }))
-            .expect("serialize future event")
-        )
-        .expect("append future event");
-        drop(log);
-
-        let cleaned = persistence
-            .cleanup_stale_sessions()
-            .expect("cleanup should succeed");
-        assert_eq!(cleaned, 1);
-
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while is_process_running(pid) && Instant::now() < deadline {
-            std::thread::park_timeout(Duration::from_millis(25));
-        }
-
-        if is_process_running(pid) {
-            let pid_t: libc::pid_t = pid.try_into().unwrap_or(0);
-            if pid_t > 0 {
-                // SAFETY: negative pid targets the process group for cleanup.
-                unsafe {
-                    libc::kill(-pid_t, libc::SIGKILL);
-                }
-            }
-        }
-
-        let _ = child.wait();
-
-        let sessions = persistence.load();
-        assert!(
-            sessions.is_empty(),
-            "cleaned session should not remain persisted"
-        );
-
-        let log_contents = fs::read_to_string(&log_path).expect("read session log");
-        assert!(
-            log_contents.contains("\"type\":\"future_event\""),
-            "cleanup should preserve unknown records"
-        );
-        assert!(
-            log_contents.contains("\"type\":\"remove\""),
-            "cleanup should append a remove event for cleaned sessions"
-        );
-        assert!(
-            log_contents.contains("\"session_id\":\"orphan\""),
-            "cleanup should record which session was removed"
-        );
-    }
-}
+#[path = "session_tests.rs"]
+mod tests;

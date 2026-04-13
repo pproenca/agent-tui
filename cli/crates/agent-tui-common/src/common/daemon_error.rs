@@ -25,6 +25,12 @@ pub enum DaemonError {
     SignalSetup(String),
     #[error("Failed to create thread pool: {0}")]
     ThreadPool(String),
+    #[error("Failed to initialize daemon during {operation}: {source}")]
+    Startup {
+        operation: &'static str,
+        #[source]
+        source: Box<dyn StdError + Send + Sync>,
+    },
 }
 
 impl DaemonError {
@@ -53,6 +59,9 @@ impl DaemonError {
             }
             DaemonError::ThreadPool(_) => {
                 "Thread pool creation failed. Check system thread limits (ulimit -u).".to_string()
+            }
+            DaemonError::Startup { .. } => {
+                "Daemon startup could not restore or verify session state. Inspect the session store path from 'agent-tui env' and fix any stale or invalid files before retrying.".to_string()
             }
         }
     }

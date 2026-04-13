@@ -110,51 +110,5 @@ fn to_crossterm_color(color: Color) -> style::Color {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::common::strip_ansi_codes;
-
-    fn plain_cell(ch: char) -> Cell {
-        Cell {
-            char: ch,
-            style: CellStyle::default(),
-        }
-    }
-
-    #[test]
-    fn render_screen_trimmed_drops_trailing_spaces_and_blank_rows() {
-        let buffer = ScreenBuffer {
-            cells: vec![
-                vec![plain_cell('A'), plain_cell(' '), plain_cell(' ')],
-                vec![plain_cell(' ')],
-                vec![plain_cell('B'), plain_cell(' '), plain_cell(' ')],
-                vec![plain_cell(' ')],
-                vec![plain_cell(' '), plain_cell(' ')],
-            ],
-        };
-
-        let rendered = render_screen_trimmed(&buffer);
-
-        assert_eq!(strip_ansi_codes(&rendered).replace("\r\n", "\n"), "A\n\nB");
-    }
-
-    #[test]
-    fn render_screen_trimmed_resets_styles_at_end() {
-        let buffer = ScreenBuffer {
-            cells: vec![vec![Cell {
-                char: 'X',
-                style: CellStyle {
-                    bold: true,
-                    ..CellStyle::default()
-                },
-            }]],
-        };
-
-        let rendered = render_screen_trimmed(&buffer);
-
-        assert!(
-            rendered.ends_with("\u{1b}[0m"),
-            "expected trailing style reset, got {rendered:?}"
-        );
-    }
-}
+#[path = "render_tests.rs"]
+mod tests;

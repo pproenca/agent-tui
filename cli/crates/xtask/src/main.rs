@@ -35,6 +35,9 @@ use std::path::PathBuf;
 use std::process::Command;
 use walkdir::WalkDir;
 
+#[cfg(test)]
+#[path = "main_tests.rs"]
+mod main_tests;
 mod tui_explorer;
 
 #[derive(Parser, Debug)]
@@ -88,6 +91,8 @@ enum VersionCommands {
 #[derive(Args, Debug)]
 struct ReleaseArgs {
     version_or_bump: String,
+    #[arg(long, default_value = "artifacts")]
+    artifacts: String,
     #[arg(long)]
     yes: bool,
 }
@@ -146,6 +151,12 @@ struct Semver {
     patch: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReleasePlan {
+    target_version: String,
+    tag: String,
+}
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("xtask: error: {err}");
@@ -168,7 +179,12 @@ fn run() -> Result<()> {
             VersionCommands::AssertInput { version } => assert_input(&root, &version),
             VersionCommands::Set { version } => set_version(&root, &version),
         },
-        Commands::Release(args) => release(&root, &args.version_or_bump, !args.yes),
+        Commands::Release(args) => release(
+            &root,
+            &args.version_or_bump,
+            &path_from_root(&root, &args.artifacts),
+            !args.yes,
+        ),
         Commands::Ci => ci(&root),
         Commands::Architecture { command } => match command {
             ArchitectureCommands::Check { verbose } => architecture_check(&root, verbose),
@@ -649,7 +665,7 @@ fn confirm_proceed(message: &str) -> Result<bool> {
     Ok(answer == "y" || answer == "yes")
 }
 
-fn release(root: &Path, version_or_bump: &str, confirm: bool) -> Result<()> {
+fn resolve_release_plan(root: &Path, version_or_bump: &str) -> Result<ReleasePlan> {
     let current_version = match latest_tag_version(root)? {
         Some(version) => version,
         None => read_cargo_version(&cargo_toml_path(root))?,
@@ -662,33 +678,57 @@ fn release(root: &Path, version_or_bump: &str, confirm: bool) -> Result<()> {
     };
 
     let tag = format!("v{target_version}");
+    Ok(ReleasePlan {
+        target_version,
+        tag,
+    })
+}
 
+fn validate_release_inputs(root: &Path, target_version: &str, artifacts: &Path) -> Result<()> {
+    version_check(root, true)?;
+    assert_input(root, target_version)?;
+    dist_verify(artifacts, DistKind::Release)?;
+    Ok(())
+}
+
+fn build_release(root: &Path) -> Result<()> {
+    run_command("cargo", &["build", "--workspace", "--release"], Some(root))
+}
+
+fn release(root: &Path, version_or_bump: &str, artifacts: &Path, confirm: bool) -> Result<()> {
+    let plan = resolve_release_plan(root, version_or_bump)?;
     ensure_git_clean(root)?;
-    ensure_tag_absent(root, &tag)?;
+    ensure_tag_absent(root, &plan.tag)?;
 
-    println!("Releasing version {target_version}...");
-    if confirm && !confirm_proceed(&format!("Create and push tag {tag}?"))? {
+    run_step("Validating release inputs", || {
+        validate_release_inputs(root, &plan.target_version, artifacts)
+    })?;
+    run_step("Running CI checks", || ci(root))?;
+    run_step("Building release workspace", || build_release(root))?;
+
+    println!("Releasing version {}...", plan.target_version);
+    if confirm && !confirm_proceed(&format!("Create and push tag {}?", plan.tag))? {
         println!("Release aborted before tagging.");
         return Ok(());
     }
 
-    println!("Creating tag {tag}...");
+    println!("Creating tag {}...", plan.tag);
     run_command(
         "git",
         &[
             "tag",
             "-a",
-            &tag,
+            &plan.tag,
             "-m",
-            &format!("Release {target_version}"),
+            &format!("Release {}", plan.target_version),
         ],
         Some(root),
     )?;
 
-    println!("Pushing tag {tag}...");
-    run_command("git", &["push", "origin", &tag], Some(root))?;
+    println!("Pushing tag {}...", plan.tag);
+    run_command("git", &["push", "origin", &plan.tag], Some(root))?;
 
-    println!("Done! Release tag {tag} pushed.");
+    println!("Done! Release tag {} pushed.", plan.tag);
     Ok(())
 }
 

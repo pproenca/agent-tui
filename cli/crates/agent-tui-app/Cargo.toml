@@ -35,3 +35,5 @@ agent-tui-infra.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 once_cell.workspace = true
+tungstenite.workspace = true
+tracing-subscriber.workspace = true

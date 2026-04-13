@@ -6,6 +6,8 @@ use axum::extract::ws::Message;
 use axum::extract::ws::WebSocket;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::ws::close_code;
+use axum::http::HeaderMap;
+use axum::http::header::ORIGIN;
 use axum::response::Html;
 use axum::response::IntoResponse;
 use axum::response::Redirect;
@@ -194,81 +196,89 @@ pub(crate) fn start_ws_server(
         ws_queue_capacity: config.ws_queue_capacity,
         shutdown_rx: shutdown_rx.clone(),
         auth_token,
-        ws_url: ws_url.clone(),
+        ws_url,
     });
 
     let state_path = config.state_path.clone();
     let shutdown_tx_for_thread = shutdown_tx.clone();
+    let dispatch = tracing::dispatcher::get_default(std::clone::Clone::clone);
 
     let join = thread::Builder::new()
         .name("agent-tui-ws".to_string())
         .spawn(move || {
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
-                .enable_all()
-                .build();
-            let runtime = match runtime {
-                Ok(rt) => rt,
-                Err(err) => {
-                    error!(error = %err, "Failed to build WS runtime");
-                    let _ = std::fs::remove_file(&state_path);
-                    return;
-                }
-            };
-
-            runtime.block_on(async move {
-                let app = build_router(state.clone());
-                let listener = match TcpListener::from_std(listener) {
-                    Ok(l) => l,
+            tracing::dispatcher::with_default(&dispatch, || {
+                let runtime = tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(2)
+                    .enable_all()
+                    .build();
+                let runtime = match runtime {
+                    Ok(rt) => rt,
                     Err(err) => {
-                        error!(error = %err, "Failed to create async listener");
+                        error!(error = %err, "Failed to build WS runtime");
+                        let _ = std::fs::remove_file(&state_path);
                         return;
                     }
                 };
-                info!(url = %ui_url, ws = %ws_url, "WS server listening");
-                let mut shutdown_rx_server = shutdown_rx.clone();
-                let mut shutdown_rx_wait = shutdown_rx.clone();
 
-                let server = axum::serve(listener, app).with_graceful_shutdown(async move {
-                    let _ = shutdown_rx_server.changed().await;
-                });
-                let mut server_task = tokio::spawn(async move { server.await });
-
-                let shutdown_task = tokio::spawn(async move {
-                    while !shutdown_flag.load(Ordering::Relaxed) {
-                        tokio::time::sleep(Duration::from_millis(200)).await;
-                    }
-                    let _ = shutdown_tx_for_thread.send(true);
-                });
-
-                tokio::select! {
-                    join_result = &mut server_task => {
-                        if let Err(err) = join_result {
-                            error!(error = %err, "WS server task failed");
+                let listener = {
+                    let _runtime_guard = runtime.enter();
+                    let listener = match TcpListener::from_std(listener) {
+                        Ok(l) => l,
+                        Err(err) => {
+                            error!(error = %err, "Failed to create async listener");
+                            return;
                         }
-                    }
-                    changed = shutdown_rx_wait.changed() => {
-                        if changed.is_err() {
-                            warn!("WS shutdown channel closed");
+                    };
+                    info!(listen = %listen_addr, ui_path = "/ui", ws_path = "/ws", "WS server listening");
+                    listener
+                };
+
+                runtime.block_on(async move {
+                    let app = build_router(state.clone());
+                    let mut shutdown_rx_server = shutdown_rx.clone();
+                    let mut shutdown_rx_wait = shutdown_rx.clone();
+
+                    let server = axum::serve(listener, app).with_graceful_shutdown(async move {
+                        let _ = shutdown_rx_server.changed().await;
+                    });
+                    let mut server_task = tokio::spawn(async move { server.await });
+
+                    let shutdown_task = tokio::spawn(async move {
+                        while !shutdown_flag.load(Ordering::Relaxed) {
+                            tokio::time::sleep(Duration::from_millis(200)).await;
                         }
-                        match tokio::time::timeout(WS_SHUTDOWN_TIMEOUT, &mut server_task).await {
-                            Ok(join_result) => {
-                                if let Err(err) = join_result {
-                                    error!(error = %err, "WS server task failed");
+                        let _ = shutdown_tx_for_thread.send(true);
+                    });
+
+                    tokio::select! {
+                        join_result = &mut server_task => {
+                            if let Err(err) = join_result {
+                                error!(error = %err, "WS server task failed");
+                            }
+                        }
+                        changed = shutdown_rx_wait.changed() => {
+                            if changed.is_err() {
+                                warn!("WS shutdown channel closed");
+                            }
+                            match tokio::time::timeout(WS_SHUTDOWN_TIMEOUT, &mut server_task).await {
+                                Ok(join_result) => {
+                                    if let Err(err) = join_result {
+                                        error!(error = %err, "WS server task failed");
+                                    }
+                                }
+                                Err(_) => {
+                                    warn!(
+                                        timeout_ms = WS_SHUTDOWN_TIMEOUT.as_millis(),
+                                        "WS server shutdown timed out; aborting"
+                                    );
+                                    server_task.abort();
                                 }
                             }
-                            Err(_) => {
-                                warn!(
-                                    timeout_ms = WS_SHUTDOWN_TIMEOUT.as_millis(),
-                                    "WS server shutdown timed out; aborting"
-                                );
-                                server_task.abort();
-                            }
                         }
                     }
-                }
-                shutdown_task.abort();
-                let _ = std::fs::remove_file(state_path);
+                    shutdown_task.abort();
+                    let _ = std::fs::remove_file(state_path);
+                });
             });
         })
         .map_err(|e| WsServerError::Io {
@@ -328,6 +338,7 @@ struct WsAuthQuery {
 async fn ws_handler(
     State(state): State<Arc<WsState>>,
     Query(query): Query<WsAuthQuery>,
+    headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
     if query.token.as_deref() != Some(state.auth_token.as_str()) {
@@ -336,6 +347,16 @@ async fn ws_handler(
             axum::http::StatusCode::UNAUTHORIZED,
             serde_json::to_string(&response)
                 .unwrap_or_else(|_| "{\"error\":\"unauthorized\"}".to_string()),
+        )
+            .into_response();
+    }
+
+    if !origin_matches_ws_url(headers.get(ORIGIN), &state.ws_url) {
+        let response = RpcResponse::error(0, -32003, "forbidden origin");
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            serde_json::to_string(&response)
+                .unwrap_or_else(|_| "{\"error\":\"forbidden origin\"}".to_string()),
         )
             .into_response();
     }
@@ -620,6 +641,47 @@ fn encode_url_query_value(value: &str) -> String {
     url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
 }
 
+fn urls_share_origin(left: &url::Url, right: &url::Url) -> bool {
+    left.scheme() == right.scheme()
+        && left.host_str() == right.host_str()
+        && left.port_or_known_default() == right.port_or_known_default()
+}
+
+fn allowed_browser_origin(ws_url: &str) -> Option<String> {
+    let ws_url = url::Url::parse(ws_url).ok()?;
+    let scheme = if ws_url.scheme() == "wss" {
+        "https"
+    } else {
+        "http"
+    };
+    let host = ws_url.host_str()?;
+    let mut origin = format!("{scheme}://{host}");
+    if let Some(port) = ws_url.port() {
+        origin.push(':');
+        origin.push_str(&port.to_string());
+    }
+    Some(origin)
+}
+
+fn origin_matches_ws_url(origin: Option<&axum::http::HeaderValue>, ws_url: &str) -> bool {
+    let Some(origin) = origin else {
+        return true;
+    };
+    let Ok(origin) = origin.to_str() else {
+        return false;
+    };
+    let Ok(origin_url) = url::Url::parse(origin) else {
+        return false;
+    };
+    let Some(allowed_origin) = allowed_browser_origin(ws_url) else {
+        return false;
+    };
+    let Ok(allowed_origin) = url::Url::parse(&allowed_origin) else {
+        return false;
+    };
+    urls_share_origin(&origin_url, &allowed_origin)
+}
+
 fn generate_ws_auth_token() -> String {
     Uuid::new_v4().simple().to_string()
 }
@@ -688,7 +750,7 @@ fn spawn_join_reaper(
     }
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct WsStateFile<'a> {
     pid: u32,
     ws_url: &'a str,
@@ -751,177 +813,5 @@ fn default_state_path() -> PathBuf {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::WsConfig;
-    use super::WsServerHandle;
-    use super::cancel_stream_task;
-    use crate::test_support::env_lock;
-    use std::path::PathBuf;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-    use std::thread;
-    use std::time::Duration;
-    use std::time::Instant;
-    use tokio::sync::mpsc;
-
-    struct EnvGuard {
-        key: &'static str,
-        prev: Option<String>,
-    }
-
-    impl EnvGuard {
-        fn set(key: &'static str, value: &str) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: test-only env mutation.
-            unsafe {
-                std::env::set_var(key, value);
-            }
-            Self { key, prev }
-        }
-
-        fn remove(key: &'static str) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: test-only env mutation.
-            unsafe {
-                std::env::remove_var(key);
-            }
-            Self { key, prev }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            if let Some(prev) = self.prev.take() {
-                // SAFETY: test-only env restoration.
-                unsafe {
-                    std::env::set_var(self.key, prev);
-                }
-            } else {
-                // SAFETY: test-only env cleanup.
-                unsafe {
-                    std::env::remove_var(self.key);
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn ws_config_reads_ws_env() {
-        let _env = env_lock();
-        let _listen = EnvGuard::set("AGENT_TUI_WS_LISTEN", "127.0.0.1:7777");
-
-        let config = WsConfig::from_env();
-        assert_eq!(config.listen, "127.0.0.1:7777");
-    }
-
-    #[test]
-    fn ws_config_ignores_deprecated_api_aliases() {
-        let _env = env_lock();
-        let _ws_listen = EnvGuard::remove("AGENT_TUI_WS_LISTEN");
-        let _ws_state = EnvGuard::remove("AGENT_TUI_WS_STATE");
-        let _api_listen = EnvGuard::set("AGENT_TUI_API_LISTEN", "127.0.0.1:9999");
-        let _api_state = EnvGuard::set("AGENT_TUI_API_STATE", "/tmp/deprecated-state.json");
-
-        let config = WsConfig::from_env();
-        assert_eq!(config.listen, super::DEFAULT_WS_LISTEN);
-        assert_eq!(config.state_path, super::default_state_path());
-    }
-
-    #[test]
-    fn bind_listener_rejects_non_loopback_without_allow_remote() {
-        let config = WsConfig {
-            enabled: true,
-            listen: "0.0.0.0:0".to_string(),
-            allow_remote: false,
-            state_path: std::path::PathBuf::from("/tmp/agent-tui-ws-test-state.json"),
-            max_connections: 1,
-            ws_queue_capacity: 1,
-        };
-
-        let err = super::bind_listener(&config).expect_err("expected non-loopback bind rejection");
-        let message = err.to_string();
-        assert!(message.contains("AGENT_TUI_WS_ALLOW_REMOTE=1"), "{message}");
-    }
-
-    #[test]
-    fn format_ws_url_embeds_auth_token() {
-        let addr: std::net::SocketAddr = "127.0.0.1:12345".parse().expect("valid addr");
-        let url = super::format_ws_url(&addr, "secret-token");
-        assert_eq!(url, "ws://127.0.0.1:12345/ws?token=secret-token");
-    }
-
-    #[test]
-    fn format_ui_url_embeds_encoded_ws_url() {
-        let addr: std::net::SocketAddr = "127.0.0.1:12345".parse().expect("valid addr");
-        let ws_url = "ws://127.0.0.1:12345/ws?token=secret-token";
-        let ui_url = super::format_ui_url(&addr, ws_url);
-        assert!(
-            ui_url.contains("ws=ws%3A%2F%2F127.0.0.1%3A12345%2Fws%3Ftoken%3Dsecret-token"),
-            "{ui_url}"
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn cancel_stream_task_drops_receiver_to_release_backpressure() {
-        let (tx, rx) = mpsc::channel::<String>(1);
-        tx.send("first".to_string()).await.expect("seed channel");
-
-        let mut stream_task = tokio::task::spawn_blocking(move || {
-            let _ = tx.blocking_send("second".to_string());
-        });
-
-        let stream_cancelled = Arc::new(AtomicBool::new(false));
-        let mut rx = Some(rx);
-        let start = Instant::now();
-        let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
-
-        assert!(stream_cancelled.load(Ordering::Relaxed));
-        assert!(
-            rx.is_none(),
-            "receiver should be dropped during cancellation"
-        );
-        assert!(
-            start.elapsed() < Duration::from_secs(1),
-            "cancellation should unblock blocked sender promptly"
-        );
-    }
-
-    #[test]
-    fn ws_handle_shutdown_remains_bounded_on_slow_thread() {
-        let join = thread::spawn(|| thread::park_timeout(Duration::from_secs(5)));
-        let handle = WsServerHandle {
-            shutdown_tx: None,
-            join: Some(join),
-            state_path: PathBuf::new(),
-        };
-
-        let start = Instant::now();
-        handle.shutdown();
-        assert!(
-            start.elapsed() < Duration::from_secs(3),
-            "shutdown should return after timeout even if ws thread is still running"
-        );
-    }
-
-    #[test]
-    fn ws_handle_shutdown_keeps_state_file_until_thread_exits() {
-        let tempdir = tempfile::tempdir().expect("tempdir");
-        let state_path = tempdir.path().join("api.json");
-        std::fs::write(&state_path, b"state").expect("seed state file");
-
-        let join = thread::spawn(|| thread::park_timeout(Duration::from_secs(5)));
-        let handle = WsServerHandle {
-            shutdown_tx: None,
-            join: Some(join),
-            state_path: state_path.clone(),
-        };
-
-        handle.shutdown();
-
-        assert!(
-            state_path.exists(),
-            "state file should remain while the ws thread is still owned by the background reaper"
-        );
-    }
-}
+#[path = "ws_server_tests.rs"]
+mod tests;

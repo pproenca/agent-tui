@@ -26,6 +26,7 @@ impl ErrorPresentation for SessionError {
     fn code(&self) -> i32 {
         match self {
             SessionError::NotFound(_) => error_codes::SESSION_NOT_FOUND,
+            SessionError::NotRunning { .. } => error_codes::SESSION_NOT_FOUND,
             SessionError::AlreadyExists(_) => error_codes::SESSION_ALREADY_EXISTS,
             SessionError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
             SessionError::InvalidKey(_) => error_codes::INVALID_KEY,
@@ -42,6 +43,9 @@ impl ErrorPresentation for SessionError {
     fn context(&self) -> Value {
         match self {
             SessionError::NotFound(id) => json!({ "session_id": id }),
+            SessionError::NotRunning { session_id } => {
+                json!({ "session_id": session_id, "state": "not_running" })
+            }
             SessionError::AlreadyExists(id) => json!({ "session_id": id }),
             SessionError::NoActiveSession => json!({}),
             SessionError::InvalidKey(key) => json!({ "key": key }),
@@ -61,10 +65,16 @@ impl ErrorPresentation for SessionError {
     fn suggestion(&self) -> String {
         match self {
             SessionError::NotFound(_)
+            | SessionError::NotRunning { .. }
             | SessionError::AlreadyExists(_)
             | SessionError::NoActiveSession => {
-                "Run 'sessions' to list active sessions or 'spawn <cmd>' to start a new one."
-                    .to_string()
+                if matches!(self, SessionError::NotRunning { .. }) {
+                    "Run 'sessions' to inspect the stopped session, or 'restart <session_id>' to start it again."
+                        .to_string()
+                } else {
+                    "Run 'sessions' to list active sessions or 'spawn <cmd>' to start a new one."
+                        .to_string()
+                }
             }
             SessionError::InvalidKey(_) => {
                 "Supported keys: Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp/Down, F1-F12. Modifiers: Ctrl+, Alt+, Shift+".to_string()
@@ -121,6 +131,9 @@ pub enum DomainError {
     #[error("Session not found: {session_id}")]
     SessionNotFound { session_id: String },
 
+    #[error("Session not running: {session_id}")]
+    SessionNotRunning { session_id: String },
+
     #[error("Session already exists: {session_id}")]
     SessionAlreadyExists { session_id: String },
 
@@ -160,6 +173,7 @@ impl DomainError {
     pub fn code(&self) -> i32 {
         match self {
             DomainError::SessionNotFound { .. } => error_codes::SESSION_NOT_FOUND,
+            DomainError::SessionNotRunning { .. } => error_codes::SESSION_NOT_FOUND,
             DomainError::SessionAlreadyExists { .. } => error_codes::SESSION_ALREADY_EXISTS,
             DomainError::NoActiveSession => error_codes::NO_ACTIVE_SESSION,
             DomainError::InvalidKey { .. } => error_codes::INVALID_KEY,
@@ -181,6 +195,9 @@ impl DomainError {
         match self {
             DomainError::SessionNotFound { session_id } => {
                 json!({ "session_id": session_id })
+            }
+            DomainError::SessionNotRunning { session_id } => {
+                json!({ "session_id": session_id, "state": "not_running" })
             }
             DomainError::SessionAlreadyExists { session_id } => {
                 json!({ "session_id": session_id })
@@ -228,10 +245,16 @@ impl DomainError {
     pub fn suggestion(&self) -> String {
         match self {
             DomainError::SessionNotFound { .. }
+            | DomainError::SessionNotRunning { .. }
             | DomainError::SessionAlreadyExists { .. }
             | DomainError::NoActiveSession => {
-                "Run 'sessions' to list active sessions or 'spawn <cmd>' to start a new one."
-                    .to_string()
+                if matches!(self, DomainError::SessionNotRunning { .. }) {
+                    "Run 'sessions' to inspect the stopped session, or 'restart <session_id>' to start it again."
+                        .to_string()
+                } else {
+                    "Run 'sessions' to list active sessions or 'spawn <cmd>' to start a new one."
+                        .to_string()
+                }
             }
             DomainError::InvalidKey { .. } => {
                 "Supported keys: Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp/Down, F1-F12. Modifiers: Ctrl+, Alt+, Shift+".to_string()
@@ -272,6 +295,9 @@ impl From<SessionError> for DomainError {
     fn from(err: SessionError) -> Self {
         match err {
             SessionError::NotFound(id) => DomainError::SessionNotFound { session_id: id },
+            SessionError::NotRunning { session_id } => {
+                DomainError::SessionNotRunning { session_id }
+            }
             SessionError::AlreadyExists(id) => DomainError::SessionAlreadyExists { session_id: id },
             SessionError::NoActiveSession => DomainError::NoActiveSession,
             SessionError::InvalidKey(key) => DomainError::InvalidKey { key },

@@ -69,6 +69,7 @@ mod tests {
     use super::*;
     use crate::domain::SessionId;
     use crate::test_support::MockError;
+    use crate::test_support::MockSession;
     use crate::test_support::MockSessionRepository;
     use std::time::Instant;
 
@@ -141,6 +142,31 @@ mod tests {
 
         let result = usecase.execute(input);
         assert!(matches!(result, Err(SessionError::NoActiveSession)));
+    }
+
+    #[test]
+    fn test_wait_usecase_returns_found_when_condition_matches() {
+        let repo = Arc::new(
+            MockSessionRepository::builder()
+                .with_session_handle(Arc::new(
+                    MockSession::builder("ready-session")
+                        .with_screen_text("system ready")
+                        .build(),
+                ))
+                .build(),
+        );
+        let clock = Arc::new(TestClock);
+        let usecase = WaitUseCaseImpl::new(repo, clock);
+
+        let input = WaitInput {
+            session_id: Some(SessionId::try_new("ready-session").expect("valid session id")),
+            text: Some("ready".to_string()),
+            timeout_ms: 1000,
+            condition: None,
+        };
+
+        let result = usecase.execute(input).expect("wait should succeed");
+        assert!(result.found);
     }
 
     // WaitCondition parsing is covered in wait_condition.rs tests.

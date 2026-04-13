@@ -1503,7 +1503,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	async-biased-select-for-cancellation	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	async-bounded-vs-unbounded-channel-split	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	async-child-cancellation-tokens	async	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	async-graceful-then-forceful-cancel	async	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	async-graceful-then-forceful-cancel	async	finding	applicable	F06	2026-04-13 08:37Z	AttachOutputWorker only times out and detaches its helper thread on shutdown; abort_handle.abort() is used on explicit detach only, so other exits can leave stream_output_loop blocked in next_result() until the join deadline expires.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	async-shared-boxfuture-joinhandle	async	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	defensive-banned-interpreter-prefixes	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	defensive-canonicalize-approval-cache-key	defensive	pending	unreviewed			
@@ -1512,7 +1512,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	errors-boundary-error-translator	errors	finding	applicable	F05	2026-04-12 23:19Z	Initial attach resize sync and Event::Resize both discard resize RPC errors instead of translating or surfacing them.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	errors-boundary-error-translator	errors	finding	applicable	F05,F06	2026-04-13 08:37Z	Attach still swallows operator-facing setup failures: initial/Event::Resize RPC resize calls are ignored, and TerminalGuard::new() enables raw mode then ignores prepare_terminal() failure before continuing into the session loop.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -1540,13 +1540,13 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	testing-paused-runtime-advance	testing	not_applicable	contextual	F06	2026-04-13 08:37Z	Attach teardown here is driven by real PTY I/O, crossterm polling, and std threads rather than tokio timer logic that can be covered with start_paused/advance.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-drop-guard-panic-hook-chain	tui	finding	applicable	F06	2026-04-13 08:37Z	TerminalGuard restores raw mode and the alternate screen in Drop, but the repo has no chained panic hook, so a panic during attach can still emit output before terminal restoration runs.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-paste-burst-state-machine	tui	finding	applicable	F03	2026-04-13 08:13Z	attach_ipc_loop batches explicit Event::Paste frames into pty_write, but plain Event::Key chars are translated immediately and fed through DetachDetector with no timing-based paste-burst guard for terminals that emit pasted text as rapid key events.
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-schedule-frame-coalescer	tui	not_applicable	contextual	F05	2026-04-12 23:19Z	Attach resize handling sends discrete RPC resize calls and does not own a local redraw scheduler.
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-two-gear-hysteresis-chunking	tui	not_applicable	contextual	F05	2026-04-12 23:19Z	Attach resize handling is not a streamed chunking path with backlog gear shifts.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-schedule-frame-coalescer	tui	not_applicable	contextual	F05,F06	2026-04-13 08:37Z	Attach is a passthrough stream consumer that sends discrete resize RPCs and writes bytes directly; it does not own a local redraw scheduler.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	tui-two-gear-hysteresis-chunking	tui	not_applicable	contextual	F05,F06	2026-04-13 08:37Z	Attach is not a backlog chunking renderer with smooth vs catch-up gears; it forwards stream output directly to stdout.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	types-dyn-safe-adapter-trait	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	types-full-reference-hierarchy	types	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs	types-non-exhaustive-public-enums	types	pending	unreviewed			
@@ -1692,7 +1692,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	defensive-head-tail-output-buffer	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	defensive-io-drain-timeout-grandchildren	defensive	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	defensive-refuse-to-run-unsandboxed	defensive	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	errors-boundary-error-translator	errors	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	errors-boundary-error-translator	errors	pass	applicable	F06	2026-04-13 08:37Z	handle_attach_stream centralizes attach-stream boundary translation: parse/session/update failures become RPC responses at the edge, while the main loop emits typed ready/output/dropped/heartbeat/closed events.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
@@ -1720,7 +1720,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-insta-snapshot-tui-rendering	testing	finding	applicable	F05	2026-04-12 23:19Z	Resize coverage asserts event emission but not reflowed screen output or layout snapshots.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	rpc_core.rs keeps an inline #[cfg(test)] mod tests block instead of a sibling rpc_core_tests.rs child module.
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-paused-runtime-advance	testing	finding	applicable	A10,A05	2026-04-13 06:59Z	Stream wait and cancellation tests still use park_timeout and elapsed-time bounds instead of paused-runtime or equivalent virtual-time control.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-paused-runtime-advance	testing	finding	applicable	A10,A05,F06	2026-04-13 08:37Z	Stream wait and cancellation tests still use park_timeout and elapsed-time bounds instead of paused-runtime or equivalent virtual-time control, and the attach_stream path adds no dedicated deterministic regression coverage of its heartbeat/cancellation behavior.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/daemon/rpc_core.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
@@ -2056,7 +2056,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-carry-retry-delay-in-variant	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-exhaustive-retryable-match	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-io-error-with-context-struct	errors	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-struct-display-payload	errors	pass	applicable	A02	2026-04-12 22:07Z	AttachError exposes structured context through AttachErrorContext and AttachErrorPayload.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-struct-display-payload	errors	pass	applicable	A02,F06	2026-04-13 08:37Z	AttachError exposes structured context through AttachErrorContext and AttachErrorPayload, including stable code/category/retryable/suggestion metadata for attach failures.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-tool-call-respond-vs-fatal	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	errors-transient-permanent-type-split	errors	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/error.rs	otel-field-empty-then-record	otel	pending	unreviewed			
@@ -6880,7 +6880,7 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-config-closure-builder	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-insta-snapshot-tui-rendering	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-path-attribute-sibling-tests	testing	finding	applicable	A10	2026-04-12 22:12Z	interactive_pty.rs keeps helper tests inline instead of a sibling interactive_pty_tests.rs module.
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-paused-runtime-advance	testing	not_applicable	contextual	F06	2026-04-13 08:37Z	InteractivePtyRunner is a real PTY/std-thread harness; the main risk here is teardown semantics, not tokio timer determinism.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/common/interactive_pty.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			
@@ -7178,9 +7178,9 @@ file_path	rule_id	category	status	applicability	audit_units	reviewed_at	notes
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	sandbox-three-layer-network-isolation	sandbox	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-atomic-bool-test-opt-in	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-config-closure-builder	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-insta-snapshot-tui-rendering	testing	finding	applicable	A10	2026-04-12 22:12Z	Attach and screenshot end-to-end checks rely on contains assertions, so layout and reflow regressions can pass unnoticed.
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-insta-snapshot-tui-rendering	testing	finding	applicable	A10,F06	2026-04-13 08:37Z	Attach and screenshot end-to-end checks rely on contains assertions, so layout, detach-hint, and terminal-presentation regressions can pass unnoticed.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-path-attribute-sibling-tests	testing	pending	unreviewed			
-/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-paused-runtime-advance	testing	pending	unreviewed			
+/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-paused-runtime-advance	testing	not_applicable	contextual	F06	2026-04-13 08:37Z	The attach E2E tests validate a real PTY detach flow instead of tokio timer behavior; the open gap is semantic failure/panic coverage, not paused-runtime control.
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	testing-wiremock-sse-fakes	testing	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	tui-drop-guard-panic-hook-chain	tui	pending	unreviewed			
 /Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs	tui-event-broker-pause-resume	tui	pending	unreviewed			

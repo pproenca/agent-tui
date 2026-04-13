@@ -9,6 +9,7 @@ pub enum MockError {
     #[default]
     NoActiveSession,
     NotFound(String),
+    NotRunning(String),
     LimitReached(usize),
     Terminal {
         kind: SpawnErrorKind,
@@ -21,6 +22,9 @@ impl MockError {
         match self {
             MockError::NoActiveSession => SessionError::NoActiveSession,
             MockError::NotFound(id) => SessionError::NotFound(id.clone()),
+            MockError::NotRunning(session_id) => SessionError::NotRunning {
+                session_id: session_id.clone(),
+            },
             MockError::LimitReached(max) => SessionError::LimitReached(*max),
             MockError::Terminal { kind, reason } => SessionError::Terminal(TerminalError::Spawn {
                 reason: reason.clone(),
@@ -43,6 +47,13 @@ mod tests {
         let err = MockError::LimitReached(10);
         let session_err = err.to_session_error();
         assert!(matches!(session_err, SessionError::LimitReached(10)));
+
+        let err = MockError::NotRunning("test".to_string());
+        let session_err = err.to_session_error();
+        assert!(matches!(
+            session_err,
+            SessionError::NotRunning { session_id } if session_id == "test"
+        ));
 
         let err = MockError::NoActiveSession;
         let session_err = err.to_session_error();

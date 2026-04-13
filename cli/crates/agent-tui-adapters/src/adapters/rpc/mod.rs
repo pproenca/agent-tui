@@ -52,6 +52,10 @@ pub fn to_value_opt<T: Serialize>(
     value.map(serde_json::to_value).transpose()
 }
 
+fn invalid_session_response(id: u64, message: &str) -> RpcResponse {
+    RpcResponse::error(id, -32602, &format!("Invalid session: {message}"))
+}
+
 #[allow(clippy::result_large_err)]
 fn deserialize_required_params<T: DeserializeOwned>(
     request: &RpcRequest,
@@ -82,30 +86,58 @@ where
     )
 }
 
-pub fn parse_session_id(session: Option<String>) -> Option<SessionId> {
-    session.and_then(|s| {
-        if s.trim().is_empty() {
-            None
-        } else {
-            SessionId::try_new(s).ok()
+#[allow(clippy::result_large_err)]
+pub fn parse_session_id(
+    id: u64,
+    session: Option<String>,
+) -> Result<Option<SessionId>, RpcResponse> {
+    match session {
+        None => Ok(None),
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Err(invalid_session_response(
+                    id,
+                    "Session ID cannot be empty or whitespace-only",
+                ));
+            }
+            SessionId::try_new(trimmed)
+                .map(Some)
+                .map_err(|err| invalid_session_response(id, &err.to_string()))
         }
-    })
+    }
 }
 
-pub fn parse_session_selector(session: Option<String>) -> Option<SessionId> {
-    session.and_then(|s| {
-        let trimmed = s.trim();
-        if trimmed.is_empty() || trimmed == "active" {
-            None
-        } else {
-            SessionId::try_new(trimmed).ok()
+#[allow(clippy::result_large_err)]
+pub fn parse_session_selector(
+    id: u64,
+    session: Option<String>,
+) -> Result<Option<SessionId>, RpcResponse> {
+    match session {
+        None => Ok(None),
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed == "active" {
+                return Ok(None);
+            }
+            if trimmed.is_empty() {
+                return Err(invalid_session_response(
+                    id,
+                    "Session ID cannot be empty or whitespace-only",
+                ));
+            }
+            SessionId::try_new(trimmed)
+                .map(Some)
+                .map_err(|err| invalid_session_response(id, &err.to_string()))
         }
-    })
+    }
 }
 
-pub fn parse_session_input(request: &RpcRequest) -> SessionInput {
-    let session_id = parse_session_selector(request.param_str("session").map(String::from));
-    SessionInput { session_id }
+#[allow(clippy::result_large_err)]
+pub fn parse_session_input(request: &RpcRequest) -> Result<SessionInput, RpcResponse> {
+    let session_id =
+        parse_session_selector(request.id, request.param_str("session").map(String::from))?;
+    Ok(SessionInput { session_id })
 }
 
 pub fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
@@ -145,7 +177,7 @@ pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse
         args: rpc_params.args,
         cwd: rpc_params.cwd,
         env: None,
-        session_id: parse_session_id(rpc_params.session),
+        session_id: parse_session_id(request.id, rpc_params.session)?,
         size: rpc_params.size,
     })
 }
@@ -165,7 +197,7 @@ pub fn parse_snapshot_input(request: &RpcRequest) -> Result<SnapshotInput, RpcRe
     let rpc_params: params::SnapshotParams = deserialize_optional_params(request)?;
 
     Ok(SnapshotInput {
-        session_id: parse_session_selector(rpc_params.session),
+        session_id: parse_session_selector(request.id, rpc_params.session)?,
         region: rpc_params.region,
         strip_ansi: rpc_params.strip_ansi,
         retain_ansi: rpc_params.retain_ansi,
@@ -223,7 +255,10 @@ pub fn parse_keystroke_input(request: &RpcRequest) -> Result<KeystrokeInput, Rpc
     let key = request.require_str("key")?.to_string();
 
     Ok(KeystrokeInput {
-        session_id: parse_session_selector(request.param_str("session").map(String::from)),
+        session_id: parse_session_selector(
+            request.id,
+            request.param_str("session").map(String::from),
+        )?,
         key,
     })
 }
@@ -233,7 +268,10 @@ pub fn parse_type_input(request: &RpcRequest) -> Result<TypeInput, RpcResponse> 
     let text = request.require_str("text")?.to_string();
 
     Ok(TypeInput {
-        session_id: parse_session_selector(request.param_str("session").map(String::from)),
+        session_id: parse_session_selector(
+            request.id,
+            request.param_str("session").map(String::from),
+        )?,
         text,
     })
 }
@@ -243,7 +281,10 @@ pub fn parse_keydown_input(request: &RpcRequest) -> Result<KeydownInput, RpcResp
     let key = request.require_str("key")?.to_string();
 
     Ok(KeydownInput {
-        session_id: parse_session_selector(request.param_str("session").map(String::from)),
+        session_id: parse_session_selector(
+            request.id,
+            request.param_str("session").map(String::from),
+        )?,
         key,
     })
 }
@@ -253,7 +294,10 @@ pub fn parse_keyup_input(request: &RpcRequest) -> Result<KeyupInput, RpcResponse
     let key = request.require_str("key")?.to_string();
 
     Ok(KeyupInput {
-        session_id: parse_session_selector(request.param_str("session").map(String::from)),
+        session_id: parse_session_selector(
+            request.id,
+            request.param_str("session").map(String::from),
+        )?,
         key,
     })
 }
@@ -282,7 +326,7 @@ pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> 
     }
 
     Ok(WaitInput {
-        session_id: parse_session_selector(rpc_params.session),
+        session_id: parse_session_selector(request.id, rpc_params.session)?,
         text: rpc_params.text,
         timeout_ms: rpc_params.timeout_ms,
         condition,
@@ -324,7 +368,7 @@ pub fn parse_resize_input(request: &RpcRequest) -> Result<ResizeInput, RpcRespon
     let rpc_params: params::ResizeParams = deserialize_required_params(request)?;
 
     Ok(ResizeInput {
-        session_id: parse_session_selector(rpc_params.session),
+        session_id: parse_session_selector(request.id, rpc_params.session)?,
         size: rpc_params.size,
     })
 }
@@ -355,9 +399,9 @@ pub fn restart_output_to_response(id: u64, output: RestartOutput) -> RpcResponse
 
 #[allow(clippy::result_large_err)]
 pub fn parse_attach_input(request: &RpcRequest) -> Result<AttachInput, RpcResponse> {
-    let session_id = request.require_str("session")?.to_string();
+    let session_id = request.require_str("session")?;
     Ok(AttachInput {
-        session_id: SessionId::try_new(session_id).map_err(|err| {
+        session_id: SessionId::try_new(session_id.trim()).map_err(|err| {
             RpcResponse::error(request.id, -32602, &format!("Invalid session: {err}"))
         })?,
     })
@@ -403,7 +447,10 @@ pub fn parse_assert_input(request: &RpcRequest) -> Result<AssertInput, RpcRespon
         .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid type: {e}")))?;
 
     Ok(AssertInput {
-        session_id: parse_session_selector(request.param_str("session").map(String::from)),
+        session_id: parse_session_selector(
+            request.id,
+            request.param_str("session").map(String::from),
+        )?,
         condition_type,
         value,
     })
@@ -443,7 +490,7 @@ pub fn parse_terminal_write_input(request: &RpcRequest) -> Result<TerminalWriteI
         .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid base64: {e}")))?;
 
     Ok(TerminalWriteInput {
-        session_id: parse_session_selector(rpc_params.session),
+        session_id: parse_session_selector(request.id, rpc_params.session)?,
         data,
     })
 }
@@ -515,17 +562,39 @@ mod tests {
 
     #[test]
     fn test_parse_session_selector_defaults_to_active() {
-        assert_eq!(parse_session_selector(None), None);
-        assert_eq!(parse_session_selector(Some(String::new())), None);
-        assert_eq!(parse_session_selector(Some("   ".to_string())), None);
-        assert_eq!(parse_session_selector(Some("active".to_string())), None);
-        assert_eq!(parse_session_selector(Some("  active  ".to_string())), None);
+        assert_eq!(
+            parse_session_selector(1, None).expect("missing selector"),
+            None
+        );
+        assert_eq!(
+            parse_session_selector(1, Some("active".to_string())).expect("active selector"),
+            None
+        );
+        assert_eq!(
+            parse_session_selector(1, Some("  active  ".to_string()))
+                .expect("trimmed active selector"),
+            None
+        );
     }
 
     #[test]
     fn test_parse_session_selector_keeps_explicit_id() {
-        let parsed = parse_session_selector(Some("sess-1".to_string())).expect("session id");
+        let parsed = parse_session_selector(1, Some("sess-1".to_string()))
+            .expect("session id")
+            .expect("explicit session id");
         assert_eq!(parsed.as_str(), "sess-1");
+    }
+
+    #[test]
+    fn test_parse_session_selector_rejects_blank_explicit_id() {
+        let response = parse_session_selector(7, Some("   ".to_string()))
+            .expect_err("blank explicit selector should be rejected");
+        let value = serde_json::to_value(response).expect("response should serialize");
+        assert_eq!(value["error"]["code"], -32602);
+        assert_eq!(
+            value["error"]["message"],
+            "Invalid session: Session ID cannot be empty or whitespace-only"
+        );
     }
 
     #[test]
@@ -541,6 +610,21 @@ mod tests {
         let input = parse_spawn_input(&request).expect("spawn input");
         let session_id = input.session_id.expect("spawn session id");
         assert_eq!(session_id.as_str(), "active");
+    }
+
+    #[test]
+    fn test_parse_spawn_input_rejects_blank_explicit_session_id() {
+        let request = make_request(
+            1,
+            "spawn",
+            Some(json!({
+                "session": "   ",
+                "command": "bash",
+            })),
+        );
+        let response = parse_spawn_input(&request).expect_err("blank custom session id");
+        let value = serde_json::to_value(response).expect("response should serialize");
+        assert_eq!(value["error"]["code"], -32602);
     }
 
     #[test]
@@ -572,10 +656,27 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_wait_input_rejects_blank_explicit_session() {
+        let request = make_request(1, "wait", Some(json!({"session": "   ", "text": "ready"})));
+        let response = parse_wait_input(&request).expect_err("blank explicit session should error");
+        let value = serde_json::to_value(response).expect("response should serialize");
+        assert_eq!(value["error"]["code"], -32602);
+    }
+
+    #[test]
     fn test_parse_keydown_input() {
         let request = make_request(1, "keydown", Some(json!({"key": "Ctrl"})));
         let input = parse_keydown_input(&request).expect("keydown input should parse");
         assert_eq!(input.key, "Ctrl");
+    }
+
+    #[test]
+    fn test_parse_keydown_input_rejects_blank_explicit_session() {
+        let request = make_request(1, "keydown", Some(json!({"key": "Ctrl", "session": " "})));
+        let response =
+            parse_keydown_input(&request).expect_err("blank explicit session should error");
+        let value = serde_json::to_value(response).expect("response should serialize");
+        assert_eq!(value["error"]["code"], -32602);
     }
 
     #[test]
@@ -597,6 +698,19 @@ mod tests {
     fn test_parse_resize_input_rejects_invalid_params() {
         let request = make_request(1, "resize", Some(json!({"cols": "wide", "rows": 24})));
         let response = parse_resize_input(&request).expect_err("invalid params should error");
+        let value = serde_json::to_value(response).expect("response should serialize");
+        assert_eq!(value["error"]["code"], -32602);
+    }
+
+    #[test]
+    fn test_parse_resize_input_rejects_blank_explicit_session() {
+        let request = make_request(
+            1,
+            "resize",
+            Some(json!({"cols": 80, "rows": 24, "session": " "})),
+        );
+        let response =
+            parse_resize_input(&request).expect_err("blank explicit session should error");
         let value = serde_json::to_value(response).expect("response should serialize");
         assert_eq!(value["error"]["code"], -32602);
     }

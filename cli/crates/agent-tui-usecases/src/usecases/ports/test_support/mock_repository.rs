@@ -293,6 +293,11 @@ impl MockSessionRepositoryBuilder {
         self
     }
 
+    pub fn with_session_handle(mut self, session_handle: SessionHandle) -> Self {
+        self.repo.session_handle = Some(session_handle);
+        self
+    }
+
     pub fn build(self) -> MockSessionRepository {
         self.repo
     }

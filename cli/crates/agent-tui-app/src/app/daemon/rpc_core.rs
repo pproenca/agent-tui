@@ -390,7 +390,13 @@ impl RpcCore {
         connection_cancelled: Option<&AtomicBool>,
     ) -> Result<(), RpcCoreError> {
         let req_id = request.id;
-        let session_param = parse_live_preview_session_selector(&request);
+        let session_param = match parse_live_preview_session_selector(&request) {
+            Ok(session_id) => session_id,
+            Err(response) => {
+                let _ = writer.write_response(&response);
+                return Ok(());
+            }
+        };
 
         let session =
             match SessionRepository::resolve(self.session_manager.as_ref(), session_param.as_ref())
@@ -827,8 +833,11 @@ impl FlightdeckSnapshot {
     }
 }
 
-fn parse_live_preview_session_selector(request: &RpcRequest) -> Option<crate::domain::SessionId> {
-    parse_session_selector(request.param_str("session").map(String::from))
+#[allow(clippy::result_large_err)]
+fn parse_live_preview_session_selector(
+    request: &RpcRequest,
+) -> Result<Option<crate::domain::SessionId>, RpcResponse> {
+    parse_session_selector(request.id, request.param_str("session").map(String::from))
 }
 
 fn live_preview_initial_cursor(
@@ -937,22 +946,33 @@ mod tests {
     #[test]
     fn live_preview_selector_maps_active_to_none() {
         let request = make_request(Some(r#"{"session":"active"}"#));
-        let parsed = parse_live_preview_session_selector(&request);
+        let parsed = parse_live_preview_session_selector(&request).expect("active selector");
         assert!(parsed.is_none());
     }
 
     #[test]
     fn live_preview_selector_defaults_to_none_when_omitted() {
         let request = make_request(None);
-        let parsed = parse_live_preview_session_selector(&request);
+        let parsed = parse_live_preview_session_selector(&request).expect("omitted selector");
         assert!(parsed.is_none());
     }
 
     #[test]
     fn live_preview_selector_keeps_explicit_session_id() {
         let request = make_request(Some(r#"{"session":"sess-1"}"#));
-        let parsed = parse_live_preview_session_selector(&request).expect("session id");
+        let parsed = parse_live_preview_session_selector(&request)
+            .expect("valid selector")
+            .expect("session id");
         assert_eq!(parsed.as_str(), "sess-1");
+    }
+
+    #[test]
+    fn live_preview_selector_rejects_blank_explicit_session_id() {
+        let request = make_request(Some(r#"{"session":" "}"#));
+        let response =
+            parse_live_preview_session_selector(&request).expect_err("blank selector should fail");
+        let value = serde_json::to_value(response).expect("response should serialize");
+        assert_eq!(value["error"]["code"], -32602);
     }
 
     #[test]

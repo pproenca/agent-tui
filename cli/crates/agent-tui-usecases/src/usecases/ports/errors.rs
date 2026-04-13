@@ -85,6 +85,8 @@ impl TerminalError {
 pub enum SessionError {
     #[error("Session not found: {0}")]
     NotFound(String),
+    #[error("Session not running: {session_id}")]
+    NotRunning { session_id: String },
     #[error("Session already exists: {0}")]
     AlreadyExists(String),
     #[error("No active session")]

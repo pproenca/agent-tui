@@ -14,10 +14,14 @@ impl ValueExt for Value {
     }
 
     fn u64_or(&self, key: &str, default: u64) -> u64 {
-        self.get(key).and_then(|v| v.as_u64()).unwrap_or(default)
+        self.get(key)
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(default)
     }
 
     fn bool_or(&self, key: &str, default: bool) -> bool {
-        self.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
+        self.get(key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(default)
     }
 }

@@ -106,7 +106,7 @@ pub fn stop_daemon_via_rpc(
 
     let acknowledged = result
         .get("acknowledged")
-        .and_then(|v| v.as_bool())
+        .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
 
     if !acknowledged {
@@ -156,14 +156,14 @@ where
 fn cleanup_daemon_files_with_warnings(socket: &Path, warnings: &mut Vec<String>) {
     match std::fs::remove_file(socket) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-            warnings.push(format!("Failed to remove socket: {}", e));
+            warnings.push(format!("Failed to remove socket: {e}"));
         }
         _ => {}
     }
     let lock = socket.with_extension("lock");
     match std::fs::remove_file(&lock) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-            warnings.push(format!("Failed to remove lock file: {}", e));
+            warnings.push(format!("Failed to remove lock file: {e}"));
         }
         _ => {}
     }

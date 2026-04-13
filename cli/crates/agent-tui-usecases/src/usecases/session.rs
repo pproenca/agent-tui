@@ -556,7 +556,7 @@ mod tests {
                 assert_eq!(operation, "spawn");
                 assert!(reason.contains("unknown error"));
             }
-            _ => panic!("Expected TerminalError but got {:?}", result),
+            _ => panic!("Expected TerminalError but got {result:?}"),
         }
     }
 
@@ -606,7 +606,10 @@ mod tests {
         assert_eq!(result.sessions[1].id.as_str(), "session2");
         assert_eq!(result.sessions[1].command, "vim");
         assert_eq!(
-            result.active_session.as_ref().map(|id| id.as_str()),
+            result
+                .active_session
+                .as_ref()
+                .map(agent_tui_domain::SessionId::as_str),
             Some("session1")
         );
     }

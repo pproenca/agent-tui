@@ -133,7 +133,7 @@ pub enum DomainError {
     #[error("Session limit reached: maximum {max} sessions allowed")]
     SessionLimitReached { max: usize },
 
-    #[error("Lock timeout{}", session_id.as_ref().map(|id| format!(" for session: {}", id)).unwrap_or_default())]
+    #[error("Lock timeout{}", session_id.as_ref().map(|id| format!(" for session: {id}")).unwrap_or_default())]
     LockTimeout { session_id: Option<String> },
 
     #[error("Terminal error during {operation}: {reason}")]
@@ -248,20 +248,17 @@ impl DomainError {
             }
             DomainError::WaitTimeout { condition, .. } => {
                 format!(
-                    "Condition '{}' not met. The app may still be loading. Try 'wait --stable' or increase timeout with '-t'.",
-                    condition
+                    "Condition '{condition}' not met. The app may still be loading. Try 'wait --stable' or increase timeout with '-t'."
                 )
             }
             DomainError::CommandNotFound { command } => {
                 format!(
-                    "Command '{}' not found. Check if the command exists and is in PATH.",
-                    command
+                    "Command '{command}' not found. Check if the command exists and is in PATH."
                 )
             }
             DomainError::PermissionDenied { command } => {
                 format!(
-                    "Cannot execute '{}'. Check file permissions.",
-                    command
+                    "Cannot execute '{command}'. Check file permissions."
                 )
             }
             DomainError::Generic { .. } => {
@@ -286,7 +283,7 @@ impl From<SessionError> for DomainError {
             SessionError::Persistence {
                 operation, reason, ..
             } => DomainError::Generic {
-                message: format!("Persistence error during {}: {}", operation, reason),
+                message: format!("Persistence error during {operation}: {reason}"),
             },
         }
     }

@@ -320,8 +320,7 @@ impl PtyHandle {
                             if let Err(kill_err) = self.child.kill() {
                                 return Err(PtyError::Spawn {
                                     reason: format!(
-                                        "failed to signal process group ({}) and kill child: {}",
-                                        err, kill_err
+                                        "failed to signal process group ({err}) and kill child: {kill_err}"
                                     ),
                                     kind: SpawnErrorKind::Other,
                                 });

@@ -14,7 +14,7 @@ default:
 dev:
     cargo run -p agent-tui -- daemon run
 
-# Run CI checks (format, clippy, architecture, tests, version).
+# Run CI checks (format, clippy, deny, architecture, tests, version).
 ready:
     cargo run -p xtask -- ci
 
@@ -34,7 +34,11 @@ format-check:
 
 # Lint Rust workspace.
 lint:
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Run cargo-deny policy checks.
+deny: _ensure-cargo-deny
+    cargo deny check advisories bans licenses sources
 
 # Run test suite.
 test:
@@ -112,3 +116,7 @@ _ensure-bun:
 # Internal: ensure cargo-watch is installed.
 _ensure-cargo-watch:
     @command -v cargo-watch >/dev/null || { echo "cargo-watch is required for watch. Install with 'cargo install cargo-watch' and re-run."; exit 1; }
+
+# Internal: ensure cargo-deny is installed.
+_ensure-cargo-deny:
+    @command -v cargo-deny >/dev/null || { echo "cargo-deny is required for this recipe. Install with 'cargo install cargo-deny' and re-run."; exit 1; }

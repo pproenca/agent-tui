@@ -45,26 +45,23 @@ pub fn assert_error_data(
 ) {
     if let Some(code) = expected_code {
         assert_eq!(
-            json.get("code").and_then(|v| v.as_i64()),
+            json.get("code").and_then(serde_json::Value::as_i64),
             Some(code as i64),
-            "Error code mismatch. JSON: {}",
-            json
+            "Error code mismatch. JSON: {json}"
         );
     }
     if let Some(category) = expected_category {
         assert_eq!(
             json.get("category").and_then(|v| v.as_str()),
             Some(category),
-            "Error category mismatch. JSON: {}",
-            json
+            "Error category mismatch. JSON: {json}"
         );
     }
     if let Some(retryable) = expected_retryable {
         assert_eq!(
-            json.get("retryable").and_then(|v| v.as_bool()),
+            json.get("retryable").and_then(serde_json::Value::as_bool),
             Some(retryable),
-            "Error retryable flag mismatch. JSON: {}",
-            json
+            "Error retryable flag mismatch. JSON: {json}"
         );
     }
 }

@@ -46,8 +46,7 @@ fn validated_terminal_size(cols: u16, rows: u16) -> TerminalSize {
         Err(err) => {
             debug_assert!(
                 false,
-                "live preview snapshot should carry validated sizes: {}",
-                err
+                "live preview snapshot should carry validated sizes: {err}"
             );
             tracing::warn!(
                 cols,
@@ -884,7 +883,7 @@ mod tests {
         fn snapshot(&self) -> Vec<Value> {
             self.values
                 .lock()
-                .unwrap_or_else(|poison| poison.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .clone()
         }
 
@@ -929,7 +928,7 @@ mod tests {
             self.handle
                 .values
                 .lock()
-                .unwrap_or_else(|poison| poison.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push(value);
             Ok(())
         }
@@ -1069,7 +1068,9 @@ mod tests {
             &crate::domain::SessionId::try_new("timeline-session")
                 .expect("timeline session id should be valid"),
         ) {
-            let mut guard = session.lock().unwrap_or_else(|poison| poison.into_inner());
+            let mut guard = session
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let _ = guard.type_text("echo timeline\n");
         }
 
@@ -1132,7 +1133,9 @@ mod tests {
             &crate::domain::SessionId::try_new("timeline-resize-session")
                 .expect("timeline resize session id should be valid"),
         ) {
-            let mut guard = session.lock().unwrap_or_else(|poison| poison.into_inner());
+            let mut guard = session
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let _ = guard.resize(TerminalSize::try_new(120, 40).expect("valid terminal size"));
         }
 

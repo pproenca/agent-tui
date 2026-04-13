@@ -14,7 +14,7 @@ pub const MAX_BACKOFF: Duration = Duration::from_millis(50);
 
 fn compute_jitter(backoff_micros: u64) -> u64 {
     let thread_id = std::thread::current().id();
-    let thread_hash = format!("{:?}", thread_id)
+    let thread_hash = format!("{thread_id:?}")
         .bytes()
         .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
 
@@ -59,7 +59,7 @@ mod tests {
 
     fn wait_or_recover<'a, T>(cvar: &Condvar, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
         cvar.wait(guard)
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     #[test]

@@ -715,6 +715,20 @@ fn ci(root: &Path) -> Result<()> {
         )
     })?;
 
+    if has_command("cargo-deny") {
+        run_step("Running cargo-deny", || {
+            run_command(
+                "cargo",
+                &["deny", "check", "advisories", "bans", "licenses", "sources"],
+                Some(root),
+            )
+        })?;
+    } else if env::var_os("CI").is_some() {
+        bail!("cargo-deny is required in CI but was not found in PATH");
+    } else {
+        println!("cargo-deny not installed, skipping...");
+    }
+
     run_step("Running architecture checks", || {
         architecture_check(root, false)
     })?;
@@ -1106,7 +1120,7 @@ fn dist_verify(input: &Path, kind: DistKind) -> Result<()> {
         bail!(message.trim_end().to_string());
     }
 
-    println!("All required artifacts present for {:?}.", kind);
+    println!("All required artifacts present for {kind:?}.");
     Ok(())
 }
 
@@ -1138,7 +1152,7 @@ fn dist_release(_root: &Path, input: &Path, output: &Path) -> Result<()> {
 
     let mut output_files = fs::read_dir(output)
         .with_context(|| format!("failed to list {}", output.display()))?
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .map(|entry| entry.path())
         .filter(|path| path.is_file())
         .filter(|path| {

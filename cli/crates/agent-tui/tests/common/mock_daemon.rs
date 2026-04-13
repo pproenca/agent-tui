@@ -84,12 +84,12 @@ struct DelayController {
 fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn wait_or_recover<'a, T>(cvar: &Condvar, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
     cvar.wait(guard)
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 impl DelayController {
@@ -402,7 +402,7 @@ impl MockDaemon {
     pub fn last_request_for(&self, method: &str) -> Option<RecordedRequest> {
         self.requests
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
             .rev()
             .find(|r| r.method == method)
@@ -412,7 +412,7 @@ impl MockDaemon {
     pub fn call_count_for(&self, method: &str) -> usize {
         self.requests
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
             .filter(|r| r.method == method)
             .count()
@@ -421,7 +421,7 @@ impl MockDaemon {
     pub fn nth_call_for(&self, method: &str, n: usize) -> Option<RecordedRequest> {
         self.requests
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
             .filter(|r| r.method == method)
             .nth(n)
@@ -484,7 +484,7 @@ impl MockDaemon {
                             });
                         }
                         Err(e) => {
-                            eprintln!("Mock daemon accept error: {}", e);
+                            eprintln!("Mock daemon accept error: {e}");
                             break;
                         }
                     }
@@ -516,7 +516,7 @@ impl MockDaemon {
             let request: Request = match serde_json::from_str(&line) {
                 Ok(r) => r,
                 Err(e) => {
-                    eprintln!("Mock daemon parse error: {} for line: {}", e, line);
+                    eprintln!("Mock daemon parse error: {e} for line: {line}");
                     line.clear();
                     continue;
                 }
@@ -641,7 +641,11 @@ impl MockDaemon {
                     error: Some(RpcError {
                         code,
                         message,
-                        data: if data.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                        data: if data
+                            .as_object()
+                            .map(serde_json::Map::is_empty)
+                            .unwrap_or(true)
+                        {
                             None
                         } else {
                             Some(data)
@@ -701,7 +705,7 @@ impl MockDaemon {
                     result: None,
                     error: Some(RpcError {
                         code: -32601,
-                        message: format!("Method not found: {}", method),
+                        message: format!("Method not found: {method}"),
                         data: None,
                     }),
                 };

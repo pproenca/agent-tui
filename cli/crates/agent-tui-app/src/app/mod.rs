@@ -241,7 +241,7 @@ fn supported_shells() -> &'static str {
 
 fn print_shell_detection_help() {
     println!("{}", Colors::warning("Shell not detected."));
-    println!("Run: {} completions <shell>", PROGRAM_NAME);
+    println!("Run: {PROGRAM_NAME} completions <shell>");
     println!("Supported shells: {}", supported_shells());
 }
 
@@ -432,7 +432,7 @@ pub(crate) fn prompt_yes_no(prompt: &str, default_yes: bool) -> io::Result<bool>
     let suffix = if default_yes { "[Y/n]" } else { "[y/N]" };
     let mut input = String::new();
     loop {
-        print!("{} {} ", prompt, suffix);
+        print!("{prompt} {suffix} ");
         io::stdout().flush()?;
         input.clear();
         if io::stdin().read_line(&mut input)? == 0 {
@@ -901,7 +901,7 @@ fn print_cli_error(error: &crate::app::error::CliError) {
     match error.format {
         OutputFormat::Json => {
             if let Some(json) = &error.json {
-                eprintln!("{}", json);
+                eprintln!("{json}");
             } else {
                 #[derive(Serialize)]
                 struct ErrorOutput<'a> {

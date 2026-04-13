@@ -103,7 +103,7 @@ impl TransportConnection for UnixSocketConnection {
 
     fn write_response(&mut self, response: &RpcResponse) -> Result<(), TransportError> {
         let json = serde_json::to_string(response).map_err(TransportError::Serialize)?;
-        writeln!(self.writer, "{}", json)?;
+        writeln!(self.writer, "{json}")?;
         Ok(())
     }
 
@@ -288,7 +288,7 @@ mod tests {
             UnixSocketConnection::new(client_stream).expect("client connection should wrap");
 
         let request_json = r#"{"jsonrpc":"2.0","id":1,"method":"test_method"}"#;
-        writeln!(client_stream_writer, "{}", request_json).expect("client request should write");
+        writeln!(client_stream_writer, "{request_json}").expect("client request should write");
 
         let response = client_conn.read_request();
         assert!(response.is_ok() || matches!(response, Err(TransportError::Parse(_))));

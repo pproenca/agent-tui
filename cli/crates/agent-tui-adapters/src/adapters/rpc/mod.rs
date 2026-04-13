@@ -62,7 +62,7 @@ fn deserialize_required_params<T: DeserializeOwned>(
         .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))
         .and_then(|params| {
             T::deserialize(params).map_err(|err| {
-                RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", err))
+                RpcResponse::error(request.id, -32602, &format!("Invalid params: {err}"))
             })
         })
 }
@@ -76,7 +76,7 @@ where
         || Ok(T::default()),
         |params| {
             T::deserialize(params).map_err(|err| {
-                RpcResponse::error(request.id, -32602, &format!("Invalid params: {}", err))
+                RpcResponse::error(request.id, -32602, &format!("Invalid params: {err}"))
             })
         },
     )
@@ -264,14 +264,14 @@ pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> 
 
     let condition = match rpc_params.condition.as_deref() {
         Some(raw) => Some(crate::domain::WaitConditionType::parse(raw).map_err(|e| {
-            RpcResponse::error(request.id, -32602, &format!("Invalid condition: {}", e))
+            RpcResponse::error(request.id, -32602, &format!("Invalid condition: {e}"))
         })?),
         None => None,
     };
 
     if condition
         .as_ref()
-        .is_some_and(|condition| condition.requires_text())
+        .is_some_and(agent_tui_domain::WaitConditionType::requires_text)
         && rpc_params.text.as_deref().is_none()
     {
         return Err(RpcResponse::error(
@@ -314,7 +314,7 @@ pub fn sessions_output_to_response(id: u64, output: SessionsOutput) -> RpcRespon
         id,
         json!({
             "sessions": output.sessions.iter().map(session_info_to_json).collect::<Vec<_>>(),
-            "active_session": output.active_session.as_ref().map(|id| id.as_str())
+            "active_session": output.active_session.as_ref().map(agent_tui_domain::SessionId::as_str)
         }),
     )
 }
@@ -358,14 +358,14 @@ pub fn parse_attach_input(request: &RpcRequest) -> Result<AttachInput, RpcRespon
     let session_id = request.require_str("session")?.to_string();
     Ok(AttachInput {
         session_id: SessionId::try_new(session_id).map_err(|err| {
-            RpcResponse::error(request.id, -32602, &format!("Invalid session: {}", err))
+            RpcResponse::error(request.id, -32602, &format!("Invalid session: {err}"))
         })?,
     })
 }
 
 pub fn attach_output_to_response(id: u64, output: &AttachOutput) -> RpcResponse {
     let session_id = output.session_id.as_str();
-    let message = format!("Now attached to session {}", session_id);
+    let message = format!("Now attached to session {session_id}");
     RpcResponse::success(
         id,
         json!({
@@ -400,7 +400,7 @@ pub fn parse_assert_input(request: &RpcRequest) -> Result<AssertInput, RpcRespon
     let value = request.require_str("value")?.to_string();
 
     let condition_type = crate::domain::AssertConditionType::parse(condition_type)
-        .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid type: {}", e)))?;
+        .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid type: {e}")))?;
 
     Ok(AssertInput {
         session_id: parse_session_selector(request.param_str("session").map(String::from)),
@@ -440,7 +440,7 @@ pub fn parse_terminal_write_input(request: &RpcRequest) -> Result<TerminalWriteI
 
     let data = STANDARD
         .decode(&rpc_params.data)
-        .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid base64: {}", e)))?;
+        .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid base64: {e}")))?;
 
     Ok(TerminalWriteInput {
         session_id: parse_session_selector(rpc_params.session),

@@ -2,6 +2,8 @@
 
 ## Open Findings
 
+- `[F03][errors-boundary-error-translator]` Modifier hold/release is translated into dead state only: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` expose `press Shift --hold/--release`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/input.rs` routes those requests successfully, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` only toggles `held_modifiers` in `keydown`/`keyup`. The subsequent `keystroke`, `type_text`, and raw write paths never consult that state, so a held modifier does not affect later injected input.
+- `[F03][tui-paste-burst-state-machine]` Attach input still assumes the terminal will emit explicit paste events: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` batches `Event::Paste(data)` into `pty_write`, but every `Event::Key` char is immediately translated via `key_event_to_bytes()` and fed through `DetachDetector`. On terminals that emit rapid per-character key events for paste instead of `Event::Paste`, pasted input can be fragmented and can accidentally trigger detach or other shortcut handling mid-paste.
 - `[F02][errors-boundary-error-translator]` Snapshot region filtering is exposed as a ghost API: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` advertises `--region`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/params.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-domain/src/domain/types.rs` carry a raw `region`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` forwards it into `SnapshotInput`, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs` never branches on it. Snapshot requests can therefore succeed and return the full screen even when the caller explicitly asked for a named region.
 - `[F02][errors-boundary-error-translator]` Snapshot freshness is optimistic instead of explicit: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/repository.rs` discards `request_flush()` timeout/close results in `SessionHandleImpl::update()` and still returns `Ok(())`, while `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs` treats `session.update()?` as authoritative before reading the screen and cursor buffers. A stalled or failed flush can therefore produce a successful snapshot of stale state.
 - `[F02][testing-insta-snapshot-tui-rendering]` Snapshot presentation is still not snapshot-protected end to end: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/render.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/vterm.rs` only use narrow helper assertions, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/snapshot.rs` only tests the missing-session error, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_smoke.rs` checks substrings and fields, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/ports/test_support/mock_session.rs` aliases raw text and rendered output. ANSI, whitespace, and layout regressions in screenshot presentation can therefore slip through unnoticed.
@@ -394,11 +396,48 @@ Contextual non-applicability:
 - `tui-drop-guard-panic-hook-chain`, `tui-event-broker-pause-resume`, and `tui-schedule-frame-coalescer` are not direct fits for this tranche because the audited path is request/response screen capture, not raw-mode ownership or a local frame scheduler.
 - The codex sandbox rules are not direct fits for this slice because screenshot rendering itself does not spawn or isolate new subprocesses beyond the already-audited session runtime.
 
+### `2026-04-13 08:13Z` `F03` Input injection
+
+Reviewed targets:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/input.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/diagnostics.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/input.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/diagnostics.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs`
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs`
+
+Passes:
+
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/handlers.rs` refuses `type -` when stdin is an interactive TTY, and when it does read from stdin it attaches useful context to read failures instead of silently blocking or swallowing the error.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/daemon/handlers/{input,diagnostics}.rs` remain thin boundary translators: each handler parses once, runs exactly one use case, and maps `SessionError` exactly once on the way back out.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/terminal/pty.rs` still provides the core injection safety guarantees already observed in `A04`: `write()` retries `Interrupted`, waits on `WouldBlock`, treats zero-byte writes as terminal closure, and `key_to_escape_sequence()` rejects unsupported symbolic keys instead of guessing.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` enables bracketed paste and already has a dedicated raw-byte path for explicit `Event::Paste(data)` frames, so terminals that emit real paste events avoid per-character translation on the attach path.
+- `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/cli_command_contracts.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui/tests/system_e2e.rs` cover the basic routing surface: `press`, `press --hold`, `press --release`, `type`, and `scroll` map to the expected RPCs, and the slow end-to-end runtime test exercises `type` plus `press Enter` successfully against a real session.
+
+Findings:
+
+- Modifier hold/release currently records state but does not change later injected bytes. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/commands.rs` and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/mod.rs` expose `--hold` and `--release`, `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-usecases/src/usecases/input.rs` routes them successfully, and `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-infra/src/infra/daemon/session.rs` only flips booleans in `held_modifiers`. `keystroke`, `type_text`, and `pty_write` never consult that state, so `press Shift --hold` followed by `press a` or `type text` behaves like an unmodified write.
+- Attach input still lacks the non-bracketed paste burst protection codex uses for terminal UIs. `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-app/src/app/attach.rs` handles explicit `Event::Paste(data)` correctly, but every `Event::Key` char goes straight through `key_event_to_bytes()` and `DetachDetector`. Terminals that emit a burst of plain key events for paste instead of `Event::Paste` can therefore fragment pasted data and accidentally trigger detach or shortcut handling mid-paste.
+- The malformed explicit-session-selector issue already recorded in `F07` applies directly to input injection too: `/Users/pedroproenca/Documents/Projects/agent-tui/cli/crates/agent-tui-adapters/src/adapters/rpc/mod.rs` uses the same lossy `parse_session_selector()` path for `keystroke`, `type`, `keydown`, `keyup`, and `pty_write`, so an invalid explicit `session` parameter can still inject into the active session instead of being rejected.
+
+Contextual non-applicability:
+
+- `testing-insta-snapshot-tui-rendering` is not a direct fit for this tranche because the audited behavior is byte/escape-sequence semantics and attach event handling rather than rendered screen output.
+- `async-bounded-vs-unbounded-channel-split` is not a direct fit for the CLI `press` and `scroll` loops because they synchronously issue one RPC at a time instead of owning a long-lived submission/event pair; the main input-specific risk here sits in semantic translation rather than channel topology.
+
 ## Next Queue
 
-- `F03` Input injection
 - `F04` Wait and assert semantics
 - `F06` Interactive attach session
+- `F09` Live preview control plane
 
 ## Notes
 

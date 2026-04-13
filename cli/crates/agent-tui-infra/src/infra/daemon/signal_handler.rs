@@ -51,7 +51,7 @@ impl SignalHandler {
                 }
             })
             .map_err(|e| {
-                DaemonError::SignalSetup(format!("failed to spawn signal handler: {}", e))
+                DaemonError::SignalSetup(format!("failed to spawn signal handler: {e}"))
             })?;
 
         Ok(Self { _handle: handle })

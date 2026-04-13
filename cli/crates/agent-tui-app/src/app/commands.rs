@@ -39,7 +39,7 @@ CONFIGURATION:
     AGENT_TUI_NO_INPUT          Disable prompts and interactive TTY behavior (default: false)
     AGENT_TUI_TRANSPORT         IPC transport (unix or ws; default: unix)
     AGENT_TUI_WS_ADDR           Remote WS-RPC target when transport is ws (e.g. ws://host:port/ws)
-    AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-Q)
+    AGENT_TUI_DETACH_KEYS       Detach keys for `sessions attach` (default: Ctrl-P Ctrl-B)
     AGENT_TUI_WS_LISTEN         Daemon WS bind address (default: 127.0.0.1:0)
     AGENT_TUI_WS_ALLOW_REMOTE   Allow non-loopback WS bind (default: false)
     AGENT_TUI_WS_STATE          Daemon WS state file path (default: ~/.agent-tui/api.json)
@@ -576,7 +576,7 @@ EXAMPLES:
         session_id: String,
     },
 
-    /// Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-Q or --detach-keys)
+    /// Attach to the active session (TTY by default; detach with Ctrl-P Ctrl-B or --detach-keys)
     #[command(after_long_help = "\
 NOTES:
     --no-input implies --no-tty for automation-safe streaming.
@@ -589,7 +589,7 @@ EXAMPLES:
         /// Disable TTY mode (stream output only)
         #[arg(short = 'T', long = "no-tty")]
         no_tty: bool,
-        /// Detach key sequence (docker-style, e.g. "ctrl-p,ctrl-q"; use "none" to disable)
+        /// Detach key sequence (docker-style, e.g. "ctrl-p,ctrl-b"; use "none" to disable)
         #[arg(
             long = "detach-keys",
             value_name = "KEYS",

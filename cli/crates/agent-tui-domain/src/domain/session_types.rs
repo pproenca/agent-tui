@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn test_session_id_display() {
         let id = SessionId::try_new("abc123").expect("valid session id");
-        assert_eq!(format!("{}", id), "abc123");
+        assert_eq!(format!("{id}"), "abc123");
     }
 
     #[test]

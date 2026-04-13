@@ -48,6 +48,10 @@ test:
 test-core-e2e:
     cargo test -p agent-tui --test system_e2e -- --ignored
 
+# Run the bash CLI test suite against the built agent-tui binary.
+cli-tests:
+    ../cli-tests/run.sh
+
 # Verify generated CLI docs are up-to-date.
 check-cli-docs-sync:
     cargo run -p agent-tui --bin agent-tui-cli-docs

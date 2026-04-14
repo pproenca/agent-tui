@@ -13,7 +13,7 @@ DAEMON_PID=""
 
 usage() {
   cat <<'EOF'
-Usage: cli-tests/pet.sh [--skip-build] [--keep]
+Usage: cli-tests/req-smoke-pet.sh [--skip-build] [--keep]
 
 Pet scenario:
 1. build agent-tui (unless AGENT_TUI_BIN or --skip-build is used)
@@ -22,9 +22,9 @@ Pet scenario:
 4. open vim, type a note, and assert the screen
 
 Examples:
-  cli-tests/pet.sh
-  cli-tests/pet.sh --skip-build
-  cli-tests/pet.sh --keep
+  cli-tests/req-smoke-pet.sh
+  cli-tests/req-smoke-pet.sh --skip-build
+  cli-tests/req-smoke-pet.sh --keep
 EOF
 }
 

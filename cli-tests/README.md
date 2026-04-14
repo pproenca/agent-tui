@@ -80,9 +80,9 @@ Plan bash scenarios by user-visible workflow lane, not by subcommand count.
 | --- | --- | --- | --- | --- | --- |
 | `smoke` | One short happy path across multiple core capabilities | `run`, `wait`, `screenshot`, `type`, `press`, `kill` | `top` + `vim` | `req` | Implemented as `req-smoke-pet.sh` |
 | `lifecycle` | Spawn, inspect, restart, kill, cleanup | `run`, `restart`, `kill`, `sessions cleanup` | `sh`, `tail -f` | `req` | Planned |
-| `viewer` | Read-only terminal observation and scrolling | `run`, `screenshot`, `scroll`, `wait` | `top`, `less`, `tail -f` | `req` | Planned |
-| `editor` | Interactive text editing and key semantics | `run`, `type`, `press`, `wait`, `resize` | `vim` | `req` | Planned |
-| `sessions` | Two or more sessions with switching and inspection | `sessions list`, `show`, `switch`, `attach` | `sh`, `vim` | `req` | Planned |
+| `viewer` | Read-only terminal observation and waiting for terminal output | `run`, `screenshot`, `wait` | `top` | `req` | Implemented as `req-viewer-top.sh` |
+| `editor` | Interactive text editing, key semantics, and resize stability | `run`, `type`, `press`, `wait`, `resize` | `vim` | `req` | Implemented as `req-editor-vim.sh` |
+| `sessions` | Two or more sessions with switching and inspection | `sessions list`, `show`, `switch`, `screenshot` | `sh` | `req` | Implemented as `req-sessions-switch.sh` |
 | `live` | Local daemon-backed UI and WS preview state | `daemon *`, `live *` | built-in `/ui` | `req` | Planned |
 | `failures` | Non-happy-path behavior and recovery | `wait`, `kill`, `sessions cleanup`, `--no-input` | `sh` | `req` | Planned |
 | `viewer` extras | Richer TUI coverage with non-guaranteed tools | same as `viewer` | `htop`, `lazygit` | `opt` | Planned |
@@ -110,11 +110,11 @@ If the answer to `3` is no, add a new scenario in the right lane.
 - `req-lifecycle-shell.sh`
   Planned. Focus on shell process creation, restart, kill, and cleanup.
 - `req-viewer-top.sh`
-  Planned. Focus on screenshot and scroll behavior against a read-only viewer workload.
+  Implemented. Focus on `top` output visibility through `wait` and `screenshot`.
 - `req-editor-vim.sh`
-  Planned. Focus on typing, keys, waits, and resize behavior in an editor.
+  Implemented. Focus on typing, keys, waits, and resize behavior in `vim`.
 - `req-sessions-switch.sh`
-  Planned. Focus on multi-session inventory and active-session switching.
+  Implemented. Focus on multi-session inventory, `sessions show`, and active-session switching.
 - `req-live-preview.sh`
   Planned. Focus on daemon status and live-preview discovery.
 - `req-failures-basic.sh`
@@ -127,5 +127,6 @@ If the answer to `3` is no, add a new scenario in the right lane.
 - Each scenario must be self-cleaning and safe to re-run.
 - Each scenario must use isolated runtime paths.
 - Each scenario must target the built binary through `AGENT_TUI_BIN`.
+- Keep the actual `agent-tui` command sequence inline in the scenario script; helpers should not hide behavioral steps like `run`, `wait`, `screenshot`, `resize`, `switch`, or `kill`.
 - Each scenario should prove one lane cleanly; only `smoke` scenarios should intentionally span multiple lanes.
 - Each scenario should leave behind artifacts only when explicitly asked.

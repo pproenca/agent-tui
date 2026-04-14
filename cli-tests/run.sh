@@ -8,16 +8,18 @@ BIN="${AGENT_TUI_BIN:-$CLI_ROOT/target/debug/agent-tui}"
 
 KEEP=0
 FILTER=""
+TIER="required"
 
 usage() {
   cat <<'EOF'
-Usage: cli-tests/run.sh [--keep] [--filter name]
+Usage: cli-tests/run.sh [--keep] [--filter name] [--tier required|all]
 
 Runs every bash scenario in cli-tests/ against the built agent-tui binary.
 
 Examples:
   cli-tests/run.sh
   cli-tests/run.sh --filter pet
+  cli-tests/run.sh --tier all
   cli-tests/run.sh --keep
 EOF
 }
@@ -32,6 +34,10 @@ while [[ $# -gt 0 ]]; do
       FILTER="${2:-}"
       shift 2
       ;;
+    --tier)
+      TIER="${2:-}"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -43,6 +49,14 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+case "$TIER" in
+  required|all) ;;
+  *)
+    echo "Unsupported --tier value: $TIER" >&2
+    exit 2
+    ;;
+esac
 
 log_step() {
   printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$1"
@@ -58,7 +72,18 @@ if [[ ! -x "$BIN" ]]; then
   exit 1
 fi
 
-mapfile -t scenarios < <(find "$SUITE_DIR" -maxdepth 1 -type f -name '*.sh' ! -name 'run.sh' | sort)
+case "$TIER" in
+  required)
+    scenario_glob='req-*.sh'
+    ;;
+  all)
+    scenario_glob='*.sh'
+    ;;
+esac
+
+mapfile -t scenarios < <(
+  find "$SUITE_DIR" -maxdepth 1 -type f -name "$scenario_glob" ! -name 'run.sh' | sort
+)
 
 if [[ -n "$FILTER" ]]; then
   filtered=()
@@ -85,4 +110,5 @@ for scenario in "${scenarios[@]}"; do
 done
 
 printf '\nCLI test suite passed.\n'
+printf 'Tier: %s\n' "$TIER"
 printf 'Scenarios: %d\n' "$passed"

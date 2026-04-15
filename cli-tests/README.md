@@ -79,12 +79,12 @@ Plan bash scenarios by user-visible workflow lane, not by subcommand count.
 | Lane | What it proves | Typical `agent-tui` commands | Example real tool | Default tier | Status |
 | --- | --- | --- | --- | --- | --- |
 | `smoke` | One short happy path across multiple core capabilities | `run`, `wait`, `screenshot`, `type`, `press`, `kill` | `top` + `vim` | `req` | Implemented as `req-smoke-pet.sh` |
-| `lifecycle` | Spawn, inspect, restart, kill, cleanup | `run`, `restart`, `kill`, `sessions cleanup` | `sh`, `tail -f` | `req` | Planned |
+| `lifecycle` | Spawn, inspect, restart, kill, cleanup | `run`, `restart`, `kill`, `sessions cleanup` | `sh`, `tail -f` | `req` | Implemented as `req-lifecycle-shell.sh` |
 | `viewer` | Read-only terminal observation and waiting for terminal output | `run`, `screenshot`, `wait` | `top` | `req` | Implemented as `req-viewer-top.sh` |
 | `editor` | Interactive text editing, key semantics, and resize stability | `run`, `type`, `press`, `wait`, `resize` | `vim` | `req` | Implemented as `req-editor-vim.sh` |
 | `sessions` | Two or more sessions with switching and inspection | `sessions list`, `show`, `switch`, `screenshot` | `sh` | `req` | Implemented as `req-sessions-switch.sh` |
-| `live` | Local daemon-backed UI and WS preview state | `daemon *`, `live *` | built-in `/ui` | `req` | Planned |
-| `failures` | Non-happy-path behavior and recovery | `wait`, `kill`, `sessions cleanup`, `--no-input` | `sh` | `req` | Planned |
+| `live` | Local daemon-backed UI and WS preview state | `daemon *`, `live *` | built-in `/ui` | `req` | Implemented as `req-live-preview.sh` |
+| `failures` | Non-happy-path behavior and recovery | `wait`, `kill`, `sessions cleanup`, `--no-input` | `sh` | `req` | Implemented as `req-failures-basic.sh` |
 | `viewer` extras | Richer TUI coverage with non-guaranteed tools | same as `viewer` | `htop`, `lazygit` | `opt` | Planned |
 
 ## Scenario Intake Rule
@@ -108,7 +108,7 @@ If the answer to `3` is no, add a new scenario in the right lane.
 - `req-smoke-pet.sh`
   Short end-to-end happy path. Starts the daemon, samples `top`, enters text in `vim`, asserts screen state, and cleans up.
 - `req-lifecycle-shell.sh`
-  Planned. Focus on shell process creation, restart, kill, and cleanup.
+  Implemented. Focus on shell process creation, restart, kill, and cleanup.
 - `req-viewer-top.sh`
   Implemented. Focus on `top` output visibility through `wait` and `screenshot`.
 - `req-editor-vim.sh`
@@ -116,9 +116,9 @@ If the answer to `3` is no, add a new scenario in the right lane.
 - `req-sessions-switch.sh`
   Implemented. Focus on multi-session inventory, `sessions show`, and active-session switching.
 - `req-live-preview.sh`
-  Planned. Focus on daemon status and live-preview discovery.
+  Implemented. Focus on daemon status, live-preview discovery, and `/ui` reachability.
 - `req-failures-basic.sh`
-  Planned. Focus on missing session, timeout, and no-input behavior.
+  Implemented. Focus on missing session, timeout, no-input behavior, and cleanup idempotence.
 - `opt-viewer-htop.sh`
   Planned. Local-only richer viewer coverage if `htop` is installed.
 

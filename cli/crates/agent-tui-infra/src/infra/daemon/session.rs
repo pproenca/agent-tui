@@ -890,6 +890,72 @@ impl Session {
         Ok(())
     }
 
+    /// Mouse click at given position with button.
+    /// Uses SGR mouse tracking mode (1006h).
+    pub fn mouse_click(&mut self, col: u16, row: u16, button: &str) -> Result<(), SessionError> {
+        let btn = match button {
+            "left" => 0u16,
+            "middle" => 1u16,
+            "right" => 2u16,
+            _ => 0u16,
+        };
+        // SGR mode: \x1b[<Pb;Px;PyM for press, \x1b[<Pb;Px;Pym for release
+        // Coordinates are 1-based decimal.
+        let px = col + 1;
+        let py = row + 1;
+        // Pb for press is button. 0=Left, 1=Middle, 2=Right.
+        self.pty
+            .write(format!("\x1b[<{};{};{}M", btn, px, py).as_bytes())?;
+        self.pty
+            .write(format!("\x1b[<{};{};{}m", btn, px, py).as_bytes())?;
+
+        self.record_command_timeline_entry("mouse_click", format!("{}x{} {}", col, row, button));
+        Ok(())
+    }
+
+    /// Mouse move to given position.
+    pub fn mouse_move(&mut self, col: u16, row: u16) -> Result<(), SessionError> {
+        let px = col + 1;
+        let py = row + 1;
+        // 35 is often used for move (32 + button, where 3=release/no button)
+        self.pty
+            .write(format!("\x1b[<35;{};{}M", px, py).as_bytes())?;
+        self.record_command_timeline_entry("mouse_move", format!("{}x{}", col, row));
+        Ok(())
+    }
+
+    /// Mouse button down at position.
+    pub fn mouse_down(&mut self, col: u16, row: u16, button: &str) -> Result<(), SessionError> {
+        let btn = match button {
+            "left" => 0u16,
+            "middle" => 1u16,
+            "right" => 2u16,
+            _ => 0u16,
+        };
+        let px = col + 1;
+        let py = row + 1;
+        self.pty
+            .write(format!("\x1b[<{};{};{}M", btn, px, py).as_bytes())?;
+        self.record_command_timeline_entry("mouse_down", format!("{}x{} {}", col, row, button));
+        Ok(())
+    }
+
+    /// Mouse button up at position.
+    pub fn mouse_up(&mut self, col: u16, row: u16, button: &str) -> Result<(), SessionError> {
+        let btn = match button {
+            "left" => 0u16,
+            "middle" => 1u16,
+            "right" => 2u16,
+            _ => 0u16,
+        };
+        let px = col + 1;
+        let py = row + 1;
+        self.pty
+            .write(format!("\x1b[<{};{};{}m", btn, px, py).as_bytes())?;
+        self.record_command_timeline_entry("mouse_up", format!("{}x{} {}", col, row, button));
+        Ok(())
+    }
+
     pub fn resize(&mut self, size: TerminalSize) -> Result<(), SessionError> {
         self.pty.resize(size)?;
         self.terminal.resize(size);

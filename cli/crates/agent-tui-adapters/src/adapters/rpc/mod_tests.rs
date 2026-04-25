@@ -237,3 +237,90 @@ fn test_parse_resize_input_rejects_blank_explicit_session() {
     let value = serde_json::to_value(response).expect("response should serialize");
     assert_eq!(value["error"]["code"], -32602);
 }
+
+#[test]
+fn test_parse_mouse_click_input() {
+    let request = make_request(
+        1,
+        "mouse_click",
+        Some(json!({"col": 5, "row": 10, "button": "left"})),
+    );
+    let input = parse_mouse_click_input(&request).expect("mouse_click input should parse");
+    assert_eq!(input.col, 5);
+    assert_eq!(input.row, 10);
+    assert_eq!(input.button, crate::domain::MouseButton::Left);
+}
+
+#[test]
+fn test_parse_mouse_click_input_defaults_button() {
+    let request = make_request(1, "mouse_click", Some(json!({"col": 5, "row": 10})));
+    let input = parse_mouse_click_input(&request).expect("mouse_click should default to left button");
+    assert_eq!(input.button, crate::domain::MouseButton::Left);
+}
+
+#[test]
+fn test_parse_mouse_click_input_right_button() {
+    let request = make_request(
+        1,
+        "mouse_click",
+        Some(json!({"col": 5, "row": 10, "button": "right"})),
+    );
+    let input = parse_mouse_click_input(&request).expect("mouse_click should parse right button");
+    assert_eq!(input.button, crate::domain::MouseButton::Right);
+}
+
+#[test]
+fn test_parse_mouse_click_input_invalid_button() {
+    let request = make_request(
+        1,
+        "mouse_click",
+        Some(json!({"col": 5, "row": 10, "button": "invalid"})),
+    );
+    let response = parse_mouse_click_input(&request).expect_err("invalid button should error");
+    let value = serde_json::to_value(response).expect("response should serialize");
+    assert_eq!(value["error"]["code"], -32602);
+}
+
+#[test]
+fn test_parse_mouse_click_input_missing_col() {
+    let request = make_request(1, "mouse_click", Some(json!({"row": 10})));
+    let response = parse_mouse_click_input(&request).expect_err("missing col should error");
+    let value = serde_json::to_value(response).expect("response should serialize");
+    assert_eq!(value["error"]["code"], -32602);
+}
+
+#[test]
+fn test_parse_mouse_move_input() {
+    let request = make_request(
+        1,
+        "mouse_move",
+        Some(json!({"col": 5, "row": 10})),
+    );
+    let input = parse_mouse_move_input(&request).expect("mouse_move input should parse");
+    assert_eq!(input.col, 5);
+    assert_eq!(input.row, 10);
+}
+
+#[test]
+fn test_parse_mouse_down_input() {
+    let request = make_request(
+        1,
+        "mouse_down",
+        Some(json!({"col": 5, "row": 10, "button": "middle"})),
+    );
+    let input = parse_mouse_down_input(&request).expect("mouse_down input should parse");
+    assert_eq!(input.col, 5);
+    assert_eq!(input.row, 10);
+    assert_eq!(input.button, crate::domain::MouseButton::Middle);
+}
+
+#[test]
+fn test_parse_mouse_up_input() {
+    let request = make_request(
+        1,
+        "mouse_up",
+        Some(json!({"col": 5, "row": 10, "button": "right"})),
+    );
+    let input = parse_mouse_up_input(&request).expect("mouse_up input should parse");
+    assert_eq!(input.button, crate::domain::MouseButton::Right);
+}

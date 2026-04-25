@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::MouseButton;
 use crate::domain::SessionId;
 use crate::test_support::MockError;
 use crate::test_support::MockSessionRepository;
@@ -125,6 +126,93 @@ fn test_keyup_usecase_returns_error_when_session_not_found() {
     let input = KeyupInput {
         session_id: Some(SessionId::try_new("missing").expect("valid session id")),
         key: "Alt".to_string(),
+    };
+
+    let result = usecase.execute(input);
+    assert!(matches!(result, Err(SessionError::NotFound(_))));
+}
+
+#[test]
+fn test_mouse_click_usecase_returns_error_when_no_active_session() {
+    let repo = Arc::new(MockSessionRepository::new());
+    let usecase = MouseClickUseCaseImpl::new(repo);
+
+    let input = MouseClickInput {
+        session_id: None,
+        col: 5,
+        row: 10,
+        button: MouseButton::Left,
+    };
+
+    let result = usecase.execute(input);
+    assert!(matches!(result, Err(SessionError::NoActiveSession)));
+}
+
+#[test]
+fn test_mouse_click_usecase_returns_error_when_session_not_found() {
+    let repo = Arc::new(
+        MockSessionRepository::builder()
+            .with_resolve_error(MockError::NotFound("missing".to_string()))
+            .build(),
+    );
+    let usecase = MouseClickUseCaseImpl::new(repo);
+
+    let input = MouseClickInput {
+        session_id: Some(SessionId::try_new("missing").expect("valid session id")),
+        col: 5,
+        row: 10,
+        button: MouseButton::Right,
+    };
+
+    let result = usecase.execute(input);
+    assert!(matches!(result, Err(SessionError::NotFound(_))));
+}
+
+#[test]
+fn test_mouse_move_usecase_returns_error_when_no_active_session() {
+    let repo = Arc::new(MockSessionRepository::new());
+    let usecase = MouseMoveUseCaseImpl::new(repo);
+
+    let input = MouseMoveInput {
+        session_id: None,
+        col: 5,
+        row: 10,
+    };
+
+    let result = usecase.execute(input);
+    assert!(matches!(result, Err(SessionError::NoActiveSession)));
+}
+
+#[test]
+fn test_mouse_down_usecase_returns_error_when_no_active_session() {
+    let repo = Arc::new(MockSessionRepository::new());
+    let usecase = MouseDownUseCaseImpl::new(repo);
+
+    let input = MouseDownInput {
+        session_id: None,
+        col: 5,
+        row: 10,
+        button: MouseButton::Middle,
+    };
+
+    let result = usecase.execute(input);
+    assert!(matches!(result, Err(SessionError::NoActiveSession)));
+}
+
+#[test]
+fn test_mouse_up_usecase_returns_error_when_session_not_found() {
+    let repo = Arc::new(
+        MockSessionRepository::builder()
+            .with_resolve_error(MockError::NotFound("missing".to_string()))
+            .build(),
+    );
+    let usecase = MouseUpUseCaseImpl::new(repo);
+
+    let input = MouseUpInput {
+        session_id: Some(SessionId::try_new("missing").expect("valid session id")),
+        col: 5,
+        row: 10,
+        button: MouseButton::Left,
     };
 
     let result = usecase.execute(input);

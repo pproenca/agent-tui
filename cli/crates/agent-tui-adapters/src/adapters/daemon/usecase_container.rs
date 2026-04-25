@@ -10,6 +10,10 @@ use crate::usecases::KeydownUseCaseImpl;
 use crate::usecases::KeystrokeUseCaseImpl;
 use crate::usecases::KeyupUseCaseImpl;
 use crate::usecases::KillUseCaseImpl;
+use crate::usecases::MouseClickUseCaseImpl;
+use crate::usecases::MouseDownUseCaseImpl;
+use crate::usecases::MouseMoveUseCaseImpl;
+use crate::usecases::MouseUpUseCaseImpl;
 use crate::usecases::ResizeUseCaseImpl;
 use crate::usecases::RestartUseCaseImpl;
 use crate::usecases::SessionsUseCaseImpl;
@@ -51,6 +55,10 @@ pub struct InputUseCases<R: SessionRepository + 'static> {
     pub type_text: TypeUseCaseImpl<R>,
     pub keydown: KeydownUseCaseImpl<R>,
     pub keyup: KeyupUseCaseImpl<R>,
+    pub mouse_click: MouseClickUseCaseImpl<R>,
+    pub mouse_move: MouseMoveUseCaseImpl<R>,
+    pub mouse_down: MouseDownUseCaseImpl<R>,
+    pub mouse_up: MouseUpUseCaseImpl<R>,
 }
 
 pub struct DiagnosticsUseCases<R: SessionRepository + 'static> {
@@ -84,6 +92,10 @@ impl<R: SessionRepository + 'static> UseCaseContainer<R> {
                 type_text: TypeUseCaseImpl::new(Arc::clone(&repository)),
                 keydown: KeydownUseCaseImpl::new(Arc::clone(&repository)),
                 keyup: KeyupUseCaseImpl::new(Arc::clone(&repository)),
+                mouse_click: MouseClickUseCaseImpl::new(Arc::clone(&repository)),
+                mouse_move: MouseMoveUseCaseImpl::new(Arc::clone(&repository)),
+                mouse_down: MouseDownUseCaseImpl::new(Arc::clone(&repository)),
+                mouse_up: MouseUpUseCaseImpl::new(Arc::clone(&repository)),
             },
             diagnostics: DiagnosticsUseCases {
                 terminal_write: TerminalWriteUseCaseImpl::new(Arc::clone(&repository)),

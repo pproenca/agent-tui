@@ -98,3 +98,88 @@ mod assert_condition_type_tests {
         assert!(AssertConditionType::parse("invalid").is_err());
     }
 }
+
+mod mouse_button_tests {
+    use super::*;
+
+    #[test]
+    fn test_mouse_button_parse_left() {
+        assert_eq!(MouseButton::parse("left"), Some(MouseButton::Left));
+    }
+
+    #[test]
+    fn test_mouse_button_parse_right() {
+        assert_eq!(MouseButton::parse("right"), Some(MouseButton::Right));
+    }
+
+    #[test]
+    fn test_mouse_button_parse_middle() {
+        assert_eq!(MouseButton::parse("middle"), Some(MouseButton::Middle));
+    }
+
+    #[test]
+    fn test_mouse_button_parse_case_insensitive() {
+        assert_eq!(MouseButton::parse("LEFT"), Some(MouseButton::Left));
+        assert_eq!(MouseButton::parse("Right"), Some(MouseButton::Right));
+    }
+
+    #[test]
+    fn test_mouse_button_parse_invalid() {
+        assert_eq!(MouseButton::parse("invalid"), None);
+    }
+
+    #[test]
+    fn test_mouse_button_as_str() {
+        assert_eq!(MouseButton::Left.as_str(), "left");
+        assert_eq!(MouseButton::Right.as_str(), "right");
+        assert_eq!(MouseButton::Middle.as_str(), "middle");
+    }
+}
+
+mod mouse_event_kind_tests {
+    use super::*;
+
+    #[test]
+    fn test_mouse_event_kind_parse_down() {
+        assert_eq!(MouseEventKind::parse("down"), Some(MouseEventKind::Down));
+    }
+
+    #[test]
+    fn test_mouse_event_kind_parse_up() {
+        assert_eq!(MouseEventKind::parse("up"), Some(MouseEventKind::Up));
+    }
+
+    #[test]
+    fn test_mouse_event_kind_parse_drag() {
+        assert_eq!(MouseEventKind::parse("drag"), Some(MouseEventKind::Drag));
+    }
+
+    #[test]
+    fn test_mouse_event_kind_parse_moved() {
+        assert_eq!(MouseEventKind::parse("moved"), Some(MouseEventKind::Moved));
+    }
+
+    #[test]
+    fn test_mouse_event_kind_parse_invalid() {
+        assert_eq!(MouseEventKind::parse("invalid"), None);
+    }
+
+    #[test]
+    fn test_mouse_event_kind_as_str() {
+        assert_eq!(MouseEventKind::Down.as_str(), "down");
+        assert_eq!(MouseEventKind::Up.as_str(), "up");
+        assert_eq!(MouseEventKind::Drag.as_str(), "drag");
+        assert_eq!(MouseEventKind::Moved.as_str(), "moved");
+    }
+}
+
+mod mouse_position_tests {
+    use super::*;
+
+    #[test]
+    fn test_mouse_position_new() {
+        let pos = MousePosition::new(5, 10);
+        assert_eq!(pos.col, 5);
+        assert_eq!(pos.row, 10);
+    }
+}

@@ -924,6 +924,20 @@ impl Application {
             }
 
             Commands::Type { text } => handlers::handle_type(ctx, text)?,
+            Commands::Mouse { command } => match command {
+                crate::app::commands::MouseCommand::Click(args) => {
+                    handlers::handle_mouse_click(ctx, args.col, args.row, args.button)?
+                }
+                crate::app::commands::MouseCommand::Move { col, row } => {
+                    handlers::handle_mouse_move(ctx, col, row)?
+                }
+                crate::app::commands::MouseCommand::Down(args) => {
+                    handlers::handle_mouse_down(ctx, args.col, args.row, args.button)?
+                }
+                crate::app::commands::MouseCommand::Up(args) => {
+                    handlers::handle_mouse_up(ctx, args.col, args.row, args.button)?
+                }
+            },
             Commands::Scroll { direction, amount } => {
                 handlers::handle_scroll(ctx, direction, amount)?
             }

@@ -47,6 +47,18 @@ impl<'a, R: SessionRepository + 'static> Router<'a, R> {
             }
             "keydown" => handlers::input::handle_keydown_uc(&self.usecases.input.keydown, request),
             "keyup" => handlers::input::handle_keyup_uc(&self.usecases.input.keyup, request),
+            "mouse_click" => {
+                handlers::input::handle_mouse_click_uc(&self.usecases.input.mouse_click, request)
+            }
+            "mouse_move" => {
+                handlers::input::handle_mouse_move_uc(&self.usecases.input.mouse_move, request)
+            }
+            "mouse_down" => {
+                handlers::input::handle_mouse_down_uc(&self.usecases.input.mouse_down, request)
+            }
+            "mouse_up" => {
+                handlers::input::handle_mouse_up_uc(&self.usecases.input.mouse_up, request)
+            }
             "type" => handlers::input::handle_type_uc(&self.usecases.input.type_text, request),
             "wait" => handlers::wait::handle_wait_uc(&self.usecases.wait, request),
 

@@ -303,6 +303,81 @@ pub fn parse_keyup_input(request: &RpcRequest) -> Result<KeyupInput, RpcResponse
 }
 
 #[allow(clippy::result_large_err)]
+pub fn parse_mouse_click_input(request: &RpcRequest) -> Result<crate::domain::MouseClickInput, RpcResponse> {
+    let col = request.require_u16("col")?;
+    let row = request.require_u16("row")?;
+    let button = request.param_str("button").unwrap_or("left");
+    let button = crate::domain::MouseButton::parse(button).ok_or_else(|| {
+        RpcResponse::error(request.id, -32602, "Invalid button. Must be: left, right, or middle")
+    })?;
+
+    Ok(crate::domain::MouseClickInput {
+        session_id: parse_session_selector(
+            request.id,
+            request.param_str("session").map(String::from),
+        )?,
+        col,
+        row,
+        button,
+    })
+}
+
+#[allow(clippy::result_large_err)]
+pub fn parse_mouse_move_input(request: &RpcRequest) -> Result<crate::domain::MouseMoveInput, RpcResponse> {
+    let col = request.require_u16("col")?;
+    let row = request.require_u16("row")?;
+
+    Ok(crate::domain::MouseMoveInput {
+        session_id: parse_session_selector(
+            request.id,
+            request.param_str("session").map(String::from),
+        )?,
+        col,
+        row,
+    })
+}
+
+#[allow(clippy::result_large_err)]
+pub fn parse_mouse_down_input(request: &RpcRequest) -> Result<crate::domain::MouseDownInput, RpcResponse> {
+    let col = request.require_u16("col")?;
+    let row = request.require_u16("row")?;
+    let button = request.param_str("button").unwrap_or("left");
+    let button = crate::domain::MouseButton::parse(button).ok_or_else(|| {
+        RpcResponse::error(request.id, -32602, "Invalid button. Must be: left, right, or middle")
+    })?;
+
+    Ok(crate::domain::MouseDownInput {
+        session_id: parse_session_selector(
+            request.id,
+            request.param_str("session").map(String::from),
+        )?,
+        col,
+        row,
+        button,
+    })
+}
+
+#[allow(clippy::result_large_err)]
+pub fn parse_mouse_up_input(request: &RpcRequest) -> Result<crate::domain::MouseUpInput, RpcResponse> {
+    let col = request.require_u16("col")?;
+    let row = request.require_u16("row")?;
+    let button = request.param_str("button").unwrap_or("left");
+    let button = crate::domain::MouseButton::parse(button).ok_or_else(|| {
+        RpcResponse::error(request.id, -32602, "Invalid button. Must be: left, right, or middle")
+    })?;
+
+    Ok(crate::domain::MouseUpInput {
+        session_id: parse_session_selector(
+            request.id,
+            request.param_str("session").map(String::from),
+        )?,
+        col,
+        row,
+        button,
+    })
+}
+
+#[allow(clippy::result_large_err)]
 pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> {
     let rpc_params: params::WaitParams = deserialize_optional_params(request)?;
 

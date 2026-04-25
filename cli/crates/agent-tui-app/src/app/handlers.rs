@@ -491,6 +491,84 @@ key_handler!(handle_keyup, "keyup", |k: &String| format!(
     "Key released: {k}"
 ));
 
+pub(crate) fn handle_mouse_click<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    col: u16,
+    row: u16,
+    button: String,
+) -> HandlerResult {
+    let params = params::MouseParams {
+        col,
+        row,
+        button: button.clone(),
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "mouse_click", params)?;
+    ctx.output_success_and_ok(
+        &result,
+        &format!("Mouse clicked at {col}x{row} with {button}"),
+        "Mouse click failed",
+    )
+}
+
+pub(crate) fn handle_mouse_move<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    col: u16,
+    row: u16,
+) -> HandlerResult {
+    let params = params::MouseMoveParams {
+        col,
+        row,
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "mouse_move", params)?;
+    ctx.output_success_and_ok(
+        &result,
+        &format!("Mouse moved to {col}x{row}"),
+        "Mouse move failed",
+    )
+}
+
+pub(crate) fn handle_mouse_down<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    col: u16,
+    row: u16,
+    button: String,
+) -> HandlerResult {
+    let params = params::MouseParams {
+        col,
+        row,
+        button: button.clone(),
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "mouse_down", params)?;
+    ctx.output_success_and_ok(
+        &result,
+        &format!("Mouse button down at {col}x{row} with {button}"),
+        "Mouse down failed",
+    )
+}
+
+pub(crate) fn handle_mouse_up<C: DaemonClient>(
+    ctx: &mut HandlerContext<C>,
+    col: u16,
+    row: u16,
+    button: String,
+) -> HandlerResult {
+    let params = params::MouseParams {
+        col,
+        row,
+        button: button.clone(),
+        session: ctx.session.clone(),
+    };
+    let result = call_with_params(ctx.client, "mouse_up", params)?;
+    ctx.output_success_and_ok(
+        &result,
+        &format!("Mouse button up at {col}x{row} with {button}"),
+        "Mouse up failed",
+    )
+}
+
 pub(crate) fn handle_type<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     text: String,

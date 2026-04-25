@@ -36,6 +36,7 @@ pub struct MockSession {
     update_error: Option<SessionError>,
     terminal_write_error: Option<SessionError>,
     written_data: Mutex<Vec<Vec<u8>>>,
+    mouse_calls: Mutex<Vec<String>>,
 }
 
 impl MockSession {
@@ -56,6 +57,7 @@ impl MockSession {
             update_error: None,
             terminal_write_error: None,
             written_data: Mutex::new(Vec::new()),
+            mouse_calls: Mutex::new(Vec::new()),
         }
     }
 
@@ -65,6 +67,10 @@ impl MockSession {
 
     pub fn written_data(&self) -> Vec<Vec<u8>> {
         mutex_lock_or_recover(&self.written_data).clone()
+    }
+
+    pub fn mouse_calls(&self) -> Vec<String> {
+        mutex_lock_or_recover(&self.mouse_calls).clone()
     }
 }
 
@@ -144,6 +150,26 @@ impl SessionOps for MockSession {
     }
 
     fn keyup(&self, _key: &str) -> Result<(), SessionError> {
+        Ok(())
+    }
+
+    fn mouse_click(&self, col: u16, row: u16, button: &str) -> Result<(), SessionError> {
+        mutex_lock_or_recover(&self.mouse_calls).push(format!("click {}x{} {}", col, row, button));
+        Ok(())
+    }
+
+    fn mouse_move(&self, col: u16, row: u16) -> Result<(), SessionError> {
+        mutex_lock_or_recover(&self.mouse_calls).push(format!("move {}x{}", col, row));
+        Ok(())
+    }
+
+    fn mouse_down(&self, col: u16, row: u16, button: &str) -> Result<(), SessionError> {
+        mutex_lock_or_recover(&self.mouse_calls).push(format!("down {}x{} {}", col, row, button));
+        Ok(())
+    }
+
+    fn mouse_up(&self, col: u16, row: u16, button: &str) -> Result<(), SessionError> {
+        mutex_lock_or_recover(&self.mouse_calls).push(format!("up {}x{} {}", col, row, button));
         Ok(())
     }
 

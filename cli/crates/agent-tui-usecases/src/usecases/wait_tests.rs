@@ -238,6 +238,22 @@ impl SessionOps for ControlledSession {
         Ok(())
     }
 
+    fn mouse_click(&self, _col: u16, _row: u16, _button: &str) -> Result<(), SessionError> {
+        Ok(())
+    }
+
+    fn mouse_move(&self, _col: u16, _row: u16) -> Result<(), SessionError> {
+        Ok(())
+    }
+
+    fn mouse_down(&self, _col: u16, _row: u16, _button: &str) -> Result<(), SessionError> {
+        Ok(())
+    }
+
+    fn mouse_up(&self, _col: u16, _row: u16, _button: &str) -> Result<(), SessionError> {
+        Ok(())
+    }
+
     fn is_running(&self) -> bool {
         true
     }

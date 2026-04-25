@@ -122,6 +122,28 @@ pub struct TypeParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MouseParams {
+    pub col: u16,
+    pub row: u16,
+    #[serde(default = "default_mouse_button")]
+    pub button: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+}
+
+fn default_mouse_button() -> String {
+    "left".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MouseMoveParams {
+    pub col: u16,
+    pub row: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WaitParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,

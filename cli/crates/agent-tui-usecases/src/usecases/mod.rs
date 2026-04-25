@@ -19,6 +19,14 @@ pub use input::KeyupUseCase;
 pub use input::KeyupUseCaseImpl;
 pub use input::TypeUseCase;
 pub use input::TypeUseCaseImpl;
+pub use input::MouseClickUseCase;
+pub use input::MouseClickUseCaseImpl;
+pub use input::MouseMoveUseCase;
+pub use input::MouseMoveUseCaseImpl;
+pub use input::MouseDownUseCase;
+pub use input::MouseDownUseCaseImpl;
+pub use input::MouseUpUseCase;
+pub use input::MouseUpUseCaseImpl;
 pub use session::AssertUseCase;
 pub use session::AssertUseCaseImpl;
 pub use session::AttachUseCase;
@@ -43,3 +51,6 @@ pub use spawn_error::SpawnError;
 pub use wait::WaitUseCase;
 pub use wait::WaitUseCaseImpl;
 pub mod ports;
+
+#[cfg(test)]
+mod input_mouse_tests;

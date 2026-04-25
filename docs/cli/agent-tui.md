@@ -22,6 +22,7 @@ Commands:
   restart      Restart the current session
   press        Send key press(es) to the terminal (supports modifier hold/release)
   type         Type literal text character by character
+  mouse        Send mouse events to the terminal
   scroll       Scroll using repeated directional terminal input
   wait         Wait for text or screenshot stability
   kill         Kill the current session
@@ -110,6 +111,10 @@ EXAMPLES:
     agent-tui run htop
     agent-tui press F10
     agent-tui press ArrowDown ArrowDown Enter
+
+    # Mouse interactions
+    agent-tui mouse click 10 20
+    agent-tui mouse move 5 5
 
     # Scroll using directional terminal input
     agent-tui scroll down
@@ -467,6 +472,94 @@ EXAMPLES:
     agent-tui type "hello world"
     agent-tui type "user@example.com"
     printf 'project-name' | agent-tui type -
+```
+
+## `agent-tui mouse`
+
+```text
+Send mouse events to the terminal
+
+Usage: mouse <COMMAND>
+
+Commands:
+  click  Send a mouse click (down + up)
+  move   Send a mouse move
+  down   Send a mouse button down
+  up     Send a mouse button up
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+
+EXAMPLES:
+    agent-tui mouse click 10 20
+    agent-tui mouse click 5 5 --button right
+    agent-tui mouse move 0 0
+    agent-tui mouse down 10 10
+    agent-tui mouse up 10 10
+```
+
+## `agent-tui mouse click`
+
+```text
+Send a mouse click (down + up)
+
+Usage: click [OPTIONS] <COL> <ROW>
+
+Arguments:
+  <COL>  Terminal column (0-based)
+  <ROW>  Terminal row (0-based)
+
+Options:
+  -b, --button <BUTTON>  Mouse button (left, right, middle) [default: left]
+  -h, --help             Print help
+```
+
+## `agent-tui mouse move`
+
+```text
+Send a mouse move
+
+Usage: move <COL> <ROW>
+
+Arguments:
+  <COL>  Terminal column (0-based)
+  <ROW>  Terminal row (0-based)
+
+Options:
+  -h, --help  Print help
+```
+
+## `agent-tui mouse down`
+
+```text
+Send a mouse button down
+
+Usage: down [OPTIONS] <COL> <ROW>
+
+Arguments:
+  <COL>  Terminal column (0-based)
+  <ROW>  Terminal row (0-based)
+
+Options:
+  -b, --button <BUTTON>  Mouse button (left, right, middle) [default: left]
+  -h, --help             Print help
+```
+
+## `agent-tui mouse up`
+
+```text
+Send a mouse button up
+
+Usage: up [OPTIONS] <COL> <ROW>
+
+Arguments:
+  <COL>  Terminal column (0-based)
+  <ROW>  Terminal row (0-based)
+
+Options:
+  -b, --button <BUTTON>  Mouse button (left, right, middle) [default: left]
+  -h, --help             Print help
 ```
 
 ## `agent-tui scroll`

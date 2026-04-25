@@ -289,6 +289,130 @@ pub struct ShutdownOutput {
     pub acknowledged: bool,
 }
 
+// ============================================================
+// Mouse input types
+// ============================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+}
+
+impl MouseButton {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            "middle" => Some(Self::Middle),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Right => "right",
+            Self::Middle => "middle",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum MouseEventKind {
+    Down,
+    Up,
+    Drag,
+    Moved,
+}
+
+impl MouseEventKind {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "down" => Some(Self::Down),
+            "up" => Some(Self::Up),
+            "drag" => Some(Self::Drag),
+            "moved" => Some(Self::Moved),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Down => "down",
+            Self::Up => "up",
+            Self::Drag => "drag",
+            Self::Moved => "moved",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MousePosition {
+    pub col: u16,
+    pub row: u16,
+}
+
+impl MousePosition {
+    pub fn new(col: u16, row: u16) -> Self {
+        Self { col, row }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MouseClickInput {
+    pub session_id: Option<SessionId>,
+    pub col: u16,
+    pub row: u16,
+    pub button: MouseButton,
+}
+
+#[derive(Debug, Clone)]
+pub struct MouseClickOutput {
+    pub success: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct MouseMoveInput {
+    pub session_id: Option<SessionId>,
+    pub col: u16,
+    pub row: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct MouseMoveOutput {
+    pub success: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct MouseDownInput {
+    pub session_id: Option<SessionId>,
+    pub col: u16,
+    pub row: u16,
+    pub button: MouseButton,
+}
+
+#[derive(Debug, Clone)]
+pub struct MouseDownOutput {
+    pub success: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct MouseUpInput {
+    pub session_id: Option<SessionId>,
+    pub col: u16,
+    pub row: u16,
+    pub button: MouseButton,
+}
+
+#[derive(Debug, Clone)]
+pub struct MouseUpOutput {
+    pub success: bool,
+}
+
 #[cfg(test)]
 #[path = "types_tests.rs"]
 mod tests;

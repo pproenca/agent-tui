@@ -404,6 +404,19 @@ EXAMPLES:
         text: String,
     },
 
+    /// Send mouse events to the terminal
+    #[command(after_long_help = "\
+EXAMPLES:
+    agent-tui mouse click 10 20
+    agent-tui mouse click 5 5 --button right
+    agent-tui mouse move 0 0
+    agent-tui mouse down 10 10
+    agent-tui mouse up 10 10")]
+    Mouse {
+        #[command(subcommand)]
+        command: MouseCommand,
+    },
+
     /// Scroll using repeated directional terminal input
     #[command(long_about = "\
 Send repeated directional input to the terminal.
@@ -603,6 +616,38 @@ INSTALLATION:
         #[arg(short = 'y', long)]
         yes: bool,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum MouseCommand {
+    /// Send a mouse click (down + up)
+    Click(MouseArgs),
+    /// Send a mouse move
+    Move {
+        /// Terminal column (0-based)
+        #[arg(value_name = "COL")]
+        col: u16,
+        /// Terminal row (0-based)
+        #[arg(value_name = "ROW")]
+        row: u16,
+    },
+    /// Send a mouse button down
+    Down(MouseArgs),
+    /// Send a mouse button up
+    Up(MouseArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct MouseArgs {
+    /// Terminal column (0-based)
+    #[arg(value_name = "COL")]
+    pub col: u16,
+    /// Terminal row (0-based)
+    #[arg(value_name = "ROW")]
+    pub row: u16,
+    /// Mouse button (left, right, middle; default: left)
+    #[arg(short, long, default_value = "left", value_name = "BUTTON")]
+    pub button: String,
 }
 
 #[derive(Debug, Subcommand)]

@@ -58,6 +58,10 @@ pub trait SessionOps: Send + Sync {
     fn type_text(&self, text: &str) -> Result<(), SessionError>;
     fn keydown(&self, key: &str) -> Result<(), SessionError>;
     fn keyup(&self, key: &str) -> Result<(), SessionError>;
+    fn mouse_click(&self, col: u16, row: u16, button: &str) -> Result<(), SessionError>;
+    fn mouse_move(&self, col: u16, row: u16) -> Result<(), SessionError>;
+    fn mouse_down(&self, col: u16, row: u16, button: &str) -> Result<(), SessionError>;
+    fn mouse_up(&self, col: u16, row: u16, button: &str) -> Result<(), SessionError>;
     fn is_running(&self) -> bool;
     fn resize(&self, size: TerminalSize) -> Result<(), SessionError>;
     fn cursor(&self) -> CursorPosition;

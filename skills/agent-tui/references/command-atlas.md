@@ -34,6 +34,12 @@ Use this file when you need complete CLI coverage and exact options.
   - Keys: Enter, Tab, Escape, Backspace, Delete, Arrow keys, Home, End, PageUp, PageDown, F1-F12
   - Modifiers: Ctrl+<key>, Alt+<key>, Shift+<key>
 
+### Mouse
+- `agent-tui mouse click <col> <row> [--button <left|right|middle>]`
+- `agent-tui mouse move <col> <row>`
+- `agent-tui mouse down <col> <row> [--button <left|right|middle>]`
+- `agent-tui mouse up <col> <row> [--button <left|right|middle>]`
+
 ### Wait
 - `agent-tui wait <text>`
 - `agent-tui wait --stable`

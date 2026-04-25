@@ -62,6 +62,20 @@ impl RpcRequest {
         self.param_str(key)
             .ok_or_else(|| RpcResponse::error(self.id, -32602, &format!("Missing '{key}' param")))
     }
+
+    #[allow(clippy::result_large_err)]
+    pub fn require_u64(&self, key: &str) -> Result<u64, RpcResponse> {
+        self.param_u64_opt(key)
+            .ok_or_else(|| RpcResponse::error(self.id, -32602, &format!("Missing '{key}' param")))
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub fn require_u16(&self, key: &str) -> Result<u16, RpcResponse> {
+        let value = self.require_u64(key)?;
+        value.try_into().map_err(|_| {
+            RpcResponse::error(self.id, -32602, &format!("'{key}' must be a valid u16"))
+        })
+    }
 }
 
 #[derive(Debug, Serialize)]

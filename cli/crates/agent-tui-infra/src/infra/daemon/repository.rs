@@ -143,6 +143,26 @@ impl SessionOps for SessionHandleImpl {
         session_guard.keyup(key)
     }
 
+    fn mouse_click(&self, col: u16, row: u16, button: &str) -> Result<(), SessionError> {
+        let mut session_guard = mutex_lock_or_recover(&self.inner);
+        session_guard.mouse_click(col, row, button)
+    }
+
+    fn mouse_move(&self, col: u16, row: u16) -> Result<(), SessionError> {
+        let mut session_guard = mutex_lock_or_recover(&self.inner);
+        session_guard.mouse_move(col, row)
+    }
+
+    fn mouse_down(&self, col: u16, row: u16, button: &str) -> Result<(), SessionError> {
+        let mut session_guard = mutex_lock_or_recover(&self.inner);
+        session_guard.mouse_down(col, row, button)
+    }
+
+    fn mouse_up(&self, col: u16, row: u16, button: &str) -> Result<(), SessionError> {
+        let mut session_guard = mutex_lock_or_recover(&self.inner);
+        session_guard.mouse_up(col, row, button)
+    }
+
     fn is_running(&self) -> bool {
         let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.is_running()

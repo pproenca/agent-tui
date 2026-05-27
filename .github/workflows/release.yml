@@ -195,6 +195,7 @@ jobs:
         working-directory: cli
         env:
           AGENT_TUI_VERSION: ${{ needs.validate.outputs.version }}
+          AGENT_TUI_GIT_SHA: ${{ needs.validate.outputs.head_sha }}
         run: |
           if [ "${{ matrix.build }}" = "cross" ]; then
             cross build --release --target ${{ matrix.target }}

@@ -1,5 +1,6 @@
 ---
-source: crates/agent-tui-infra/src/infra/terminal/vterm.rs
+source: crates/agent-tui-infra/src/infra/terminal/vterm_tests.rs
+assertion_line: 63
 expression: "(before, after)"
 ---
 (
@@ -14,8 +15,8 @@ expression: "(before, after)"
             visible: true,
         },
         plain_text: "wrap me\n       aga\nin",
-        rendered: "\\u{1b}[0m\\u{1b}[m\\u{1b}[mwrap me\\u{1b}[0m\\u{1b}[m\\u{1b}[m   \\r\\n\\u{1b}[0m\\u{1b}[m\\u{1b}[m       aga\\r\\nin\\u{1b}[0m\\u{1b}[m\\u{1b}[m        \\r\\n          \\u{1b}[0m",
-        compact_rendered: "\\u{1b}[0m\\u{1b}[m\\u{1b}[mwrap me\\r\\n       aga\\r\\nin\\u{1b}[0m",
+        rendered: "\\u{1b}[0m\\u{1b}[39m\\u{1b}[49mwrap me\\u{1b}[0m\\u{1b}[39m\\u{1b}[49m   \\r\\n\\u{1b}[0m\\u{1b}[39m\\u{1b}[49m       aga\\r\\nin\\u{1b}[0m\\u{1b}[39m\\u{1b}[49m        \\r\\n          \\u{1b}[0m",
+        compact_rendered: "\\u{1b}[0m\\u{1b}[39m\\u{1b}[49mwrap me\\r\\n       aga\\r\\nin\\u{1b}[0m",
     },
     TerminalRenderState {
         size: TerminalSize {
@@ -28,7 +29,7 @@ expression: "(before, after)"
             visible: true,
         },
         plain_text: "wrap me\n       again",
-        rendered: "\\u{1b}[0m\\u{1b}[m\\u{1b}[mwrap me\\u{1b}[0m\\u{1b}[m\\u{1b}[m       \\r\\n\\u{1b}[0m\\u{1b}[m\\u{1b}[m       again\\u{1b}[0m\\u{1b}[m\\u{1b}[m  \\r\\n              \\r\\n              \\u{1b}[0m",
-        compact_rendered: "\\u{1b}[0m\\u{1b}[m\\u{1b}[mwrap me\\r\\n       again\\u{1b}[0m",
+        rendered: "\\u{1b}[0m\\u{1b}[39m\\u{1b}[49mwrap me\\u{1b}[0m\\u{1b}[39m\\u{1b}[49m       \\r\\n\\u{1b}[0m\\u{1b}[39m\\u{1b}[49m       again\\u{1b}[0m\\u{1b}[39m\\u{1b}[49m  \\r\\n              \\r\\n              \\u{1b}[0m",
+        compact_rendered: "\\u{1b}[0m\\u{1b}[39m\\u{1b}[49mwrap me\\r\\n       again\\u{1b}[0m",
     },
 )

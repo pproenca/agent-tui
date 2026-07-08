@@ -33,6 +33,12 @@
       "sourceType": "github",
       "computedHash": "fa7ff052d01ea0690344b0e0a7754b7a6b55ca6b60209f2c0d15b9a718cede8f"
     },
+    "setup-matt-pocock-skills": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "computedHash": "a7d798f49081ea5b2606e8bcafa3bc2b34177cfaa24d71c2ddf2d433f4006a4a"
+    },
     "tdd": {
       "source": "mattpocock/skills",
       "sourceType": "github",

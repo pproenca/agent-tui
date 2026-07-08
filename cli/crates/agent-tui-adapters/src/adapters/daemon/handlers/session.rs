@@ -94,7 +94,7 @@ pub fn handle_resize<U: ResizeUseCase>(usecase: &U, request: RpcRequest) -> RpcR
 
 pub fn handle_attach<U: AttachUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "attach").entered();
-    let req_id = request.id;
+    let req_id = request.id.clone();
     let input = match parse_attach_input(&request) {
         Ok(i) => i,
         Err(resp) => return resp,
@@ -115,7 +115,7 @@ pub fn handle_cleanup<U: CleanupUseCase>(usecase: &U, request: RpcRequest) -> Rp
 
 pub fn handle_assert<U: AssertUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "assert").entered();
-    let req_id = request.id;
+    let req_id = request.id.clone();
     let input = match parse_assert_input(&request) {
         Ok(i) => i,
         Err(resp) => return resp,

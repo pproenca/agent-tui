@@ -20,6 +20,7 @@ use tracing::debug;
 use tracing::trace;
 
 use crate::common::Colors;
+use crate::common::RpcId;
 use crate::common::error_codes;
 use crate::infra::ipc::error::ClientError;
 use crate::infra::ipc::process::ProcessIdentity;
@@ -92,7 +93,7 @@ impl DaemonClientConfig {
 #[derive(Debug, Serialize)]
 struct Request {
     jsonrpc: String,
-    id: u64,
+    id: RpcId,
     method: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     params: Option<Value>,
@@ -103,7 +104,7 @@ struct Response {
     #[serde(rename = "jsonrpc")]
     _jsonrpc: String,
     #[serde(rename = "id")]
-    _id: u64,
+    id: Option<RpcId>,
     result: Option<Value>,
     error: Option<RpcError>,
 }
@@ -185,6 +186,7 @@ impl StreamAbortHandle {
 
 pub struct StreamResponse {
     connection: ClientConnection,
+    expected_id: RpcId,
     aborted: Arc<AtomicBool>,
 }
 
@@ -204,7 +206,7 @@ impl StreamResponse {
             };
 
             let response: Response = serde_json::from_str(&response_line)?;
-            return response_to_result(response).map(Some);
+            return response_to_result(response, &self.expected_id).map(Some);
         }
     }
 
@@ -263,7 +265,18 @@ fn next_retry_delay(
         })
 }
 
-fn response_to_result(response: Response) -> Result<Value, ClientError> {
+fn validate_response_id(response: &Response, expected_id: &RpcId) -> Result<(), ClientError> {
+    match &response.id {
+        Some(actual_id) if actual_id == expected_id => Ok(()),
+        Some(_) => Err(ClientError::InvalidResponse),
+        None if response.error.is_some() => Ok(()),
+        None => Err(ClientError::InvalidResponse),
+    }
+}
+
+fn response_to_result(response: Response, expected_id: &RpcId) -> Result<Value, ClientError> {
+    validate_response_id(&response, expected_id)?;
+
     if let Some(rpc_error) = response.error {
         let (category, retryable, context, suggestion) = if let Some(data) = rpc_error.data.as_ref()
         {
@@ -317,9 +330,10 @@ impl DaemonClient for UnixSocketClient {
         config: &DaemonClientConfig,
     ) -> Result<Value, ClientError> {
         let request_id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        let rpc_id = RpcId::from(request_id);
         let request = Request {
             jsonrpc: "2.0".to_string(),
-            id: request_id,
+            id: rpc_id.clone(),
             method: method.to_string(),
             params,
         };
@@ -362,7 +376,7 @@ impl DaemonClient for UnixSocketClient {
                 );
 
                 let response: Response = serde_json::from_str(&response_line)?;
-                response_to_result(response)
+                response_to_result(response, &rpc_id)
             })();
 
             match result {
@@ -420,9 +434,10 @@ impl DaemonClient for UnixSocketClient {
         config: &DaemonClientConfig,
     ) -> Result<StreamResponse, ClientError> {
         let request_id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        let rpc_id = RpcId::from(request_id);
         let request = Request {
             jsonrpc: "2.0".to_string(),
-            id: request_id,
+            id: rpc_id.clone(),
             method: method.to_string(),
             params,
         };
@@ -463,12 +478,13 @@ impl DaemonClient for UnixSocketClient {
                     "RPC stream handshake received"
                 );
                 let response: Response = serde_json::from_str(&response_line)?;
-                let _ = response_to_result(response)?;
+                let _ = response_to_result(response, &rpc_id)?;
 
                 connection.set_read_timeout(Some(STREAM_POLL_TIMEOUT))?;
 
                 Ok(StreamResponse {
                     connection,
+                    expected_id: rpc_id.clone(),
                     aborted: Arc::new(AtomicBool::new(false)),
                 })
             })();

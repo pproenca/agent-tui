@@ -34,6 +34,8 @@ use portable_pty::native_pty_system;
 use tracing::debug;
 use tracing::warn;
 
+use crate::common::ThreadJoinOutcome;
+use crate::common::join_thread_with_timeout_or_reap;
 use crate::common::mutex_lock_or_recover;
 use crate::domain::session_types::TerminalSize;
 use crate::usecases::ports::SpawnErrorKind;
@@ -56,13 +58,6 @@ const TERMINATE_TIMEOUT: Duration = Duration::from_millis(500);
 const KILL_TIMEOUT: Duration = Duration::from_millis(500);
 const KILL_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const READER_JOIN_TIMEOUT: Duration = Duration::from_millis(500);
-const READER_JOIN_POLL_INTERVAL: Duration = Duration::from_millis(20);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ReaderJoinOutcome {
-    Joined,
-    ReapingInBackground,
-}
 
 struct ReaderWorker {
     shutdown_writer: UnixStream,
@@ -70,7 +65,7 @@ struct ReaderWorker {
 }
 
 impl ReaderWorker {
-    fn shutdown(&mut self) -> ReaderJoinOutcome {
+    fn shutdown(&mut self) -> ThreadJoinOutcome {
         if let Err(err) = self.shutdown_writer.write_all(&[1])
             && err.kind() != io::ErrorKind::BrokenPipe
         {
@@ -78,10 +73,15 @@ impl ReaderWorker {
         }
 
         let Some(join) = self.join.take() else {
-            return ReaderJoinOutcome::Joined;
+            return ThreadJoinOutcome::Joined;
         };
 
-        join_thread_with_timeout_or_reap(join, READER_JOIN_TIMEOUT, "pty reader thread")
+        join_thread_with_timeout_or_reap(
+            join,
+            READER_JOIN_TIMEOUT,
+            "pty reader thread",
+            "pty-reader-reaper",
+        )
     }
 }
 
@@ -493,70 +493,6 @@ pub(crate) enum ReadEvent {
     Data(Vec<u8>),
     Eof,
     Error(String),
-}
-
-fn join_thread_with_timeout_or_reap(
-    handle: thread::JoinHandle<()>,
-    timeout: Duration,
-    thread_label: &'static str,
-) -> ReaderJoinOutcome {
-    let deadline = Instant::now() + timeout;
-    while !handle.is_finished() {
-        if Instant::now() >= deadline {
-            warn!(
-                thread = thread_label,
-                timeout_ms = timeout.as_millis(),
-                "Timed out joining thread; handing ownership to background reaper"
-            );
-            return spawn_join_reaper(handle, thread_label);
-        }
-        thread::park_timeout(READER_JOIN_POLL_INTERVAL);
-    }
-    let _ = handle.join();
-    ReaderJoinOutcome::Joined
-}
-
-fn spawn_join_reaper(
-    handle: thread::JoinHandle<()>,
-    thread_label: &'static str,
-) -> ReaderJoinOutcome {
-    let handle_cell = Arc::new(Mutex::new(Some(handle)));
-    let handle_for_thread = Arc::clone(&handle_cell);
-    match thread::Builder::new()
-        .name("pty-reader-reaper".to_string())
-        .spawn(move || {
-            let Some(handle) = handle_for_thread
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .take()
-            else {
-                return;
-            };
-
-            if handle.join().is_err() {
-                warn!(
-                    thread = thread_label,
-                    "Background reaper observed thread panic"
-                );
-            }
-        }) {
-        Ok(_) => ReaderJoinOutcome::ReapingInBackground,
-        Err(err) => {
-            warn!(
-                thread = thread_label,
-                error = %err,
-                "Failed to spawn background join reaper; joining synchronously"
-            );
-            if let Some(handle) = handle_cell
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .take()
-            {
-                let _ = handle.join();
-            }
-            ReaderJoinOutcome::Joined
-        }
-    }
 }
 
 fn spawn_reader(

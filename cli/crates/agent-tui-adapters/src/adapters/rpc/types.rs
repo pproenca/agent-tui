@@ -5,23 +5,36 @@ use serde::Serialize;
 use serde_json::Value;
 use serde_json::json;
 
+use crate::common::RpcId;
 use crate::common::error_codes;
+
+pub fn request_id_from_json_str(input: &str) -> Option<RpcId> {
+    let value: Value = serde_json::from_str(input).ok()?;
+    request_id_from_json_value(&value)
+}
+
+pub fn request_id_from_json_value(value: &Value) -> Option<RpcId> {
+    value
+        .get("id")
+        .cloned()
+        .and_then(|id| serde_json::from_value(id).ok())
+}
 
 #[derive(Debug, Deserialize)]
 pub struct RpcRequest {
     #[serde(rename = "jsonrpc")]
     _jsonrpc: String,
-    pub id: u64,
+    pub id: RpcId,
     pub method: String,
     #[serde(default)]
     pub params: Option<Value>,
 }
 
 impl RpcRequest {
-    pub fn new(id: u64, method: String, params: Option<Value>) -> Self {
+    pub fn new(id: impl Into<RpcId>, method: String, params: Option<Value>) -> Self {
         Self {
             _jsonrpc: "2.0".to_string(),
-            id,
+            id: id.into(),
             method,
             params,
         }
@@ -59,8 +72,9 @@ impl RpcRequest {
 
     #[allow(clippy::result_large_err)]
     pub fn require_str(&self, key: &str) -> Result<&str, RpcResponse> {
-        self.param_str(key)
-            .ok_or_else(|| RpcResponse::error(self.id, -32602, &format!("Missing '{key}' param")))
+        self.param_str(key).ok_or_else(|| {
+            RpcResponse::error(self.id.clone(), -32602, &format!("Missing '{key}' param"))
+        })
     }
 }
 
@@ -68,7 +82,7 @@ impl RpcRequest {
 pub struct RpcResponse {
     #[serde(rename = "jsonrpc")]
     _jsonrpc: String,
-    id: u64,
+    id: Option<RpcId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -94,16 +108,17 @@ pub struct ErrorData {
 }
 
 impl RpcResponse {
-    pub fn success(id: u64, result: Value) -> Self {
+    pub fn success(id: impl Into<RpcId>, result: Value) -> Self {
         Self {
             _jsonrpc: "2.0".to_string(),
-            id,
+            id: Some(id.into()),
             result: Some(result),
             error: None,
         }
     }
 
-    pub fn success_json<T: Serialize>(id: u64, result: &T) -> Self {
+    pub fn success_json<T: Serialize>(id: impl Into<RpcId>, result: &T) -> Self {
+        let id = id.into();
         match serde_json::to_value(result) {
             Ok(value) => Self::success(id, value),
             Err(err) => Self::internal_error(
@@ -117,10 +132,10 @@ impl RpcResponse {
         self.error.is_none()
     }
 
-    pub fn error(id: u64, code: i32, message: &str) -> Self {
+    pub fn error(id: impl Into<RpcId>, code: i32, message: &str) -> Self {
         Self {
             _jsonrpc: "2.0".to_string(),
-            id,
+            id: Some(id.into()),
             result: None,
             error: Some(RpcServerError {
                 code,
@@ -130,15 +145,33 @@ impl RpcResponse {
         }
     }
 
-    fn internal_error(id: u64, message: &str) -> Self {
+    pub fn error_without_id(code: i32, message: &str) -> Self {
+        Self {
+            _jsonrpc: "2.0".to_string(),
+            id: None,
+            result: None,
+            error: Some(RpcServerError {
+                code,
+                message: message.to_string(),
+                data: None,
+            }),
+        }
+    }
+
+    fn internal_error(id: impl Into<RpcId>, message: &str) -> Self {
         Self::error(id, -32603, message)
     }
 
-    pub fn error_with_context(id: u64, code: i32, message: &str, session_id: Option<&str>) -> Self {
+    pub fn error_with_context(
+        id: impl Into<RpcId>,
+        code: i32,
+        message: &str,
+        session_id: Option<&str>,
+    ) -> Self {
         let data = session_id.map(|sid| json!({ "session_id": sid }));
         Self {
             _jsonrpc: "2.0".to_string(),
-            id,
+            id: Some(id.into()),
             result: None,
             error: Some(RpcServerError {
                 code,
@@ -148,11 +181,17 @@ impl RpcResponse {
         }
     }
 
-    pub fn error_with_data(id: u64, code: i32, message: &str, error_data: ErrorData) -> Self {
+    pub fn error_with_data(
+        id: impl Into<RpcId>,
+        code: i32,
+        message: &str,
+        error_data: ErrorData,
+    ) -> Self {
+        let id = id.into();
         match serde_json::to_value(error_data) {
             Ok(data) => Self {
                 _jsonrpc: "2.0".to_string(),
-                id,
+                id: Some(id),
                 result: None,
                 error: Some(RpcServerError {
                     code,
@@ -168,7 +207,7 @@ impl RpcResponse {
     }
 
     pub fn domain_error(
-        id: u64,
+        id: impl Into<RpcId>,
         code: i32,
         message: &str,
         category: &str,
@@ -188,7 +227,7 @@ impl RpcResponse {
         )
     }
 
-    pub fn action_success(id: u64) -> Self {
+    pub fn action_success(id: impl Into<RpcId>) -> Self {
         Self::success(id, json!({ "success": true }))
     }
 }

@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use crate::adapters::rpc::RpcRequest;
 use crate::adapters::rpc::RpcResponse;
+use crate::adapters::rpc::request_id_from_json_str;
 
 use super::TransportConnection;
 use super::TransportError;
@@ -89,7 +90,9 @@ impl TransportConnection for UnixSocketConnection {
                 None => return Err(TransportError::ConnectionClosed),
                 Some(line) if line.trim().is_empty() => continue,
                 Some(line) => {
-                    return serde_json::from_str(&line).map_err(TransportError::Parse);
+                    let request_id = request_id_from_json_str(&line);
+                    return serde_json::from_str(&line)
+                        .map_err(|source| TransportError::Parse { source, request_id });
                 }
             }
         }

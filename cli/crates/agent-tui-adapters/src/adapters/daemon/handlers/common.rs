@@ -11,7 +11,7 @@ pub fn handler_span(request: &RpcRequest, handler: &'static str) -> Span {
     debug_span!(
         "rpc_handler",
         handler = handler,
-        request_id = request.id,
+        request_id = %request.id,
         session = ?session
     )
 }

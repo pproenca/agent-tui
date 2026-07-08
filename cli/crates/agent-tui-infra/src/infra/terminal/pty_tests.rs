@@ -184,5 +184,5 @@ fn reader_worker_shutdown_unblocks_blocked_reader() {
     let (_rx, mut worker) = spawn_reader_from_fd(reader.as_raw_fd()).expect("spawn reader worker");
 
     let outcome = worker.shutdown();
-    assert_eq!(outcome, ReaderJoinOutcome::Joined);
+    assert_eq!(outcome, ThreadJoinOutcome::Joined);
 }

@@ -295,7 +295,7 @@ impl RpcCore {
         request: RpcRequest,
         connection_cancelled: Option<&AtomicBool>,
     ) -> Result<(), RpcCoreError> {
-        let req_id = request.id;
+        let req_id = request.id.clone();
         let input = match parse_attach_input(&request) {
             Ok(input) => input,
             Err(response) => {
@@ -306,12 +306,12 @@ impl RpcCore {
 
         let session_id = match self.usecases.session.attach.execute(input) {
             Ok(output) => {
-                let response = attach_output_to_response(req_id, &output);
+                let response = attach_output_to_response(&req_id, &output);
                 writer.write_response(&response)?;
                 output.session_id
             }
             Err(err) => {
-                let response = session_error_response(req_id, err);
+                let response = session_error_response(&req_id, err);
                 let _ = writer.write_response(&response);
                 return Ok(());
             }
@@ -321,14 +321,14 @@ impl RpcCore {
             match SessionRepository::resolve(self.session_manager.as_ref(), Some(&session_id)) {
                 Ok(session) => session,
                 Err(err) => {
-                    let response = session_error_response(req_id, err);
+                    let response = session_error_response(&req_id, err);
                     let _ = writer.write_response(&response);
                     return Ok(());
                 }
             };
 
         if let Err(err) = session.update() {
-            let response = session_error_response(req_id, err);
+            let response = session_error_response(&req_id, err);
             let _ = writer.write_response(&response);
             return Ok(());
         }
@@ -359,7 +359,7 @@ impl RpcCore {
         }
 
         let ready = RpcResponse::success_json(
-            req_id,
+            &req_id,
             &AttachReady {
                 event: "ready",
                 session_id: session_id.as_str(),
@@ -373,7 +373,7 @@ impl RpcCore {
 
         loop {
             if self.should_stream_terminate(connection_cancelled) {
-                let response = RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
+                let response = RpcResponse::success_json(&req_id, &AttachEvent { event: "closed" });
                 let _ = writer.write_response(&response);
                 return Ok(());
             }
@@ -383,7 +383,7 @@ impl RpcCore {
             loop {
                 if self.should_stream_terminate(connection_cancelled) {
                     let response =
-                        RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
+                        RpcResponse::success_json(&req_id, &AttachEvent { event: "closed" });
                     let _ = writer.write_response(&response);
                     return Ok(());
                 }
@@ -395,7 +395,7 @@ impl RpcCore {
                 let read = match session.stream_read(&mut cursor, max_chunk, 0) {
                     Ok(read) => read,
                     Err(err) => {
-                        let response = session_error_response(req_id, err);
+                        let response = session_error_response(&req_id, err);
                         let _ = writer.write_response(&response);
                         return Ok(());
                     }
@@ -403,7 +403,7 @@ impl RpcCore {
 
                 if read.dropped_bytes > 0 && read.data.is_empty() {
                     let response = RpcResponse::success_json(
-                        req_id,
+                        &req_id,
                         &AttachDropped {
                             event: "dropped",
                             dropped_bytes: read.dropped_bytes,
@@ -416,7 +416,7 @@ impl RpcCore {
                 if !read.data.is_empty() {
                     let data_b64 = STANDARD.encode(&read.data);
                     let response = RpcResponse::success_json(
-                        req_id,
+                        &req_id,
                         &AttachOutput {
                             event: "output",
                             data: &data_b64,
@@ -429,7 +429,7 @@ impl RpcCore {
                     budget = budget.saturating_sub(read.data.len());
                     if read.closed {
                         let response =
-                            RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
+                            RpcResponse::success_json(&req_id, &AttachEvent { event: "closed" });
                         let _ = writer.write_response(&response);
                         return Ok(());
                     }
@@ -438,7 +438,7 @@ impl RpcCore {
 
                 if read.closed {
                     let response =
-                        RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
+                        RpcResponse::success_json(&req_id, &AttachEvent { event: "closed" });
                     let _ = writer.write_response(&response);
                     return Ok(());
                 }
@@ -458,12 +458,12 @@ impl RpcCore {
                 StreamWaitStatus::Notified => {}
                 StreamWaitStatus::HeartbeatElapsed => {
                     let response =
-                        RpcResponse::success_json(req_id, &AttachEvent { event: "heartbeat" });
+                        RpcResponse::success_json(&req_id, &AttachEvent { event: "heartbeat" });
                     writer.write_response(&response)?;
                 }
                 StreamWaitStatus::Terminated => {
                     let response =
-                        RpcResponse::success_json(req_id, &AttachEvent { event: "closed" });
+                        RpcResponse::success_json(&req_id, &AttachEvent { event: "closed" });
                     let _ = writer.write_response(&response);
                     return Ok(());
                 }
@@ -477,7 +477,7 @@ impl RpcCore {
         request: RpcRequest,
         connection_cancelled: Option<&AtomicBool>,
     ) -> Result<(), RpcCoreError> {
-        let req_id = request.id;
+        let req_id = request.id.clone();
         let session_param = match parse_live_preview_session_selector(&request) {
             Ok(session_id) => session_id,
             Err(response) => {
@@ -491,14 +491,14 @@ impl RpcCore {
             {
                 Ok(session) => session,
                 Err(err) => {
-                    let response = session_error_response(req_id, err);
+                    let response = session_error_response(&req_id, err);
                     let _ = writer.write_response(&response);
                     return Ok(());
                 }
             };
 
         if let Err(err) = session.update() {
-            let response = session_error_response(req_id, err);
+            let response = session_error_response(&req_id, err);
             let _ = writer.write_response(&response);
             return Ok(());
         }
@@ -557,7 +557,7 @@ impl RpcCore {
         }
 
         let ready = RpcResponse::success_json(
-            req_id,
+            &req_id,
             &LivePreviewReady {
                 event: "ready",
                 session_id: &session_id,
@@ -569,7 +569,7 @@ impl RpcCore {
 
         let start_time = Instant::now();
         let init = RpcResponse::success_json(
-            req_id,
+            &req_id,
             &LivePreviewInit {
                 event: "init",
                 time: start_time.elapsed().as_secs_f64(),
@@ -587,7 +587,7 @@ impl RpcCore {
         loop {
             if self.should_stream_terminate(connection_cancelled) {
                 let response = RpcResponse::success_json(
-                    req_id,
+                    &req_id,
                     &LivePreviewClosed {
                         event: "closed",
                         time: start_time.elapsed().as_secs_f64(),
@@ -602,7 +602,7 @@ impl RpcCore {
             loop {
                 if self.should_stream_terminate(connection_cancelled) {
                     let response = RpcResponse::success_json(
-                        req_id,
+                        &req_id,
                         &LivePreviewClosed {
                             event: "closed",
                             time: start_time.elapsed().as_secs_f64(),
@@ -619,7 +619,7 @@ impl RpcCore {
                 let read = match session.stream_read(&mut cursor, max_chunk, 0) {
                     Ok(read) => read,
                     Err(err) => {
-                        let response = session_error_response(req_id, err);
+                        let response = session_error_response(&req_id, err);
                         let _ = writer.write_response(&response);
                         return Ok(());
                     }
@@ -627,7 +627,7 @@ impl RpcCore {
 
                 if read.dropped_bytes > 0 {
                     let dropped = RpcResponse::success_json(
-                        req_id,
+                        &req_id,
                         &LivePreviewDropped {
                             event: "dropped",
                             time: start_time.elapsed().as_secs_f64(),
@@ -636,13 +636,13 @@ impl RpcCore {
                     );
                     writer.write_response(&dropped)?;
                     if let Err(err) = session.update() {
-                        let response = session_error_response(req_id, err);
+                        let response = session_error_response(&req_id, err);
                         let _ = writer.write_response(&response);
                         return Ok(());
                     }
                     let snapshot = session.live_preview_snapshot();
                     let init = RpcResponse::success_json(
-                        req_id,
+                        &req_id,
                         &LivePreviewInit {
                             event: "init",
                             time: start_time.elapsed().as_secs_f64(),
@@ -661,7 +661,7 @@ impl RpcCore {
                 if !read.data.is_empty() {
                     let data_b64 = STANDARD.encode(&read.data);
                     let response = RpcResponse::success_json(
-                        req_id,
+                        &req_id,
                         &LivePreviewOutput {
                             event: "output",
                             time: start_time.elapsed().as_secs_f64(),
@@ -673,7 +673,7 @@ impl RpcCore {
                     budget = budget.saturating_sub(read.data.len());
                     if read.closed {
                         let response = RpcResponse::success_json(
-                            req_id,
+                            &req_id,
                             &LivePreviewClosed {
                                 event: "closed",
                                 time: start_time.elapsed().as_secs_f64(),
@@ -687,7 +687,7 @@ impl RpcCore {
 
                 if read.closed {
                     let response = RpcResponse::success_json(
-                        req_id,
+                        &req_id,
                         &LivePreviewClosed {
                             event: "closed",
                             time: start_time.elapsed().as_secs_f64(),
@@ -703,7 +703,7 @@ impl RpcCore {
             let size = session.size();
             if size != last_size {
                 let resize = RpcResponse::success_json(
-                    req_id,
+                    &req_id,
                     &LivePreviewResize {
                         event: "resize",
                         time: start_time.elapsed().as_secs_f64(),
@@ -728,7 +728,7 @@ impl RpcCore {
                 StreamWaitStatus::Notified => {}
                 StreamWaitStatus::HeartbeatElapsed => {
                     let response = RpcResponse::success_json(
-                        req_id,
+                        &req_id,
                         &LivePreviewHeartbeat {
                             event: "heartbeat",
                             time: start_time.elapsed().as_secs_f64(),
@@ -738,7 +738,7 @@ impl RpcCore {
                 }
                 StreamWaitStatus::Terminated => {
                     let response = RpcResponse::success_json(
-                        req_id,
+                        &req_id,
                         &LivePreviewClosed {
                             event: "closed",
                             time: start_time.elapsed().as_secs_f64(),
@@ -782,7 +782,7 @@ impl RpcCore {
         request: RpcRequest,
         connection_cancelled: Option<&AtomicBool>,
     ) -> Result<(), RpcCoreError> {
-        let req_id = request.id;
+        let req_id = request.id.clone();
         let interval_ms = request
             .param_u64("interval_ms", FLIGHTDECK_STREAM_DEFAULT_INTERVAL_MS)
             .clamp(
@@ -815,7 +815,7 @@ impl RpcCore {
 
         let mut snapshot = self.flightdeck_snapshot();
         writer.write_response(&RpcResponse::success_json(
-            req_id,
+            &req_id,
             &FlightdeckEvent {
                 event: "ready",
                 active_session: snapshot.active_session.clone(),
@@ -830,7 +830,7 @@ impl RpcCore {
         loop {
             if self.should_stream_terminate(connection_cancelled) {
                 let _ = writer.write_response(&RpcResponse::success_json(
-                    req_id,
+                    &req_id,
                     &FlightdeckClosed {
                         event: "closed",
                         time: start_time.elapsed().as_secs_f64(),
@@ -844,7 +844,7 @@ impl RpcCore {
                 let next_snapshot = self.flightdeck_snapshot();
                 if next_snapshot != snapshot {
                     writer.write_response(&RpcResponse::success_json(
-                        req_id,
+                        &req_id,
                         &FlightdeckEvent {
                             event: "sessions",
                             active_session: next_snapshot.active_session.clone(),
@@ -860,7 +860,7 @@ impl RpcCore {
 
             if now >= next_heartbeat_deadline {
                 writer.write_response(&RpcResponse::success_json(
-                    req_id,
+                    &req_id,
                     &FlightdeckHeartbeat {
                         event: "heartbeat",
                         time: start_time.elapsed().as_secs_f64(),
@@ -925,7 +925,7 @@ impl FlightdeckSnapshot {
 fn parse_live_preview_session_selector(
     request: &RpcRequest,
 ) -> Result<Option<crate::domain::SessionId>, RpcResponse> {
-    parse_session_selector(request.id, request.param_str("session").map(String::from))
+    parse_session_selector(&request.id, request.param_str("session").map(String::from))
 }
 
 fn live_preview_initial_cursor(

@@ -16,7 +16,7 @@ use crate::usecases::TypeUseCase;
 
 pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "keystroke").entered();
-    let req_id = request.id;
+    let req_id = request.id.clone();
     let input = match parse_keystroke_input(&request) {
         Ok(i) => i,
         Err(resp) => return resp,
@@ -30,7 +30,7 @@ pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest
 
 pub fn handle_type_uc<U: TypeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "type").entered();
-    let req_id = request.id;
+    let req_id = request.id.clone();
     let input = match parse_type_input(&request) {
         Ok(i) => i,
         Err(resp) => return resp,
@@ -44,7 +44,7 @@ pub fn handle_type_uc<U: TypeUseCase>(usecase: &U, request: RpcRequest) -> RpcRe
 
 pub fn handle_keydown_uc<U: KeydownUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "keydown").entered();
-    let req_id = request.id;
+    let req_id = request.id.clone();
     let input = match parse_keydown_input(&request) {
         Ok(i) => i,
         Err(resp) => return resp,
@@ -58,7 +58,7 @@ pub fn handle_keydown_uc<U: KeydownUseCase>(usecase: &U, request: RpcRequest) ->
 
 pub fn handle_keyup_uc<U: KeyupUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
     let _span = common::handler_span(&request, "keyup").entered();
-    let req_id = request.id;
+    let req_id = request.id.clone();
     let input = match parse_keyup_input(&request) {
         Ok(i) => i,
         Err(resp) => return resp,

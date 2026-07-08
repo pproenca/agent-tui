@@ -2,6 +2,7 @@
 
 use crate::adapters::rpc::RpcResponse;
 use crate::common::DaemonError;
+use crate::common::join_thread_with_timeout_or_reap;
 use crate::common::telemetry;
 use libc::POLLIN;
 use libc::poll;
@@ -46,14 +47,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 const CHANNEL_CAPACITY: usize = 128;
-const STREAM_JOIN_POLL_INTERVAL: Duration = Duration::from_millis(20);
 static CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ThreadJoinOutcome {
-    Joined,
-    ReapingInBackground,
-}
 
 struct ShutdownWaker {
     reader: UnixStream,
@@ -356,8 +350,7 @@ impl DaemonServer {
                 Err(TransportError::ConnectionClosed) | Err(TransportError::Timeout) => break,
                 Err(TransportError::SizeLimit { max_bytes }) => {
                     warn!(max_bytes, "Request size limit exceeded");
-                    let error_response = RpcResponse::error(
-                        0,
+                    let error_response = RpcResponse::error_without_id(
                         -32700,
                         &format!(
                             "Parse error: request size limit exceeded ({}MB max)",
@@ -367,10 +360,13 @@ impl DaemonServer {
                     let _ = conn.write_response(&error_response);
                     break;
                 }
-                Err(TransportError::Parse(err)) => {
-                    debug!(error = %err, "Request parse error");
-                    let error_response =
-                        RpcResponse::error(0, -32700, &format!("Parse error: {err}"));
+                Err(TransportError::Parse { source, request_id }) => {
+                    debug!(error = %source, "Request parse error");
+                    let message = format!("Parse error: {source}");
+                    let error_response = request_id.map_or_else(
+                        || RpcResponse::error_without_id(-32700, &message),
+                        |id| RpcResponse::error(id, -32700, &message),
+                    );
                     let _ = conn.write_response(&error_response);
                     continue;
                 }
@@ -384,11 +380,11 @@ impl DaemonServer {
                 }
             };
 
-            let request_id = request.id;
+            let request_id = request.id.clone();
             let method = request.method.clone();
             let request_span = tracing::debug_span!(
                 "rpc_request",
-                request_id,
+                request_id = %request_id,
                 method = %method,
                 session_selector = session_selector_for_log(&request)
             );
@@ -402,7 +398,7 @@ impl DaemonServer {
 
             let response = self.core.route(request);
             debug!(
-                request_id,
+                request_id = %request_id,
                 method = %method,
                 elapsed_ms = start.elapsed().as_millis(),
                 "RPC request handled"
@@ -529,73 +525,6 @@ impl DaemonServer {
 
 fn init_logging() -> telemetry::TelemetryGuard {
     telemetry::init_tracing("info")
-}
-
-fn join_thread_with_timeout_or_reap(
-    handle: thread::JoinHandle<()>,
-    timeout: Duration,
-    thread_label: &'static str,
-    reaper_name: &'static str,
-) -> ThreadJoinOutcome {
-    let deadline = Instant::now() + timeout;
-    while !handle.is_finished() {
-        if Instant::now() >= deadline {
-            warn!(
-                thread = thread_label,
-                timeout_ms = timeout.as_millis(),
-                "Timed out joining thread; handing ownership to background reaper"
-            );
-            return spawn_join_reaper(handle, thread_label, reaper_name);
-        }
-        thread::park_timeout(STREAM_JOIN_POLL_INTERVAL);
-    }
-    let _ = handle.join();
-    ThreadJoinOutcome::Joined
-}
-
-fn spawn_join_reaper(
-    handle: thread::JoinHandle<()>,
-    thread_label: &'static str,
-    reaper_name: &'static str,
-) -> ThreadJoinOutcome {
-    let handle_cell = Arc::new(std::sync::Mutex::new(Some(handle)));
-    let handle_for_thread = Arc::clone(&handle_cell);
-    match thread::Builder::new()
-        .name(reaper_name.to_string())
-        .spawn(move || {
-            let Some(handle) = handle_for_thread
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .take()
-            else {
-                return;
-            };
-
-            if handle.join().is_err() {
-                warn!(
-                    thread = thread_label,
-                    "Background reaper observed thread panic"
-                );
-            }
-        }) {
-        Ok(_) => ThreadJoinOutcome::ReapingInBackground,
-        Err(err) => {
-            warn!(
-                thread = thread_label,
-                reaper = reaper_name,
-                error = %err,
-                "Failed to spawn background join reaper; joining synchronously"
-            );
-            if let Some(handle) = handle_cell
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .take()
-            {
-                let _ = handle.join();
-            }
-            ThreadJoinOutcome::Joined
-        }
-    }
 }
 
 fn bind_socket(

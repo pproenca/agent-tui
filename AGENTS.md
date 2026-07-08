@@ -82,3 +82,17 @@ Three specialized agents run during code review (see `.claude/agents/`):
 - **clean-architecture-reviewer** — Dependency rule and layer compliance
 - **rust-principal-reviewer** — Design quality, correctness, complexity
 - **clean-code-reviewer** — Readability, naming, maintainability
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues for `pproenca/agent-tui`; external PRs are also a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage labels use their default names: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repo uses a single-context domain-doc layout. See `docs/agents/domain.md`.

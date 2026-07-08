@@ -282,25 +282,12 @@ fn set_websocket_read_timeout(
     }
 }
 
-fn assert_websocket_disconnects(
+fn assert_websocket_close_frame(
     socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
 ) {
     match socket.read() {
         Ok(WsMessage::Close(_)) => {}
-        Err(tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed) => {}
-        Err(tungstenite::Error::Protocol(
-            tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
-        )) => {}
-        Err(tungstenite::Error::Io(err))
-            if matches!(
-                err.kind(),
-                std::io::ErrorKind::UnexpectedEof
-                    | std::io::ErrorKind::ConnectionReset
-                    | std::io::ErrorKind::BrokenPipe
-            ) => {}
-        other => panic!(
-            "expected websocket transport to disconnect after JSON closed event, got {other:?}"
-        ),
+        other => panic!("expected websocket close frame after JSON closed event, got {other:?}"),
     }
 }
 
@@ -530,7 +517,7 @@ fn live_preview_stream_over_ws_emits_ready_init_output_and_closed() {
         2,
         "pty_write".to_string(),
         Some(serde_json::json!({
-            "session": "ws-test-session",
+            "session": session_id,
             "data": base64::engine::general_purpose::STANDARD.encode("printf hello\nexit\n"),
         })),
     ));
@@ -583,7 +570,7 @@ fn live_preview_stream_over_ws_emits_ready_init_output_and_closed() {
         saw_closed,
         "expected websocket JSON closed event after shell exit"
     );
-    assert_websocket_disconnects(&mut socket);
+    assert_websocket_close_frame(&mut socket);
 }
 
 #[test]

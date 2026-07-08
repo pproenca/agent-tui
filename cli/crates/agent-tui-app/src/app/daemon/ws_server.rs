@@ -464,6 +464,7 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                             if stream_result.is_err() {
                                 break;
                             }
+                            close_websocket_after_stream_completion(&mut socket).await;
                             break;
                         }
 
@@ -553,6 +554,18 @@ async fn wait_for_stream_task(stream_task: &mut tokio::task::JoinHandle<()>) -> 
             stream_task.abort();
             Err(())
         }
+    }
+}
+
+async fn close_websocket_after_stream_completion(socket: &mut WebSocket) {
+    if tokio::time::timeout(WS_SEND_TIMEOUT, socket.send(Message::Close(None)))
+        .await
+        .is_err()
+    {
+        warn!(
+            timeout_ms = WS_SEND_TIMEOUT.as_millis(),
+            "Timed out sending websocket close frame after stream completion"
+        );
     }
 }
 

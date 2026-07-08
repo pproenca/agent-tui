@@ -477,6 +477,20 @@ end
 }
 
 #[test]
+fn homebrew_formula_version_can_be_read_from_single_quoted_version() {
+    let formula = r#"
+class AgentTui < Formula
+  version '1.2.3'
+end
+"#;
+
+    assert_eq!(
+        parse_homebrew_formula_version(formula).as_deref(),
+        Some("1.2.3")
+    );
+}
+
+#[test]
 fn release_channel_verification_can_be_scoped_to_selected_channels() -> Result<()> {
     let fixture = ReleaseChannelFixture {
         github_releases: Some(GitHubReleaseFixture {
@@ -692,6 +706,7 @@ fn release_workflow_publishes_verifies_and_smokes_homebrew_channel() -> Result<(
         "brew upgrade pproenca/tap/agent-tui",
         "agent-tui --version",
         "chmod 0755, bin/\"agent-tui\"",
+        "git status --porcelain -- Formula/agent-tui.rb",
     ] {
         assert!(
             workflow.contains(needle),

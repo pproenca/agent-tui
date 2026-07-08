@@ -2065,7 +2065,9 @@ fn parse_homebrew_formula_version(contents: &str) -> Option<String> {
             continue;
         };
         let value = rest.trim();
-        if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+        let quoted_with_double = value.starts_with('"') && value.ends_with('"');
+        let quoted_with_single = value.starts_with('\'') && value.ends_with('\'');
+        if (quoted_with_double || quoted_with_single) && value.len() >= 2 {
             return Some(value[1..value.len() - 1].to_string());
         }
     }

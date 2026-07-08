@@ -737,19 +737,19 @@ jobs:
           class AgentTui < Formula
             desc "CLI tool for AI agents to interact with TUI applications"
             homepage "https://github.com/pproenca/agent-tui"
-            version '$VERSION'
+            version "$VERSION"
             license "MIT"
 
             depends_on :macos
 
             on_macos do
               on_arm do
-                url 'https://github.com/pproenca/agent-tui/releases/download/$TAG/agent-tui-darwin-arm64'
+                url "https://github.com/pproenca/agent-tui/releases/download/$TAG/agent-tui-darwin-arm64"
                 sha256 "$ARM_SHA"
               end
 
               on_intel do
-                url 'https://github.com/pproenca/agent-tui/releases/download/$TAG/agent-tui-darwin-x64'
+                url "https://github.com/pproenca/agent-tui/releases/download/$TAG/agent-tui-darwin-x64"
                 sha256 "$X64_SHA"
               end
             end
@@ -772,7 +772,7 @@ jobs:
           VERSION="${{ needs.validate.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- Formula/agent-tui.rb; then
+          if [ -z "$(git status --porcelain -- Formula/agent-tui.rb)" ]; then
             echo "Homebrew formula already up to date for $VERSION."
             exit 0
           fi

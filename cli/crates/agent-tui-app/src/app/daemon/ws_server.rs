@@ -473,6 +473,61 @@ enum WsFrameAction {
     Close,
 }
 
+enum WsConnectionEnd {
+    Completed,
+    PeerClosed,
+    Shutdown,
+}
+
+#[derive(Debug, thiserror::Error)]
+enum WsConnectionError {
+    #[error("websocket protocol violation: {message}")]
+    ProtocolViolation { message: &'static str },
+    #[error("websocket receive failed: {source}")]
+    Receive {
+        #[source]
+        source: axum::Error,
+    },
+    #[error("websocket pong timeout")]
+    PongTimeout,
+    #[error("websocket send failed: {source}")]
+    Send {
+        #[source]
+        source: axum::Error,
+    },
+    #[error("websocket send timed out after {timeout_ms} ms")]
+    SendTimeout { timeout_ms: u128 },
+    #[error("websocket stream task failed: {source}")]
+    StreamTaskFailed {
+        #[source]
+        source: tokio::task::JoinError,
+    },
+    #[error("websocket stream task did not stop within {timeout_ms} ms")]
+    StreamTaskShutdownTimedOut { timeout_ms: u128 },
+    #[error("failed to serialize websocket RPC response: {source}")]
+    SerializeResponse {
+        #[source]
+        source: serde_json::Error,
+    },
+}
+
+fn log_ws_connection_error(context: &'static str, err: &WsConnectionError) {
+    match err {
+        WsConnectionError::SerializeResponse { .. }
+        | WsConnectionError::StreamTaskFailed { .. } => {
+            error!(context, error = %err, "WS connection failed");
+        }
+        WsConnectionError::ProtocolViolation { .. }
+        | WsConnectionError::Receive { .. }
+        | WsConnectionError::PongTimeout
+        | WsConnectionError::Send { .. }
+        | WsConnectionError::SendTimeout { .. }
+        | WsConnectionError::StreamTaskShutdownTimedOut { .. } => {
+            warn!(context, error = %err, "WS connection closed unexpectedly");
+        }
+    }
+}
+
 async fn wait_for_pong_deadline(deadline: Option<tokio::time::Instant>) {
     match deadline {
         Some(deadline) => tokio::time::sleep_until(deadline).await,
@@ -480,18 +535,24 @@ async fn wait_for_pong_deadline(deadline: Option<tokio::time::Instant>) {
     }
 }
 
-async fn send_ws_message(socket: &mut WebSocket, message: Message) -> Result<(), ()> {
+async fn send_ws_message(
+    socket: &mut WebSocket,
+    message: Message,
+) -> Result<(), WsConnectionError> {
     let send = tokio::time::timeout(WS_SEND_TIMEOUT, socket.send(message)).await;
     match send {
-        Ok(result) => result.map_err(|_| ()),
-        Err(_) => Err(()),
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(source)) => Err(WsConnectionError::Send { source }),
+        Err(_) => Err(WsConnectionError::SendTimeout {
+            timeout_ms: WS_SEND_TIMEOUT.as_millis(),
+        }),
     }
 }
 
 async fn send_keepalive_ping(
     socket: &mut WebSocket,
     pong_watchdog: &mut WsPongWatchdog,
-) -> Result<(), ()> {
+) -> Result<(), WsConnectionError> {
     if pong_watchdog.is_waiting() {
         return Ok(());
     }
@@ -515,7 +576,7 @@ async fn handle_ws_control_frame(
     socket: &mut WebSocket,
     message: Message,
     pong_watchdog: &mut WsPongWatchdog,
-) -> Result<WsFrameAction, ()> {
+) -> Result<WsFrameAction, WsConnectionError> {
     match message {
         Message::Binary(_) => {
             let _ = send_ws_message(
@@ -526,7 +587,9 @@ async fn handle_ws_control_frame(
                 })),
             )
             .await;
-            Ok(WsFrameAction::Close)
+            Err(WsConnectionError::ProtocolViolation {
+                message: "binary frames are not supported",
+            })
         }
         Message::Close(_) => Ok(WsFrameAction::Close),
         Message::Ping(payload) => {
@@ -563,7 +626,8 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                 break;
             }
             _ = keepalive_interval.tick() => {
-                if send_keepalive_ping(&mut socket, &mut pong_watchdog).await.is_err() {
+                if let Err(err) = send_keepalive_ping(&mut socket, &mut pong_watchdog).await {
+                    log_ws_connection_error("send keepalive ping", &err);
                     break;
                 }
             }
@@ -577,7 +641,11 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                 };
                 let msg = match msg {
                     Ok(msg) => msg,
-                    Err(_) => break,
+                    Err(source) => {
+                        let err = WsConnectionError::Receive { source };
+                        log_ws_connection_error("receive websocket frame", &err);
+                        break;
+                    }
                 };
 
                 match msg {
@@ -590,12 +658,13 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                                     || RpcResponse::error_without_id(-32700, &message),
                                     |id| RpcResponse::error(id, -32700, &message),
                                 );
-                                if send_rpc_response(&mut socket, &response).await.is_err() {
+                                if let Err(err) = send_rpc_response(&mut socket, &response).await {
+                                    log_ws_connection_error("send parse error response", &err);
                                     break;
                                 }
                                 parse_errors = parse_errors.saturating_add(1);
                                 if parse_errors >= WS_MAX_PARSE_ERRORS {
-                                    let _ = socket.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                                    let _ = send_ws_message(&mut socket, Message::Close(Some(axum::extract::ws::CloseFrame {
                                         code: close_code::POLICY,
                                         reason: "too many parse errors".into(),
                                     }))).await;
@@ -607,16 +676,21 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                         parse_errors = 0;
 
                         if let Some(kind) = RpcCore::stream_kind_for_method(&request.method) {
-                            let stream_result = run_stream_connection(&state, &mut socket, request, kind).await;
-                            if stream_result.is_err() {
-                                break;
+                            match run_stream_connection(&state, &mut socket, request, kind).await {
+                                Ok(WsConnectionEnd::Completed) => {
+                                    close_websocket_after_stream_completion(&mut socket).await;
+                                }
+                                Ok(WsConnectionEnd::PeerClosed | WsConnectionEnd::Shutdown) => {}
+                                Err(err) => {
+                                    log_ws_connection_error("run websocket stream", &err);
+                                }
                             }
-                            close_websocket_after_stream_completion(&mut socket).await;
                             break;
                         }
 
                         let response = state.core.route(request);
-                        if send_rpc_response(&mut socket, &response).await.is_err() {
+                        if let Err(err) = send_rpc_response(&mut socket, &response).await {
+                            log_ws_connection_error("send RPC response", &err);
                             break;
                         }
                     }
@@ -624,7 +698,10 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                         match handle_ws_control_frame(&mut socket, other, &mut pong_watchdog).await {
                             Ok(WsFrameAction::Continue) => {}
                             Ok(WsFrameAction::Close) => break,
-                            Err(()) => break,
+                            Err(err) => {
+                                log_ws_connection_error("handle websocket control frame", &err);
+                                break;
+                            }
                         }
                     }
                 }
@@ -644,7 +721,7 @@ async fn handle_stream_socket_frame(
     socket: &mut WebSocket,
     message: Message,
     pong_watchdog: &mut WsPongWatchdog,
-) -> Result<WsFrameAction, ()> {
+) -> Result<WsFrameAction, WsConnectionError> {
     match message {
         Message::Text(_) => {
             let _ = send_ws_message(
@@ -655,7 +732,9 @@ async fn handle_stream_socket_frame(
                 })),
             )
             .await;
-            Ok(WsFrameAction::Close)
+            Err(WsConnectionError::ProtocolViolation {
+                message: "stream connections do not accept client text frames",
+            })
         }
         other => handle_ws_control_frame(socket, other, pong_watchdog).await,
     }
@@ -666,7 +745,7 @@ async fn run_stream_connection(
     socket: &mut WebSocket,
     request: RpcRequest,
     kind: crate::app::daemon::rpc_core::StreamKind,
-) -> Result<(), ()> {
+) -> Result<WsConnectionEnd, WsConnectionError> {
     let (tx, rx) = mpsc::channel::<String>(state.ws_queue_capacity);
     let core = Arc::clone(&state.core);
     let stream_cancelled = Arc::new(AtomicBool::new(false));
@@ -693,33 +772,67 @@ async fn run_stream_connection(
     loop {
         tokio::select! {
             _ = keepalive_interval.tick() => {
-                if send_keepalive_ping(socket, &mut pong_watchdog).await.is_err() {
-                    let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
-                    return Err(());
+                if let Err(err) = send_keepalive_ping(socket, &mut pong_watchdog).await {
+                    return cancel_stream_task_preserving_end(
+                        &stream_cancelled,
+                        &mut rx,
+                        &mut stream_task,
+                        Err(err),
+                    )
+                    .await;
                 }
             }
             _ = wait_for_pong_deadline(pong_watchdog.deadline()) => {
                 close_for_missing_pong(socket).await;
-                let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
-                return Err(());
+                return cancel_stream_task_preserving_end(
+                    &stream_cancelled,
+                    &mut rx,
+                    &mut stream_task,
+                    Err(WsConnectionError::PongTimeout),
+                )
+                .await;
             }
             msg = socket.recv() => {
                 let Some(msg) = msg else {
-                    let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
-                    return Err(());
+                    return cancel_stream_task_preserving_end(
+                        &stream_cancelled,
+                        &mut rx,
+                        &mut stream_task,
+                        Ok(WsConnectionEnd::PeerClosed),
+                    )
+                    .await;
                 };
                 let msg = match msg {
                     Ok(msg) => msg,
-                    Err(_) => {
-                        let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
-                        return Err(());
+                    Err(source) => {
+                        return cancel_stream_task_preserving_end(
+                            &stream_cancelled,
+                            &mut rx,
+                            &mut stream_task,
+                            Err(WsConnectionError::Receive { source }),
+                        )
+                        .await;
                     }
                 };
                 match handle_stream_socket_frame(socket, msg, &mut pong_watchdog).await {
                     Ok(WsFrameAction::Continue) => {}
-                    Ok(WsFrameAction::Close) | Err(()) => {
-                        let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
-                        return Err(());
+                    Ok(WsFrameAction::Close) => {
+                        return cancel_stream_task_preserving_end(
+                            &stream_cancelled,
+                            &mut rx,
+                            &mut stream_task,
+                            Ok(WsConnectionEnd::PeerClosed),
+                        )
+                        .await;
+                    }
+                    Err(err) => {
+                        return cancel_stream_task_preserving_end(
+                            &stream_cancelled,
+                            &mut rx,
+                            &mut stream_task,
+                            Err(err),
+                        )
+                        .await;
                     }
                 }
             }
@@ -727,38 +840,73 @@ async fn run_stream_connection(
                 let Some(payload) = payload else {
                     break;
                 };
-                if send_ws_message(socket, Message::Text(payload)).await.is_err() {
-                    let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
-                    return Err(());
+                if let Err(err) = send_ws_message(socket, Message::Text(payload)).await {
+                    return cancel_stream_task_preserving_end(
+                        &stream_cancelled,
+                        &mut rx,
+                        &mut stream_task,
+                        Err(err),
+                    )
+                    .await;
                 }
             }
             _ = state.shutdown_token.cancelled() => {
-                let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
+                let result = cancel_stream_task_preserving_end(
+                    &stream_cancelled,
+                    &mut rx,
+                    &mut stream_task,
+                    Ok(WsConnectionEnd::Shutdown),
+                )
+                .await;
                 let _ = send_ws_message(socket, Message::Close(None)).await;
-                return Err(());
+                return result;
             }
         }
     }
 
-    cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await
+    cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task)
+        .await
+        .map(|()| WsConnectionEnd::Completed)
+}
+
+async fn cancel_stream_task_preserving_end(
+    stream_cancelled: &Arc<AtomicBool>,
+    rx: &mut Option<mpsc::Receiver<String>>,
+    stream_task: &mut tokio::task::JoinHandle<()>,
+    primary_result: Result<WsConnectionEnd, WsConnectionError>,
+) -> Result<WsConnectionEnd, WsConnectionError> {
+    match (
+        primary_result,
+        cancel_stream_task(stream_cancelled, rx, stream_task).await,
+    ) {
+        (Ok(end), Ok(())) => Ok(end),
+        (Ok(_), Err(cleanup_err)) => Err(cleanup_err),
+        (Err(primary_err), Ok(())) => Err(primary_err),
+        (Err(primary_err), Err(cleanup_err)) => {
+            log_ws_connection_error("cancel websocket stream task", &cleanup_err);
+            Err(primary_err)
+        }
+    }
 }
 
 async fn cancel_stream_task(
     stream_cancelled: &Arc<AtomicBool>,
     rx: &mut Option<mpsc::Receiver<String>>,
     stream_task: &mut tokio::task::JoinHandle<()>,
-) -> Result<(), ()> {
+) -> Result<(), WsConnectionError> {
     stream_cancelled.store(true, Ordering::Relaxed);
     let _ = rx.take();
     wait_for_stream_task(stream_task).await
 }
 
-async fn wait_for_stream_task(stream_task: &mut tokio::task::JoinHandle<()>) -> Result<(), ()> {
+async fn wait_for_stream_task(
+    stream_task: &mut tokio::task::JoinHandle<()>,
+) -> Result<(), WsConnectionError> {
     match tokio::time::timeout(WS_STREAM_TASK_SHUTDOWN_TIMEOUT, &mut *stream_task).await {
         Ok(Ok(())) => Ok(()),
         Ok(Err(err)) => {
             warn!(error = %err, "WS stream task failed");
-            Err(())
+            Err(WsConnectionError::StreamTaskFailed { source: err })
         }
         Err(_) => {
             warn!(
@@ -766,29 +914,33 @@ async fn wait_for_stream_task(stream_task: &mut tokio::task::JoinHandle<()>) -> 
                 "WS stream task shutdown timed out; aborting"
             );
             stream_task.abort();
-            Err(())
+            Err(WsConnectionError::StreamTaskShutdownTimedOut {
+                timeout_ms: WS_STREAM_TASK_SHUTDOWN_TIMEOUT.as_millis(),
+            })
         }
     }
 }
 
 async fn close_websocket_after_stream_completion(socket: &mut WebSocket) {
-    if tokio::time::timeout(WS_SEND_TIMEOUT, socket.send(Message::Close(None)))
-        .await
-        .is_err()
+    if let Err(WsConnectionError::SendTimeout { timeout_ms }) =
+        send_ws_message(socket, Message::Close(None)).await
     {
         warn!(
-            timeout_ms = WS_SEND_TIMEOUT.as_millis(),
+            timeout_ms,
             "Timed out sending websocket close frame after stream completion"
         );
     }
 }
 
-async fn send_rpc_response(socket: &mut WebSocket, response: &RpcResponse) -> Result<(), ()> {
+async fn send_rpc_response(
+    socket: &mut WebSocket,
+    response: &RpcResponse,
+) -> Result<(), WsConnectionError> {
     let payload = match serde_json::to_string(response) {
         Ok(payload) => payload,
         Err(err) => {
             error!(error = %err, "Failed to serialize WS RPC response");
-            return Err(());
+            return Err(WsConnectionError::SerializeResponse { source: err });
         }
     };
     send_ws_message(socket, Message::Text(payload)).await

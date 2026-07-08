@@ -150,6 +150,19 @@ where
     }
 }
 
+fn assert_no_ws_connection_warnings(events: &[String]) {
+    let output = events.join("\n");
+    assert!(
+        !output.contains("message=WS connection closed unexpectedly"),
+        "{output}"
+    );
+    assert!(!output.contains("message=WS connection failed"), "{output}");
+    assert!(
+        !output.contains("message=Timed out sending websocket close frame after stream completion"),
+        "{output}"
+    );
+}
+
 struct TestWsServer {
     _server_lock: std::sync::MutexGuard<'static, ()>,
     _tempdir: TempDir,
@@ -663,6 +676,46 @@ fn ws_missing_pong_disconnects_stream_connection() {
 }
 
 #[test]
+fn ws_stream_peer_close_is_quiet() {
+    let recorder = EventRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+
+    tracing::subscriber::with_default(subscriber, || {
+        tracing::callsite::rebuild_interest_cache();
+        let server = TestWsServer::start();
+        let browser_origin = server.browser_origin();
+        let (mut socket, _response) = websocket_connect(
+            &server.ws_alias_url("/api/v1/stream"),
+            Some(&browser_origin),
+        );
+        set_websocket_read_timeout(&mut socket);
+        socket
+            .send(WsMessage::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 17,
+                    "method": "flightdeck_stream",
+                    "params": {
+                        "interval_ms": 1000,
+                    }
+                })
+                .to_string(),
+            ))
+            .expect("send flightdeck request");
+
+        let ready: Value =
+            serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("json");
+        assert_eq!(ready["result"]["event"], "ready");
+
+        socket.close(None).expect("send close frame");
+        std::thread::park_timeout(Duration::from_millis(100));
+        tracing::callsite::rebuild_interest_cache();
+    });
+
+    assert_no_ws_connection_warnings(&recorder.captured());
+}
+
+#[test]
 fn api_stream_alias_accepts_authenticated_flightdeck_stream() {
     let server = TestWsServer::start();
     let browser_origin = server.browser_origin();
@@ -834,6 +887,84 @@ fn live_preview_stream_over_ws_emits_ready_init_output_and_closed() {
         "expected websocket JSON closed event after shell exit"
     );
     assert_websocket_close_frame(&mut socket);
+}
+
+#[test]
+fn live_preview_stream_client_disconnect_after_closed_event_is_quiet() {
+    let recorder = EventRecorder::default();
+    let subscriber = tracing_subscriber::registry().with(recorder.clone());
+
+    tracing::subscriber::with_default(subscriber, || {
+        tracing::callsite::rebuild_interest_cache();
+        let server = TestWsServer::start();
+        let spawn_response = server.core.route(RpcRequest::new(
+            1,
+            "spawn".to_string(),
+            Some(serde_json::json!({
+                "command": "sh",
+                "args": [],
+                "session": "ws-quiet-close-session",
+            })),
+        ));
+        let spawn_payload = serde_json::to_value(spawn_response).expect("spawn response value");
+        let session_id = spawn_payload["result"]["session_id"]
+            .as_str()
+            .expect("session id")
+            .to_string();
+
+        let browser_origin = server.browser_origin();
+        let (mut socket, _response) = websocket_connect(&server.ws_url, Some(&browser_origin));
+        set_websocket_read_timeout(&mut socket);
+        socket
+            .send(WsMessage::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 19,
+                    "method": "live_preview_stream",
+                    "params": {
+                        "session": session_id,
+                    }
+                })
+                .to_string(),
+            ))
+            .expect("send live preview request");
+
+        let ready: Value =
+            serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("ready json");
+        assert_eq!(ready["result"]["event"], "ready");
+
+        let init: Value =
+            serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("init json");
+        assert_eq!(init["result"]["event"], "init");
+
+        let write_response = server.core.route(RpcRequest::new(
+            2,
+            "pty_write".to_string(),
+            Some(serde_json::json!({
+                "session": session_id,
+                "data": base64::engine::general_purpose::STANDARD.encode("exit\n"),
+            })),
+        ));
+        let write_payload = serde_json::to_value(write_response).expect("write response value");
+        assert_eq!(write_payload["result"]["success"], true);
+
+        let mut saw_closed = false;
+        for _ in 0..64 {
+            let payload: Value = serde_json::from_str(&read_text_responding_to_pings(&mut socket))
+                .expect("stream json");
+            if payload["result"]["event"] == "closed" {
+                saw_closed = true;
+                break;
+            }
+        }
+        assert!(saw_closed, "expected closed event before disconnect");
+
+        drop(socket);
+        std::thread::park_timeout(Duration::from_millis(100));
+        tracing::callsite::rebuild_interest_cache();
+    });
+
+    assert_no_ws_connection_warnings(&recorder.captured());
 }
 
 #[test]

@@ -79,19 +79,19 @@ cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/
 Active distribution channels are GitHub Releases, install script, npm, crates.io, source install, and Homebrew. Before and after a release, verify all active channels:
 
 ```bash
-just release-channel-verify 1.0.2
+just release-channel-verify 1.1.0
 ```
 
 To check one channel at a time, run the read-only release gate from `cli/`:
 
 ```bash
 cd cli
-cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel github-releases
-cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel install-script
-cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel npm
-cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel crates-io
-cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel source-install
-cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel homebrew
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.1.0 --channel github-releases
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.1.0 --channel install-script
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.1.0 --channel npm
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.1.0 --channel crates-io
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.1.0 --channel source-install
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.1.0 --channel homebrew
 ```
 
 Every channel smoke should report the same `agent-tui --version` for the target release.

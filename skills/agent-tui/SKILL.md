@@ -16,15 +16,17 @@ description: >
 - If you used the install script, ensure `~/.local/bin` is on your PATH.
 - Start a session: `agent-tui run --format json <command> -- <args...>`
 - Observe: `agent-tui screenshot --format json`
-- Act: `agent-tui press Enter` or `agent-tui type "text"`
+- Act: `agent-tui press Enter`, `agent-tui type "text"`, or `agent-tui scroll down`
 - Wait or verify: `agent-tui wait "Expected text" --assert` or `agent-tui wait --stable`
 - Cleanup: `agent-tui kill --yes`
 
 ## Core workflow
+Current automation loop: `run -> screenshot -> press/type/scroll -> wait -> kill --yes`.
+
 1. Run the app with `agent-tui run` and capture `session_id` from JSON output.
 2. Take a fresh snapshot with `agent-tui screenshot` or `agent-tui screenshot --format json`.
 3. Decide the next action based on the latest snapshot.
-4. Act with `press` or `type`.
+4. Act with `press`, `type`, or `scroll`.
 5. Synchronize with `wait --assert` or `wait --stable`.
 6. Repeat from step 2 until the task finishes.
 7. Clean up with `agent-tui kill --yes`.
@@ -34,6 +36,17 @@ description: >
 - Never act on a changing screen; wait for stability first.
 - Verify outcomes with `wait --assert` instead of assuming success.
 - Always end automation runs with `kill --yes` or `sessions cleanup --yes`.
+
+## Legacy migration
+Use current commands for new scripts. Legacy compatibility forms still parse for old scripts, but each one writes its deprecation notice to stderr, keeps JSON stdout parseable, and is covered by the next-major removal window.
+
+- `agent-tui input "text"` -> `agent-tui type "text"`.
+- `agent-tui action <selector> click` -> `agent-tui press Enter`.
+- `agent-tui action <selector> fill <text>` -> `agent-tui type "<text>"`.
+- `agent-tui screenshot -e` -> `agent-tui screenshot`.
+- `agent-tui screenshot -a` -> `agent-tui screenshot`.
+- `agent-tui wait -e <ref>` -> `agent-tui wait "<text>"`.
+- `agent-tui scroll-into-view <selector>` -> `agent-tui scroll <direction> [amount]` or `agent-tui press ...`; the compatibility command does not send terminal input.
 
 ## Session handling
 - Use `--session <id>` for every command if more than one session exists.

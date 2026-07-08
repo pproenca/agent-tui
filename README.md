@@ -74,6 +74,28 @@ cargo install --path cli/crates/agent-tui --locked
 cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui --locked
 ```
 
+### Release channel verification
+
+Active distribution channels are GitHub Releases, install script, npm, crates.io, source install, and Homebrew. Before and after a release, verify all active channels:
+
+```bash
+just release-channel-verify 1.0.2
+```
+
+To check one channel at a time, run the read-only release gate from `cli/`:
+
+```bash
+cd cli
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel github-releases
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel install-script
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel npm
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel crates-io
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel source-install
+cargo run -p xtask -- release-channels verify --dry-run --target-version 1.0.2 --channel homebrew
+```
+
+Every channel smoke should report the same `agent-tui --version` for the target release.
+
 ### Environment Variables
 
 | Variable | Description |
@@ -98,12 +120,13 @@ agent-tui screenshot
 # Send keyboard input
 agent-tui press Enter
 agent-tui type "hello world"
+agent-tui scroll down
 
 # Wait for conditions
-agent-tui wait "Loading complete"
+agent-tui wait "Loading complete" --assert
 
 # Stop the session
-agent-tui kill
+agent-tui kill --yes
 ```
 
 ## CLI Reference
@@ -113,6 +136,8 @@ For the full CLI reference (auto-generated from clap), see `docs/cli/agent-tui.m
 You can also run:
 - `agent-tui --help`
 - `agent-tui <command> --help`
+
+Legacy compatibility commands still parse for older automation, but they emit deprecation notices on stderr, preserve JSON stdout validity, and are planned for removal in the next major release. Prefer current commands in new scripts; see `skills/agent-tui/SKILL.md` for the migration table covering `input`, `action`, `screenshot -e`, `screenshot -a`, `wait -e`, and `scroll-into-view`.
 
 ## Output Formats
 

@@ -28,6 +28,16 @@ impl Read for ChunkedReader {
     }
 }
 
+#[cfg(unix)]
+struct EioReader;
+
+#[cfg(unix)]
+impl Read for EioReader {
+    fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+        Err(io::Error::from_raw_os_error(libc::EIO))
+    }
+}
+
 fn spawn_test_reader(
     reader: ChunkedReader,
 ) -> (channel::Receiver<ReadEvent>, thread::JoinHandle<()>) {
@@ -175,6 +185,26 @@ fn reader_channel_is_unbounded_for_output_events() {
         saw_eof,
         "reader should terminate cleanly after draining input"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn forward_read_event_treats_pty_eio_as_eof() {
+    let (tx, rx) = channel::bounded(1);
+    let mut reader = EioReader;
+    let mut buf = [0u8; 8192];
+
+    assert!(
+        !forward_read_event(&mut reader, &tx, &mut buf),
+        "EIO should terminate the PTY reader loop"
+    );
+
+    match rx.recv_timeout(Duration::from_secs(1)) {
+        Ok(ReadEvent::Eof) => {}
+        Ok(ReadEvent::Data(data)) => panic!("expected EOF, got data: {data:?}"),
+        Ok(ReadEvent::Error(error)) => panic!("expected EOF, got error: {error}"),
+        Err(err) => panic!("expected EOF event, got channel error: {err}"),
+    }
 }
 
 #[cfg(unix)]

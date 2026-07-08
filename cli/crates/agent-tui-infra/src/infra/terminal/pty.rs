@@ -590,12 +590,27 @@ fn forward_read_event<R: Read>(
         }
         Ok(n) => tx.send(ReadEvent::Data(buf[..n].to_vec())).is_ok(),
         Err(err) if err.kind() == io::ErrorKind::Interrupted => true,
+        Err(err) if read_error_is_pty_eof(&err) => {
+            let _ = tx.send(ReadEvent::Eof);
+            debug!("PTY reader EOF");
+            false
+        }
         Err(err) => {
             warn!(error = %err, "PTY reader error");
             let _ = tx.send(ReadEvent::Error(err.to_string()));
             false
         }
     }
+}
+
+#[cfg(unix)]
+fn read_error_is_pty_eof(err: &io::Error) -> bool {
+    err.raw_os_error() == Some(libc::EIO)
+}
+
+#[cfg(not(unix))]
+fn read_error_is_pty_eof(_err: &io::Error) -> bool {
+    false
 }
 
 enum ReaderPoll {

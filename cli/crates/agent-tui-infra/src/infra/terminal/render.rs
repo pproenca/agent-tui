@@ -2,8 +2,6 @@
 
 use std::io::Write;
 
-use crossterm::queue;
-use crossterm::style;
 use tracing::debug;
 
 use super::CellStyle;
@@ -52,25 +50,23 @@ fn render_rows<'a>(rows: impl IntoIterator<Item = &'a [Cell]>) -> String {
             for cell in &row[col..run_end] {
                 text.push(cell.char);
             }
-            if let Err(err) = queue!(out, style::Print(text)) {
+            if let Err(err) = out.write_all(text.as_bytes()) {
                 debug!(error = %err, "Failed to write terminal text");
             }
             col = run_end;
         }
 
-        if rows.peek().is_some() {
-            let newline_result = queue!(out, style::Print("\r\n"));
-            if let Err(err) = newline_result {
-                debug!(error = %err, "Failed to write terminal newline");
-            }
+        if rows.peek().is_some()
+            && let Err(err) = out.write_all(b"\r\n")
+        {
+            debug!(error = %err, "Failed to write terminal newline");
         }
     }
 
-    if current_style.is_some() {
-        let reset_result = queue!(out, style::SetAttribute(style::Attribute::Reset));
-        if let Err(err) = reset_result {
-            debug!(error = %err, "Failed to reset terminal style");
-        }
+    if current_style.is_some()
+        && let Err(err) = write_sgr(&mut out, "0")
+    {
+        debug!(error = %err, "Failed to reset terminal style");
     }
 
     String::from_utf8(out).unwrap_or_else(|err| {
@@ -80,32 +76,37 @@ fn render_rows<'a>(rows: impl IntoIterator<Item = &'a [Cell]>) -> String {
 }
 
 fn apply_style(out: &mut impl Write, style: &CellStyle) -> std::io::Result<()> {
-    queue!(out, style::SetAttribute(style::Attribute::Reset))?;
+    write_sgr(out, "0")?;
 
     if style.bold {
-        queue!(out, style::SetAttribute(style::Attribute::Bold))?;
+        write_sgr(out, "1")?;
     }
     if style.underline {
-        queue!(out, style::SetAttribute(style::Attribute::Underlined))?;
+        write_sgr(out, "4")?;
     }
     if style.inverse {
-        queue!(out, style::SetAttribute(style::Attribute::Reverse))?;
+        write_sgr(out, "7")?;
     }
 
-    let fg = style.fg_color.unwrap_or(Color::Default);
-    let bg = style.bg_color.unwrap_or(Color::Default);
-
-    queue!(out, style::SetForegroundColor(to_crossterm_color(fg)))?;
-    queue!(out, style::SetBackgroundColor(to_crossterm_color(bg)))?;
+    if let Some(fg) = style.fg_color.filter(|color| *color != Color::Default) {
+        write_color_sgr(out, 38, fg)?;
+    }
+    if let Some(bg) = style.bg_color.filter(|color| *color != Color::Default) {
+        write_color_sgr(out, 48, bg)?;
+    }
 
     Ok(())
 }
 
-fn to_crossterm_color(color: Color) -> style::Color {
+fn write_sgr(out: &mut impl Write, params: &str) -> std::io::Result<()> {
+    write!(out, "\x1b[{params}m")
+}
+
+fn write_color_sgr(out: &mut impl Write, prefix: u8, color: Color) -> std::io::Result<()> {
     match color {
-        Color::Default => style::Color::Reset,
-        Color::Indexed(idx) => style::Color::AnsiValue(idx),
-        Color::Rgb(r, g, b) => style::Color::Rgb { r, g, b },
+        Color::Default => Ok(()),
+        Color::Indexed(idx) => write_sgr(out, &format!("{prefix};5;{idx}")),
+        Color::Rgb(r, g, b) => write_sgr(out, &format!("{prefix};2;{r};{g};{b}")),
     }
 }
 

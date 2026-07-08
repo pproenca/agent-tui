@@ -460,7 +460,8 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                         parse_errors = 0;
 
                         if let Some(kind) = RpcCore::stream_kind_for_method(&request.method) {
-                            if run_stream_connection(&state, &mut socket, request, kind).await.is_err() {
+                            let stream_result = run_stream_connection(&state, &mut socket, request, kind).await;
+                            if stream_result.is_err() {
                                 break;
                             }
                             break;

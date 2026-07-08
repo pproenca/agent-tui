@@ -16,6 +16,17 @@ just release-channel-inventory
 just release-channel-verify 1.0.2
 ```
 
+To verify only part of the release surface, call `xtask` directly with one or more `--channel` values:
+
+```bash
+cd cli
+cargo run -p xtask -- release-channels verify \
+  --target-version 1.0.2 \
+  --channel github-releases \
+  --channel install-script \
+  --channel npm
+```
+
 For CI or local tests that must not depend on live public registry state, pass a fixture file. Relative fixture paths are resolved from `cli/`; absolute paths are accepted.
 
 ```bash

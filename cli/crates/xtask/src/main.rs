@@ -149,6 +149,8 @@ struct ReleaseChannelsVerifyArgs {
     target_version: Option<String>,
     #[arg(long)]
     fixtures: Option<String>,
+    #[arg(long = "channel")]
+    channels: Vec<String>,
     #[arg(
         long,
         help = "Accepted for CI clarity; release-channel verification is always read-only"
@@ -1365,13 +1367,20 @@ fn release_channels_verify(root: &Path, args: &ReleaseChannelsVerifyArgs) -> Res
         Some(version) => ensure_semver(version)?,
         None => read_cargo_version(&cargo_toml_path(root))?,
     };
+    let selected_channels = selected_release_channels(&args.channels)?;
 
     let report = if let Some(fixtures) = &args.fixtures {
         let fixture_path = path_from_root(root, fixtures);
         let fixture = read_release_channel_fixture(&fixture_path)?;
-        verify_release_channel_fixture(&target_version, &fixture)
+        let report = verify_release_channel_fixture(&target_version, &fixture);
+        filter_release_channel_report(report, &selected_channels)
     } else {
-        verify_release_channels_live(root, &target_version, &args.homebrew_formula_url)
+        verify_release_channels_live(
+            root,
+            &target_version,
+            &args.homebrew_formula_url,
+            &selected_channels,
+        )
     };
 
     print_release_channel_report(&target_version, args.dry_run, &report);
@@ -1411,16 +1420,72 @@ fn verify_release_channels_live(
     root: &Path,
     target_version: &str,
     homebrew_formula_url: &str,
+    selected_channels: &BTreeSet<&'static str>,
+) -> ReleaseChannelReport {
+    let mut statuses = Vec::new();
+    if selected_channels.contains(CHANNEL_GITHUB_RELEASES) {
+        statuses.push(verify_github_release_live(target_version));
+    }
+    if selected_channels.contains(CHANNEL_NPM) {
+        statuses.push(verify_npm_live(target_version));
+    }
+    if selected_channels.contains(CHANNEL_CRATES_IO) {
+        statuses.push(verify_crates_io_live(target_version));
+    }
+    if selected_channels.contains(CHANNEL_HOMEBREW) {
+        statuses.push(verify_homebrew_live(target_version, homebrew_formula_url));
+    }
+    if selected_channels.contains(CHANNEL_INSTALL_SCRIPT) {
+        statuses.push(verify_install_script_live(root));
+    }
+    if selected_channels.contains(CHANNEL_SOURCE_INSTALL) {
+        statuses.push(verify_source_install_live(root, target_version));
+    }
+
+    ReleaseChannelReport { statuses }
+}
+
+fn selected_release_channels(selected_channels: &[String]) -> Result<BTreeSet<&'static str>> {
+    let known_channels = release_channel_inventory()
+        .iter()
+        .map(|channel| channel.name)
+        .collect::<BTreeSet<_>>();
+
+    if selected_channels.is_empty() {
+        return Ok(known_channels);
+    }
+
+    let mut selected = BTreeSet::new();
+    for raw in selected_channels {
+        let channel = raw.trim();
+        let Some(matched) = known_channels
+            .iter()
+            .copied()
+            .find(|known| *known == channel)
+        else {
+            let expected = known_channels
+                .iter()
+                .copied()
+                .collect::<Vec<_>>()
+                .join(", ");
+            bail!("unknown release channel: {channel}. Expected one of: {expected}");
+        };
+        selected.insert(matched);
+    }
+
+    Ok(selected)
+}
+
+fn filter_release_channel_report(
+    report: ReleaseChannelReport,
+    selected_channels: &BTreeSet<&'static str>,
 ) -> ReleaseChannelReport {
     ReleaseChannelReport {
-        statuses: vec![
-            verify_github_release_live(target_version),
-            verify_npm_live(target_version),
-            verify_crates_io_live(target_version),
-            verify_homebrew_live(target_version, homebrew_formula_url),
-            verify_install_script_live(root),
-            verify_source_install_live(root, target_version),
-        ],
+        statuses: report
+            .statuses
+            .into_iter()
+            .filter(|status| selected_channels.contains(status.channel))
+            .collect::<Vec<_>>(),
     }
 }
 

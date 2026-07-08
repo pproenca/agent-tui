@@ -9,7 +9,7 @@ Use this file when runs are flaky, stalled, or inconsistent.
 - No active session: `sessions` to list; re-run `run` if needed.
 - Daemon not running: `daemon start`.
 - Version mismatch: `daemon restart`.
-- Unresponsive session: `kill`, then re-run.
+- Unresponsive session: `kill --yes`, then re-run.
 - Layout missing/overflow: `resize --cols --rows`, re-snapshot.
 
 ## Retry Budget
@@ -17,5 +17,5 @@ Use this file when runs are flaky, stalled, or inconsistent.
 - If still failing, stop and ask the user for guidance or updated expectations.
 
 ## Escalation
-- Last resort: `daemon stop --force` then `daemon start`.
+- Last resort: `daemon stop --force --yes` then `daemon start`.
 - Warn that `daemon restart` terminates all sessions.

@@ -20,9 +20,9 @@ Use this file when you need complete CLI coverage and exact options.
 ### Screenshot
 - `agent-tui screenshot`
 - Options:
-  - `--region <name>`: limit capture to region (if supported).
+  - `--region <name>`: reserved for named regions; currently rejected until region capture is supported.
   - `--strip-ansi`: remove ANSI color codes.
-  - `--include-cursor`: include cursor position.
+  - `--include-cursor`: include cursor position in JSON/text output.
 
 ### Resize / Restart
 - `agent-tui resize --cols <n> --rows <n>`
@@ -40,10 +40,11 @@ Use this file when you need complete CLI coverage and exact options.
 - Modifiers:
   - `-g, --gone`: wait for text to disappear.
   - `-t, --timeout <ms>`: timeout in milliseconds (default 30000).
-  - `--assert`: exit code 1 on timeout (0 on success).
+  - `--assert`: exit code 75 on timeout (0 on success).
 
 ### Kill
-- `agent-tui kill`
+- `agent-tui kill [--yes|--dry-run]`
+- Use `agent-tui kill --yes` for no-input automation cleanup.
 
 ### Sessions
 - `agent-tui sessions` (list)
@@ -59,13 +60,14 @@ Use this file when you need complete CLI coverage and exact options.
 - `agent-tui live start [--open] [--browser <cmd>]`
 - `agent-tui live status`
 - `agent-tui live stop`
+- `live stop` clears standalone preview state. Daemon-backed preview remains served until `agent-tui daemon stop --yes`.
 - Options:
   - `--open`: open UI in browser (uses `AGENT_TUI_UI_URL` if set).
   - `--browser <cmd>`: override `$BROWSER`.
 
 ### Daemon
 - `agent-tui daemon start`
-- `agent-tui daemon stop [--force]`
+- `agent-tui daemon stop [--force] --yes`
 - `agent-tui daemon restart`
 
 ### Utilities

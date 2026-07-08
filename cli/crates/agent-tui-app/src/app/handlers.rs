@@ -923,7 +923,19 @@ pub(crate) fn handle_session_switch<C: DaemonClient>(
         session: Some(session_id),
     };
     let result = call_with_params(ctx.client, "attach", params)?;
-    ctx.output_success_and_ok(&result, &success_message, "Switch failed")
+    let success = result.bool_or("success", false);
+    let result_session_id = result.str_or("session_id", "unknown");
+    let message = if success {
+        format!("Switched active session to {result_session_id}")
+    } else {
+        result.str_or("message", "Unknown error").to_string()
+    };
+    let switch_result = RpcValue::new(serde_json::json!({
+        "success": success,
+        "session_id": result_session_id,
+        "message": message
+    }));
+    ctx.output_success_and_ok(&switch_result, &success_message, "Switch failed")
 }
 
 pub(crate) fn handle_live_start<C: DaemonClient>(

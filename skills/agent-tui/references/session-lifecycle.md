@@ -6,7 +6,7 @@ Use this file when managing multiple sessions or debugging stuck runs.
 1) `run` creates a session and returns `session_id`.
 2) Commands without `--session` target the most recent session.
 3) Use `--session <id>` when multiple sessions exist.
-4) End sessions with `kill` or `sessions cleanup`.
+4) End automation sessions with `kill --yes` or `sessions cleanup --yes`.
 
 ## Recommended Pattern
 - Capture `session_id` from `run` JSON output.
@@ -17,13 +17,13 @@ Use this file when managing multiple sessions or debugging stuck runs.
 - `sessions`: list active sessions.
 - `sessions show <id>`: show session details.
 - `sessions switch <id>`: set the active session.
-- `sessions attach`: attach in TTY mode (detach with Ctrl-P Ctrl-Q). Use `-s <id>` to target a specific session.
+- `sessions attach`: attach in TTY mode (detach with Ctrl-P Ctrl-B). Use `-s <id>` to target a specific session.
 - `-s <id> sessions attach -T`: stream output only (no TTY).
 
 ## Cleanup and Recovery
-- `kill`: terminate the current session.
-- `sessions cleanup`: remove dead/orphaned sessions.
-- `sessions cleanup --all`: remove all sessions (including active).
+- `kill --yes`: terminate the current session without prompting.
+- `sessions cleanup --yes`: remove dead/orphaned sessions without prompting.
+- `sessions cleanup --all --yes`: remove all sessions (including active) without prompting.
 
 ## Restart Behavior
 - `restart`: restart the current session command.

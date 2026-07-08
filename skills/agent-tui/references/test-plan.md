@@ -13,7 +13,7 @@ Use this file when writing step-by-step tests.
 - Step 2: Action (`press`, `type`)
 - Step 3: `wait --assert` for expected text or `wait --stable`
 - Step 4: Repeat until done
-- Step 5: Cleanup (`kill`)
+- Step 5: Cleanup (`kill --yes`)
 
 ## Example
 1) `agent-tui run <app>`
@@ -22,4 +22,4 @@ Use this file when writing step-by-step tests.
 4) `agent-tui --session <id> type "value"`
 5) `agent-tui --session <id> press Enter`
 6) `agent-tui --session <id> wait "Success" --assert`
-7) `agent-tui --session <id> kill`
+7) `agent-tui --session <id> kill --yes`

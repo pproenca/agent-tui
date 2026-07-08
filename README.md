@@ -157,7 +157,7 @@ agent-tui screenshot --json
 | `AGENT_TUI_WS_QUEUE` | WS outbound queue size | `128` |
 | `AGENT_TUI_SESSION_STORE` | Session metadata log path | `~/.agent-tui/sessions.jsonl` |
 | `AGENT_TUI_UI_URL` | External UI URL | - |
-| `AGENT_TUI_DETACH_KEYS` | Attach detach key sequence | `Ctrl-P Ctrl-Q` |
+| `AGENT_TUI_DETACH_KEYS` | Attach detach key sequence | `Ctrl-P Ctrl-B` |
 | `AGENT_TUI_LOG` | Log file path (optional) | - |
 | `AGENT_TUI_LOG_FORMAT` | Log format (`text` or `json`) | `text` |
 | `AGENT_TUI_LOG_STREAM` | Log output stream (`stderr` or `stdout`) | `stderr` |

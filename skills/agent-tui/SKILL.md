@@ -18,7 +18,7 @@ description: >
 - Observe: `agent-tui screenshot --format json`
 - Act: `agent-tui press Enter` or `agent-tui type "text"`
 - Wait or verify: `agent-tui wait "Expected text" --assert` or `agent-tui wait --stable`
-- Cleanup: `agent-tui kill`
+- Cleanup: `agent-tui kill --yes`
 
 ## Core workflow
 1. Run the app with `agent-tui run` and capture `session_id` from JSON output.
@@ -27,13 +27,13 @@ description: >
 4. Act with `press` or `type`.
 5. Synchronize with `wait --assert` or `wait --stable`.
 6. Repeat from step 2 until the task finishes.
-7. Clean up with `agent-tui kill`.
+7. Clean up with `agent-tui kill --yes`.
 
 ## Reliability rules
 - Re-snapshot after every action that could change the UI.
 - Never act on a changing screen; wait for stability first.
 - Verify outcomes with `wait --assert` instead of assuming success.
-- Always end runs with `kill` or `sessions cleanup`.
+- Always end automation runs with `kill --yes` or `sessions cleanup --yes`.
 
 ## Session handling
 - Use `--session <id>` for every command if more than one session exists.
@@ -42,7 +42,7 @@ description: >
 ## Live preview (optional)
 - Ask whether a live preview is desired.
 - Start preview: `agent-tui live start --open`
-- Stop preview when done: `agent-tui live stop`
+- Stop standalone preview state with `agent-tui live stop`; daemon-backed preview remains available until `agent-tui daemon stop --yes`.
 
 ## Deep-dive references
 - Full CLI coverage and options: `references/command-atlas.md`

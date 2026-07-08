@@ -924,6 +924,10 @@ impl Application {
             }
 
             Commands::Type { text } => handlers::handle_type(ctx, text)?,
+            Commands::Input { text } => {
+                handlers::warn_legacy_deprecation("input", "type");
+                handlers::handle_type(ctx, text)?
+            }
             Commands::Scroll { direction, amount } => {
                 handlers::handle_scroll(ctx, direction, amount)?
             }

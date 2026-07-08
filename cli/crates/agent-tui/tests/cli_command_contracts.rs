@@ -195,6 +195,7 @@ fn command_paths_match_expected_matrix() {
         "daemon status".to_string(),
         "daemon stop".to_string(),
         "env".to_string(),
+        "input".to_string(),
         "kill".to_string(),
         "live".to_string(),
         "live start".to_string(),
@@ -264,6 +265,11 @@ fn rpc_contract_matrix_covers_full_working_surface() {
         },
         CommandCase {
             args: &["type", "hello"],
+            expected_method: "type",
+            setup: no_setup,
+        },
+        CommandCase {
+            args: &["input", "hello"],
             expected_method: "type",
             setup: no_setup,
         },
@@ -373,6 +379,78 @@ fn type_dash_reads_from_stdin() {
         "type",
         json!({
             "text": "hello from stdin"
+        }),
+    );
+}
+
+#[test]
+fn legacy_input_alias_types_text_and_warns_to_stderr() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["input", "hello legacy"])
+        .success()
+        .stdout(predicate::str::contains("Text typed"))
+        .stderr(predicate::str::contains(
+            "agent-tui input is deprecated; use `agent-tui type` instead. It will be deprecated in the next major release.",
+        ));
+
+    harness.assert_method_called_with(
+        "type",
+        json!({
+            "text": "hello legacy"
+        }),
+    );
+}
+
+#[test]
+fn legacy_input_json_stdout_stays_valid_and_notice_stays_on_stderr() {
+    let harness = TestHarness::new();
+
+    let output = harness
+        .cli_command()
+        .args(["--format", "json", "input", "hello json"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "agent-tui input is deprecated; use `agent-tui type` instead. It will be deprecated in the next major release.",
+        ))
+        .get_output()
+        .clone();
+
+    let stdout_text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout_text.contains("deprecated"),
+        "deprecation notice must not be written to JSON stdout: {stdout_text}"
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout).expect("valid JSON stdout");
+    assert_eq!(parsed["success"], true);
+
+    harness.assert_method_called_with(
+        "type",
+        json!({
+            "text": "hello json"
+        }),
+    );
+}
+
+#[test]
+fn legacy_input_no_input_mode_does_not_prompt() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["--no-input", "input", "hello automation"])
+        .success()
+        .stdout(predicate::str::contains("Text typed"))
+        .stderr(predicate::str::contains(
+            "agent-tui input is deprecated; use `agent-tui type` instead. It will be deprecated in the next major release.",
+        ))
+        .stderr(predicate::str::contains("Confirmation required").not());
+
+    harness.assert_method_called_with(
+        "type",
+        json!({
+            "text": "hello automation"
         }),
     );
 }

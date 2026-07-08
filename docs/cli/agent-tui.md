@@ -22,6 +22,7 @@ Commands:
   restart      Restart the current session
   press        Send key press(es) to the terminal (supports modifier hold/release)
   type         Type literal text character by character
+  input        Legacy alias for `type`
   scroll       Scroll using repeated directional terminal input
   wait         Wait for text or screenshot stability
   kill         Kill the current session
@@ -47,7 +48,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -56,13 +57,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 WORKFLOW:
@@ -156,12 +157,12 @@ Environment:
 Terminal Size:
       --cols <COLS>
           Terminal columns (default: 120)
-          
+
           [default: 120]
 
       --rows <ROWS>
           Terminal rows (default: 40)
-          
+
           [default: 40]
 
 Session Options:
@@ -171,7 +172,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -180,13 +181,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -230,7 +231,7 @@ Output Options:
 
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -239,7 +240,7 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Session Options:
@@ -249,7 +250,7 @@ Session Options:
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -285,7 +286,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -294,13 +295,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -334,7 +335,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -343,13 +344,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -389,7 +390,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -398,13 +399,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 NOTES:
@@ -445,7 +446,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -454,19 +455,65 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
     agent-tui type "hello world"
     agent-tui type "user@example.com"
     printf 'project-name' | agent-tui type -
+```
+
+## `agent-tui input`
+
+```text
+Legacy alias for `agent-tui type`.
+
+Use `agent-tui type` for new scripts.
+
+Usage: input [OPTIONS] <TEXT>
+
+Arguments:
+  <TEXT>
+          Text to type
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Session Options:
+  -s, --session <ID>
+          Session ID to use (defaults to the most recent session)
+
+Output Options:
+  -f, --format <FORMAT>
+          Output format (text or json)
+
+          [default: text]
+          [possible values: text, json]
+
+      --json
+          Shorthand for --format json (overrides --format if both are set)
+
+      --no-color
+          Disable colored output (also respects NO_COLOR)
+
+          [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+
+          [env: AGENT_TUI_NO_INPUT=]
 ```
 
 ## `agent-tui scroll`
@@ -485,12 +532,12 @@ Usage: scroll [OPTIONS] <DIRECTION> [AMOUNT]
 Arguments:
   <DIRECTION>
           Direction to move
-          
+
           [possible values: up, down, left, right]
 
   [AMOUNT]
           Number of steps to send
-          
+
           [default: 1]
 
 Options:
@@ -507,7 +554,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -516,13 +563,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -564,7 +611,7 @@ Options:
 Timing:
   -t, --timeout <MILLIS>
           Timeout in milliseconds (default: 30000)
-          
+
           [default: 30000]
 
 Wait Condition:
@@ -585,7 +632,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -594,13 +641,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -637,7 +684,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -646,13 +693,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -698,7 +745,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -707,13 +754,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -750,7 +797,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -759,13 +806,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -782,7 +829,7 @@ Usage: show [OPTIONS] <ID>
 
 Arguments:
   <ID>
-          
+
 
 Options:
   -h, --help
@@ -798,7 +845,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -807,13 +854,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -834,7 +881,7 @@ Options:
 
       --detach-keys <KEYS>
           Detach key sequence (docker-style, e.g. "ctrl-p,ctrl-b"; use "none" to disable)
-          
+
           [env: AGENT_TUI_DETACH_KEYS=]
 
   -h, --help
@@ -850,7 +897,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -859,13 +906,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 NOTES:
@@ -886,7 +933,7 @@ Usage: switch [OPTIONS] <ID>
 
 Arguments:
   <ID>
-          
+
 
 Options:
   -h, --help
@@ -902,7 +949,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -911,13 +958,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -955,7 +1002,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -964,13 +1011,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1030,7 +1077,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1039,13 +1086,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1081,7 +1128,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1090,13 +1137,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1125,7 +1172,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1134,13 +1181,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1169,7 +1216,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1178,13 +1225,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1236,7 +1283,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1245,13 +1292,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1284,7 +1331,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1293,13 +1340,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1331,7 +1378,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1340,13 +1387,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1388,7 +1435,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1397,13 +1444,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1439,7 +1486,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1448,13 +1495,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1494,7 +1541,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1503,13 +1550,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1553,7 +1600,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1562,13 +1609,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1600,7 +1647,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1609,13 +1656,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:
@@ -1663,7 +1710,7 @@ Session Options:
 Output Options:
   -f, --format <FORMAT>
           Output format (text or json)
-          
+
           [default: text]
           [possible values: text, json]
 
@@ -1672,13 +1719,13 @@ Output Options:
 
       --no-color
           Disable colored output (also respects NO_COLOR)
-          
+
           [env: NO_COLOR=1]
 
 Interaction Options:
       --no-input
           Disable prompts and interactive TTY behavior; require explicit flags instead
-          
+
           [env: AGENT_TUI_NO_INPUT=]
 
 EXAMPLES:

@@ -404,6 +404,17 @@ EXAMPLES:
         text: String,
     },
 
+    /// Legacy alias for `type`
+    #[command(long_about = "\
+Legacy alias for `agent-tui type`.
+
+Use `agent-tui type` for new scripts.")]
+    Input {
+        /// Text to type
+        #[arg(value_name = "TEXT", allow_hyphen_values = true)]
+        text: String,
+    },
+
     /// Scroll using repeated directional terminal input
     #[command(long_about = "\
 Send repeated directional input to the terminal.

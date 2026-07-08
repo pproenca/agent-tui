@@ -804,3 +804,70 @@ fn readme_documents_homebrew_install_and_upgrade_paths() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn release_readiness_checklist_documents_publish_and_smoke_steps() -> Result<()> {
+    let workspace = workspace_root()?;
+    let root = repository_root(&workspace)?;
+    let version = read_cargo_version(&cargo_toml_path(&workspace))?;
+    let checklist_path = root.join("docs/ops/release-readiness-checklist.md");
+    let checklist = fs::read_to_string(&checklist_path)
+        .with_context(|| format!("failed to read {}", checklist_path.display()))?;
+
+    assert!(
+        checklist.contains(&format!("VERSION={version}")),
+        "release checklist must pin the current target version {version}"
+    );
+
+    for channel in release_channel_inventory() {
+        let needle = format!("--channel {}", channel.name);
+        assert!(
+            checklist.contains(&needle),
+            "release checklist missing channel verification command: {needle}"
+        );
+    }
+
+    for needle in [
+        "just ready",
+        "just release-channel-inventory",
+        "just release-channel-verify \"$VERSION\"",
+        "gh workflow run release.yml",
+        "npm install -g \"agent-tui@$VERSION\"",
+        "AGENT_TUI_VERSION=\"$VERSION\"",
+        "cargo install agent-tui --version \"$VERSION\"",
+        "cargo install --path cli/crates/agent-tui",
+        "brew install pproenca/tap/agent-tui",
+        "agent-tui $VERSION",
+        "agent-tui input",
+        "agent-tui action",
+        "screenshot -e",
+        "screenshot -a",
+        "wait -e",
+        "scroll-into-view",
+        "jq -e '.found == true' /tmp/agent-tui-wait-e.json",
+        "jq -e '.found == true' /tmp/agent-tui-modern-wait.json",
+        "JSON stdout",
+        "stderr",
+        "next-major",
+        "agent-tui press Enter",
+        "agent-tui type \"modern\"",
+        "agent-tui scroll down",
+    ] {
+        assert!(
+            checklist.contains(needle),
+            "release checklist missing expected publish/smoke guidance: {needle}"
+        );
+    }
+
+    for stale_wait_predicate in [
+        "jq -e '.success == true' /tmp/agent-tui-wait-e.json",
+        "jq -e '.success == true' /tmp/agent-tui-modern-wait.json",
+    ] {
+        assert!(
+            !checklist.contains(stale_wait_predicate),
+            "release checklist must not use stale wait JSON predicate: {stale_wait_predicate}"
+        );
+    }
+
+    Ok(())
+}

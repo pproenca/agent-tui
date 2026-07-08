@@ -369,6 +369,43 @@ fn rpc_contract_matrix_covers_full_working_surface() {
 }
 
 #[test]
+fn current_command_smokes_do_not_emit_deprecation_notices() {
+    let harness = TestHarness::new();
+    let cases = [
+        &["--format", "json", "run", "bash"][..],
+        &["--format", "json", "screenshot"][..],
+        &["--format", "json", "press", "Enter"][..],
+        &["--format", "json", "type", "modern"][..],
+        &["--format", "json", "scroll", "down"][..],
+        &["--format", "json", "wait", "ready"][..],
+        &["--format", "json", "kill", "--yes"][..],
+    ];
+
+    for args in cases {
+        harness.clear_requests();
+        let output = harness
+            .cli_command()
+            .args(args)
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        let stdout_text = String::from_utf8_lossy(&output.stdout);
+        let stderr_text = String::from_utf8_lossy(&output.stderr);
+
+        serde_json::from_slice::<Value>(&output.stdout).expect("valid JSON stdout");
+        assert!(
+            !stdout_text.contains("deprecated"),
+            "current command must not write deprecation notices to stdout: {args:?}\n{stdout_text}"
+        );
+        assert!(
+            !stderr_text.contains("deprecated"),
+            "current command must not write deprecation notices to stderr: {args:?}\n{stderr_text}"
+        );
+    }
+}
+
+#[test]
 fn sessions_cleanup_kills_stopped_sessions() {
     let harness = TestHarness::new();
     setup_mixed_sessions(&harness);

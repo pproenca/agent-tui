@@ -44,6 +44,11 @@ The installer detects your Unix platform and installs the appropriate binary to 
 ### Package Managers
 
 ```bash
+# Homebrew
+brew tap pproenca/tap
+brew install agent-tui
+brew upgrade agent-tui
+
 # npm
 npm install -g agent-tui
 

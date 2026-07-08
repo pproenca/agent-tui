@@ -134,9 +134,11 @@ jobs:
             PRERELEASE=false
           fi
 
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$VERSION"
+            echo "tag_name=$TAG_NAME"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
 
   build-artifacts:
     name: Build Release Artifacts (${{ matrix.artifact }})
@@ -239,14 +241,12 @@ jobs:
         with:
           path: cli/artifacts
           pattern: agent-tui-linux-*
-          if-no-files-found: error
 
       - name: Download macOS release artifacts
         uses: actions/download-artifact@v4
         with:
           path: cli/artifacts
           pattern: agent-tui-darwin-*
-          if-no-files-found: error
 
       - name: Verify release artifacts
         working-directory: cli
@@ -277,10 +277,12 @@ jobs:
         if: needs.validate.outputs.dry_run == 'true'
         working-directory: cli
         run: |
-          echo "## Dry Run Summary" >> $GITHUB_STEP_SUMMARY
-          echo "Would have released version: ${{ needs.validate.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "### Artifacts:" >> $GITHUB_STEP_SUMMARY
-          ls -la release/ >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Dry Run Summary"
+            echo "Would have released version: ${{ needs.validate.outputs.tag_name }}"
+            echo "### Artifacts:"
+            ls -la release/
+          } >> "$GITHUB_STEP_SUMMARY"
 
   publish-npm:
     name: Publish to npm
@@ -675,3 +677,147 @@ jobs:
           cargo install --path cli/crates/agent-tui --root "$SOURCE_ROOT" --locked --force
           "$SOURCE_ROOT/bin/agent-tui" --version | tee "$RUNNER_TEMP/source-version.txt"
           grep -F "agent-tui $VERSION" "$RUNNER_TEMP/source-version.txt"
+
+  publish-homebrew:
+    name: Publish Homebrew tap
+    needs: [validate, release]
+    if: needs.validate.outputs.dry_run != 'true' && needs.release.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Ensure Homebrew tap token
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN secret is required to update pproenca/homebrew-tap."
+            exit 1
+          fi
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: pproenca/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Download macOS release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: agent-tui-darwin-*
+
+      - name: Update formula
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          TAG="${{ needs.validate.outputs.tag_name }}"
+          ARM_ASSET="release-artifacts/agent-tui-darwin-arm64/agent-tui-darwin-arm64"
+          X64_ASSET="release-artifacts/agent-tui-darwin-x64/agent-tui-darwin-x64"
+          ARM_SHA="$(sha256sum "$ARM_ASSET" | awk '{print $1}')"
+          X64_SHA="$(sha256sum "$X64_ASSET" | awk '{print $1}')"
+
+          mkdir -p homebrew-tap/Formula
+          cat > homebrew-tap/Formula/agent-tui.rb <<EOF
+          class AgentTui < Formula
+            desc "CLI tool for AI agents to interact with TUI applications"
+            homepage "https://github.com/pproenca/agent-tui"
+            version "$VERSION"
+            license "MIT"
+
+            depends_on :macos
+
+            on_macos do
+              on_arm do
+                url "https://github.com/pproenca/agent-tui/releases/download/$TAG/agent-tui-darwin-arm64"
+                sha256 "$ARM_SHA"
+              end
+
+              on_intel do
+                url "https://github.com/pproenca/agent-tui/releases/download/$TAG/agent-tui-darwin-x64"
+                sha256 "$X64_SHA"
+              end
+            end
+
+            def install
+              bin.install Dir["agent-tui-darwin-*"].first => "agent-tui"
+              chmod 0755, bin/"agent-tui"
+            end
+
+            test do
+              assert_match "agent-tui #{version}", shell_output("#{bin}/agent-tui --version")
+            end
+          end
+          EOF
+
+      - name: Commit formula
+        working-directory: homebrew-tap
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- Formula/agent-tui.rb; then
+            echo "Homebrew formula already up to date for $VERSION."
+            exit 0
+          fi
+          git add Formula/agent-tui.rb
+          git commit -m "Update agent-tui to $VERSION"
+          git push
+
+  verify-homebrew:
+    name: Verify Homebrew channel
+    needs: [validate, release, publish-homebrew]
+    if: >-
+      always() &&
+      needs.validate.outputs.dry_run != 'true' &&
+      needs.release.result == 'success' &&
+      needs.publish-homebrew.result == 'success'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify Homebrew release channel
+        working-directory: cli
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          retry() {
+            for attempt in 1 2 3 4 5 6; do
+              if "$@"; then
+                return 0
+              fi
+              echo "Attempt $attempt failed; waiting for Homebrew tap propagation..."
+              sleep 20
+            done
+            "$@"
+          }
+
+          retry cargo run -p xtask -- release-channels verify \
+            --target-version "$VERSION" \
+            --channel homebrew
+
+      - name: Smoke Homebrew install and upgrade
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          brew update
+          brew tap pproenca/tap https://github.com/pproenca/homebrew-tap
+          brew install pproenca/tap/agent-tui
+          brew upgrade pproenca/tap/agent-tui
+          agent-tui --version | tee "$RUNNER_TEMP/homebrew-version.txt"
+          grep -F "agent-tui $VERSION" "$RUNNER_TEMP/homebrew-version.txt"

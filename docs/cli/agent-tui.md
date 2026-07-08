@@ -16,24 +16,25 @@ with PTYs, Unix domain sockets, and POSIX signals).
 Usage: agent-tui [OPTIONS] <COMMAND>
 
 Commands:
-  run          Run a TUI application in a virtual terminal
-  screenshot   Capture a screenshot of the current session
-  action       Deprecated selector action compatibility command
-  resize       Resize the session terminal
-  restart      Restart the current session
-  press        Send key press(es) to the terminal (supports modifier hold/release)
-  type         Type literal text character by character
-  input        Legacy alias for `type`
-  scroll       Scroll using repeated directional terminal input
-  wait         Wait for text or screenshot stability
-  kill         Kill the current session
-  sessions     List and manage sessions
-  live         Live preview API exposed by the local daemon
-  daemon       Manage the background daemon
-  version      Show version information
-  env          Show environment diagnostics
-  completions  Generate or install shell completions
-  help         Print this message or the help of the given subcommand(s)
+  run               Run a TUI application in a virtual terminal
+  screenshot        Capture a screenshot of the current session
+  action            Deprecated selector action compatibility command
+  resize            Resize the session terminal
+  restart           Restart the current session
+  press             Send key press(es) to the terminal (supports modifier hold/release)
+  type              Type literal text character by character
+  input             Legacy alias for `type`
+  scroll            Scroll using repeated directional terminal input
+  scroll-into-view  Deprecated element scroll compatibility command
+  wait              Wait for text or screenshot stability
+  kill              Kill the current session
+  sessions          List and manage sessions
+  live              Live preview API exposed by the local daemon
+  daemon            Manage the background daemon
+  version           Show version information
+  env               Show environment diagnostics
+  completions       Generate or install shell completions
+  help              Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help
@@ -646,6 +647,57 @@ EXAMPLES:
     agent-tui scroll right 3
 ```
 
+## `agent-tui scroll-into-view`
+
+```text
+Deprecated compatibility command for old element scroll workflows.
+
+The current CLI has no element selector engine. This command does not send terminal input; use `scroll` or `press` for new scripts.
+
+Usage: scroll-into-view [OPTIONS] <FORM>...
+
+Arguments:
+  <FORM>...
+          Legacy selector form
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Session Options:
+  -s, --session <ID>
+          Session ID to use (defaults to the most recent session)
+
+Output Options:
+  -f, --format <FORMAT>
+          Output format (text or json)
+
+          [default: text]
+          [possible values: text, json]
+
+      --json
+          Shorthand for --format json (overrides --format if both are set)
+
+      --no-color
+          Disable colored output (also respects NO_COLOR)
+
+          [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+
+          [env: AGENT_TUI_NO_INPUT=]
+
+SUPPORTED COMPATIBILITY FORMS:
+    agent-tui scroll-into-view <selector>  # No-op compatibility success
+
+Unsupported selector options return a compatibility error with migration guidance.
+```
+
 ## `agent-tui wait`
 
 ```text
@@ -658,12 +710,13 @@ WAIT CONDITIONS:
     <text>       Wait for text to appear on screenshot
     --stable     Wait for screenshot to stop changing
     -g, --gone   Modifier: wait for text to disappear
+    -e <ref>     Deprecated: treats element ref as literal text
 
 ASSERT MODE:
     --assert            Exit with code 0 if condition met, 75 if timeout.
                         Without --assert, always exit 0 (timeout still reported).
 
-Usage: wait [OPTIONS] <TEXT|--stable>
+Usage: wait [OPTIONS] <TEXT|--stable|-e <REF>>
 
 Arguments:
   [TEXT]
@@ -688,6 +741,10 @@ Wait Condition:
 
   -g, --gone
           Wait for the text to disappear
+
+Legacy Compatibility:
+  -e <REF>
+          Deprecated compatibility flag; treats the element ref as literal text
 
 Behavior:
       --assert

@@ -473,6 +473,22 @@ EXAMPLES:
         amount: u16,
     },
 
+    /// Deprecated element scroll compatibility command
+    #[command(long_about = "\
+Deprecated compatibility command for old element scroll workflows.
+
+The current CLI has no element selector engine. This command does not send terminal input; use `scroll` or `press` for new scripts.")]
+    #[command(after_long_help = "\
+SUPPORTED COMPATIBILITY FORMS:
+    agent-tui scroll-into-view <selector>  # No-op compatibility success
+
+Unsupported selector options return a compatibility error with migration guidance.")]
+    ScrollIntoView {
+        /// Legacy selector form
+        #[arg(value_name = "FORM", required = true, num_args = 1.., allow_hyphen_values = true)]
+        form: Vec<String>,
+    },
+
     /// Wait for text or screenshot stability
     #[command(long_about = "\
 Wait for a condition to be met before continuing.
@@ -484,6 +500,7 @@ WAIT CONDITIONS:
     <text>       Wait for text to appear on screenshot
     --stable     Wait for screenshot to stop changing
     -g, --gone   Modifier: wait for text to disappear
+    -e <ref>     Deprecated: treats element ref as literal text
 
 ASSERT MODE:
     --assert            Exit with code 0 if condition met, 75 if timeout.
@@ -874,7 +891,11 @@ impl ScrollDirection {
     group = ArgGroup::new("wait_condition")
         .multiple(false)
         .required(true)
-        .args(&["text", "stable"])
+        .args(&["text", "stable", "legacy_element"]),
+    group = ArgGroup::new("wait_text_condition")
+        .multiple(false)
+        .required(false)
+        .args(&["text", "legacy_element"])
 )]
 pub struct WaitParams {
     /// Text to wait for (positional)
@@ -896,8 +917,23 @@ pub struct WaitParams {
     pub stable: bool,
 
     /// Wait for the text to disappear
-    #[arg(short = 'g', long, requires = "text", help_heading = "Wait Condition")]
+    #[arg(
+        short = 'g',
+        long,
+        requires = "wait_text_condition",
+        help_heading = "Wait Condition"
+    )]
     pub gone: bool,
+
+    /// Deprecated compatibility flag; treats the element ref as literal text
+    #[arg(
+        short = 'e',
+        value_name = "REF",
+        allow_hyphen_values = true,
+        group = "wait_condition",
+        help_heading = "Legacy Compatibility"
+    )]
+    pub legacy_element: Option<String>,
 
     /// Exit with status 0 if met, 75 on timeout
     #[arg(long, help_heading = "Behavior")]

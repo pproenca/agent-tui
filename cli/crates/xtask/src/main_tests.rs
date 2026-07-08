@@ -221,6 +221,42 @@ fn version_check_rejects_platform_package_version_mismatch() -> Result<()> {
 }
 
 #[test]
+fn set_version_updates_internal_workspace_dependency_versions() -> Result<()> {
+    let tempdir = seed_release_root("1.2.3")?;
+    let root = tempdir.path();
+    write_file(
+        &cargo_toml_path(root),
+        r#"[workspace]
+members = []
+
+[workspace.package]
+version = "1.2.3"
+
+[workspace.dependencies]
+agent-tui-common = { version = "1.2.3", path = "crates/agent-tui-common" }
+agent-tui-app = { path = "crates/agent-tui-app" }
+"#,
+    )?;
+
+    set_version(root, "1.2.4")?;
+
+    let cargo_toml = fs::read_to_string(cargo_toml_path(root))
+        .with_context(|| "failed to read updated Cargo.toml")?;
+    assert!(
+        cargo_toml.contains(
+            r#"agent-tui-common = { version = "1.2.4", path = "crates/agent-tui-common" }"#
+        ),
+        "existing internal dependency version was not updated: {cargo_toml}"
+    );
+    assert!(
+        cargo_toml
+            .contains(r#"agent-tui-app = { version = "1.2.4", path = "crates/agent-tui-app" }"#),
+        "missing internal dependency version was not inserted: {cargo_toml}"
+    );
+    Ok(())
+}
+
+#[test]
 fn validate_release_inputs_rejects_missing_artifacts() -> Result<()> {
     let tempdir = seed_release_root("1.2.3")?;
     let root = tempdir.path();
@@ -599,6 +635,122 @@ fn release_workflow_verifies_and_smokes_github_install_script_and_npm() -> Resul
         assert!(
             workflow.contains(needle),
             "release workflow missing expected smoke/verification step: {needle}"
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn crates_io_publish_plan_accepts_runtime_crate_graph() -> Result<()> {
+    verify_crates_io_publish_plan(&workspace_root()?)
+}
+
+#[test]
+fn release_workflow_publishes_and_smokes_crates_io_and_source_install() -> Result<()> {
+    let root = repository_root(&workspace_root()?)?;
+    let workflow = fs::read_to_string(root.join(".github/workflows/release.yml"))
+        .with_context(|| "failed to read release workflow")?;
+
+    for needle in [
+        "publish-crates:",
+        "release-channels verify-crates-io-publish-plan",
+        "cargo publish -p \"$crate\" --allow-dirty",
+        "--channel crates-io",
+        "--channel source-install",
+        "cargo install agent-tui --version \"$VERSION\"",
+        "cargo install --path cli/crates/agent-tui",
+        "\"$CRATES_ROOT/bin/agent-tui\" --version",
+        "\"$SOURCE_ROOT/bin/agent-tui\" --version",
+    ] {
+        assert!(
+            workflow.contains(needle),
+            "release workflow missing expected Rust release step: {needle}"
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn build_scripts_accept_packaged_vcs_metadata_without_git() -> Result<()> {
+    let root = repository_root(&workspace_root()?)?;
+    let build_script_paths = [
+        root.join("cli/crates/agent-tui/build.rs"),
+        root.join("cli/crates/agent-tui-adapters/build.rs"),
+        root.join("cli/crates/agent-tui-app/build.rs"),
+    ];
+    let build_script = fs::read_to_string(&build_script_paths[0])
+        .with_context(|| "failed to read build script")?;
+    for path in &build_script_paths[1..] {
+        let contents = fs::read_to_string(path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        assert_eq!(
+            contents,
+            build_script,
+            "release metadata build scripts drifted: {}",
+            path.display()
+        );
+    }
+
+    let tempdir = TempDir::new().with_context(|| "failed to create tempdir")?;
+    write_file(
+        &tempdir.path().join("Cargo.toml"),
+        r#"[package]
+name = "agent-tui-build-script-smoke"
+version = "1.2.3"
+edition = "2024"
+build = "build.rs"
+"#,
+    )?;
+    write_file(&tempdir.path().join("src/lib.rs"), "")?;
+    write_file(&tempdir.path().join("build.rs"), &build_script)?;
+    write_file(
+        &tempdir.path().join(".cargo_vcs_info.json"),
+        r#"{
+  "git": {
+    "sha1": "1234567890abcdef1234567890abcdef12345678",
+    "dirty": false
+  },
+  "path_in_vcs": "cli/crates/agent-tui"
+}
+"#,
+    )?;
+
+    let output = Command::new("cargo")
+        .arg("check")
+        .arg("--release")
+        .env_remove("AGENT_TUI_GIT_SHA")
+        .env_remove("AGENT_TUI_STRICT_BUILD_METADATA")
+        .env("CARGO_TARGET_DIR", tempdir.path().join("target"))
+        .current_dir(tempdir.path())
+        .output()
+        .with_context(|| "failed to run packaged build script smoke")?;
+
+    assert!(
+        output.status.success(),
+        "packaged build script smoke failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    Ok(())
+}
+
+#[test]
+fn readme_documents_crates_io_and_source_install_paths() -> Result<()> {
+    let root = repository_root(&workspace_root()?)?;
+    let readme =
+        fs::read_to_string(root.join("README.md")).with_context(|| "failed to read README.md")?;
+
+    for needle in [
+        "cargo install agent-tui --locked",
+        "cargo install --path cli/crates/agent-tui --locked",
+        "cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui --locked",
+    ] {
+        assert!(
+            readme.contains(needle),
+            "README missing expected Rust install command: {needle}"
         );
     }
 

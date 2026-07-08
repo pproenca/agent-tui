@@ -17,7 +17,7 @@ async function main() {
   if (!resolved.platformArch) {
     const message = [
       `Unsupported platform: ${process.platform}-${process.arch}`,
-      'You can build from source: cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui',
+      'You can build from source: cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui --locked',
     ];
     message.forEach((line) => console.error(line));
     process.exit(1);
@@ -27,7 +27,7 @@ async function main() {
     const message = [
       `Missing platform package: ${resolved.pkgName}`,
       'Ensure the matching optional dependency is installed.',
-      'You can build from source: cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui',
+      'You can build from source: cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui --locked',
     ];
     message.forEach((line) => console.error(line));
     process.exit(1);

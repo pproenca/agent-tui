@@ -528,3 +528,150 @@ jobs:
             echo "Dry-run publish $name"
             (cd "$dir" && npm publish --access public --dry-run)
           done
+
+      - name: Verify crates.io packages
+        working-directory: cli
+        run: cargo run -p xtask -- release-channels verify-crates-io-publish-plan
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: [release, validate, publish-validate]
+    if: needs.validate.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set release version
+        working-directory: cli
+        run: cargo run -p xtask -- version set "${{ needs.validate.outputs.version }}"
+
+      - name: Publish crates
+        working-directory: cli
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret is required to publish crates.io packages."
+            exit 1
+          fi
+
+          VERSION="${{ needs.validate.outputs.version }}"
+          USER_AGENT="agent-tui-release/${VERSION}"
+          crate_published() {
+            curl -fsSL \
+              -H "User-Agent: $USER_AGENT" \
+              "https://crates.io/api/v1/crates/$1/$VERSION" >/dev/null 2>&1
+          }
+          retry() {
+            for attempt in 1 2 3 4 5 6; do
+              if "$@"; then
+                return 0
+              fi
+              echo "Attempt $attempt failed; waiting for crates.io propagation..."
+              sleep 20
+            done
+            "$@"
+          }
+
+          for crate in \
+            agent-tui-common \
+            agent-tui-domain \
+            agent-tui-usecases \
+            agent-tui-adapters \
+            agent-tui-infra \
+            agent-tui-app \
+            agent-tui
+          do
+            if crate_published "$crate"; then
+              echo "$crate@$VERSION already published."
+              continue
+            fi
+            retry cargo publish -p "$crate" --allow-dirty
+          done
+
+  verify-crates-source:
+    name: Verify crates.io and source install channels
+    needs: [validate, release, publish-crates]
+    if: >-
+      always() &&
+      needs.validate.outputs.dry_run != 'true' &&
+      needs.release.result == 'success' &&
+      needs.publish-crates.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set release version
+        working-directory: cli
+        run: cargo run -p xtask -- version set "${{ needs.validate.outputs.version }}"
+
+      - name: Verify Rust release channels
+        working-directory: cli
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          retry() {
+            for attempt in 1 2 3 4 5 6; do
+              if "$@"; then
+                return 0
+              fi
+              echo "Attempt $attempt failed; waiting for crates.io propagation..."
+              sleep 20
+            done
+            "$@"
+          }
+
+          retry cargo run -p xtask -- release-channels verify \
+            --target-version "$VERSION" \
+            --channel crates-io \
+            --channel source-install
+
+      - name: Smoke crates.io install
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          CRATES_ROOT="$RUNNER_TEMP/crates-install"
+          retry() {
+            for attempt in 1 2 3 4 5 6; do
+              if "$@"; then
+                return 0
+              fi
+              echo "Attempt $attempt failed; waiting for crates.io propagation..."
+              sleep 20
+            done
+            "$@"
+          }
+
+          retry cargo install agent-tui --version "$VERSION" --root "$CRATES_ROOT" --locked
+          "$CRATES_ROOT/bin/agent-tui" --version | tee "$RUNNER_TEMP/crates-version.txt"
+          grep -F "agent-tui $VERSION" "$RUNNER_TEMP/crates-version.txt"
+
+      - name: Smoke source install
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          SOURCE_ROOT="$RUNNER_TEMP/source-install"
+          cargo install --path cli/crates/agent-tui --root "$SOURCE_ROOT" --locked --force
+          "$SOURCE_ROOT/bin/agent-tui" --version | tee "$RUNNER_TEMP/source-version.txt"
+          grep -F "agent-tui $VERSION" "$RUNNER_TEMP/source-version.txt"

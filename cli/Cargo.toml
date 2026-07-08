@@ -20,12 +20,12 @@ repository = "https://github.com/pproenca/agent-tui"
 
 [workspace.dependencies]
 # Internal
-agent-tui-common = { path = "crates/agent-tui-common" }
-agent-tui-domain = { path = "crates/agent-tui-domain" }
-agent-tui-usecases = { path = "crates/agent-tui-usecases" }
-agent-tui-adapters = { path = "crates/agent-tui-adapters" }
-agent-tui-infra = { path = "crates/agent-tui-infra" }
-agent-tui-app = { path = "crates/agent-tui-app" }
+agent-tui-common = { version = "1.0.2", path = "crates/agent-tui-common" }
+agent-tui-domain = { version = "1.0.2", path = "crates/agent-tui-domain" }
+agent-tui-usecases = { version = "1.0.2", path = "crates/agent-tui-usecases" }
+agent-tui-adapters = { version = "1.0.2", path = "crates/agent-tui-adapters" }
+agent-tui-infra = { version = "1.0.2", path = "crates/agent-tui-infra" }
+agent-tui-app = { version = "1.0.2", path = "crates/agent-tui-app" }
 
 # External (pinned)
 anyhow = "1"

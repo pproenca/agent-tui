@@ -141,6 +141,7 @@ enum DistCommands {
 enum ReleaseChannelsCommands {
     Inventory,
     Verify(ReleaseChannelsVerifyArgs),
+    VerifyCratesIoPublishPlan,
 }
 
 #[derive(Args, Debug)]
@@ -239,6 +240,9 @@ fn run() -> Result<()> {
         Commands::ReleaseChannels { command } => match command {
             ReleaseChannelsCommands::Inventory => release_channels_inventory(),
             ReleaseChannelsCommands::Verify(args) => release_channels_verify(&root, &args),
+            ReleaseChannelsCommands::VerifyCratesIoPublishPlan => {
+                verify_crates_io_publish_plan(&root)
+            }
         },
         Commands::TuiExplorer { command } => {
             std::process::exit(tui_explorer::run(&root, command));
@@ -349,6 +353,7 @@ fn write_cargo_version(path: &Path, version: &str) -> Result<()> {
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
 
     if let Some(updated) = update_toml_version_in_section(&contents, "workspace.package", version) {
+        let updated = update_internal_workspace_dependency_versions(&updated, version);
         fs::write(path, updated).with_context(|| format!("failed to write {}", path.display()))?;
         return Ok(());
     }
@@ -359,6 +364,71 @@ fn write_cargo_version(path: &Path, version: &str) -> Result<()> {
     }
 
     bail!("could not update version in {}", path.display())
+}
+
+fn update_internal_workspace_dependency_versions(contents: &str, version: &str) -> String {
+    let trailing_newline = contents.ends_with('\n');
+    let mut lines = contents
+        .lines()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<_>>();
+    let internal_dependencies = crates_io_publish_order()
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+
+    let mut in_workspace_dependencies = false;
+    for line in &mut lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_workspace_dependencies = trimmed == "[workspace.dependencies]";
+            continue;
+        }
+        if !in_workspace_dependencies {
+            continue;
+        }
+
+        let Some((name, _rest)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let dependency_name = name.trim();
+        if internal_dependencies.contains(dependency_name) && trimmed.contains("path =") {
+            *line = update_inline_dependency_version(line, version);
+        }
+    }
+
+    let mut joined = lines.join("\n");
+    if trailing_newline {
+        joined.push('\n');
+    }
+    joined
+}
+
+fn update_inline_dependency_version(line: &str, version: &str) -> String {
+    let version_key = "version = \"";
+    if let Some(start) = line.find(version_key) {
+        let version_start = start + version_key.len();
+        if let Some(end_offset) = line[version_start..].find('"') {
+            let version_end = version_start + end_offset;
+            return format!(
+                "{}{}{}",
+                &line[..version_start],
+                version,
+                &line[version_end..]
+            );
+        }
+    }
+
+    let Some(open_brace) = line.find('{') else {
+        return line.to_string();
+    };
+    let insert_at = open_brace + 1;
+    format!(
+        "{} version = \"{}\",{}",
+        &line[..insert_at],
+        version,
+        &line[insert_at..]
+    )
 }
 
 fn update_toml_version_in_section(contents: &str, section: &str, version: &str) -> Option<String> {
@@ -724,6 +794,7 @@ fn validate_release_inputs(root: &Path, target_version: &str, artifacts: &Path) 
     version_check(root, true)?;
     assert_input(root, target_version)?;
     dist_verify(artifacts, DistKind::Release)?;
+    verify_crates_io_publish_plan(root)?;
     Ok(())
 }
 
@@ -1229,6 +1300,70 @@ fn allowed_dependency_matrix() -> HashMap<&'static str, HashSet<&'static str>> {
         ),
         ("agent-tui", HashSet::from(["agent-tui-app"])),
     ])
+}
+
+fn crates_io_publish_order() -> &'static [&'static str] {
+    &[
+        "agent-tui-common",
+        "agent-tui-domain",
+        "agent-tui-usecases",
+        "agent-tui-adapters",
+        "agent-tui-infra",
+        "agent-tui-app",
+        "agent-tui",
+    ]
+}
+
+fn verify_crates_io_publish_plan(root: &Path) -> Result<()> {
+    let metadata = workspace_metadata(root)?;
+    let workspace_version = read_cargo_version(&cargo_toml_path(root))?;
+    let release_crates = crates_io_publish_order()
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let packages = metadata
+        .packages
+        .iter()
+        .map(|package| (package.name.as_str(), package))
+        .collect::<HashMap<_, _>>();
+
+    for package_name in crates_io_publish_order() {
+        let Some(package) = packages.get(package_name) else {
+            bail!("crates.io publish package {package_name} is missing from workspace");
+        };
+
+        if matches!(package.publish.as_ref(), Some(registries) if registries.is_empty()) {
+            bail!("{package_name} is marked publish = false");
+        }
+
+        if package
+            .description
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+        {
+            bail!("{package_name} is missing a crates.io package description");
+        }
+
+        for dependency in &package.dependencies {
+            if !release_crates.contains(dependency.name.as_str()) {
+                continue;
+            }
+            if dependency.path.is_none() {
+                continue;
+            }
+            let requirement = dependency.req.to_string();
+            if !requirement.contains(&workspace_version) {
+                bail!(
+                    "{package_name} depends on {} without workspace version {workspace_version}",
+                    dependency.name
+                );
+            }
+        }
+    }
+
+    Ok(())
 }
 
 const CHANNEL_GITHUB_RELEASES: &str = "github-releases";

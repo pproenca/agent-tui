@@ -183,6 +183,7 @@ See `docs/ops/process-model.md` for process types and deployment guidance.
 - Rust stable (1.88+)
 - Bun (for web UI)
 - just (task runner)
+- cargo-nextest (Rust test runner)
 
 ### Build Commands
 
@@ -190,12 +191,25 @@ See `docs/ops/process-model.md` for process types and deployment guidance.
 just build           # Build Rust crate
 just build-release   # Optimized release build
 just web-build       # Build web UI
-just test            # Run tests
+just test            # Run the fast Rust suite with cargo-nextest
+just test-core-e2e   # Run ignored real-daemon E2E tests with cargo-nextest
 just ready           # Full CI checks (fmt, clippy, tests)
 just lint            # Run Clippy
 just format          # Format code
 just doc             # Build and open docs
 ```
+
+`just test` is the fast Rust lane. It uses `cargo-nextest` for library tests and the
+mock-daemon CLI contracts that should stay quick enough for normal development.
+`just test-core-e2e` is the explicit real-daemon lane: it runs the ignored
+`system_e2e` tests against real PTYs and real POSIX processes, with nextest
+owning retries, slow-test timeouts, and serial execution for the process-heavy
+group. `just ready` runs both Rust lanes plus the existing bash CLI smoke suite.
+
+Future real E2E expansion should stress workflows that mocks cannot prove:
+shell interrupt/recovery, vi/vim editing with file persistence, top-style live
+redraw, resize/reflow, attach/detach interaction, multi-session isolation, and
+failure recovery/cleanup.
 
 ### Running Locally
 

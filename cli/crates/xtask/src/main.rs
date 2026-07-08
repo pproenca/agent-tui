@@ -33,6 +33,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::process::Stdio;
 use walkdir::WalkDir;
 
 #[cfg(test)]
@@ -771,8 +772,45 @@ fn ci(root: &Path) -> Result<()> {
         architecture_check(root, false)
     })?;
 
-    run_step("Running tests", || {
-        run_command("cargo", &["test", "--workspace"], Some(root))
+    if !has_cargo_subcommand("nextest") {
+        bail!("cargo-nextest is required but was not found in PATH");
+    }
+
+    run_step("Running fast Rust tests", || {
+        run_command(
+            "cargo",
+            &[
+                "nextest",
+                "run",
+                "--workspace",
+                "--lib",
+                "--test",
+                "cli_smoke",
+                "--test",
+                "cli_contracts",
+                "--test",
+                "cli_command_contracts",
+                "--test",
+                "real_harness_contracts",
+            ],
+            Some(root),
+        )
+    })?;
+
+    run_step("Running real daemon E2E tests", || {
+        run_command(
+            "cargo",
+            &[
+                "nextest",
+                "run",
+                "-p",
+                "agent-tui",
+                "--test",
+                "system_e2e",
+                "--run-ignored=only",
+            ],
+            Some(root),
+        )
     })?;
 
     run_step("Running bash cli tests", || {
@@ -818,6 +856,16 @@ fn has_command(name: &str) -> bool {
             candidate.is_file()
         })
     })
+}
+
+fn has_cargo_subcommand(name: &str) -> bool {
+    Command::new("cargo")
+        .args([name, "--version"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 fn run_command(program: &str, args: &[&str], cwd: Option<&Path>) -> Result<()> {

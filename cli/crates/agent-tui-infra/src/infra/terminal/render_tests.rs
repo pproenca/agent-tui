@@ -27,6 +27,38 @@ fn render_screen_trimmed_drops_trailing_spaces_and_blank_rows() {
 }
 
 #[test]
+fn render_screen_omits_default_color_resets_after_full_reset() {
+    let buffer = ScreenBuffer {
+        cells: vec![vec![plain_cell('A')]],
+    };
+
+    let rendered = render_screen(&buffer);
+
+    assert_eq!(rendered.escape_debug().to_string(), r"\u{1b}[0mA\u{1b}[0m");
+}
+
+#[test]
+fn render_screen_emits_color_sgr_independent_of_host_color_env() {
+    let buffer = ScreenBuffer {
+        cells: vec![vec![Cell {
+            char: 'B',
+            style: CellStyle {
+                fg_color: Some(Color::Indexed(1)),
+                bg_color: Some(Color::Rgb(16, 32, 48)),
+                ..CellStyle::default()
+            },
+        }]],
+    };
+
+    let rendered = render_screen(&buffer);
+
+    assert_eq!(
+        rendered.escape_debug().to_string(),
+        r"\u{1b}[0m\u{1b}[38;5;1m\u{1b}[48;2;16;32;48mB\u{1b}[0m"
+    );
+}
+
+#[test]
 fn render_screen_snapshot_captures_ansi_runs_and_line_breaks() {
     let accent = CellStyle {
         bold: true,

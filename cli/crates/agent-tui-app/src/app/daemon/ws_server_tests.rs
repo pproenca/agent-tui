@@ -282,6 +282,28 @@ fn set_websocket_read_timeout(
     }
 }
 
+fn assert_websocket_disconnects(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+) {
+    match socket.read() {
+        Ok(WsMessage::Close(_)) => {}
+        Err(tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed) => {}
+        Err(tungstenite::Error::Protocol(
+            tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
+        )) => {}
+        Err(tungstenite::Error::Io(err))
+            if matches!(
+                err.kind(),
+                std::io::ErrorKind::UnexpectedEof
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::BrokenPipe
+            ) => {}
+        other => panic!(
+            "expected websocket transport to disconnect after JSON closed event, got {other:?}"
+        ),
+    }
+}
+
 #[test]
 fn ws_config_reads_ws_env() {
     let _env = env_lock();
@@ -521,14 +543,15 @@ fn live_preview_stream_over_ws_emits_ready_init_output_and_closed() {
         if saw_closed {
             break;
         }
-        let payload: Value = serde_json::from_str(
-            &socket
-                .read()
-                .expect("stream frame")
-                .into_text()
-                .expect("text frame"),
-        )
-        .expect("json");
+        let frame = socket.read().expect("stream frame");
+        let text = match frame {
+            WsMessage::Text(text) => text,
+            WsMessage::Close(_) => {
+                break;
+            }
+            other => panic!("expected text or close stream frame, got {other:?}"),
+        };
+        let payload: Value = serde_json::from_str(&text).expect("json");
         match payload["result"]["event"].as_str() {
             Some("output") => {
                 let data = payload["result"]["data_b64"]
@@ -558,8 +581,9 @@ fn live_preview_stream_over_ws_emits_ready_init_output_and_closed() {
     );
     assert!(
         saw_closed,
-        "expected websocket closed frame after shell exit"
+        "expected websocket JSON closed event after shell exit"
     );
+    assert_websocket_disconnects(&mut socket);
 }
 
 #[test]

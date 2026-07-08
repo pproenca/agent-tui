@@ -586,19 +586,30 @@ jobs:
             "$@"
           }
 
-          for crate in \
-            agent-tui-common \
-            agent-tui-domain \
-            agent-tui-usecases \
-            agent-tui-adapters \
-            agent-tui-infra \
-            agent-tui-app \
+          crates=(
+            agent-tui-common
+            agent-tui-domain
+            agent-tui-usecases
+            agent-tui-adapters
+            agent-tui-infra
+            agent-tui-app
             agent-tui
-          do
+          )
+
+          preexisting_crates=()
+          for crate in "${crates[@]}"; do
             if crate_published "$crate"; then
-              echo "$crate@$VERSION already published."
-              continue
+              preexisting_crates+=("$crate@$VERSION")
             fi
+          done
+
+          if [ "${#preexisting_crates[@]}" -gt 0 ]; then
+            printf '::error::Refusing to publish because these crate versions already exist on crates.io: %s\n' "${preexisting_crates[*]}"
+            echo "Verify ownership and contents manually, then publish a new version instead of trusting preexisting internal crates."
+            exit 1
+          fi
+
+          for crate in "${crates[@]}"; do
             retry cargo publish -p "$crate" --allow-dirty
           done
 

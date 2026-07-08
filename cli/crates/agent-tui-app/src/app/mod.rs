@@ -857,7 +857,24 @@ impl Application {
                 strip_ansi,
                 retain_ansi,
                 include_cursor,
-            } => handlers::handle_snapshot(ctx, region, strip_ansi, retain_ansi, include_cursor)?,
+                legacy_element,
+                legacy_accessibility,
+                legacy_interactive_only,
+            } => {
+                if legacy_element {
+                    handlers::warn_legacy_deprecation("screenshot -e", "screenshot");
+                }
+                if legacy_accessibility {
+                    handlers::warn_legacy_deprecation("screenshot -a", "screenshot");
+                }
+                if legacy_interactive_only {
+                    handlers::warn_legacy_deprecation(
+                        "screenshot --interactive-only",
+                        "screenshot",
+                    );
+                }
+                handlers::handle_snapshot(ctx, region, strip_ansi, retain_ansi, include_cursor)?
+            }
 
             Commands::Resize { cols, rows } => handlers::handle_resize(ctx, cols, rows)?,
             Commands::Restart { dry_run, yes } => handlers::handle_restart(ctx, dry_run, yes)?,

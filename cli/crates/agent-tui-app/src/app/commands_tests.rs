@@ -161,6 +161,9 @@ fn test_screenshot_flags() {
         strip_ansi,
         retain_ansi,
         include_cursor,
+        legacy_element,
+        legacy_accessibility,
+        legacy_interactive_only,
     } = cli.command
     else {
         panic!("Expected Screenshot command, got {:?}", cli.command);
@@ -169,6 +172,26 @@ fn test_screenshot_flags() {
     assert!(!strip_ansi);
     assert!(retain_ansi);
     assert!(include_cursor);
+    assert!(!legacy_element);
+    assert!(!legacy_accessibility);
+    assert!(!legacy_interactive_only);
+}
+
+#[test]
+fn test_screenshot_legacy_flags() {
+    let cli = Cli::parse_from(["agent-tui", "screenshot", "-e", "-a", "--interactive-only"]);
+    let Commands::Screenshot {
+        legacy_element,
+        legacy_accessibility,
+        legacy_interactive_only,
+        ..
+    } = cli.command
+    else {
+        panic!("Expected Screenshot command, got {:?}", cli.command);
+    };
+    assert!(legacy_element);
+    assert!(legacy_accessibility);
+    assert!(legacy_interactive_only);
 }
 
 #[test]

@@ -71,10 +71,10 @@ struct ReaderWorker {
 
 impl ReaderWorker {
     fn shutdown(&mut self) -> ReaderJoinOutcome {
-        if let Err(err) = self.shutdown_writer.write_all(&[1]) {
-            if err.kind() != io::ErrorKind::BrokenPipe {
-                warn!(error = %err, "Failed to signal PTY reader shutdown");
-            }
+        if let Err(err) = self.shutdown_writer.write_all(&[1])
+            && err.kind() != io::ErrorKind::BrokenPipe
+        {
+            warn!(error = %err, "Failed to signal PTY reader shutdown");
         }
 
         let Some(join) = self.join.take() else {

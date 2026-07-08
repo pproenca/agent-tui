@@ -655,6 +655,8 @@ fn release_workflow_publishes_and_smokes_crates_io_and_source_install() -> Resul
     for needle in [
         "publish-crates:",
         "release-channels verify-crates-io-publish-plan",
+        "preexisting_crates=()",
+        "Refusing to publish because these crate versions already exist on crates.io",
         "cargo publish -p \"$crate\" --allow-dirty",
         "--channel crates-io",
         "--channel source-install",

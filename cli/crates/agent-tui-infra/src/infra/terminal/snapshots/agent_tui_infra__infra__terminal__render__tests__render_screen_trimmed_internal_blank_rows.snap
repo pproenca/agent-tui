@@ -3,4 +3,4 @@ source: crates/agent-tui-infra/src/infra/terminal/render_tests.rs
 assertion_line: 89
 expression: rendered.escape_debug().to_string()
 ---
-\u{1b}[0m\u{1b}[39m\u{1b}[49mA\r\n\r\nB\u{1b}[0m
+\u{1b}[0m\u{1b}[m\u{1b}[mA\r\n\r\nB\u{1b}[0m

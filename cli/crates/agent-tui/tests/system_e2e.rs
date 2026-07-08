@@ -13,45 +13,25 @@ mod e2e {
     use predicates::prelude::*;
     use serde_json::Value;
     use std::path::PathBuf;
-    use std::sync::Mutex;
-    use std::sync::MutexGuard;
-    use std::sync::OnceLock;
     use std::time::Duration;
 
-    fn slow_e2e_lock() -> MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
     fn run_json(harness: &RealTestHarness, args: &[&str]) -> Value {
-        let output = harness
-            .cli_command()
-            .args(args)
-            .output()
-            .expect("failed to execute command");
+        let output = harness.output(args);
         assert!(
             output.status.success(),
-            "command failed: args={args:?}, status={:?}, stdout={}, stderr={}",
-            output.status.code(),
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
+            "{}",
+            harness.command_failure_diagnostic(args, &output)
         );
         serde_json::from_slice(&output.stdout).expect("command output must be valid JSON")
     }
 
     fn spawn_session(harness: &RealTestHarness, command: &str) -> String {
-        let output = harness
-            .cli_command()
-            .args(["--format", "json", "run", command])
-            .output()
-            .expect("failed to run session");
+        let args = ["--format", "json", "run", command];
+        let output = harness.output(&args);
         assert!(
             output.status.success(),
-            "run command failed: stdout={}, stderr={}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
+            "{}",
+            harness.command_failure_diagnostic(&args, &output)
         );
         let value: Value = serde_json::from_slice(&output.stdout).expect("run output must be JSON");
         value["session_id"]
@@ -63,7 +43,6 @@ mod e2e {
     #[test]
     #[ignore = "slow e2e"]
     fn e2e_core_runtime_commands_work_end_to_end() {
-        let _lock = slow_e2e_lock();
         let mut harness = RealTestHarness::new();
 
         harness
@@ -158,7 +137,6 @@ mod e2e {
     #[test]
     #[ignore = "slow e2e"]
     fn e2e_modifier_hold_affects_semantic_input() {
-        let _lock = slow_e2e_lock();
         let harness = RealTestHarness::new();
         let session_id = spawn_session(&harness, "cat");
 
@@ -202,7 +180,6 @@ mod e2e {
     #[test]
     #[ignore = "slow e2e"]
     fn e2e_screenshot_rejects_named_region() {
-        let _lock = slow_e2e_lock();
         let harness = RealTestHarness::new();
         let session_id = spawn_session(&harness, "bash");
 
@@ -219,7 +196,6 @@ mod e2e {
     #[test]
     #[ignore = "slow e2e"]
     fn e2e_sessions_attach_interactive_default_detach_keys() {
-        let _lock = slow_e2e_lock();
         let harness = RealTestHarness::new();
         let session_id = spawn_session(&harness, "bash");
 
@@ -262,7 +238,6 @@ mod e2e {
     #[test]
     #[ignore = "slow e2e"]
     fn e2e_sessions_attach_interactive_custom_detach_keys() {
-        let _lock = slow_e2e_lock();
         let harness = RealTestHarness::new();
         let session_id = spawn_session(&harness, "bash");
 

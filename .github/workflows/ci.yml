@@ -147,6 +147,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -165,8 +168,9 @@ jobs:
       - name: Run tests
         working-directory: cli
         run: |
-          # Run lib + bins + fast CLI smoke/contract tests
-          cargo test --release -p agent-tui --lib --bins --test cli_smoke --test cli_contracts --test cli_command_contracts
+          # Run the same nextest-backed lanes as just ready.
+          cargo nextest run --release --workspace --lib --test cli_smoke --test cli_contracts --test cli_command_contracts --test real_harness_contracts
+          cargo nextest run --release -p agent-tui --test system_e2e --run-ignored=only
 
       - name: Stage CLI artifact
         run: cp cli/target/release/agent-tui agent-tui
@@ -208,6 +212,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -222,12 +229,12 @@ jobs:
       - name: Build fast command test binaries
         working-directory: cli
         run: |
-          cargo test -p agent-tui --test cli_smoke --test cli_contracts --test cli_command_contracts --no-run
+          cargo nextest list -p agent-tui --test cli_smoke --test cli_contracts --test cli_command_contracts --test real_harness_contracts
 
       - name: Run fast command verification
         working-directory: cli
         run: |
-          timeout 60s cargo test -p agent-tui --test cli_smoke --test cli_contracts --test cli_command_contracts
+          timeout 60s cargo nextest run -p agent-tui --test cli_smoke --test cli_contracts --test cli_command_contracts --test real_harness_contracts
 
   command-core-e2e:
     name: Command Core E2E (Linux, 60s)
@@ -239,6 +246,9 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -254,12 +264,12 @@ jobs:
       - name: Build core runtime command E2E binary
         working-directory: cli
         run: |
-          cargo test -p agent-tui --test system_e2e --no-run
+          cargo nextest list -p agent-tui --test system_e2e --run-ignored=only
 
       - name: Run core runtime command E2E suite
         working-directory: cli
         run: |
-          timeout 60s cargo test -p agent-tui --test system_e2e
+          timeout 60s cargo nextest run -p agent-tui --test system_e2e --run-ignored=only
 
   publish-check:
     name: Publish Dry-Run

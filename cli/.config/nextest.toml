@@ -1,0 +1,15 @@
+nextest-version = { required = "0.9.55" }
+
+[profile.default]
+# Retry transient failures once across both fast and explicit E2E lanes.
+retries = 1
+
+# Centralized timeout policy: mark tests slow after 60s and fail them after 5 minutes.
+slow-timeout = { period = "60s", terminate-after = 5, grace-period = "10s" }
+
+[test-groups]
+real-e2e = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'binary(system_e2e)'
+test-group = 'real-e2e'

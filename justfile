@@ -40,13 +40,13 @@ lint:
 deny: _ensure-cargo-deny
     cargo deny check advisories bans licenses sources
 
-# Run test suite.
-test:
-    cargo test --workspace --lib --test cli_smoke --test cli_contracts --test cli_command_contracts
+# Run fast Rust suite through nextest, including mock-daemon CLI tests.
+test: _ensure-cargo-nextest
+    cargo nextest run --workspace --lib --test cli_smoke --test cli_contracts --test cli_command_contracts --test real_harness_contracts
 
-# Run slow, core-runtime command E2E coverage.
-test-core-e2e:
-    cargo test -p agent-tui --test system_e2e -- --ignored
+# Run slow, real-daemon core-runtime E2E coverage through nextest.
+test-core-e2e: _ensure-cargo-nextest
+    cargo nextest run -p agent-tui --test system_e2e --run-ignored=only
 
 # Run the bash CLI test suite against the built agent-tui binary.
 cli-tests:
@@ -124,3 +124,7 @@ _ensure-cargo-watch:
 # Internal: ensure cargo-deny is installed.
 _ensure-cargo-deny:
     @command -v cargo-deny >/dev/null || { echo "cargo-deny is required for this recipe. Install with 'cargo install cargo-deny' and re-run."; exit 1; }
+
+# Internal: ensure cargo-nextest is installed.
+_ensure-cargo-nextest:
+    @cargo nextest --version >/dev/null 2>&1 || { echo "cargo-nextest is required for this recipe. Install with 'cargo install cargo-nextest --locked' or pin a cargo-nextest version compatible with your active rustc."; exit 1; }

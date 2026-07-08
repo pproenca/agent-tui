@@ -8,6 +8,7 @@ use std::io;
 use std::io::IsTerminal;
 use std::io::Read;
 use std::net::SocketAddr;
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
@@ -543,9 +544,10 @@ pub(crate) fn warn_legacy_deprecation_with_replacement(command: &str, replacemen
 pub(crate) fn handle_scroll<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     direction: ScrollDirection,
-    amount: u16,
+    amount: NonZeroU16,
 ) -> HandlerResult {
     const SCROLL_INTER_STEP_DELAY_MS: u64 = 50;
+    let amount = amount.get();
 
     let key = match direction {
         ScrollDirection::Up => "ArrowUp",

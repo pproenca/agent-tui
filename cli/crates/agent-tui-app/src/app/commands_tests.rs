@@ -835,7 +835,7 @@ fn test_scroll_command_default_amount() {
         panic!("Expected Scroll command, got {:?}", cli.command);
     };
     assert!(matches!(direction, ScrollDirection::Down));
-    assert_eq!(amount, 1);
+    assert_eq!(amount.get(), 1);
 }
 
 #[test]
@@ -845,7 +845,15 @@ fn test_scroll_command_custom_amount() {
         panic!("Expected Scroll command, got {:?}", cli.command);
     };
     assert!(matches!(direction, ScrollDirection::Up));
-    assert_eq!(amount, 5);
+    assert_eq!(amount.get(), 5);
+}
+
+#[test]
+fn test_scroll_rejects_zero_amount() {
+    let err = Cli::try_parse_from(["agent-tui", "scroll", "down", "0"])
+        .err()
+        .expect("expected parse error");
+    assert_eq!(err.kind(), ErrorKind::ValueValidation);
 }
 
 #[test]

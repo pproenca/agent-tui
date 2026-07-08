@@ -19,6 +19,7 @@ Manages PTY sessions via a background daemon with JSON-RPC WebSocket API and emb
 | `docs/design-docs/` | Design history, core beliefs, architectural decisions |
 | `docs/api/` | OpenAPI + AsyncAPI specs, example clients (Rust, JS) |
 | `docs/ops/` | Process model, deployment patterns |
+| `docs/agents/` | Matt Pocock engineering workflow config: issue tracker, labels, project board, and domain docs |
 | `docs/cli/` | Auto-generated CLI reference (do not hand-edit) |
 | `cli/docs/architecture/` | Clean Architecture target state and dependency matrix |
 | `cli/docs/plans/` | Historical refactor/restructure plans |
@@ -87,7 +88,7 @@ Three specialized agents run during code review (see `.claude/agents/`):
 
 ### Issue tracker
 
-Issues are tracked in GitHub Issues for `pproenca/agent-tui`; external PRs are also a triage surface, and progress is tracked in the `agent-tui Roadmap` GitHub Project. See `docs/agents/issue-tracker.md` and `docs/agents/project-board.md`.
+Use the Matt Pocock skills workflow: PRDs and implementation slices are tracked in GitHub Issues for `pproenca/agent-tui`; external PRs are also a triage surface, and progress is tracked in the `agent-tui Roadmap` GitHub Project. Do not create repo-local `docs/exec-plans/` files for new work. See `docs/agents/issue-tracker.md` and `docs/agents/project-board.md`.
 
 ### Triage labels
 

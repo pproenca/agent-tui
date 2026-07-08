@@ -1,9 +1,9 @@
 # Release Readiness Checklist
 
-Current target for #36: `1.0.2`.
+Current target for #36: `1.1.0`.
 
 ```bash
-VERSION=1.0.2
+VERSION=1.1.0
 ```
 
 Use this checklist when publishing credentials or public registry state are not available to the implementing agent. Every command below is intended to be run from the repository root unless it explicitly changes directory.
@@ -30,16 +30,16 @@ If the version has not been published yet, `install-script` and `source-install`
 
 ## Publish
 
-For the current `1.0.2` release line, verify that the latest public tag is `v1.0.1`, then trigger the workflow with a patch bump:
+For the current `1.1.0` release line, verify that the latest public tag is `v1.0.1`, then trigger the workflow with a minor bump:
 
 ```bash
 git fetch --tags origin
 git tag --list 'v*' --sort=-v:refname | head -n 5
-gh workflow run release.yml --ref master -f bump=patch -f dry_run=false
+gh workflow run release.yml --ref master -f bump=minor -f dry_run=false
 gh run watch --exit-status
 ```
 
-Expected result: the release workflow resolves `VERSION=1.0.2`, creates GitHub Release `v1.0.2`, publishes npm packages, publishes crates.io crates, updates the Homebrew tap, and runs the channel verification jobs.
+Expected result: the release workflow resolves `VERSION=1.1.0`, creates GitHub Release `v1.1.0`, publishes npm packages, publishes crates.io crates, updates the Homebrew tap, and runs the channel verification jobs.
 
 If the release must be driven by an explicit tag instead:
 
@@ -50,7 +50,7 @@ git push origin "v$VERSION"
 gh run watch --exit-status
 ```
 
-Expected result: the tag-triggered workflow publishes the same `v1.0.2` artifacts and all verification jobs pass.
+Expected result: the tag-triggered workflow publishes the same `v1.1.0` artifacts and all verification jobs pass.
 
 ## Channel Verification
 
@@ -65,7 +65,7 @@ cargo run -p xtask -- release-channels verify --target-version "$VERSION" --chan
 cd ..
 ```
 
-Expected result: every command prints `Release channel verification target: 1.0.2` and a `PASS <channel>` line for the requested channel.
+Expected result: every command prints `Release channel verification target: 1.1.0` and a `PASS <channel>` line for the requested channel.
 
 ## Install Smokes
 

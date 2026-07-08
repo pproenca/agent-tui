@@ -12,7 +12,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.0.2"
+version = "1.1.0"
 edition = "2024"
 rust-version = "1.93"
 license = "MIT"
@@ -20,12 +20,12 @@ repository = "https://github.com/pproenca/agent-tui"
 
 [workspace.dependencies]
 # Internal
-agent-tui-common = { version = "1.0.2", path = "crates/agent-tui-common" }
-agent-tui-domain = { version = "1.0.2", path = "crates/agent-tui-domain" }
-agent-tui-usecases = { version = "1.0.2", path = "crates/agent-tui-usecases" }
-agent-tui-adapters = { version = "1.0.2", path = "crates/agent-tui-adapters" }
-agent-tui-infra = { version = "1.0.2", path = "crates/agent-tui-infra" }
-agent-tui-app = { version = "1.0.2", path = "crates/agent-tui-app" }
+agent-tui-common = { version = "1.1.0", path = "crates/agent-tui-common" }
+agent-tui-domain = { version = "1.1.0", path = "crates/agent-tui-domain" }
+agent-tui-usecases = { version = "1.1.0", path = "crates/agent-tui-usecases" }
+agent-tui-adapters = { version = "1.1.0", path = "crates/agent-tui-adapters" }
+agent-tui-infra = { version = "1.1.0", path = "crates/agent-tui-infra" }
+agent-tui-app = { version = "1.1.0", path = "crates/agent-tui-app" }
 
 # External (pinned)
 anyhow = "1"

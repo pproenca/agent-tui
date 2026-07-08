@@ -14,9 +14,12 @@ Use this file when parsing `--format json` output.
   {
     "session_id": "<id>",
     "screenshot": "<string>",
-    "cursor": { "row": 0, "col": 0, "visible": true },
     "rendered": "<optional>"
   }
+  ```
+- `cursor` is only present when `--include-cursor` is passed:
+  ```json
+  { "cursor": { "row": 0, "col": 0, "visible": true } }
   ```
 
 ## Wait

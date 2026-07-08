@@ -377,6 +377,40 @@ fn sessions_cleanup_kills_stopped_sessions() {
 }
 
 #[test]
+fn sessions_switch_json_reports_switching_not_attaching() {
+    let harness = TestHarness::new();
+    harness.set_success_response(
+        "attach",
+        json!({
+            "success": true,
+            "session_id": "session-1",
+            "message": "Now attached to session session-1"
+        }),
+    );
+
+    let output = harness
+        .cli_command()
+        .args(["--format", "json", "sessions", "switch", "session-1"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let parsed: Value = serde_json::from_slice(&output.stdout).expect("valid JSON stdout");
+
+    assert_eq!(parsed["session_id"], "session-1");
+    assert_eq!(parsed["success"], true);
+    let message = parsed["message"].as_str().expect("message");
+    assert!(
+        message.contains("Switched active session"),
+        "switch message should describe switching: {message}"
+    );
+    assert!(
+        !message.contains("attached"),
+        "switch message must not describe attaching: {message}"
+    );
+}
+
+#[test]
 fn type_dash_reads_from_stdin() {
     let harness = TestHarness::new();
 

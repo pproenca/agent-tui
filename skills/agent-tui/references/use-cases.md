@@ -3,7 +3,7 @@
 Use this file when selecting a minimal command set for a task.
 
 ## Basic Automation Loop
-- Commands: `run` -> `screenshot` -> `press/type` -> `wait --assert` -> `kill`.
+- Commands: `run` -> `screenshot` -> `press/type` -> `wait --assert` -> `kill --yes`.
 - Re-snapshot after each action.
 
 ## Form Entry
@@ -14,3 +14,4 @@ Use this file when selecting a minimal command set for a task.
 
 ## Live Preview Support
 - Commands: `live start --open` -> `run` -> normal flow -> `live stop`.
+- `live stop` clears standalone preview state. If the preview is served by the daemon and the daemon should stop too, run `daemon stop --yes`.

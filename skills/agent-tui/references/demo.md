@@ -29,7 +29,7 @@ Say: "I wait for the expected text to disappear to confirm the app closed."
 
 ### Step 5: Cleanup
 ```bash
-agent-tui kill
+agent-tui kill --yes
 ```
 
 ## Narration Tips

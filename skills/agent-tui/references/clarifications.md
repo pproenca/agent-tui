@@ -14,6 +14,7 @@ Use this file when requirements are incomplete or ambiguous.
 ## Live Preview (always ask)
 - "Do you want a live preview while I run the test?"
 - If yes: run `agent-tui live start --open` before `agent-tui run ...` and stop it afterward.
+- `agent-tui live stop` clears standalone preview state; daemon-backed preview stays available until `agent-tui daemon stop --yes`.
 
 ## Safety and Data Handling
 - Ask for credentials or test accounts if login is required; never guess secrets.

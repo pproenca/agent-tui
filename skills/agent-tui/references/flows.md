@@ -15,7 +15,7 @@ Use this file when you need a complete, end-to-end command sequence.
    - `agent-tui --session <id> wait "Expected text" --assert`
 6) Repeat steps 3-5 until the flow finishes.
 7) Cleanup:
-   - `agent-tui --session <id> kill`
+   - `agent-tui --session <id> kill --yes`
 
 ## Form Interaction Flow
 1) `agent-tui run <app>`
@@ -24,7 +24,7 @@ Use this file when you need a complete, end-to-end command sequence.
 4) Type value: `agent-tui --session <id> type "my-value"`
 5) Submit: `agent-tui --session <id> press Enter`
 6) Wait for success: `agent-tui --session <id> wait "Success" --assert`
-7) Cleanup: `agent-tui --session <id> kill`
+7) Cleanup: `agent-tui --session <id> kill --yes`
 
 ## Dynamic UI / Flaky Rendering Flow
 1) Start: `agent-tui run <app>`
@@ -33,22 +33,23 @@ Use this file when you need a complete, end-to-end command sequence.
 4) Act: `agent-tui --session <id> press Enter` or `agent-tui --session <id> type "text"`
 5) Re-stabilize: `agent-tui --session <id> wait --stable`
 6) Re-snapshot and continue.
-7) Cleanup: `agent-tui --session <id> kill`
+7) Cleanup: `agent-tui --session <id> kill --yes`
 
 ## Live Preview Flow (optional)
 1) Ask user if they want live preview.
 2) If yes: `agent-tui live start --open`
 3) Run the app: `agent-tui run <app>`
 4) Continue normal flow (snapshot/act/wait).
-5) Stop preview when done: `agent-tui live stop`
-6) Cleanup: `agent-tui kill`
+5) Stop standalone preview state when done: `agent-tui live stop`
+6) If preview is daemon-backed and the daemon should stop too: `agent-tui daemon stop --yes`
+7) Cleanup: `agent-tui kill --yes`
 
 ## Debug/Attach Flow (existing session)
 1) List sessions: `agent-tui sessions`
 2) Switch active session if needed: `agent-tui sessions switch <id>`
 3) Attach to active session: `agent-tui sessions attach`
-4) Interact/observe, then detach (Ctrl-P Ctrl-Q).
-5) Cleanup: `agent-tui kill` or `agent-tui sessions cleanup`
+4) Interact/observe, then detach (Ctrl-P Ctrl-B).
+5) Cleanup: `agent-tui kill --yes` or `agent-tui sessions cleanup --yes`
 
 ## Smoke Test Example (htop)
 1) `agent-tui run htop`
@@ -56,4 +57,4 @@ Use this file when you need a complete, end-to-end command sequence.
 3) Verify UI text (e.g., "F1 Help").
 4) Quit: `agent-tui --session <id> press F10`
 5) Confirm quit: `agent-tui --session <id> wait "Quit" --gone`
-6) Cleanup: `agent-tui --session <id> kill`
+6) Cleanup: `agent-tui --session <id> kill --yes`

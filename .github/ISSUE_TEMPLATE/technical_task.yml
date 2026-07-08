@@ -1,0 +1,76 @@
+name: Technical task
+description: Track refactors, chores, architecture work, and implementation slices.
+title: "task: "
+labels:
+  - needs-triage
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What concrete repository change should happen?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why is this needed now? Link plans, design docs, issues, or PRs.
+    validations:
+      required: true
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation notes
+      description: Mention constraints, likely files, boundaries, or known risks.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Daemon
+        - PTY
+        - RPC/API
+        - Web UI
+        - Docs
+        - Release
+        - Architecture
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Layer
+      options:
+        - common
+        - domain
+        - usecases
+        - adapters
+        - infra
+        - app
+        - facade
+        - web
+        - xtask
+        - multiple
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      placeholder: |
+        - `just ready`
+    validations:
+      required: true

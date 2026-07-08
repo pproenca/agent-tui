@@ -2,6 +2,14 @@
 
 Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
+Progress is tracked in the **agent-tui Roadmap** GitHub Project:
+
+- Project URL: https://github.com/users/pproenca/projects/1
+- Project owner: `pproenca`
+- Project number: `1`
+
+See `docs/agents/project-board.md` for field meanings and label-to-workflow conventions.
+
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.

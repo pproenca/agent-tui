@@ -1,0 +1,83 @@
+name: Feature request
+description: Propose a user-facing capability or behavior change.
+title: "feat: "
+labels:
+  - needs-triage
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the desired behavior from the user's point of view.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List the externally visible checks that define done.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Daemon
+        - PTY
+        - RPC/API
+        - Web UI
+        - Docs
+        - Release
+        - Architecture
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Layer
+      description: Pick the innermost layer that seems to own the concept.
+      options:
+        - unknown
+        - common
+        - domain
+        - usecases
+        - adapters
+        - infra
+        - app
+        - facade
+        - web
+        - xtask
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Which commands, tests, or manual checks should prove the work is complete?
+      placeholder: |
+        - `just test`
+        - `just boundaries`
+    validations:
+      required: false
+  - type: checkboxes
+    id: readiness
+    attributes:
+      label: Agent readiness
+      options:
+        - label: The acceptance criteria are specific enough for an agent to implement without more product context.
+          required: false
+        - label: The affected layer is identified, or the uncertainty is called out above.
+          required: false

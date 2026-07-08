@@ -1,0 +1,80 @@
+name: Bug report
+description: Report broken or surprising behavior in agent-tui.
+title: "bug: "
+labels:
+  - needs-triage
+  - bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and why is it a bug?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: List the smallest set of steps or commands that reproduce the problem.
+      placeholder: |
+        1. Run `...`
+        2. Open `...`
+        3. Observe `...`
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Daemon
+        - PTY
+        - RPC/API
+        - Web UI
+        - Docs
+        - Release
+        - Architecture
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Layer
+      description: Pick the innermost layer that seems to own the problem.
+      options:
+        - unknown
+        - common
+        - domain
+        - usecases
+        - adapters
+        - infra
+        - app
+        - facade
+        - web
+        - xtask
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, shell, terminal, agent-tui version or commit, and any relevant daemon/session details.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant logs, terminal output, screenshots, or JSON-RPC payloads.
+      render: text
+    validations:
+      required: false

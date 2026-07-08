@@ -260,8 +260,12 @@ pub(crate) fn resolve_wait_condition(params: &WaitParams) -> Option<String> {
         return Some("stable".to_string());
     }
 
-    if params.text.is_some() && params.gone {
+    if (params.text.is_some() || params.legacy_element.is_some()) && params.gone {
         return Some("text_gone".to_string());
+    }
+
+    if params.legacy_element.is_some() {
+        return Some("text".to_string());
     }
 
     None
@@ -610,10 +614,12 @@ pub(crate) fn handle_wait<C: DaemonClient>(
     let cond = resolve_wait_condition(&wait_params);
     let WaitParams {
         text,
+        legacy_element,
         timeout,
         assert,
         ..
     } = wait_params;
+    let text = text.or(legacy_element);
     let rpc_params = params::WaitParams {
         session: ctx.session.clone(),
         text,

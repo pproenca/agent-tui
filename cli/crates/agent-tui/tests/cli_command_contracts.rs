@@ -208,6 +208,7 @@ fn command_paths_match_expected_matrix() {
         "run".to_string(),
         "screenshot".to_string(),
         "scroll".to_string(),
+        "scroll-into-view".to_string(),
         "sessions".to_string(),
         "sessions attach".to_string(),
         "sessions cleanup".to_string(),
@@ -286,6 +287,11 @@ fn rpc_contract_matrix_covers_full_working_surface() {
         },
         CommandCase {
             args: &["wait", "done"],
+            expected_method: "wait",
+            setup: no_setup,
+        },
+        CommandCase {
+            args: &["wait", "-e", "@ready"],
             expected_method: "wait",
             setup: no_setup,
         },
@@ -705,6 +711,141 @@ fn legacy_action_missing_operation_returns_compat_error() {
 }
 
 #[test]
+fn legacy_wait_element_routes_to_literal_text_and_warns_to_stderr() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["wait", "-e", "@ready"])
+        .success()
+        .stdout(predicate::str::contains("Found after"))
+        .stderr(predicate::str::contains(
+            "agent-tui wait -e is deprecated; use `agent-tui wait <text>` instead. It will be deprecated in the next major release.",
+        ));
+
+    harness.assert_method_called_with(
+        "wait",
+        json!({
+            "text": "@ready",
+            "condition": "text"
+        }),
+    );
+}
+
+#[test]
+fn legacy_wait_element_gone_json_stdout_stays_valid_and_targets_session() {
+    let harness = TestHarness::new();
+
+    let output = harness
+        .cli_command()
+        .args([
+            "--format",
+            "json",
+            "--session",
+            "session-a",
+            "wait",
+            "-e",
+            "@ready",
+            "--gone",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "agent-tui wait -e is deprecated; use `agent-tui wait <text>` instead. It will be deprecated in the next major release.",
+        ))
+        .get_output()
+        .clone();
+
+    let stdout_text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout_text.contains("deprecated"),
+        "deprecation notice must not be written to JSON stdout: {stdout_text}"
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout).expect("valid JSON stdout");
+    assert_eq!(parsed["found"], true);
+
+    harness.assert_method_called_with(
+        "wait",
+        json!({
+            "text": "@ready",
+            "condition": "text_gone",
+            "session": "session-a"
+        }),
+    );
+}
+
+#[test]
+fn legacy_wait_element_reference_routing_is_session_scoped() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["--session", "session-a", "wait", "-e", "@ready"])
+        .success();
+    harness.assert_method_called_with(
+        "wait",
+        json!({
+            "text": "@ready",
+            "session": "session-a"
+        }),
+    );
+
+    harness.clear_requests();
+    harness
+        .run(&["--session", "session-b", "wait", "-e", "@ready"])
+        .success();
+    harness.assert_method_called_with(
+        "wait",
+        json!({
+            "text": "@ready",
+            "session": "session-b"
+        }),
+    );
+}
+
+#[test]
+fn legacy_scroll_into_view_json_stdout_stays_valid_and_does_not_send_input() {
+    let env = StandaloneEnv::new();
+
+    let output = env
+        .cli_command()
+        .args(["--format", "json", "scroll-into-view", "@details"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "agent-tui scroll-into-view is deprecated; use `agent-tui scroll` or `agent-tui press` instead. It will be deprecated in the next major release.",
+        ))
+        .stderr(predicate::str::contains("Daemon is not running").not())
+        .get_output()
+        .clone();
+
+    let stdout_text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout_text.contains("deprecated"),
+        "deprecation notice must not be written to JSON stdout: {stdout_text}"
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout).expect("valid JSON stdout");
+    assert_eq!(parsed["success"], true);
+    assert_eq!(parsed["selector"], "@details");
+    assert_eq!(parsed["scrolled"], false);
+}
+
+#[test]
+fn legacy_scroll_into_view_unsupported_semantics_return_compat_error() {
+    let env = StandaloneEnv::new();
+
+    env.run(&["scroll-into-view", "@details", "--center"])
+        .code(64)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "Legacy scroll-into-view option `--center` for selector `@details` is not supported.",
+        ))
+        .stderr(predicate::str::contains(
+            "Use `agent-tui scroll <direction> [amount]` or `agent-tui press`.",
+        ))
+        .stderr(predicate::str::contains("Daemon is not running").not())
+        .stderr(predicate::str::contains("unrecognized subcommand").not());
+}
+
+#[test]
 fn wait_assert_returns_non_zero_on_timeout() {
     let harness = TestHarness::new();
     harness.set_response(
@@ -933,6 +1074,7 @@ fn help_entrypoints_remain_valid() {
         &["press", "--help"],
         &["action", "--help"],
         &["type", "--help"],
+        &["scroll-into-view", "--help"],
         &["wait", "--help"],
         &["kill", "--help"],
         &["sessions", "--help"],

@@ -271,6 +271,26 @@ fn test_wait_text_gone() {
 }
 
 #[test]
+fn test_wait_legacy_element_flag() {
+    let cli = Cli::parse_from(["agent-tui", "wait", "-e", "@ready"]);
+    let Commands::Wait { params } = cli.command else {
+        panic!("Expected Wait command, got {:?}", cli.command);
+    };
+    assert_eq!(params.legacy_element, Some("@ready".to_string()));
+    assert!(!params.gone);
+}
+
+#[test]
+fn test_wait_legacy_element_gone() {
+    let cli = Cli::parse_from(["agent-tui", "wait", "-e", "@ready", "--gone"]);
+    let Commands::Wait { params } = cli.command else {
+        panic!("Expected Wait command, got {:?}", cli.command);
+    };
+    assert_eq!(params.legacy_element, Some("@ready".to_string()));
+    assert!(params.gone);
+}
+
+#[test]
 fn test_wait_assert_flag() {
     let cli = Cli::parse_from(["agent-tui", "wait", "--assert", "Success"]);
     let Commands::Wait { params } = cli.command else {
@@ -826,6 +846,15 @@ fn test_scroll_command_custom_amount() {
     };
     assert!(matches!(direction, ScrollDirection::Up));
     assert_eq!(amount, 5);
+}
+
+#[test]
+fn test_legacy_scroll_into_view_command() {
+    let cli = Cli::parse_from(["agent-tui", "scroll-into-view", "@details"]);
+    let Commands::ScrollIntoView { form } = cli.command else {
+        panic!("Expected ScrollIntoView command, got {:?}", cli.command);
+    };
+    assert_eq!(form, vec!["@details".to_string()]);
 }
 
 #[test]

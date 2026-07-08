@@ -165,6 +165,94 @@ fn legacy_action_compatibility_error(
     )
 }
 
+fn parse_legacy_scroll_into_view_invocation(
+    format: OutputFormat,
+    form: &[String],
+) -> Result<String> {
+    match form {
+        [selector] => Ok(selector.clone()),
+        [selector, unsupported, ..] => {
+            Err(legacy_scroll_into_view_compatibility_error(format, selector, unsupported).into())
+        }
+        [] => {
+            Err(legacy_scroll_into_view_compatibility_error(format, "<missing>", "missing").into())
+        }
+    }
+}
+
+fn legacy_scroll_into_view_compatibility_error(
+    format: OutputFormat,
+    selector: &str,
+    unsupported: &str,
+) -> CliError {
+    let selector = if selector.is_empty() {
+        "<missing>"
+    } else {
+        selector
+    };
+    let unsupported = if unsupported.is_empty() {
+        "<missing>"
+    } else {
+        unsupported
+    };
+    let message = format!(
+        "Legacy scroll-into-view option `{unsupported}` for selector `{selector}` is not supported."
+    );
+    let suggestion = "Use `agent-tui scroll <direction> [amount]` or `agent-tui press`.";
+    let json = if format == OutputFormat::Json {
+        let output = serde_json::json!({
+            "code": exit_codes::USAGE,
+            "message": message.as_str(),
+            "category": "invalid_input",
+            "retryable": false,
+            "suggestion": suggestion,
+            "context": {
+                "selector": selector,
+                "unsupported": unsupported,
+            }
+        });
+        Some(output.to_string())
+    } else {
+        None
+    };
+
+    CliError::new(
+        format,
+        format!("{message} {suggestion}"),
+        json,
+        exit_codes::USAGE,
+    )
+}
+
+fn handle_legacy_scroll_into_view(format: OutputFormat, selector: &str) -> Result<()> {
+    #[derive(Serialize)]
+    struct LegacyScrollIntoViewOutput<'a> {
+        success: bool,
+        selector: &'a str,
+        scrolled: bool,
+        message: &'a str,
+    }
+
+    let message = "Legacy scroll-into-view compatibility did not send terminal input. Use `agent-tui scroll <direction> [amount]` or `agent-tui press`.";
+
+    match format {
+        OutputFormat::Json => {
+            let output = LegacyScrollIntoViewOutput {
+                success: true,
+                selector,
+                scrolled: false,
+                message,
+            };
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        OutputFormat::Text => {
+            println!("{message}");
+        }
+    }
+
+    Ok(())
+}
+
 fn handle_completions_command(
     format: OutputFormat,
     shell: Option<CompletionShell>,
@@ -889,6 +977,13 @@ impl Application {
                     }
                 }
             }
+            Commands::ScrollIntoView { form } => {
+                warn_legacy_scroll_into_view_deprecation();
+                let selector =
+                    parse_legacy_scroll_into_view_invocation(cli.effective_format(), form)?;
+                handle_legacy_scroll_into_view(cli.effective_format(), &selector)?;
+                Ok(true)
+            }
             _ => Ok(false),
         }
     }
@@ -1047,8 +1142,14 @@ impl Application {
             Commands::Scroll { direction, amount } => {
                 handlers::handle_scroll(ctx, direction, amount)?
             }
+            Commands::ScrollIntoView { .. } => unreachable!("Handled in standalone"),
 
-            Commands::Wait { params } => handlers::handle_wait(ctx, params)?,
+            Commands::Wait { params } => {
+                if params.legacy_element.is_some() {
+                    handlers::warn_legacy_deprecation("wait -e", "wait <text>");
+                }
+                handlers::handle_wait(ctx, params)?
+            }
             Commands::Kill { dry_run, yes } => handlers::handle_kill(ctx, dry_run, yes)?,
 
             Commands::Sessions { command } => {
@@ -1169,6 +1270,13 @@ fn warn_legacy_action_deprecation() {
     handlers::warn_legacy_deprecation_with_replacement(
         "action",
         "`agent-tui press`, `agent-tui type`, or `agent-tui scroll`",
+    );
+}
+
+fn warn_legacy_scroll_into_view_deprecation() {
+    handlers::warn_legacy_deprecation_with_replacement(
+        "scroll-into-view",
+        "`agent-tui scroll` or `agent-tui press`",
     );
 }
 

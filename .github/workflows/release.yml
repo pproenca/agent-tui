@@ -351,6 +351,90 @@ jobs:
             (cd "$dir" && npm publish --access public --provenance)
           done
 
+  verify-github-install-npm:
+    name: Verify GitHub, install script, and npm channels
+    needs: [validate, release, publish-validate, publish-npm]
+    if: >-
+      always() &&
+      needs.validate.outputs.dry_run != 'true' &&
+      needs.release.result == 'success' &&
+      needs.publish-validate.result == 'success' &&
+      (needs.publish-npm.result == 'success' || needs.publish-validate.outputs.npm_skip == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify published release channels
+        working-directory: cli
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          retry() {
+            for attempt in 1 2 3 4 5 6; do
+              if "$@"; then
+                return 0
+              fi
+              echo "Attempt $attempt failed; waiting for registry propagation..."
+              sleep 10
+            done
+            "$@"
+          }
+
+          retry cargo run -p xtask -- release-channels verify \
+            --target-version "$VERSION" \
+            --channel github-releases \
+            --channel install-script \
+            --channel npm
+
+      - name: Smoke npm install
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          export NPM_CONFIG_PREFIX="$RUNNER_TEMP/npm-global"
+          mkdir -p "$NPM_CONFIG_PREFIX"
+          retry() {
+            for attempt in 1 2 3 4 5 6; do
+              if "$@"; then
+                return 0
+              fi
+              echo "Attempt $attempt failed; waiting for npm propagation..."
+              sleep 10
+            done
+            "$@"
+          }
+
+          retry npm install -g "agent-tui@$VERSION"
+          "$NPM_CONFIG_PREFIX/bin/agent-tui" --version | tee "$RUNNER_TEMP/npm-version.txt"
+          grep -F "agent-tui $VERSION" "$RUNNER_TEMP/npm-version.txt"
+
+      - name: Smoke install script pinned binary
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          INSTALL_DIR="$RUNNER_TEMP/install-script-bin"
+          AGENT_TUI_SKIP_PM=1 \
+            AGENT_TUI_VERSION="$VERSION" \
+            AGENT_TUI_INSTALL_DIR="$INSTALL_DIR" \
+            sh ./install.sh
+          "$INSTALL_DIR/agent-tui" --version | tee "$RUNNER_TEMP/install-script-version.txt"
+          grep -F "agent-tui $VERSION" "$RUNNER_TEMP/install-script-version.txt"
+
   publish-validate:
     name: Publish Dry Runs
     needs: [release, validate]

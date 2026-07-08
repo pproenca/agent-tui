@@ -77,6 +77,128 @@ fn seed_artifacts(input: &Path, kind: DistKind) -> Result<()> {
     Ok(())
 }
 
+fn current_install_script_asset_name() -> Result<String> {
+    let platform = match std::env::consts::OS {
+        "linux" => "linux",
+        "macos" => "darwin",
+        other => bail!("unsupported test OS for install script: {other}"),
+    };
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" | "arm64" => "arm64",
+        other => bail!("unsupported test arch for install script: {other}"),
+    };
+    Ok(format!("agent-tui-{platform}-{arch}"))
+}
+
+fn write_fake_curl(bin_dir: &Path) -> Result<()> {
+    let script = r#"#!/bin/sh
+set -eu
+
+url=""
+dest=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o)
+      shift
+      dest="$1"
+      ;;
+    http://* | https://*)
+      url="$1"
+      ;;
+  esac
+  shift
+done
+
+if [ -z "$url" ] || [ -z "$dest" ]; then
+  echo "fake curl requires a URL and -o destination" >&2
+  exit 2
+fi
+
+printf '%s\n' "$url" >> "$AGENT_TUI_TEST_CURL_LOG"
+case "$url" in
+  */checksums-sha256.txt)
+    cp "$AGENT_TUI_TEST_FIXTURES/checksums-sha256.txt" "$dest"
+    ;;
+  *)
+    name=${url##*/}
+    cp "$AGENT_TUI_TEST_FIXTURES/$name" "$dest"
+    ;;
+esac
+"#;
+    let path = bin_dir.join("curl");
+    write_file(&path, script)?;
+    make_executable(&path)?;
+    Ok(())
+}
+
+fn run_install_script_with_fake_downloads(
+    temp_root: &Path,
+    bin_dir: &Path,
+    fixtures: &Path,
+    log_path: &Path,
+    install_dir: &Path,
+    version: Option<&str>,
+) -> Result<()> {
+    let root = repository_root(&workspace_root()?)?;
+    let install_script = root.join("install.sh");
+    let path = prefixed_path(bin_dir)?;
+
+    let mut command = Command::new("sh");
+    command
+        .arg(&install_script)
+        .env("PATH", path)
+        .env("AGENT_TUI_SKIP_PM", "1")
+        .env("AGENT_TUI_INSTALL_DIR", install_dir)
+        .env("AGENT_TUI_TEST_FIXTURES", fixtures)
+        .env("AGENT_TUI_TEST_CURL_LOG", log_path)
+        .current_dir(temp_root);
+    if let Some(version) = version {
+        command.env("AGENT_TUI_VERSION", version);
+    }
+
+    let output = command
+        .output()
+        .with_context(|| "failed to run install script")?;
+    if !output.status.success() {
+        bail!(
+            "install script failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let installed = install_dir.join("agent-tui");
+    assert!(
+        installed.is_file(),
+        "install script did not install {}",
+        installed.display()
+    );
+
+    let version_output = Command::new(&installed)
+        .output()
+        .with_context(|| "failed to run installed fake binary")?;
+    assert!(
+        version_output.status.success(),
+        "installed fake binary failed"
+    );
+    let stdout = String::from_utf8_lossy(&version_output.stdout);
+    assert!(
+        stdout.contains("agent-tui 1.2.3"),
+        "unexpected installed binary output: {stdout}"
+    );
+
+    Ok(())
+}
+
+fn prefixed_path(bin_dir: &Path) -> Result<std::ffi::OsString> {
+    let mut paths = vec![bin_dir.to_path_buf()];
+    if let Some(existing) = env::var_os("PATH") {
+        paths.extend(env::split_paths(&existing));
+    }
+    env::join_paths(paths).with_context(|| "failed to build fake PATH")
+}
+
 #[test]
 fn version_check_rejects_platform_package_version_mismatch() -> Result<()> {
     let tempdir = seed_release_root("1.2.3")?;
@@ -316,4 +438,169 @@ end
         parse_homebrew_formula_version(formula).as_deref(),
         Some("1.2.3")
     );
+}
+
+#[test]
+fn release_channel_verification_can_be_scoped_to_selected_channels() -> Result<()> {
+    let fixture = ReleaseChannelFixture {
+        github_releases: Some(GitHubReleaseFixture {
+            tag: "v1.2.3".to_string(),
+            assets: required_artifacts(DistKind::Release)
+                .iter()
+                .map(|name| (*name).to_string())
+                .chain(std::iter::once("checksums-sha256.txt".to_string()))
+                .collect(),
+        }),
+        npm: None,
+        crates_io: None,
+        homebrew: None,
+        install_script: None,
+        source_install: None,
+    };
+
+    let report = verify_release_channel_fixture("1.2.3", &fixture);
+    let selected = selected_release_channels(&[CHANNEL_GITHUB_RELEASES.to_string()])?;
+    let scoped = filter_release_channel_report(report, &selected);
+
+    assert!(
+        scoped.is_success(),
+        "selected GitHub channel should pass without requiring unselected channels: {:?}",
+        scoped.failures()
+    );
+    Ok(())
+}
+
+#[test]
+fn release_channel_filter_rejects_unknown_channels() {
+    let err = selected_release_channels(&["mystery-channel".to_string()])
+        .expect_err("unknown channels should fail before verification output");
+
+    assert!(
+        err.to_string().contains("unknown release channel"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn live_release_channel_verification_only_runs_selected_channels() -> Result<()> {
+    let selected = selected_release_channels(&[CHANNEL_INSTALL_SCRIPT.to_string()])?;
+    let report = verify_release_channels_live(
+        &workspace_root()?,
+        "1.2.3",
+        "http://127.0.0.1:9/missing",
+        &selected,
+    );
+
+    assert_eq!(
+        report
+            .statuses
+            .iter()
+            .map(|status| status.channel)
+            .collect::<Vec<_>>(),
+        vec![CHANNEL_INSTALL_SCRIPT]
+    );
+    Ok(())
+}
+
+#[test]
+fn install_script_uses_latest_and_pinned_github_assets_with_checksums() -> Result<()> {
+    let tempdir = TempDir::new().with_context(|| "failed to create tempdir")?;
+    let bin_dir = tempdir.path().join("bin");
+    let fixtures = tempdir.path().join("fixtures");
+    let installs = tempdir.path().join("installs");
+    let logs = tempdir.path().join("logs");
+    fs::create_dir_all(&bin_dir).with_context(|| "failed to create fake bin dir")?;
+    fs::create_dir_all(&fixtures).with_context(|| "failed to create fixtures dir")?;
+    fs::create_dir_all(&installs).with_context(|| "failed to create installs dir")?;
+    fs::create_dir_all(&logs).with_context(|| "failed to create logs dir")?;
+
+    let asset = current_install_script_asset_name()?;
+    let asset_path = fixtures.join(&asset);
+    write_file(&asset_path, "#!/bin/sh\nprintf 'agent-tui 1.2.3\\n'\n")?;
+    make_executable(&asset_path)?;
+
+    let digest = sha256_file(&asset_path)?;
+    write_file(
+        &fixtures.join("checksums-sha256.txt"),
+        &format!("{digest}  {asset}\n"),
+    )?;
+    write_fake_curl(&bin_dir)?;
+
+    let latest_log = logs.join("latest.log");
+    let latest_install = installs.join("latest");
+    run_install_script_with_fake_downloads(
+        tempdir.path(),
+        &bin_dir,
+        &fixtures,
+        &latest_log,
+        &latest_install,
+        None,
+    )?;
+
+    let latest_urls = fs::read_to_string(&latest_log).with_context(|| "failed to read log")?;
+    assert!(
+        latest_urls.contains(&format!(
+            "https://github.com/pproenca/agent-tui/releases/latest/download/{asset}"
+        )),
+        "latest install did not download expected asset URL: {latest_urls}"
+    );
+    assert!(
+        latest_urls.contains(
+            "https://github.com/pproenca/agent-tui/releases/latest/download/checksums-sha256.txt"
+        ),
+        "latest install did not verify checksums: {latest_urls}"
+    );
+
+    let pinned_log = logs.join("pinned.log");
+    let pinned_install = installs.join("pinned");
+    run_install_script_with_fake_downloads(
+        tempdir.path(),
+        &bin_dir,
+        &fixtures,
+        &pinned_log,
+        &pinned_install,
+        Some("v1.2.3"),
+    )?;
+
+    let pinned_urls = fs::read_to_string(&pinned_log).with_context(|| "failed to read log")?;
+    assert!(
+        pinned_urls.contains(&format!(
+            "https://github.com/pproenca/agent-tui/releases/download/v1.2.3/{asset}"
+        )),
+        "pinned install did not download expected asset URL: {pinned_urls}"
+    );
+    assert!(
+        pinned_urls.contains(
+            "https://github.com/pproenca/agent-tui/releases/download/v1.2.3/checksums-sha256.txt"
+        ),
+        "pinned install did not verify checksums: {pinned_urls}"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn release_workflow_verifies_and_smokes_github_install_script_and_npm() -> Result<()> {
+    let root = repository_root(&workspace_root()?)?;
+    let workflow = fs::read_to_string(root.join(".github/workflows/release.yml"))
+        .with_context(|| "failed to read release workflow")?;
+
+    for needle in [
+        "release-channels verify",
+        "--channel github-releases",
+        "--channel install-script",
+        "--channel npm",
+        "npm install -g \"agent-tui@$VERSION\"",
+        "AGENT_TUI_SKIP_PM=1",
+        "AGENT_TUI_VERSION=\"$VERSION\"",
+        "\"$NPM_CONFIG_PREFIX/bin/agent-tui\" --version",
+        "\"$INSTALL_DIR/agent-tui\" --version",
+    ] {
+        assert!(
+            workflow.contains(needle),
+            "release workflow missing expected smoke/verification step: {needle}"
+        );
+    }
+
+    Ok(())
 }

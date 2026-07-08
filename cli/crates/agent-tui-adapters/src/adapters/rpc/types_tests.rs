@@ -4,7 +4,7 @@ use serde::ser::Error as _;
 fn make_request(params: Option<Value>) -> RpcRequest {
     RpcRequest {
         _jsonrpc: "2.0".to_string(),
-        id: 1,
+        id: RpcId::from(1),
         method: "test".to_string(),
         params,
     }
@@ -56,6 +56,48 @@ fn test_response_success_format() {
     assert!(json.contains("\"id\":42"));
     assert!(json.contains("\"result\""));
     assert!(!json.contains("\"error\""));
+}
+
+#[test]
+fn test_string_request_id_deserializes() {
+    let req: RpcRequest =
+        serde_json::from_str(r#"{"jsonrpc":"2.0","id":"abc-123","method":"ping"}"#)
+            .expect("string request id should deserialize");
+
+    assert_eq!(req.id, RpcId::from("abc-123"));
+}
+
+#[test]
+fn test_string_response_id_is_echoed() {
+    let resp = RpcResponse::success("abc-123", json!({"ok": true}));
+    let json = serde_json::to_value(resp).expect("success response should serialize");
+
+    assert_eq!(json["id"], "abc-123");
+    assert_eq!(json["result"]["ok"], true);
+}
+
+#[test]
+fn test_error_without_id_serializes_null_id() {
+    let resp = RpcResponse::error_without_id(-32700, "Parse error");
+    let json = serde_json::to_value(resp).expect("error response should serialize");
+
+    assert!(json.get("id").is_some());
+    assert!(json["id"].is_null());
+    assert_eq!(json["error"]["code"], -32700);
+}
+
+#[test]
+fn test_request_id_from_json_str_recovers_string_and_integer_ids() {
+    assert_eq!(
+        request_id_from_json_str(r#"{"jsonrpc":"2.0","id":"abc","method":7}"#),
+        Some(RpcId::from("abc"))
+    );
+    assert_eq!(
+        request_id_from_json_str(r#"{"jsonrpc":"2.0","id":7,"method":false}"#),
+        Some(RpcId::from(7))
+    );
+    assert_eq!(request_id_from_json_str(r#"{"id":null}"#), None);
+    assert_eq!(request_id_from_json_str("not json"), None);
 }
 
 #[test]

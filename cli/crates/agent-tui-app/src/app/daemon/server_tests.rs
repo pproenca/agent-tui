@@ -184,14 +184,17 @@ fn join_thread_with_timeout_or_reap_spawns_background_reaper_on_timeout() {
         let _ = finished_tx.send(());
     });
 
-    let outcome = super::join_thread_with_timeout_or_reap(
+    let outcome = crate::common::join_thread_with_timeout_or_reap(
         handle,
         Duration::from_millis(10),
         "test thread",
         "test-thread-reaper",
     );
 
-    assert_eq!(outcome, super::ThreadJoinOutcome::ReapingInBackground);
+    assert_eq!(
+        outcome,
+        crate::common::ThreadJoinOutcome::ReapingInBackground
+    );
     assert!(
         finished_rx.recv_timeout(Duration::from_millis(50)).is_err(),
         "reaper handoff should return before the slow thread exits"

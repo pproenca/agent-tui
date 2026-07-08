@@ -3,8 +3,11 @@
 pub mod params;
 pub mod types;
 
+pub use crate::common::RpcId;
 pub use types::RpcRequest;
 pub use types::RpcResponse;
+pub use types::request_id_from_json_str;
+pub use types::request_id_from_json_value;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -52,8 +55,8 @@ pub fn to_value_opt<T: Serialize>(
     value.map(serde_json::to_value).transpose()
 }
 
-fn invalid_session_response(id: u64, message: &str) -> RpcResponse {
-    RpcResponse::error(id, -32602, &format!("Invalid session: {message}"))
+fn invalid_session_response(id: &RpcId, message: &str) -> RpcResponse {
+    RpcResponse::error(id.clone(), -32602, &format!("Invalid session: {message}"))
 }
 
 #[allow(clippy::result_large_err)]
@@ -63,10 +66,14 @@ fn deserialize_required_params<T: DeserializeOwned>(
     request
         .params
         .as_ref()
-        .ok_or_else(|| RpcResponse::error(request.id, -32602, "Missing params"))
+        .ok_or_else(|| RpcResponse::error(request.id.clone(), -32602, "Missing params"))
         .and_then(|params| {
             T::deserialize(params).map_err(|err| {
-                RpcResponse::error(request.id, -32602, &format!("Invalid params: {err}"))
+                RpcResponse::error(
+                    request.id.clone(),
+                    -32602,
+                    &format!("Invalid params: {err}"),
+                )
             })
         })
 }
@@ -80,7 +87,11 @@ where
         || Ok(T::default()),
         |params| {
             T::deserialize(params).map_err(|err| {
-                RpcResponse::error(request.id, -32602, &format!("Invalid params: {err}"))
+                RpcResponse::error(
+                    request.id.clone(),
+                    -32602,
+                    &format!("Invalid params: {err}"),
+                )
             })
         },
     )
@@ -88,31 +99,33 @@ where
 
 #[allow(clippy::result_large_err)]
 pub fn parse_session_id(
-    id: u64,
+    id: impl Into<RpcId>,
     session: Option<String>,
 ) -> Result<Option<SessionId>, RpcResponse> {
+    let id = id.into();
     match session {
         None => Ok(None),
         Some(raw) => {
             let trimmed = raw.trim();
             if trimmed.is_empty() {
                 return Err(invalid_session_response(
-                    id,
+                    &id,
                     "Session ID cannot be empty or whitespace-only",
                 ));
             }
             SessionId::try_new(trimmed)
                 .map(Some)
-                .map_err(|err| invalid_session_response(id, &err.to_string()))
+                .map_err(|err| invalid_session_response(&id, &err.to_string()))
         }
     }
 }
 
 #[allow(clippy::result_large_err)]
 pub fn parse_session_selector(
-    id: u64,
+    id: impl Into<RpcId>,
     session: Option<String>,
 ) -> Result<Option<SessionId>, RpcResponse> {
+    let id = id.into();
     match session {
         None => Ok(None),
         Some(raw) => {
@@ -122,13 +135,13 @@ pub fn parse_session_selector(
             }
             if trimmed.is_empty() {
                 return Err(invalid_session_response(
-                    id,
+                    &id,
                     "Session ID cannot be empty or whitespace-only",
                 ));
             }
             SessionId::try_new(trimmed)
                 .map(Some)
-                .map_err(|err| invalid_session_response(id, &err.to_string()))
+                .map_err(|err| invalid_session_response(&id, &err.to_string()))
         }
     }
 }
@@ -136,11 +149,11 @@ pub fn parse_session_selector(
 #[allow(clippy::result_large_err)]
 pub fn parse_session_input(request: &RpcRequest) -> Result<SessionInput, RpcResponse> {
     let session_id =
-        parse_session_selector(request.id, request.param_str("session").map(String::from))?;
+        parse_session_selector(&request.id, request.param_str("session").map(String::from))?;
     Ok(SessionInput { session_id })
 }
 
-pub fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
+pub fn domain_error_response(id: impl Into<RpcId>, err: &DomainError) -> RpcResponse {
     RpcResponse::domain_error(
         id,
         err.code(),
@@ -151,11 +164,11 @@ pub fn domain_error_response(id: u64, err: &DomainError) -> RpcResponse {
     )
 }
 
-pub fn session_error_response(id: u64, err: SessionError) -> RpcResponse {
+pub fn session_error_response(id: impl Into<RpcId>, err: SessionError) -> RpcResponse {
     domain_error_response(id, &DomainError::from(err))
 }
 
-pub fn lock_timeout_response(id: u64, session_id: Option<&str>) -> RpcResponse {
+pub fn lock_timeout_response(id: impl Into<RpcId>, session_id: Option<&str>) -> RpcResponse {
     let err = DomainError::LockTimeout {
         session_id: session_id.map(String::from),
     };
@@ -177,12 +190,12 @@ pub fn parse_spawn_input(request: &RpcRequest) -> Result<SpawnInput, RpcResponse
         args: rpc_params.args,
         cwd: rpc_params.cwd,
         env: rpc_params.env,
-        session_id: parse_session_id(request.id, rpc_params.session)?,
+        session_id: parse_session_id(&request.id, rpc_params.session)?,
         size: rpc_params.size,
     })
 }
 
-pub fn spawn_output_to_response(id: u64, output: SpawnOutput) -> RpcResponse {
+pub fn spawn_output_to_response(id: impl Into<RpcId>, output: SpawnOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -197,7 +210,7 @@ pub fn parse_snapshot_input(request: &RpcRequest) -> Result<SnapshotInput, RpcRe
     let rpc_params: params::SnapshotParams = deserialize_optional_params(request)?;
 
     Ok(SnapshotInput {
-        session_id: parse_session_selector(request.id, rpc_params.session)?,
+        session_id: parse_session_selector(&request.id, rpc_params.session)?,
         region: rpc_params.region,
         strip_ansi: rpc_params.strip_ansi,
         retain_ansi: rpc_params.retain_ansi,
@@ -207,7 +220,7 @@ pub fn parse_snapshot_input(request: &RpcRequest) -> Result<SnapshotInput, RpcRe
 }
 
 pub fn snapshot_output_to_response(
-    id: u64,
+    id: impl Into<RpcId>,
     output: SnapshotOutput,
     strip_ansi: bool,
     retain_ansi: bool,
@@ -256,7 +269,7 @@ pub fn parse_keystroke_input(request: &RpcRequest) -> Result<KeystrokeInput, Rpc
 
     Ok(KeystrokeInput {
         session_id: parse_session_selector(
-            request.id,
+            &request.id,
             request.param_str("session").map(String::from),
         )?,
         key,
@@ -269,7 +282,7 @@ pub fn parse_type_input(request: &RpcRequest) -> Result<TypeInput, RpcResponse> 
 
     Ok(TypeInput {
         session_id: parse_session_selector(
-            request.id,
+            &request.id,
             request.param_str("session").map(String::from),
         )?,
         text,
@@ -282,7 +295,7 @@ pub fn parse_keydown_input(request: &RpcRequest) -> Result<KeydownInput, RpcResp
 
     Ok(KeydownInput {
         session_id: parse_session_selector(
-            request.id,
+            &request.id,
             request.param_str("session").map(String::from),
         )?,
         key,
@@ -295,7 +308,7 @@ pub fn parse_keyup_input(request: &RpcRequest) -> Result<KeyupInput, RpcResponse
 
     Ok(KeyupInput {
         session_id: parse_session_selector(
-            request.id,
+            &request.id,
             request.param_str("session").map(String::from),
         )?,
         key,
@@ -308,7 +321,11 @@ pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> 
 
     let condition = match rpc_params.condition.as_deref() {
         Some(raw) => Some(crate::domain::WaitConditionType::parse(raw).map_err(|e| {
-            RpcResponse::error(request.id, -32602, &format!("Invalid condition: {e}"))
+            RpcResponse::error(
+                request.id.clone(),
+                -32602,
+                &format!("Invalid condition: {e}"),
+            )
         })?),
         None => None,
     };
@@ -319,21 +336,21 @@ pub fn parse_wait_input(request: &RpcRequest) -> Result<WaitInput, RpcResponse> 
         && rpc_params.text.as_deref().is_none()
     {
         return Err(RpcResponse::error(
-            request.id,
+            request.id.clone(),
             -32602,
             "Invalid condition: text is required",
         ));
     }
 
     Ok(WaitInput {
-        session_id: parse_session_selector(request.id, rpc_params.session)?,
+        session_id: parse_session_selector(&request.id, rpc_params.session)?,
         text: rpc_params.text,
         timeout_ms: rpc_params.timeout_ms,
         condition,
     })
 }
 
-pub fn wait_output_to_response(id: u64, output: WaitOutput) -> RpcResponse {
+pub fn wait_output_to_response(id: impl Into<RpcId>, output: WaitOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -343,7 +360,7 @@ pub fn wait_output_to_response(id: u64, output: WaitOutput) -> RpcResponse {
     )
 }
 
-pub fn kill_output_to_response(id: u64, output: KillOutput) -> RpcResponse {
+pub fn kill_output_to_response(id: impl Into<RpcId>, output: KillOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -353,7 +370,7 @@ pub fn kill_output_to_response(id: u64, output: KillOutput) -> RpcResponse {
     )
 }
 
-pub fn sessions_output_to_response(id: u64, output: SessionsOutput) -> RpcResponse {
+pub fn sessions_output_to_response(id: impl Into<RpcId>, output: SessionsOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -368,12 +385,12 @@ pub fn parse_resize_input(request: &RpcRequest) -> Result<ResizeInput, RpcRespon
     let rpc_params: params::ResizeParams = deserialize_required_params(request)?;
 
     Ok(ResizeInput {
-        session_id: parse_session_selector(request.id, rpc_params.session)?,
+        session_id: parse_session_selector(&request.id, rpc_params.session)?,
         size: rpc_params.size,
     })
 }
 
-pub fn resize_output_to_response(id: u64, output: ResizeOutput) -> RpcResponse {
+pub fn resize_output_to_response(id: impl Into<RpcId>, output: ResizeOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -385,7 +402,7 @@ pub fn resize_output_to_response(id: u64, output: ResizeOutput) -> RpcResponse {
     )
 }
 
-pub fn restart_output_to_response(id: u64, output: RestartOutput) -> RpcResponse {
+pub fn restart_output_to_response(id: impl Into<RpcId>, output: RestartOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -402,12 +419,16 @@ pub fn parse_attach_input(request: &RpcRequest) -> Result<AttachInput, RpcRespon
     let session_id = request.require_str("session")?;
     Ok(AttachInput {
         session_id: SessionId::try_new(session_id.trim()).map_err(|err| {
-            RpcResponse::error(request.id, -32602, &format!("Invalid session: {err}"))
+            RpcResponse::error(
+                request.id.clone(),
+                -32602,
+                &format!("Invalid session: {err}"),
+            )
         })?,
     })
 }
 
-pub fn attach_output_to_response(id: u64, output: &AttachOutput) -> RpcResponse {
+pub fn attach_output_to_response(id: impl Into<RpcId>, output: &AttachOutput) -> RpcResponse {
     let session_id = output.session_id.as_str();
     let message = format!("Now attached to session {session_id}");
     RpcResponse::success(
@@ -425,7 +446,7 @@ pub fn parse_cleanup_input(request: &RpcRequest) -> CleanupInput {
     CleanupInput { all }
 }
 
-pub fn cleanup_output_to_response(id: u64, output: CleanupOutput) -> RpcResponse {
+pub fn cleanup_output_to_response(id: impl Into<RpcId>, output: CleanupOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -443,12 +464,14 @@ pub fn parse_assert_input(request: &RpcRequest) -> Result<AssertInput, RpcRespon
     let condition_type = request.require_str("type")?;
     let value = request.require_str("value")?.to_string();
 
-    let condition_type = crate::domain::AssertConditionType::parse(condition_type)
-        .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid type: {e}")))?;
+    let condition_type =
+        crate::domain::AssertConditionType::parse(condition_type).map_err(|e| {
+            RpcResponse::error(request.id.clone(), -32602, &format!("Invalid type: {e}"))
+        })?;
 
     Ok(AssertInput {
         session_id: parse_session_selector(
-            request.id,
+            &request.id,
             request.param_str("session").map(String::from),
         )?,
         condition_type,
@@ -456,7 +479,7 @@ pub fn parse_assert_input(request: &RpcRequest) -> Result<AssertInput, RpcRespon
     })
 }
 
-pub fn assert_output_to_response(id: u64, output: AssertOutput) -> RpcResponse {
+pub fn assert_output_to_response(id: impl Into<RpcId>, output: AssertOutput) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -466,11 +489,14 @@ pub fn assert_output_to_response(id: u64, output: AssertOutput) -> RpcResponse {
     )
 }
 
-pub fn shutdown_output_to_response(id: u64, output: ShutdownOutput) -> RpcResponse {
+pub fn shutdown_output_to_response(id: impl Into<RpcId>, output: ShutdownOutput) -> RpcResponse {
     RpcResponse::success(id, json!({ "acknowledged": output.acknowledged }))
 }
 
-pub fn terminal_write_output_to_response(id: u64, output: TerminalWriteOutput) -> RpcResponse {
+pub fn terminal_write_output_to_response(
+    id: impl Into<RpcId>,
+    output: TerminalWriteOutput,
+) -> RpcResponse {
     RpcResponse::success(
         id,
         json!({
@@ -485,12 +511,12 @@ pub fn terminal_write_output_to_response(id: u64, output: TerminalWriteOutput) -
 pub fn parse_terminal_write_input(request: &RpcRequest) -> Result<TerminalWriteInput, RpcResponse> {
     let rpc_params: params::PtyWriteParams = deserialize_required_params(request)?;
 
-    let data = STANDARD
-        .decode(&rpc_params.data)
-        .map_err(|e| RpcResponse::error(request.id, -32602, &format!("Invalid base64: {e}")))?;
+    let data = STANDARD.decode(&rpc_params.data).map_err(|e| {
+        RpcResponse::error(request.id.clone(), -32602, &format!("Invalid base64: {e}"))
+    })?;
 
     Ok(TerminalWriteInput {
-        session_id: parse_session_selector(request.id, rpc_params.session)?,
+        session_id: parse_session_selector(&request.id, rpc_params.session)?,
         data,
     })
 }

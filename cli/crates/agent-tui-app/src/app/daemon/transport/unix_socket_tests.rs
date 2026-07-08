@@ -53,10 +53,11 @@ fn test_transport_error_display() {
     ));
     assert!(io_err.to_string().contains("I/O error"));
 
-    let parse_err = TransportError::Parse(
-        serde_json::from_str::<serde_json::Value>("invalid json")
+    let parse_err = TransportError::Parse {
+        source: serde_json::from_str::<serde_json::Value>("invalid json")
             .expect_err("invalid JSON should fail"),
-    );
+        request_id: None,
+    };
     assert!(parse_err.to_string().contains("Parse error"));
 
     let size_err = TransportError::SizeLimit { max_bytes: 1024 };
@@ -130,9 +131,43 @@ fn test_unix_socket_roundtrip() {
     writeln!(client_stream_writer, "{request_json}").expect("client request should write");
 
     let response = client_conn.read_request();
-    assert!(response.is_ok() || matches!(response, Err(TransportError::Parse(_))));
+    assert!(
+        response.is_ok()
+            || matches!(
+                response,
+                Err(TransportError::Parse {
+                    source: _,
+                    request_id: _
+                })
+            )
+    );
 
     server_handle.join().expect("server thread should join");
+}
+
+#[test]
+fn test_unix_socket_parse_error_recovers_request_id() {
+    use crate::adapters::rpc::RpcId;
+    use std::os::unix::net::UnixStream;
+
+    let (mut client_stream, server_stream) =
+        UnixStream::pair().expect("unix stream pair should be created");
+    let mut conn = UnixSocketConnection::new(server_stream).expect("server connection should wrap");
+
+    writeln!(
+        client_stream,
+        "{{\"jsonrpc\":\"2.0\",\"id\":\"request-7\",\"method\":7}}"
+    )
+    .expect("invalid request should write");
+
+    let result = conn.read_request();
+    assert!(matches!(
+        result,
+        Err(TransportError::Parse {
+            request_id: Some(id),
+            ..
+        }) if id == RpcId::from("request-7")
+    ));
 }
 
 #[test]

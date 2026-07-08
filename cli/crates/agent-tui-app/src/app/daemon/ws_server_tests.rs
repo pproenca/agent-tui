@@ -20,6 +20,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
+use std::time::Instant;
 use tempfile::TempDir;
 use tokio::sync::mpsc;
 use tracing::Subscriber;
@@ -31,6 +32,8 @@ use tungstenite::Message as WsMessage;
 use tungstenite::client::IntoClientRequest;
 use tungstenite::connect;
 use tungstenite::handshake::client::Response;
+
+static WS_TEST_SERVER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 struct EnvGuard {
     key: &'static str,
@@ -111,6 +114,22 @@ impl EventRecorder {
 }
 
 impl Visit for EventVisitor {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.fields.push(format!("{}={value:?}", field.name()));
+    }
+
+    fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
+        self.fields.push(format!("{}={value:?}", field.name()));
+    }
+
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        self.fields.push(format!("{}={value:?}", field.name()));
+    }
+
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.fields.push(format!("{}={value:?}", field.name()));
+    }
+
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         self.fields.push(format!("{}={value:?}", field.name()));
     }
@@ -132,6 +151,7 @@ where
 }
 
 struct TestWsServer {
+    _server_lock: std::sync::MutexGuard<'static, ()>,
     _tempdir: TempDir,
     core: Arc<RpcCore>,
     handle: Option<WsServerHandle>,
@@ -160,6 +180,9 @@ impl TestWsServer {
     }
 
     fn start_with_options(options: TestWsServerOptions) -> Self {
+        let server_lock = WS_TEST_SERVER_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let tempdir = tempfile::tempdir().expect("tempdir");
         let state_path = tempdir.path().join("api.json");
         let shutdown_flag = Arc::new(AtomicBool::new(false));
@@ -197,6 +220,7 @@ impl TestWsServer {
         let ui_url = state["ui_url"].as_str().expect("ui_url").to_string();
 
         Self {
+            _server_lock: server_lock,
             _tempdir: tempdir,
             core,
             handle: Some(handle),
@@ -291,6 +315,54 @@ fn assert_websocket_close_frame(
     }
 }
 
+fn read_text_responding_to_pings(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+) -> String {
+    for _ in 0..16 {
+        match socket.read().expect("read websocket frame") {
+            WsMessage::Text(text) => return text,
+            WsMessage::Ping(payload) => socket
+                .send(WsMessage::Pong(payload))
+                .expect("pong should send"),
+            WsMessage::Pong(_) => {}
+            WsMessage::Close(frame) => panic!("unexpected close frame: {frame:?}"),
+            other => panic!("expected text or control frame, got {other:?}"),
+        }
+    }
+
+    panic!("timed out waiting for text frame");
+}
+
+fn read_until_close_without_pong(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+) {
+    let deadline = Instant::now()
+        + super::WS_KEEPALIVE_INTERVAL
+        + super::WS_PONG_TIMEOUT
+        + Duration::from_secs(2);
+    loop {
+        match socket.read() {
+            Ok(WsMessage::Close(_)) => return,
+            Ok(WsMessage::Ping(_)) | Ok(WsMessage::Pong(_)) | Ok(WsMessage::Text(_)) => {}
+            Ok(other) => panic!("unexpected websocket frame while waiting for close: {other:?}"),
+            Err(tungstenite::Error::ConnectionClosed) | Err(tungstenite::Error::AlreadyClosed) => {
+                return;
+            }
+            Err(tungstenite::Error::Io(err))
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                ) =>
+            {
+                if Instant::now() >= deadline {
+                    panic!("timed out waiting for websocket close after missing pong");
+                }
+            }
+            Err(err) => panic!("unexpected websocket error while waiting for close: {err}"),
+        }
+    }
+}
+
 #[test]
 fn ws_config_reads_ws_env() {
     let _env = env_lock();
@@ -353,9 +425,10 @@ fn ws_server_startup_log_uses_current_dispatch_and_stays_token_free() {
     let subscriber = tracing_subscriber::registry().with(recorder.clone());
 
     tracing::subscriber::with_default(subscriber, || {
+        tracing::callsite::rebuild_interest_cache();
         let server = TestWsServer::start();
         let output = recorder
-            .wait_for_substring("message=WS server listening", Duration::from_secs(2))
+            .wait_for_substring("message=WS server listening", Duration::from_secs(10))
             .unwrap_or_else(|| {
                 panic!(
                     "timed out waiting for ws startup log: {}",
@@ -366,6 +439,7 @@ fn ws_server_startup_log_uses_current_dispatch_and_stays_token_free() {
         assert!(output.contains("ws_path=\"/ws\""), "{output}");
         assert!(!output.contains("token="), "{output}");
         assert!(!output.contains(&server.ws_url), "{output}");
+        tracing::callsite::rebuild_interest_cache();
     });
 }
 
@@ -423,6 +497,134 @@ fn ws_upgrade_rejects_cross_origin_browser_requests() {
 }
 
 #[test]
+fn ws_idle_connection_receives_server_keepalive_ping() {
+    let server = TestWsServer::start();
+    let browser_origin = server.browser_origin();
+    let (mut socket, _response) = websocket_connect(&server.ws_url, Some(&browser_origin));
+    set_websocket_read_timeout(&mut socket);
+
+    match socket.read().expect("read keepalive frame") {
+        WsMessage::Ping(_) => {}
+        other => panic!("expected server keepalive ping, got {other:?}"),
+    }
+}
+
+#[test]
+fn ws_missing_pong_disconnects_idle_connection() {
+    let server = TestWsServer::start();
+    let browser_origin = server.browser_origin();
+    let (mut socket, _response) = websocket_connect(&server.ws_url, Some(&browser_origin));
+    set_websocket_read_timeout(&mut socket);
+
+    std::thread::park_timeout(
+        super::WS_KEEPALIVE_INTERVAL + super::WS_PONG_TIMEOUT + Duration::from_millis(50),
+    );
+
+    read_until_close_without_pong(&mut socket);
+}
+
+#[test]
+fn ws_pong_keeps_connection_alive() {
+    let server = TestWsServer::start();
+    let browser_origin = server.browser_origin();
+    let (mut socket, _response) = websocket_connect(&server.ws_url, Some(&browser_origin));
+    set_websocket_read_timeout(&mut socket);
+
+    for _ in 0..3 {
+        match socket.read().expect("read keepalive frame") {
+            WsMessage::Ping(payload) => socket
+                .send(WsMessage::Pong(payload))
+                .expect("pong should send"),
+            other => panic!("expected keepalive ping, got {other:?}"),
+        }
+    }
+
+    socket
+        .send(WsMessage::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "after-pong",
+                "method": "ping",
+            })
+            .to_string(),
+        ))
+        .expect("send ping request");
+
+    let payload: Value =
+        serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("json");
+    assert_eq!(payload["id"], "after-pong");
+    assert_eq!(payload["result"]["pong"], true);
+}
+
+#[test]
+fn ws_rpc_echoes_string_request_id() {
+    let server = TestWsServer::start();
+    let browser_origin = server.browser_origin();
+    let (mut socket, _response) = websocket_connect(&server.ws_url, Some(&browser_origin));
+    set_websocket_read_timeout(&mut socket);
+
+    socket
+        .send(WsMessage::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "req-1",
+                "method": "ping",
+            })
+            .to_string(),
+        ))
+        .expect("send ping request");
+
+    for _ in 0..8 {
+        match socket.read().expect("read rpc response") {
+            WsMessage::Text(text) => {
+                let payload: Value = serde_json::from_str(&text).expect("json");
+                assert_eq!(payload["id"], "req-1");
+                assert_eq!(payload["result"]["pong"], true);
+                return;
+            }
+            WsMessage::Ping(payload) => socket
+                .send(WsMessage::Pong(payload))
+                .expect("pong should send"),
+            WsMessage::Pong(_) => {}
+            other => panic!("expected text response or keepalive frame, got {other:?}"),
+        }
+    }
+
+    panic!("timed out waiting for string-id ping response");
+}
+
+#[test]
+fn ws_missing_pong_disconnects_stream_connection() {
+    let server = TestWsServer::start();
+    let browser_origin = server.browser_origin();
+    let (mut socket, _response) = websocket_connect(
+        &server.ws_alias_url("/api/v1/stream"),
+        Some(&browser_origin),
+    );
+    set_websocket_read_timeout(&mut socket);
+
+    socket
+        .send(WsMessage::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 77,
+                "method": "flightdeck_stream",
+                "params": {
+                    "interval_ms": 1000,
+                }
+            })
+            .to_string(),
+        ))
+        .expect("send flightdeck request");
+
+    std::thread::park_timeout(
+        super::WS_KEEPALIVE_INTERVAL + super::WS_PONG_TIMEOUT + Duration::from_millis(50),
+    );
+
+    read_until_close_without_pong(&mut socket);
+}
+
+#[test]
 fn api_stream_alias_accepts_authenticated_flightdeck_stream() {
     let server = TestWsServer::start();
     let browser_origin = server.browser_origin();
@@ -445,14 +647,8 @@ fn api_stream_alias_accepts_authenticated_flightdeck_stream() {
         ))
         .expect("send flightdeck request");
 
-    let payload: Value = serde_json::from_str(
-        &socket
-            .read()
-            .expect("read ready")
-            .into_text()
-            .expect("text frame"),
-    )
-    .expect("json");
+    let payload: Value =
+        serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("json");
     assert_eq!(payload["id"], 7);
     assert_eq!(payload["result"]["event"], "ready");
     assert!(payload["result"]["sessions"].is_array());
@@ -493,24 +689,12 @@ fn live_preview_stream_over_ws_emits_ready_init_output_and_closed() {
         ))
         .expect("send live preview request");
 
-    let ready: Value = serde_json::from_str(
-        &socket
-            .read()
-            .expect("ready frame")
-            .into_text()
-            .expect("ready text"),
-    )
-    .expect("ready json");
+    let ready: Value =
+        serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("ready json");
     assert_eq!(ready["result"]["event"], "ready");
 
-    let init: Value = serde_json::from_str(
-        &socket
-            .read()
-            .expect("init frame")
-            .into_text()
-            .expect("init text"),
-    )
-    .expect("init json");
+    let init: Value =
+        serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("init json");
     assert_eq!(init["result"]["event"], "init");
 
     let write_response = server.core.route(RpcRequest::new(
@@ -533,6 +717,13 @@ fn live_preview_stream_over_ws_emits_ready_init_output_and_closed() {
         let frame = socket.read().expect("stream frame");
         let text = match frame {
             WsMessage::Text(text) => text,
+            WsMessage::Ping(payload) => {
+                socket
+                    .send(WsMessage::Pong(payload))
+                    .expect("pong should send");
+                continue;
+            }
+            WsMessage::Pong(_) => continue,
             WsMessage::Close(_) => {
                 break;
             }
@@ -611,35 +802,17 @@ fn live_preview_stream_over_ws_emits_heartbeat_when_idle() {
         ))
         .expect("send live preview request");
 
-    let ready: Value = serde_json::from_str(
-        &socket
-            .read()
-            .expect("ready frame")
-            .into_text()
-            .expect("ready text"),
-    )
-    .expect("ready json");
+    let ready: Value =
+        serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("ready json");
     assert_eq!(ready["result"]["event"], "ready");
 
-    let init: Value = serde_json::from_str(
-        &socket
-            .read()
-            .expect("init frame")
-            .into_text()
-            .expect("init text"),
-    )
-    .expect("init json");
+    let init: Value =
+        serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("init json");
     assert_eq!(init["result"]["event"], "init");
 
     let heartbeat = loop {
-        let payload: Value = serde_json::from_str(
-            &socket
-                .read()
-                .expect("stream frame")
-                .into_text()
-                .expect("text frame"),
-        )
-        .expect("stream json");
+        let payload: Value =
+            serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("stream json");
         if payload["result"]["event"] == "heartbeat" {
             break payload;
         }

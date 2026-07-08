@@ -84,6 +84,7 @@ dependencies = [
 name = "agent-tui-common"
 version = "1.0.2"
 dependencies = [
+ "serde",
  "thiserror 2.0.18",
  "tracing",
  "tracing-appender",

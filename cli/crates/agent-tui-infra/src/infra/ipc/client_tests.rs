@@ -8,7 +8,7 @@ use std::sync::Mutex;
 fn test_request_serializes_to_jsonrpc_2_0() {
     let request = Request {
         jsonrpc: "2.0".to_string(),
-        id: 1,
+        id: RpcId::from(1),
         method: "version".to_string(),
         params: None,
     };
@@ -23,7 +23,7 @@ fn test_request_serializes_to_jsonrpc_2_0() {
 fn test_request_serializes_with_params() {
     let request = Request {
         jsonrpc: "2.0".to_string(),
-        id: 42,
+        id: RpcId::from(42),
         method: "spawn".to_string(),
         params: Some(serde_json::json!({"command": "bash", "cols": 80})),
     };
@@ -38,6 +38,22 @@ fn test_response_deserializes_success_result() {
     let response: Response = serde_json::from_str(json).expect("response should parse");
     assert!(response.result.is_some());
     assert!(response.error.is_none());
+}
+
+#[test]
+fn test_response_deserializes_string_id() {
+    let json = r#"{"jsonrpc":"2.0","id":"req-1","result":{"status":"ok"}}"#;
+    let response: Response = serde_json::from_str(json).expect("response should parse");
+    assert_eq!(response.id, Some(RpcId::from("req-1")));
+    assert!(response.result.is_some());
+}
+
+#[test]
+fn test_response_deserializes_null_id() {
+    let json = r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}"#;
+    let response: Response = serde_json::from_str(json).expect("response should parse");
+    assert_eq!(response.id, None);
+    assert!(response.error.is_some());
 }
 
 #[test]
@@ -202,6 +218,91 @@ fn test_in_memory_transport_round_trip() {
         .call("version", None)
         .expect("transport-backed call should succeed");
     assert_eq!(result["ok"], true);
+}
+
+#[test]
+fn test_call_rejects_mismatched_response_id() {
+    let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new(
+        |_request| {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "wrong-id",
+                "result": { "ok": true }
+            })
+            .to_string()
+        },
+    ));
+
+    let mut client = UnixSocketClient::connect_with_transport(transport)
+        .expect("transport-backed client should connect");
+    let config = DaemonClientConfig::default().with_max_retries(0);
+
+    let err = client
+        .call_with_config("version", None, &config)
+        .expect_err("mismatched response id should fail");
+
+    assert!(matches!(err, ClientError::InvalidResponse));
+}
+
+#[test]
+fn test_call_rejects_null_id_success_response() {
+    let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new(
+        |_request| {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": null,
+                "result": { "ok": true }
+            })
+            .to_string()
+        },
+    ));
+
+    let mut client = UnixSocketClient::connect_with_transport(transport)
+        .expect("transport-backed client should connect");
+    let config = DaemonClientConfig::default().with_max_retries(0);
+
+    let err = client
+        .call_with_config("version", None, &config)
+        .expect_err("null id success response should fail");
+
+    assert!(matches!(err, ClientError::InvalidResponse));
+}
+
+#[test]
+fn test_call_stream_rejects_mismatched_stream_frame_id() {
+    let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new(
+        |request| {
+            let value: serde_json::Value =
+                serde_json::from_str(request.trim()).expect("request json");
+            let id = value.get("id").cloned().expect("request should include id");
+            format!(
+                "{}\n{}",
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": { "stream": "ready" }
+                }),
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": "wrong-id",
+                    "result": { "event": "output" }
+                })
+            )
+        },
+    ));
+
+    let mut client = UnixSocketClient::connect_with_transport(transport)
+        .expect("transport-backed client should connect");
+    let config = DaemonClientConfig::default().with_max_retries(0);
+    let mut stream = client
+        .call_stream_with_config("live_preview_stream", None, &config)
+        .expect("stream handshake should succeed");
+
+    let err = stream
+        .next_result()
+        .expect_err("mismatched stream frame id should fail");
+
+    assert!(matches!(err, ClientError::InvalidResponse));
 }
 
 #[test]

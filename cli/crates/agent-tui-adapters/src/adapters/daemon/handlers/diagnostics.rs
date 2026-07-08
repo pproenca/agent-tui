@@ -17,7 +17,7 @@ pub fn handle_terminal_write_uc<U: TerminalWriteUseCase>(
     request: RpcRequest,
 ) -> RpcResponse {
     let _span = common::handler_span(&request, "pty_write").entered();
-    let req_id = request.id;
+    let req_id = request.id.clone();
     let input = match parse_terminal_write_input(&request) {
         Ok(i) => i,
         Err(resp) => return resp,

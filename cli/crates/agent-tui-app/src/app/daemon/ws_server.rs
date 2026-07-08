@@ -22,7 +22,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
-use std::time::Instant;
 use std::time::SystemTime;
 use tokio::net::TcpListener;
 use tokio::sync::Semaphore;
@@ -35,20 +34,29 @@ use uuid::Uuid;
 
 use crate::adapters::rpc::RpcRequest;
 use crate::adapters::rpc::RpcResponse;
+use crate::adapters::rpc::request_id_from_json_str;
 use crate::app::daemon::rpc_core::RpcCore;
 use crate::app::daemon::rpc_core::RpcCoreError;
 use crate::app::daemon::rpc_core::RpcResponseWriter;
+use crate::common::ThreadJoinOutcome;
+use crate::common::join_thread_with_timeout_or_reap;
 use crate::infra::ipc::current_process_identity;
 
 const DEFAULT_WS_LISTEN: &str = "127.0.0.1:0";
 const DEFAULT_MAX_CONNECTIONS: usize = 32;
 const DEFAULT_WS_QUEUE_CAPACITY: usize = 128;
 const WS_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
-const WS_RECV_TIMEOUT: Duration = Duration::from_secs(60);
+#[cfg(test)]
+const WS_KEEPALIVE_INTERVAL: Duration = Duration::from_millis(25);
+#[cfg(not(test))]
+const WS_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+#[cfg(test)]
+const WS_PONG_TIMEOUT: Duration = Duration::from_millis(75);
+#[cfg(not(test))]
+const WS_PONG_TIMEOUT: Duration = Duration::from_secs(30);
 const WS_SEND_TIMEOUT: Duration = Duration::from_secs(15);
 const WS_STREAM_TASK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const WS_MAX_PARSE_ERRORS: u8 = 3;
-const WS_JOIN_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const UI_INDEX_HTML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/web/index.html"
@@ -60,12 +68,6 @@ const UI_STYLES_CSS: &str = include_str!(concat!(
 ));
 const UI_XTERM_CSS: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/web/xterm.css"));
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ThreadJoinOutcome {
-    Joined,
-    ReapingInBackground,
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct WsConfig {
@@ -132,7 +134,12 @@ impl WsServerHandle {
         }
         let mut remove_state_path = true;
         if let Some(join) = self.join.take() {
-            match join_thread_with_timeout_or_reap(join, WS_SHUTDOWN_TIMEOUT, "ws server thread") {
+            match join_thread_with_timeout_or_reap(
+                join,
+                WS_SHUTDOWN_TIMEOUT,
+                "ws server thread",
+                "agent-tui-ws-reaper",
+            ) {
                 ThreadJoinOutcome::Joined => {}
                 ThreadJoinOutcome::ReapingInBackground => {
                     warn!("WS server did not stop within shutdown timeout");
@@ -184,11 +191,9 @@ pub(crate) fn start_ws_server(
     let ws_url = format_ws_url(&local_addr, &auth_token);
     let ui_url = format_ui_url(&local_addr, &ws_url);
     let listen_addr = local_addr.to_string();
-    if let Err(err) = write_state_file(&config.state_path, &ws_url, &ui_url, &listen_addr) {
-        warn!(error = %err, "Failed to write WS state file");
-    }
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(1);
 
     let state = Arc::new(WsState {
         core,
@@ -196,12 +201,13 @@ pub(crate) fn start_ws_server(
         ws_queue_capacity: config.ws_queue_capacity,
         shutdown_rx: shutdown_rx.clone(),
         auth_token,
-        ws_url,
+        ws_url: ws_url.clone(),
     });
 
     let state_path = config.state_path.clone();
     let shutdown_tx_for_thread = shutdown_tx.clone();
     let dispatch = tracing::dispatcher::get_default(std::clone::Clone::clone);
+    let listen_addr_for_thread = listen_addr.clone();
 
     let join = thread::Builder::new()
         .name("agent-tui-ws".to_string())
@@ -215,22 +221,30 @@ pub(crate) fn start_ws_server(
                     Ok(rt) => rt,
                     Err(err) => {
                         error!(error = %err, "Failed to build WS runtime");
-                        let _ = std::fs::remove_file(&state_path);
+                        let _ = startup_tx.send(Err(WsServerError::Io {
+                            operation: "build ws runtime",
+                            source: err,
+                        }));
                         return;
                     }
                 };
 
+                let mut startup_tx = Some(startup_tx);
                 let listener = {
                     let _runtime_guard = runtime.enter();
-                    let listener = match TcpListener::from_std(listener) {
+                    match TcpListener::from_std(listener) {
                         Ok(l) => l,
                         Err(err) => {
                             error!(error = %err, "Failed to create async listener");
+                            if let Some(tx) = startup_tx.take() {
+                                let _ = tx.send(Err(WsServerError::Io {
+                                    operation: "create async listener",
+                                    source: err,
+                                }));
+                            }
                             return;
                         }
-                    };
-                    info!(listen = %listen_addr, ui_path = "/ui", ws_path = "/ws", "WS server listening");
-                    listener
+                    }
                 };
 
                 runtime.block_on(async move {
@@ -242,6 +256,18 @@ pub(crate) fn start_ws_server(
                         let _ = shutdown_rx_server.changed().await;
                     });
                     let mut server_task = tokio::spawn(async move { server.await });
+
+                    #[cfg(test)]
+                    tracing::callsite::rebuild_interest_cache();
+                    info!(
+                        listen = %listen_addr_for_thread,
+                        ui_path = "/ui",
+                        ws_path = "/ws",
+                        "WS server listening"
+                    );
+                    if let Some(tx) = startup_tx.take() {
+                        let _ = tx.send(Ok(()));
+                    }
 
                     let shutdown_task = tokio::spawn(async move {
                         while !shutdown_flag.load(Ordering::Relaxed) {
@@ -285,6 +311,25 @@ pub(crate) fn start_ws_server(
             operation: "spawn ws thread",
             source: e,
         })?;
+
+    match startup_rx.recv() {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => {
+            let _ = join.join();
+            return Err(err);
+        }
+        Err(err) => {
+            let _ = join.join();
+            return Err(WsServerError::Io {
+                operation: "wait for ws startup",
+                source: std::io::Error::other(err.to_string()),
+            });
+        }
+    }
+
+    if let Err(err) = write_state_file(&config.state_path, &ws_url, &ui_url, &listen_addr) {
+        warn!(error = %err, "Failed to write WS state file");
+    }
 
     Ok(WsServerHandle {
         shutdown_tx: Some(shutdown_tx),
@@ -342,7 +387,7 @@ async fn ws_handler(
     ws: WebSocketUpgrade,
 ) -> Response {
     if query.token.as_deref() != Some(state.auth_token.as_str()) {
-        let response = RpcResponse::error(0, -32001, "unauthorized");
+        let response = RpcResponse::error_without_id(-32001, "unauthorized");
         return (
             axum::http::StatusCode::UNAUTHORIZED,
             serde_json::to_string(&response)
@@ -352,7 +397,7 @@ async fn ws_handler(
     }
 
     if !origin_matches_ws_url(headers.get(ORIGIN), &state.ws_url) {
-        let response = RpcResponse::error(0, -32003, "forbidden origin");
+        let response = RpcResponse::error_without_id(-32003, "forbidden origin");
         return (
             axum::http::StatusCode::FORBIDDEN,
             serde_json::to_string(&response)
@@ -364,7 +409,7 @@ async fn ws_handler(
     let permit = match state.ws_limits.clone().try_acquire_owned() {
         Ok(permit) => permit,
         Err(_) => {
-            let response = RpcResponse::error(0, -32000, "too many websocket connections");
+            let response = RpcResponse::error_without_id(-32000, "too many websocket connections");
             return (
                 axum::http::StatusCode::SERVICE_UNAVAILABLE,
                 serde_json::to_string(&response)
@@ -404,6 +449,102 @@ impl RpcResponseWriter for ChannelWriter {
     }
 }
 
+#[derive(Debug, Default)]
+struct WsPongWatchdog {
+    deadline: Option<tokio::time::Instant>,
+}
+
+impl WsPongWatchdog {
+    fn deadline(&self) -> Option<tokio::time::Instant> {
+        self.deadline
+    }
+
+    fn is_waiting(&self) -> bool {
+        self.deadline.is_some()
+    }
+
+    fn start(&mut self) {
+        self.deadline = Some(tokio::time::Instant::now() + WS_PONG_TIMEOUT);
+    }
+
+    fn clear(&mut self) {
+        self.deadline = None;
+    }
+}
+
+enum WsFrameAction {
+    Continue,
+    Close,
+}
+
+async fn wait_for_pong_deadline(deadline: Option<tokio::time::Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => std::future::pending::<()>().await,
+    }
+}
+
+async fn send_ws_message(socket: &mut WebSocket, message: Message) -> Result<(), ()> {
+    let send = tokio::time::timeout(WS_SEND_TIMEOUT, socket.send(message)).await;
+    match send {
+        Ok(result) => result.map_err(|_| ()),
+        Err(_) => Err(()),
+    }
+}
+
+async fn send_keepalive_ping(
+    socket: &mut WebSocket,
+    pong_watchdog: &mut WsPongWatchdog,
+) -> Result<(), ()> {
+    if pong_watchdog.is_waiting() {
+        return Ok(());
+    }
+    send_ws_message(socket, Message::Ping(Vec::new())).await?;
+    pong_watchdog.start();
+    Ok(())
+}
+
+async fn close_for_missing_pong(socket: &mut WebSocket) {
+    let _ = send_ws_message(
+        socket,
+        Message::Close(Some(axum::extract::ws::CloseFrame {
+            code: close_code::POLICY,
+            reason: "pong timeout".into(),
+        })),
+    )
+    .await;
+}
+
+async fn handle_ws_control_frame(
+    socket: &mut WebSocket,
+    message: Message,
+    pong_watchdog: &mut WsPongWatchdog,
+) -> Result<WsFrameAction, ()> {
+    match message {
+        Message::Binary(_) => {
+            let _ = send_ws_message(
+                socket,
+                Message::Close(Some(axum::extract::ws::CloseFrame {
+                    code: close_code::PROTOCOL,
+                    reason: "binary frames are not supported".into(),
+                })),
+            )
+            .await;
+            Ok(WsFrameAction::Close)
+        }
+        Message::Close(_) => Ok(WsFrameAction::Close),
+        Message::Ping(payload) => {
+            send_ws_message(socket, Message::Pong(payload)).await?;
+            Ok(WsFrameAction::Continue)
+        }
+        Message::Pong(_) => {
+            pong_watchdog.clear();
+            Ok(WsFrameAction::Continue)
+        }
+        Message::Text(_) => Ok(WsFrameAction::Continue),
+    }
+}
+
 async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
     let WsContext {
         state,
@@ -412,6 +553,12 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
 
     let mut shutdown_rx = state.shutdown_rx.clone();
     let mut parse_errors = 0u8;
+    let mut pong_watchdog = WsPongWatchdog::default();
+    let mut keepalive_interval = tokio::time::interval_at(
+        tokio::time::Instant::now() + WS_KEEPALIVE_INTERVAL,
+        WS_KEEPALIVE_INTERVAL,
+    );
+    keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
@@ -422,14 +569,17 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                 let _ = socket.send(Message::Close(None)).await;
                 break;
             }
-            msg = tokio::time::timeout(WS_RECV_TIMEOUT, socket.recv()) => {
-                let Some(msg) = (match msg {
-                    Ok(value) => value,
-                    Err(_) => {
-                        let _ = socket.send(Message::Close(None)).await;
-                        break;
-                    }
-                }) else {
+            _ = keepalive_interval.tick() => {
+                if send_keepalive_ping(&mut socket, &mut pong_watchdog).await.is_err() {
+                    break;
+                }
+            }
+            _ = wait_for_pong_deadline(pong_watchdog.deadline()) => {
+                close_for_missing_pong(&mut socket).await;
+                break;
+            }
+            msg = socket.recv() => {
+                let Some(msg) = msg else {
                     break;
                 };
                 let msg = match msg {
@@ -442,7 +592,11 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                         let request: RpcRequest = match serde_json::from_str(&text) {
                             Ok(req) => req,
                             Err(err) => {
-                                let response = RpcResponse::error(0, -32700, &format!("Parse error: {err}"));
+                                let message = format!("Parse error: {err}");
+                                let response = request_id_from_json_str(&text).map_or_else(
+                                    || RpcResponse::error_without_id(-32700, &message),
+                                    |id| RpcResponse::error(id, -32700, &message),
+                                );
                                 if send_rpc_response(&mut socket, &response).await.is_err() {
                                     break;
                                 }
@@ -473,23 +627,44 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                             break;
                         }
                     }
-                    Message::Binary(_) => {
-                        let _ = socket.send(Message::Close(Some(axum::extract::ws::CloseFrame {
-                            code: close_code::PROTOCOL,
-                            reason: "binary frames are not supported".into(),
-                        }))).await;
-                        break;
-                    }
-                    Message::Close(_) => break,
-                    Message::Ping(payload) => {
-                        if socket.send(Message::Pong(payload)).await.is_err() {
-                            break;
+                    other => {
+                        match handle_ws_control_frame(&mut socket, other, &mut pong_watchdog).await {
+                            Ok(WsFrameAction::Continue) => {}
+                            Ok(WsFrameAction::Close) => break,
+                            Err(()) => break,
                         }
                     }
-                    Message::Pong(_) => {}
                 }
             }
         }
+    }
+}
+
+async fn recv_stream_payload(rx: &mut Option<mpsc::Receiver<String>>) -> Option<String> {
+    match rx.as_mut() {
+        Some(rx) => rx.recv().await,
+        None => None,
+    }
+}
+
+async fn handle_stream_socket_frame(
+    socket: &mut WebSocket,
+    message: Message,
+    pong_watchdog: &mut WsPongWatchdog,
+) -> Result<WsFrameAction, ()> {
+    match message {
+        Message::Text(_) => {
+            let _ = send_ws_message(
+                socket,
+                Message::Close(Some(axum::extract::ws::CloseFrame {
+                    code: close_code::PROTOCOL,
+                    reason: "stream connections do not accept client text frames".into(),
+                })),
+            )
+            .await;
+            Ok(WsFrameAction::Close)
+        }
+        other => handle_ws_control_frame(socket, other, pong_watchdog).await,
     }
 }
 
@@ -515,14 +690,55 @@ async fn run_stream_connection(
         );
     });
 
-    while let Some(payload) = match rx.as_mut() {
-        Some(rx_ref) => rx_ref.recv().await,
-        None => None,
-    } {
-        let send = tokio::time::timeout(WS_SEND_TIMEOUT, socket.send(Message::Text(payload))).await;
-        if send.is_err() || send.ok().is_some_and(|result| result.is_err()) {
-            let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
-            return Err(());
+    let mut pong_watchdog = WsPongWatchdog::default();
+    let mut keepalive_interval = tokio::time::interval_at(
+        tokio::time::Instant::now() + WS_KEEPALIVE_INTERVAL,
+        WS_KEEPALIVE_INTERVAL,
+    );
+    keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    loop {
+        tokio::select! {
+            _ = keepalive_interval.tick() => {
+                if send_keepalive_ping(socket, &mut pong_watchdog).await.is_err() {
+                    let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
+                    return Err(());
+                }
+            }
+            _ = wait_for_pong_deadline(pong_watchdog.deadline()) => {
+                close_for_missing_pong(socket).await;
+                let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
+                return Err(());
+            }
+            msg = socket.recv() => {
+                let Some(msg) = msg else {
+                    let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
+                    return Err(());
+                };
+                let msg = match msg {
+                    Ok(msg) => msg,
+                    Err(_) => {
+                        let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
+                        return Err(());
+                    }
+                };
+                match handle_stream_socket_frame(socket, msg, &mut pong_watchdog).await {
+                    Ok(WsFrameAction::Continue) => {}
+                    Ok(WsFrameAction::Close) | Err(()) => {
+                        let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
+                        return Err(());
+                    }
+                }
+            }
+            payload = recv_stream_payload(&mut rx) => {
+                let Some(payload) = payload else {
+                    break;
+                };
+                if send_ws_message(socket, Message::Text(payload)).await.is_err() {
+                    let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
+                    return Err(());
+                }
+            }
         }
     }
 
@@ -571,11 +787,7 @@ async fn close_websocket_after_stream_completion(socket: &mut WebSocket) {
 
 async fn send_rpc_response(socket: &mut WebSocket, response: &RpcResponse) -> Result<(), ()> {
     let payload = serde_json::to_string(response).map_err(|_| ())?;
-    let send = tokio::time::timeout(WS_SEND_TIMEOUT, socket.send(Message::Text(payload))).await;
-    match send {
-        Ok(result) => result.map_err(|_| ()),
-        Err(_) => Err(()),
-    }
+    send_ws_message(socket, Message::Text(payload)).await
 }
 
 fn parse_bool(value: &str) -> Option<bool> {
@@ -698,70 +910,6 @@ fn origin_matches_ws_url(origin: Option<&axum::http::HeaderValue>, ws_url: &str)
 
 fn generate_ws_auth_token() -> String {
     Uuid::new_v4().simple().to_string()
-}
-
-fn join_thread_with_timeout_or_reap(
-    handle: thread::JoinHandle<()>,
-    timeout: Duration,
-    thread_label: &'static str,
-) -> ThreadJoinOutcome {
-    let deadline = Instant::now() + timeout;
-    while !handle.is_finished() {
-        if Instant::now() >= deadline {
-            warn!(
-                thread = thread_label,
-                timeout_ms = timeout.as_millis(),
-                "Timed out joining thread; handing ownership to background reaper"
-            );
-            return spawn_join_reaper(handle, thread_label);
-        }
-        thread::park_timeout(WS_JOIN_POLL_INTERVAL);
-    }
-    let _ = handle.join();
-    ThreadJoinOutcome::Joined
-}
-
-fn spawn_join_reaper(
-    handle: thread::JoinHandle<()>,
-    thread_label: &'static str,
-) -> ThreadJoinOutcome {
-    let handle_cell = Arc::new(std::sync::Mutex::new(Some(handle)));
-    let handle_for_thread = Arc::clone(&handle_cell);
-    match thread::Builder::new()
-        .name("agent-tui-ws-reaper".to_string())
-        .spawn(move || {
-            let Some(handle) = handle_for_thread
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .take()
-            else {
-                return;
-            };
-
-            if handle.join().is_err() {
-                warn!(
-                    thread = thread_label,
-                    "Background reaper observed thread panic"
-                );
-            }
-        }) {
-        Ok(_) => ThreadJoinOutcome::ReapingInBackground,
-        Err(err) => {
-            warn!(
-                thread = thread_label,
-                error = %err,
-                "Failed to spawn background join reaper; joining synchronously"
-            );
-            if let Some(handle) = handle_cell
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .take()
-            {
-                let _ = handle.join();
-            }
-            ThreadJoinOutcome::Joined
-        }
-    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

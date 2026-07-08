@@ -363,6 +363,44 @@ fn read_until_close_without_pong(
     }
 }
 
+fn read_until_connection_ends(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+    timeout: Duration,
+) {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if Instant::now() >= deadline {
+            panic!("timed out waiting for websocket connection to end");
+        }
+
+        match socket.read() {
+            Ok(WsMessage::Close(_)) => return,
+            Ok(WsMessage::Ping(payload)) => socket
+                .send(WsMessage::Pong(payload))
+                .expect("pong should send"),
+            Ok(WsMessage::Pong(_)) | Ok(WsMessage::Text(_)) => {}
+            Ok(other) => panic!("unexpected websocket frame while waiting for close: {other:?}"),
+            Err(tungstenite::Error::ConnectionClosed) | Err(tungstenite::Error::AlreadyClosed) => {
+                return;
+            }
+            Err(tungstenite::Error::Protocol(
+                tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
+            )) => return,
+            Err(tungstenite::Error::Io(err))
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                ) =>
+            {
+                if Instant::now() >= deadline {
+                    panic!("timed out waiting for websocket connection to end");
+                }
+            }
+            Err(err) => panic!("unexpected websocket error while waiting for close: {err}"),
+        }
+    }
+}
+
 #[test]
 fn ws_config_reads_ws_env() {
     let _env = env_lock();
@@ -655,6 +693,40 @@ fn api_stream_alias_accepts_authenticated_flightdeck_stream() {
 }
 
 #[test]
+fn ws_shutdown_terminates_active_stream_connection() {
+    let mut server = TestWsServer::start();
+    let browser_origin = server.browser_origin();
+    let (mut socket, _response) = websocket_connect(
+        &server.ws_alias_url("/api/v1/stream"),
+        Some(&browser_origin),
+    );
+    set_websocket_read_timeout(&mut socket);
+    socket
+        .send(WsMessage::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "flightdeck_stream",
+                "params": {
+                    "interval_ms": 1000,
+                }
+            })
+            .to_string(),
+        ))
+        .expect("send flightdeck request");
+
+    let payload: Value =
+        serde_json::from_str(&read_text_responding_to_pings(&mut socket)).expect("json");
+    assert_eq!(payload["id"], 12);
+    assert_eq!(payload["result"]["event"], "ready");
+
+    let handle = server.handle.take().expect("ws server handle");
+    handle.shutdown();
+
+    read_until_connection_ends(&mut socket, Duration::from_secs(2));
+}
+
+#[test]
 fn live_preview_stream_over_ws_emits_ready_init_output_and_closed() {
     let server = TestWsServer::start();
     let spawn_response = server.core.route(RpcRequest::new(
@@ -853,7 +925,7 @@ fn ws_handle_shutdown_remains_bounded_on_slow_thread() {
         let _ = finished_tx.send(());
     });
     let handle = WsServerHandle {
-        shutdown_tx: None,
+        shutdown_token: tokio_util::sync::CancellationToken::new(),
         join: Some(join),
         state_path: PathBuf::new(),
     };
@@ -883,7 +955,7 @@ fn ws_handle_shutdown_keeps_state_file_until_thread_exits() {
         let _ = release_rx.recv();
     });
     let handle = WsServerHandle {
-        shutdown_tx: None,
+        shutdown_token: tokio_util::sync::CancellationToken::new(),
         join: Some(join),
         state_path: state_path.clone(),
     };

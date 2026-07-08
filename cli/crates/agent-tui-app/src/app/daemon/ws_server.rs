@@ -26,7 +26,7 @@ use std::time::SystemTime;
 use tokio::net::TcpListener;
 use tokio::sync::Semaphore;
 use tokio::sync::mpsc;
-use tokio::sync::watch;
+use tokio_util::sync::CancellationToken;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
@@ -122,16 +122,14 @@ impl WsConfig {
 }
 
 pub(crate) struct WsServerHandle {
-    shutdown_tx: Option<watch::Sender<bool>>,
+    shutdown_token: CancellationToken,
     join: Option<thread::JoinHandle<()>>,
     state_path: PathBuf,
 }
 
 impl WsServerHandle {
     pub fn shutdown(mut self) {
-        if let Some(tx) = self.shutdown_tx.take() {
-            let _ = tx.send(true);
-        }
+        self.shutdown_token.cancel();
         let mut remove_state_path = true;
         if let Some(join) = self.join.take() {
             match join_thread_with_timeout_or_reap(
@@ -172,7 +170,7 @@ struct WsState {
     core: Arc<RpcCore>,
     ws_limits: Arc<Semaphore>,
     ws_queue_capacity: usize,
-    shutdown_rx: watch::Receiver<bool>,
+    shutdown_token: CancellationToken,
     auth_token: String,
     ws_url: String,
 }
@@ -192,20 +190,20 @@ pub(crate) fn start_ws_server(
     let ui_url = format_ui_url(&local_addr, &ws_url);
     let listen_addr = local_addr.to_string();
 
-    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let shutdown_token = CancellationToken::new();
     let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(1);
 
     let state = Arc::new(WsState {
         core,
         ws_limits: Arc::new(Semaphore::new(config.max_connections)),
         ws_queue_capacity: config.ws_queue_capacity,
-        shutdown_rx: shutdown_rx.clone(),
+        shutdown_token: shutdown_token.clone(),
         auth_token,
         ws_url: ws_url.clone(),
     });
 
     let state_path = config.state_path.clone();
-    let shutdown_tx_for_thread = shutdown_tx.clone();
+    let shutdown_token_for_thread = shutdown_token.clone();
     let dispatch = tracing::dispatcher::get_default(std::clone::Clone::clone);
     let listen_addr_for_thread = listen_addr.clone();
 
@@ -249,11 +247,12 @@ pub(crate) fn start_ws_server(
 
                 runtime.block_on(async move {
                     let app = build_router(state.clone());
-                    let mut shutdown_rx_server = shutdown_rx.clone();
-                    let mut shutdown_rx_wait = shutdown_rx.clone();
+                    let shutdown_token_for_server = shutdown_token_for_thread.clone();
+                    let shutdown_token_for_wait = shutdown_token_for_thread.clone();
+                    let shutdown_token_for_poll = shutdown_token_for_thread.clone();
 
                     let server = axum::serve(listener, app).with_graceful_shutdown(async move {
-                        let _ = shutdown_rx_server.changed().await;
+                        shutdown_token_for_server.cancelled().await;
                     });
                     let mut server_task = tokio::spawn(async move { server.await });
 
@@ -273,7 +272,7 @@ pub(crate) fn start_ws_server(
                         while !shutdown_flag.load(Ordering::Relaxed) {
                             tokio::time::sleep(Duration::from_millis(200)).await;
                         }
-                        let _ = shutdown_tx_for_thread.send(true);
+                        shutdown_token_for_poll.cancel();
                     });
 
                     tokio::select! {
@@ -282,10 +281,7 @@ pub(crate) fn start_ws_server(
                                 error!(error = %err, "WS server task failed");
                             }
                         }
-                        changed = shutdown_rx_wait.changed() => {
-                            if changed.is_err() {
-                                warn!("WS shutdown channel closed");
-                            }
+                        _ = shutdown_token_for_wait.cancelled() => {
                             match tokio::time::timeout(WS_SHUTDOWN_TIMEOUT, &mut server_task).await {
                                 Ok(join_result) => {
                                     if let Err(err) = join_result {
@@ -332,7 +328,7 @@ pub(crate) fn start_ws_server(
     }
 
     Ok(WsServerHandle {
-        shutdown_tx: Some(shutdown_tx),
+        shutdown_token,
         join: Some(join),
         state_path: config.state_path,
     })
@@ -551,7 +547,7 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
         _permit: _permit_guard,
     } = ctx;
 
-    let mut shutdown_rx = state.shutdown_rx.clone();
+    let shutdown_token = state.shutdown_token.clone();
     let mut parse_errors = 0u8;
     let mut pong_watchdog = WsPongWatchdog::default();
     let mut keepalive_interval = tokio::time::interval_at(
@@ -562,11 +558,8 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
 
     loop {
         tokio::select! {
-            changed = shutdown_rx.changed() => {
-                if changed.is_err() {
-                    warn!("WS shutdown channel closed");
-                }
-                let _ = socket.send(Message::Close(None)).await;
+            _ = shutdown_token.cancelled() => {
+                let _ = send_ws_message(&mut socket, Message::Close(None)).await;
                 break;
             }
             _ = keepalive_interval.tick() => {
@@ -739,6 +732,11 @@ async fn run_stream_connection(
                     return Err(());
                 }
             }
+            _ = state.shutdown_token.cancelled() => {
+                let _ = cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task).await;
+                let _ = send_ws_message(socket, Message::Close(None)).await;
+                return Err(());
+            }
         }
     }
 
@@ -786,7 +784,13 @@ async fn close_websocket_after_stream_completion(socket: &mut WebSocket) {
 }
 
 async fn send_rpc_response(socket: &mut WebSocket, response: &RpcResponse) -> Result<(), ()> {
-    let payload = serde_json::to_string(response).map_err(|_| ())?;
+    let payload = match serde_json::to_string(response) {
+        Ok(payload) => payload,
+        Err(err) => {
+            error!(error = %err, "Failed to serialize WS RPC response");
+            return Err(());
+        }
+    };
     send_ws_message(socket, Message::Text(payload)).await
 }
 
@@ -949,10 +953,9 @@ fn write_state_file(
     };
 
     let tmp_path = path.with_extension("tmp");
-    std::fs::write(
-        &tmp_path,
-        serde_json::to_vec_pretty(&payload).unwrap_or_default(),
-    )?;
+    let payload = serde_json::to_vec_pretty(&payload)
+        .map_err(|err| std::io::Error::other(format!("serialize ws state file: {err}")))?;
+    std::fs::write(&tmp_path, payload)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

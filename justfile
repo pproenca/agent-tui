@@ -43,6 +43,7 @@ deny: _ensure-cargo-deny
 # Run fast Rust suite through nextest, including mock-daemon CLI tests.
 test: _ensure-cargo-nextest
     cargo nextest run --workspace --lib --test cli_smoke --test cli_contracts --test cli_command_contracts --test real_harness_contracts
+    cargo nextest run -p xtask --bin xtask
 
 # Run slow, real-daemon core-runtime E2E coverage through nextest.
 test-core-e2e: _ensure-cargo-nextest
@@ -112,6 +113,18 @@ watch: _ensure-cargo-watch
 # Usage: just release bump=patch|minor|major|x.y.z artifacts=artifacts
 release bump="patch" artifacts="artifacts":
     cargo run -p xtask -- release {{bump}} --artifacts {{artifacts}}
+
+# List active release channels.
+release-channel-inventory:
+    cargo run -p xtask -- release-channels inventory
+
+# Verify active release channels in read-only mode.
+# Usage: just release-channel-verify 1.0.2 path/to/fixture.json
+release-channel-verify target="" fixtures="":
+    @args=(); \
+    if [ -n "{{target}}" ]; then args+=(--target-version "{{target}}"); fi; \
+    if [ -n "{{fixtures}}" ]; then args+=(--fixtures "{{fixtures}}"); fi; \
+    cargo run -p xtask -- release-channels verify --dry-run "${args[@]}"
 
 # Internal: ensure bun is installed.
 _ensure-bun:

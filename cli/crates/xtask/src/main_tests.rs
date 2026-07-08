@@ -190,3 +190,130 @@ fn dist_npm_stages_platform_binaries_into_bin_dir() -> Result<()> {
 
     Ok(())
 }
+
+fn fixture_state(version: &str) -> ReleaseChannelFixture {
+    ReleaseChannelFixture {
+        github_releases: Some(GitHubReleaseFixture {
+            tag: format!("v{version}"),
+            assets: required_artifacts(DistKind::Release)
+                .iter()
+                .map(|name| (*name).to_string())
+                .chain(std::iter::once("checksums-sha256.txt".to_string()))
+                .collect(),
+        }),
+        npm: Some(NpmFixture {
+            meta_version: version.to_string(),
+            optional_dependencies: npm_platform_package_names()
+                .iter()
+                .map(|name| ((*name).to_string(), version.to_string()))
+                .collect(),
+            platform_packages: npm_platform_package_names()
+                .iter()
+                .map(|name| ((*name).to_string(), version.to_string()))
+                .collect(),
+        }),
+        crates_io: Some(CratesIoFixture {
+            version: version.to_string(),
+        }),
+        homebrew: Some(HomebrewFixture {
+            formula_present: true,
+            version: Some(version.to_string()),
+        }),
+        install_script: Some(InstallScriptFixture {
+            present: true,
+            supports_pinned_version: true,
+            verifies_checksums: true,
+        }),
+        source_install: Some(SourceInstallFixture {
+            version: version.to_string(),
+            package_path: "cli/crates/agent-tui".to_string(),
+        }),
+    }
+}
+
+#[test]
+fn release_channel_inventory_lists_all_active_channels() {
+    let channels = release_channel_inventory()
+        .iter()
+        .map(|channel| channel.name)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        channels,
+        vec![
+            "github-releases",
+            "npm",
+            "crates-io",
+            "homebrew",
+            "install-script",
+            "source-install",
+        ]
+    );
+}
+
+#[test]
+fn release_channel_verification_accepts_matching_fixture_state() -> Result<()> {
+    let report = verify_release_channel_fixture("1.2.3", &fixture_state("1.2.3"));
+
+    assert!(
+        report.is_success(),
+        "expected all channels to pass: {:?}",
+        report.failures()
+    );
+    Ok(())
+}
+
+#[test]
+fn release_channel_verification_reports_channel_specific_failures() -> Result<()> {
+    let mut fixture = fixture_state("1.2.3");
+    if let Some(github) = fixture.github_releases.as_mut() {
+        github
+            .assets
+            .retain(|asset| asset != "agent-tui-darwin-arm64");
+    }
+    if let Some(npm) = fixture.npm.as_mut() {
+        npm.platform_packages
+            .insert("agent-tui-linux-x64".to_string(), "1.2.2".to_string());
+    }
+    fixture.homebrew = Some(HomebrewFixture {
+        formula_present: false,
+        version: None,
+    });
+
+    let report = verify_release_channel_fixture("1.2.3", &fixture);
+    let failures = report
+        .failures()
+        .iter()
+        .map(|status| format!("{}: {}", status.channel, status.message))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        failures.contains("github-releases: missing release asset agent-tui-darwin-arm64"),
+        "unexpected failures: {failures}"
+    );
+    assert!(
+        failures.contains("npm: agent-tui-linux-x64 is 1.2.2, expected 1.2.3"),
+        "unexpected failures: {failures}"
+    );
+    assert!(
+        failures.contains("homebrew: Homebrew formula is missing"),
+        "unexpected failures: {failures}"
+    );
+    Ok(())
+}
+
+#[test]
+fn homebrew_formula_version_can_be_inferred_from_release_url() {
+    let formula = r#"
+class AgentTui < Formula
+  url "https://github.com/pproenca/agent-tui/releases/download/v1.2.3/agent-tui-darwin-arm64"
+  sha256 "abc123"
+end
+"#;
+
+    assert_eq!(
+        parse_homebrew_formula_version(formula).as_deref(),
+        Some("1.2.3")
+    );
+}

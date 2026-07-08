@@ -170,6 +170,7 @@ jobs:
         run: |
           # Run the same nextest-backed lanes as just ready.
           cargo nextest run --release --workspace --lib --test cli_smoke --test cli_contracts --test cli_command_contracts --test real_harness_contracts
+          cargo nextest run --release -p xtask --bin xtask
           cargo nextest run --release -p agent-tui --test system_e2e --run-ignored=only
 
       - name: Stage CLI artifact

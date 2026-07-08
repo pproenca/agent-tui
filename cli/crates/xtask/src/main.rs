@@ -16,6 +16,7 @@ use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
 use clap::ValueEnum;
+use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
@@ -64,6 +65,10 @@ enum Commands {
     Dist {
         #[command(subcommand)]
         command: DistCommands,
+    },
+    ReleaseChannels {
+        #[command(subcommand)]
+        command: ReleaseChannelsCommands,
     },
     TuiExplorer {
         #[command(subcommand)]
@@ -130,6 +135,30 @@ enum DistCommands {
         #[arg(long, default_value = "npm")]
         output: String,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum ReleaseChannelsCommands {
+    Inventory,
+    Verify(ReleaseChannelsVerifyArgs),
+}
+
+#[derive(Args, Debug)]
+struct ReleaseChannelsVerifyArgs {
+    #[arg(long)]
+    target_version: Option<String>,
+    #[arg(long)]
+    fixtures: Option<String>,
+    #[arg(
+        long,
+        help = "Accepted for CI clarity; release-channel verification is always read-only"
+    )]
+    dry_run: bool,
+    #[arg(
+        long,
+        default_value = "https://raw.githubusercontent.com/pproenca/homebrew-tap/HEAD/Formula/agent-tui.rb"
+    )]
+    homebrew_formula_url: String,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -204,6 +233,10 @@ fn run() -> Result<()> {
                 &path_from_root(&root, &input),
                 &path_from_root(&root, &output),
             ),
+        },
+        Commands::ReleaseChannels { command } => match command {
+            ReleaseChannelsCommands::Inventory => release_channels_inventory(),
+            ReleaseChannelsCommands::Verify(args) => release_channels_verify(&root, &args),
         },
         Commands::TuiExplorer { command } => {
             std::process::exit(tui_explorer::run(&root, command));
@@ -797,6 +830,14 @@ fn ci(root: &Path) -> Result<()> {
         )
     })?;
 
+    run_step("Running xtask tests", || {
+        run_command(
+            "cargo",
+            &["nextest", "run", "-p", "xtask", "--bin", "xtask"],
+            Some(root),
+        )
+    })?;
+
     run_step("Running real daemon E2E tests", || {
         run_command(
             "cargo",
@@ -1186,6 +1227,686 @@ fn allowed_dependency_matrix() -> HashMap<&'static str, HashSet<&'static str>> {
         ),
         ("agent-tui", HashSet::from(["agent-tui-app"])),
     ])
+}
+
+const CHANNEL_GITHUB_RELEASES: &str = "github-releases";
+const CHANNEL_NPM: &str = "npm";
+const CHANNEL_CRATES_IO: &str = "crates-io";
+const CHANNEL_HOMEBREW: &str = "homebrew";
+const CHANNEL_INSTALL_SCRIPT: &str = "install-script";
+const CHANNEL_SOURCE_INSTALL: &str = "source-install";
+
+#[derive(Debug, Clone, Copy)]
+struct ReleaseChannel {
+    name: &'static str,
+    description: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReleaseChannelStatus {
+    channel: &'static str,
+    passed: bool,
+    message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReleaseChannelReport {
+    statuses: Vec<ReleaseChannelStatus>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ReleaseChannelFixture {
+    github_releases: Option<GitHubReleaseFixture>,
+    npm: Option<NpmFixture>,
+    crates_io: Option<CratesIoFixture>,
+    homebrew: Option<HomebrewFixture>,
+    install_script: Option<InstallScriptFixture>,
+    source_install: Option<SourceInstallFixture>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GitHubReleaseFixture {
+    tag: String,
+    assets: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct NpmFixture {
+    meta_version: String,
+    optional_dependencies: BTreeMap<String, String>,
+    platform_packages: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CratesIoFixture {
+    version: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct HomebrewFixture {
+    formula_present: bool,
+    version: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct InstallScriptFixture {
+    present: bool,
+    supports_pinned_version: bool,
+    verifies_checksums: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SourceInstallFixture {
+    version: String,
+    package_path: String,
+}
+
+impl ReleaseChannelReport {
+    fn is_success(&self) -> bool {
+        self.statuses.iter().all(|status| status.passed)
+    }
+
+    fn failures(&self) -> Vec<&ReleaseChannelStatus> {
+        self.statuses
+            .iter()
+            .filter(|status| !status.passed)
+            .collect()
+    }
+}
+
+fn release_channel_inventory() -> &'static [ReleaseChannel] {
+    &[
+        ReleaseChannel {
+            name: CHANNEL_GITHUB_RELEASES,
+            description: "GitHub release binaries and checksums",
+        },
+        ReleaseChannel {
+            name: CHANNEL_NPM,
+            description: "npm meta package and supported platform packages",
+        },
+        ReleaseChannel {
+            name: CHANNEL_CRATES_IO,
+            description: "crates.io Rust package",
+        },
+        ReleaseChannel {
+            name: CHANNEL_HOMEBREW,
+            description: "Homebrew formula or tap",
+        },
+        ReleaseChannel {
+            name: CHANNEL_INSTALL_SCRIPT,
+            description: "GitHub install script latest and pinned binary path",
+        },
+        ReleaseChannel {
+            name: CHANNEL_SOURCE_INSTALL,
+            description: "source checkout install/build path",
+        },
+    ]
+}
+
+fn npm_platform_package_names() -> &'static [&'static str] {
+    &[
+        "agent-tui-darwin-arm64",
+        "agent-tui-darwin-x64",
+        "agent-tui-linux-arm64",
+        "agent-tui-linux-x64",
+    ]
+}
+
+fn release_channels_inventory() -> Result<()> {
+    println!("Active release channels:");
+    for channel in release_channel_inventory() {
+        println!("- {}: {}", channel.name, channel.description);
+    }
+    Ok(())
+}
+
+fn release_channels_verify(root: &Path, args: &ReleaseChannelsVerifyArgs) -> Result<()> {
+    let target_version = match &args.target_version {
+        Some(version) => ensure_semver(version)?,
+        None => read_cargo_version(&cargo_toml_path(root))?,
+    };
+
+    let report = if let Some(fixtures) = &args.fixtures {
+        let fixture_path = path_from_root(root, fixtures);
+        let fixture = read_release_channel_fixture(&fixture_path)?;
+        verify_release_channel_fixture(&target_version, &fixture)
+    } else {
+        verify_release_channels_live(root, &target_version, &args.homebrew_formula_url)
+    };
+
+    print_release_channel_report(&target_version, args.dry_run, &report);
+    if report.is_success() {
+        return Ok(());
+    }
+
+    bail!(
+        "release channel verification failed ({} channel(s) failed)",
+        report.failures().len()
+    )
+}
+
+fn read_release_channel_fixture(path: &Path) -> Result<ReleaseChannelFixture> {
+    let value = read_json(path)?;
+    serde_json::from_value(value)
+        .with_context(|| format!("failed to parse release-channel fixture {}", path.display()))
+}
+
+fn verify_release_channel_fixture(
+    target_version: &str,
+    fixture: &ReleaseChannelFixture,
+) -> ReleaseChannelReport {
+    ReleaseChannelReport {
+        statuses: vec![
+            verify_github_release_fixture(target_version, fixture.github_releases.as_ref()),
+            verify_npm_fixture(target_version, fixture.npm.as_ref()),
+            verify_crates_io_fixture(target_version, fixture.crates_io.as_ref()),
+            verify_homebrew_fixture(target_version, fixture.homebrew.as_ref()),
+            verify_install_script_fixture(fixture.install_script.as_ref()),
+            verify_source_install_fixture(target_version, fixture.source_install.as_ref()),
+        ],
+    }
+}
+
+fn verify_release_channels_live(
+    root: &Path,
+    target_version: &str,
+    homebrew_formula_url: &str,
+) -> ReleaseChannelReport {
+    ReleaseChannelReport {
+        statuses: vec![
+            verify_github_release_live(target_version),
+            verify_npm_live(target_version),
+            verify_crates_io_live(target_version),
+            verify_homebrew_live(target_version, homebrew_formula_url),
+            verify_install_script_live(root),
+            verify_source_install_live(root, target_version),
+        ],
+    }
+}
+
+fn pass(channel: &'static str, message: impl Into<String>) -> ReleaseChannelStatus {
+    ReleaseChannelStatus {
+        channel,
+        passed: true,
+        message: message.into(),
+    }
+}
+
+fn fail(channel: &'static str, message: impl Into<String>) -> ReleaseChannelStatus {
+    ReleaseChannelStatus {
+        channel,
+        passed: false,
+        message: message.into(),
+    }
+}
+
+fn missing_fixture(channel: &'static str) -> ReleaseChannelStatus {
+    fail(channel, "channel state missing from fixture")
+}
+
+fn verify_github_release_fixture(
+    target_version: &str,
+    fixture: Option<&GitHubReleaseFixture>,
+) -> ReleaseChannelStatus {
+    let Some(fixture) = fixture else {
+        return missing_fixture(CHANNEL_GITHUB_RELEASES);
+    };
+
+    let expected_tag = format!("v{target_version}");
+    if fixture.tag != expected_tag {
+        return fail(
+            CHANNEL_GITHUB_RELEASES,
+            format!("release tag is {}, expected {expected_tag}", fixture.tag),
+        );
+    }
+
+    for asset in required_release_assets_with_checksums() {
+        if !fixture.assets.iter().any(|candidate| candidate == asset) {
+            return fail(
+                CHANNEL_GITHUB_RELEASES,
+                format!("missing release asset {asset}"),
+            );
+        }
+    }
+
+    pass(
+        CHANNEL_GITHUB_RELEASES,
+        format!("release {expected_tag} has required assets and checksums"),
+    )
+}
+
+fn verify_npm_fixture(target_version: &str, fixture: Option<&NpmFixture>) -> ReleaseChannelStatus {
+    let Some(fixture) = fixture else {
+        return missing_fixture(CHANNEL_NPM);
+    };
+
+    if fixture.meta_version != target_version {
+        return fail(
+            CHANNEL_NPM,
+            format!(
+                "agent-tui meta package is {}, expected {target_version}",
+                fixture.meta_version
+            ),
+        );
+    }
+
+    for package_name in npm_platform_package_names() {
+        match fixture.optional_dependencies.get(*package_name) {
+            Some(version) if version == target_version => {}
+            Some(version) => {
+                return fail(
+                    CHANNEL_NPM,
+                    format!(
+                        "optional dependency {package_name} is {version}, expected {target_version}"
+                    ),
+                );
+            }
+            None => {
+                return fail(
+                    CHANNEL_NPM,
+                    format!("optional dependency {package_name} is missing"),
+                );
+            }
+        }
+    }
+
+    for package_name in npm_platform_package_names() {
+        match fixture.platform_packages.get(*package_name) {
+            Some(version) if version == target_version => {}
+            Some(version) => {
+                return fail(
+                    CHANNEL_NPM,
+                    format!("{package_name} is {version}, expected {target_version}"),
+                );
+            }
+            None => return fail(CHANNEL_NPM, format!("{package_name} is missing")),
+        }
+    }
+
+    pass(
+        CHANNEL_NPM,
+        format!("meta and platform packages are {target_version}"),
+    )
+}
+
+fn verify_crates_io_fixture(
+    target_version: &str,
+    fixture: Option<&CratesIoFixture>,
+) -> ReleaseChannelStatus {
+    let Some(fixture) = fixture else {
+        return missing_fixture(CHANNEL_CRATES_IO);
+    };
+
+    if fixture.version != target_version {
+        return fail(
+            CHANNEL_CRATES_IO,
+            format!(
+                "crates.io package is {}, expected {target_version}",
+                fixture.version
+            ),
+        );
+    }
+
+    pass(
+        CHANNEL_CRATES_IO,
+        format!("crates.io package is {target_version}"),
+    )
+}
+
+fn verify_homebrew_fixture(
+    target_version: &str,
+    fixture: Option<&HomebrewFixture>,
+) -> ReleaseChannelStatus {
+    let Some(fixture) = fixture else {
+        return missing_fixture(CHANNEL_HOMEBREW);
+    };
+
+    if !fixture.formula_present {
+        return fail(CHANNEL_HOMEBREW, "Homebrew formula is missing");
+    }
+
+    match fixture.version.as_deref() {
+        Some(version) if version == target_version => pass(
+            CHANNEL_HOMEBREW,
+            format!("Homebrew formula is {target_version}"),
+        ),
+        Some(version) => fail(
+            CHANNEL_HOMEBREW,
+            format!("Homebrew formula is {version}, expected {target_version}"),
+        ),
+        None => fail(CHANNEL_HOMEBREW, "Homebrew formula version is missing"),
+    }
+}
+
+fn verify_install_script_fixture(fixture: Option<&InstallScriptFixture>) -> ReleaseChannelStatus {
+    let Some(fixture) = fixture else {
+        return missing_fixture(CHANNEL_INSTALL_SCRIPT);
+    };
+
+    if !fixture.present {
+        return fail(CHANNEL_INSTALL_SCRIPT, "install script is missing");
+    }
+    if !fixture.supports_pinned_version {
+        return fail(
+            CHANNEL_INSTALL_SCRIPT,
+            "install script does not support pinned AGENT_TUI_VERSION installs",
+        );
+    }
+    if !fixture.verifies_checksums {
+        return fail(
+            CHANNEL_INSTALL_SCRIPT,
+            "install script does not verify checksums",
+        );
+    }
+
+    pass(
+        CHANNEL_INSTALL_SCRIPT,
+        "install script supports latest, pinned versions, and checksum verification",
+    )
+}
+
+fn verify_source_install_fixture(
+    target_version: &str,
+    fixture: Option<&SourceInstallFixture>,
+) -> ReleaseChannelStatus {
+    let Some(fixture) = fixture else {
+        return missing_fixture(CHANNEL_SOURCE_INSTALL);
+    };
+
+    if fixture.version != target_version {
+        return fail(
+            CHANNEL_SOURCE_INSTALL,
+            format!(
+                "source install version is {}, expected {target_version}",
+                fixture.version
+            ),
+        );
+    }
+    if fixture.package_path.trim().is_empty() {
+        return fail(
+            CHANNEL_SOURCE_INSTALL,
+            "source install package path is missing",
+        );
+    }
+
+    pass(
+        CHANNEL_SOURCE_INSTALL,
+        format!(
+            "source install path {} is {target_version}",
+            fixture.package_path
+        ),
+    )
+}
+
+fn verify_github_release_live(target_version: &str) -> ReleaseChannelStatus {
+    let tag = format!("v{target_version}");
+    let url = format!("https://api.github.com/repos/pproenca/agent-tui/releases/tags/{tag}");
+    let response = match http_get(&url) {
+        Ok(response) => response,
+        Err(err) => {
+            return fail(
+                CHANNEL_GITHUB_RELEASES,
+                format!("GitHub release {tag} lookup failed: {err}"),
+            );
+        }
+    };
+
+    let value = match serde_json::from_str::<serde_json::Value>(&response)
+        .with_context(|| "failed to parse GitHub release response")
+    {
+        Ok(value) => value,
+        Err(err) => return fail(CHANNEL_GITHUB_RELEASES, err.to_string()),
+    };
+
+    let assets = value
+        .get("assets")
+        .and_then(serde_json::Value::as_array)
+        .map(|assets| {
+            assets
+                .iter()
+                .filter_map(|asset| asset.get("name").and_then(serde_json::Value::as_str))
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let fixture = GitHubReleaseFixture {
+        tag: value
+            .get("tag_name")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        assets,
+    };
+    verify_github_release_fixture(target_version, Some(&fixture))
+}
+
+fn verify_npm_live(target_version: &str) -> ReleaseChannelStatus {
+    let meta_version = match npm_view_version("agent-tui", target_version) {
+        Ok(version) => version,
+        Err(err) => {
+            if let Ok(version) = npm_view_published_version("agent-tui") {
+                return fail(
+                    CHANNEL_NPM,
+                    format!("agent-tui meta package is {version}, expected {target_version}"),
+                );
+            }
+            return fail(
+                CHANNEL_NPM,
+                format!("agent-tui@{target_version} lookup failed: {err}"),
+            );
+        }
+    };
+
+    let optional_dependencies = match npm_view_optional_dependencies(target_version) {
+        Ok(deps) => deps,
+        Err(err) => return fail(CHANNEL_NPM, err.to_string()),
+    };
+
+    let mut platform_packages = BTreeMap::new();
+    for package_name in npm_platform_package_names() {
+        match npm_view_version(package_name, target_version) {
+            Ok(version) => {
+                platform_packages.insert((*package_name).to_string(), version);
+            }
+            Err(err) => {
+                if let Ok(version) = npm_view_published_version(package_name) {
+                    return fail(
+                        CHANNEL_NPM,
+                        format!("{package_name} is {version}, expected {target_version}"),
+                    );
+                }
+                return fail(
+                    CHANNEL_NPM,
+                    format!("{package_name}@{target_version} lookup failed: {err}"),
+                );
+            }
+        }
+    }
+
+    let fixture = NpmFixture {
+        meta_version,
+        optional_dependencies,
+        platform_packages,
+    };
+    verify_npm_fixture(target_version, Some(&fixture))
+}
+
+fn verify_crates_io_live(target_version: &str) -> ReleaseChannelStatus {
+    let url = "https://crates.io/api/v1/crates/agent-tui";
+    let response = match http_get(url) {
+        Ok(response) => response,
+        Err(err) => {
+            return fail(CHANNEL_CRATES_IO, format!("crates.io lookup failed: {err}"));
+        }
+    };
+
+    let value = match serde_json::from_str::<serde_json::Value>(&response)
+        .with_context(|| "failed to parse crates.io response")
+    {
+        Ok(value) => value,
+        Err(err) => return fail(CHANNEL_CRATES_IO, err.to_string()),
+    };
+    let version = value
+        .get("crate")
+        .and_then(|crate_value| crate_value.get("max_version"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .to_string();
+
+    let fixture = CratesIoFixture { version };
+    verify_crates_io_fixture(target_version, Some(&fixture))
+}
+
+fn verify_homebrew_live(target_version: &str, formula_url: &str) -> ReleaseChannelStatus {
+    let response = match http_get(formula_url) {
+        Ok(response) => response,
+        Err(_) => return fail(CHANNEL_HOMEBREW, "Homebrew formula is missing"),
+    };
+
+    let version = parse_homebrew_formula_version(&response);
+    let fixture = HomebrewFixture {
+        formula_present: true,
+        version,
+    };
+    verify_homebrew_fixture(target_version, Some(&fixture))
+}
+
+fn verify_install_script_live(root: &Path) -> ReleaseChannelStatus {
+    let repo_root = match repository_root(root) {
+        Ok(repo_root) => repo_root,
+        Err(err) => return fail(CHANNEL_INSTALL_SCRIPT, err.to_string()),
+    };
+    let path = repo_root.join("install.sh");
+    let contents = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(err) => {
+            return fail(
+                CHANNEL_INSTALL_SCRIPT,
+                format!("install script is missing or unreadable: {err}"),
+            );
+        }
+    };
+
+    let fixture = InstallScriptFixture {
+        present: true,
+        supports_pinned_version: contents.contains("AGENT_TUI_VERSION")
+            && contents.contains("releases/download/$tag"),
+        verifies_checksums: contents.contains("checksums-sha256.txt")
+            && contents.contains("Checksum mismatch"),
+    };
+    verify_install_script_fixture(Some(&fixture))
+}
+
+fn verify_source_install_live(root: &Path, target_version: &str) -> ReleaseChannelStatus {
+    let version = match read_cargo_version(&cargo_toml_path(root)) {
+        Ok(version) => version,
+        Err(err) => return fail(CHANNEL_SOURCE_INSTALL, err.to_string()),
+    };
+    let package_path = "crates/agent-tui";
+    if !root.join(package_path).join("Cargo.toml").is_file() {
+        return fail(
+            CHANNEL_SOURCE_INSTALL,
+            format!("source install package path {package_path} is missing"),
+        );
+    }
+
+    let fixture = SourceInstallFixture {
+        version,
+        package_path: package_path.to_string(),
+    };
+    verify_source_install_fixture(target_version, Some(&fixture))
+}
+
+fn required_release_assets_with_checksums() -> Vec<&'static str> {
+    required_artifacts(DistKind::Release)
+        .iter()
+        .copied()
+        .chain(std::iter::once("checksums-sha256.txt"))
+        .collect()
+}
+
+fn http_get(url: &str) -> Result<String> {
+    run_output(
+        "curl",
+        &["-fsSL", "-H", "User-Agent: agent-tui-release-verifier", url],
+        None,
+    )
+}
+
+fn npm_view_version(package_name: &str, target_version: &str) -> Result<String> {
+    let spec = format!("{package_name}@{target_version}");
+    let output = run_output("npm", &["view", &spec, "version"], None)?;
+    Ok(output.trim().trim_matches('"').to_string())
+}
+
+fn npm_view_published_version(package_name: &str) -> Result<String> {
+    let output = run_output("npm", &["view", package_name, "version"], None)?;
+    Ok(output.trim().trim_matches('"').to_string())
+}
+
+fn npm_view_optional_dependencies(target_version: &str) -> Result<BTreeMap<String, String>> {
+    let spec = format!("agent-tui@{target_version}");
+    let output = run_output(
+        "npm",
+        &["view", &spec, "optionalDependencies", "--json"],
+        None,
+    )?;
+    if output.trim().is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    serde_json::from_str(&output).with_context(|| "failed to parse npm optionalDependencies")
+}
+
+fn parse_homebrew_formula_version(contents: &str) -> Option<String> {
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("version ") else {
+            continue;
+        };
+        let value = rest.trim();
+        if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+            return Some(value[1..value.len() - 1].to_string());
+        }
+    }
+    parse_first_v_prefixed_semver(contents)
+}
+
+fn parse_first_v_prefixed_semver(contents: &str) -> Option<String> {
+    for (index, _) in contents.match_indices('v') {
+        let candidate = contents[index + 1..]
+            .chars()
+            .take_while(|ch| ch.is_ascii_digit() || matches!(ch, '.' | '-' | '+'))
+            .collect::<String>();
+        if ensure_semver(&candidate).is_ok() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn repository_root(root: &Path) -> Result<PathBuf> {
+    root.parent()
+        .map(Path::to_path_buf)
+        .with_context(|| format!("{} has no repository parent", root.display()))
+}
+
+fn print_release_channel_report(
+    target_version: &str,
+    dry_run: bool,
+    report: &ReleaseChannelReport,
+) {
+    println!("Release channel verification target: {target_version}");
+    if dry_run {
+        println!("Mode: dry run / read-only");
+    } else {
+        println!("Mode: read-only");
+    }
+
+    for status in &report.statuses {
+        let label = if status.passed { "PASS" } else { "FAIL" };
+        println!("{label} {}: {}", status.channel, status.message);
+    }
 }
 
 fn dist_verify(input: &Path, kind: DistKind) -> Result<()> {

@@ -10,7 +10,7 @@ function main() {
 
   if (!resolved.platformArch) {
     console.error(`Unsupported platform: ${process.platform}-${process.arch}`);
-    console.error('You can build from source: cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui');
+    console.error('You can build from source: cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui --locked');
     process.exit(1);
   }
 

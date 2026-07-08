@@ -27,6 +27,25 @@ cargo run -p xtask -- release-channels verify \
   --channel npm
 ```
 
+For the Rust installation surface, verify crates.io plus the source checkout path:
+
+```bash
+cd cli
+cargo run -p xtask -- release-channels verify-crates-io-publish-plan
+cargo run -p xtask -- release-channels verify \
+  --target-version 1.0.2 \
+  --channel crates-io \
+  --channel source-install
+```
+
+The corresponding user-facing install commands are:
+
+```bash
+cargo install agent-tui --version 1.0.2 --locked
+cargo install --git https://github.com/pproenca/agent-tui.git --tag v1.0.2 --path cli/crates/agent-tui --locked
+cargo install --path cli/crates/agent-tui --locked
+```
+
 For CI or local tests that must not depend on live public registry state, pass a fixture file. Relative fixture paths are resolved from `cli/`; absolute paths are accepted.
 
 ```bash

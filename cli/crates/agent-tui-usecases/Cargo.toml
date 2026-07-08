@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+description = "Use cases and ports for agent-tui terminal automation"
 
 [lints]
 workspace = true

@@ -52,14 +52,21 @@ pnpm add -g agent-tui
 
 # bun
 bun add -g agent-tui
+
+# crates.io
+cargo install agent-tui --locked
 ```
 
 ### From Source
 
 ```bash
+# Install from a local checkout
 git clone https://github.com/pproenca/agent-tui
-cd agent-tui/cli
-cargo build --release
+cd agent-tui
+cargo install --path cli/crates/agent-tui --locked
+
+# Or install directly from GitHub
+cargo install --git https://github.com/pproenca/agent-tui.git --path cli/crates/agent-tui --locked
 ```
 
 ### Environment Variables

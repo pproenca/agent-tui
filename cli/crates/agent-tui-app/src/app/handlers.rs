@@ -525,6 +525,12 @@ pub(crate) fn handle_type<C: DaemonClient>(
     ctx.output_success_and_ok(&result, "Text typed", "Type failed")
 }
 
+pub(crate) fn warn_legacy_deprecation(command: &str, replacement: &str) {
+    eprintln!(
+        "Warning: agent-tui {command} is deprecated; use `agent-tui {replacement}` instead. It will be deprecated in the next major release."
+    );
+}
+
 pub(crate) fn handle_scroll<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     direction: ScrollDirection,

@@ -750,6 +750,15 @@ fn test_type_command() {
 }
 
 #[test]
+fn test_legacy_input_command() {
+    let cli = Cli::parse_from(["agent-tui", "input", "hello"]);
+    let Commands::Input { text } = cli.command else {
+        panic!("Expected Input command, got {:?}", cli.command);
+    };
+    assert_eq!(text, "hello");
+}
+
+#[test]
 fn test_type_allows_hyphen_text() {
     let cli = Cli::parse_from(["agent-tui", "type", "-n"]);
     let Commands::Type { text } = cli.command else {

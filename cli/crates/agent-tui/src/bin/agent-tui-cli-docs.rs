@@ -40,7 +40,7 @@ fn render_command(mut cmd: Command, path: Vec<String>, output: &mut String) {
     output.push_str(&heading);
     output.push_str("\n\n```text\n");
     let help = cmd.render_long_help().to_string();
-    output.push_str(help.trim_end());
+    push_trimmed_help(&help, output);
     output.push_str("\n```\n\n");
 
     let subcommands: Vec<Command> = cmd.get_subcommands().cloned().collect();
@@ -51,4 +51,12 @@ fn render_command(mut cmd: Command, path: Vec<String>, output: &mut String) {
         sub_path.push(name);
         render_command(sub, sub_path, output);
     }
+}
+
+fn push_trimmed_help(help: &str, output: &mut String) {
+    for line in help.trim_end().lines() {
+        output.push_str(line.trim_end());
+        output.push('\n');
+    }
+    output.truncate(output.trim_end().len());
 }

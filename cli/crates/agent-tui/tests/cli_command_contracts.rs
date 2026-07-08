@@ -194,6 +194,7 @@ fn command_paths_match_expected_matrix() {
         "daemon start".to_string(),
         "daemon status".to_string(),
         "daemon stop".to_string(),
+        "action".to_string(),
         "env".to_string(),
         "input".to_string(),
         "kill".to_string(),
@@ -250,6 +251,11 @@ fn rpc_contract_matrix_covers_full_working_surface() {
         },
         CommandCase {
             args: &["press", "Enter"],
+            expected_method: "keystroke",
+            setup: no_setup,
+        },
+        CommandCase {
+            args: &["action", "@submit", "click"],
             expected_method: "keystroke",
             setup: no_setup,
         },
@@ -565,6 +571,140 @@ fn legacy_input_no_input_mode_does_not_prompt() {
 }
 
 #[test]
+fn legacy_action_click_routes_to_enter_and_warns_to_stderr() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["action", "@submit", "click"])
+        .success()
+        .stdout(predicate::str::contains("Key pressed"))
+        .stderr(predicate::str::contains(
+            "agent-tui action is deprecated; use `agent-tui press`, `agent-tui type`, or `agent-tui scroll` instead. It will be deprecated in the next major release.",
+        ));
+
+    harness.assert_method_called_with(
+        "keystroke",
+        json!({
+            "key": "Enter"
+        }),
+    );
+}
+
+#[test]
+fn legacy_action_fill_json_stdout_stays_valid_and_targets_session() {
+    let harness = TestHarness::new();
+
+    let output = harness
+        .cli_command()
+        .args([
+            "--format",
+            "json",
+            "--session",
+            "session-a",
+            "action",
+            "@name",
+            "fill",
+            "Pedro",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "agent-tui action is deprecated; use `agent-tui press`, `agent-tui type`, or `agent-tui scroll` instead. It will be deprecated in the next major release.",
+        ))
+        .get_output()
+        .clone();
+
+    let stdout_text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout_text.contains("deprecated"),
+        "deprecation notice must not be written to JSON stdout: {stdout_text}"
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout).expect("valid JSON stdout");
+    assert_eq!(parsed["success"], true);
+
+    harness.assert_method_called_with(
+        "type",
+        json!({
+            "text": "Pedro",
+            "session": "session-a"
+        }),
+    );
+}
+
+#[test]
+fn legacy_action_selector_routing_is_session_scoped() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["--session", "session-a", "action", "@submit", "click"])
+        .success();
+    harness.assert_method_called_with(
+        "keystroke",
+        json!({
+            "key": "Enter",
+            "session": "session-a"
+        }),
+    );
+
+    harness.clear_requests();
+    harness
+        .run(&["--session", "session-b", "action", "@submit", "click"])
+        .success();
+    harness.assert_method_called_with(
+        "keystroke",
+        json!({
+            "key": "Enter",
+            "session": "session-b"
+        }),
+    );
+}
+
+#[test]
+fn legacy_action_unsupported_semantics_return_compat_error() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["action", "@checkbox", "toggle"])
+        .code(64)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "Legacy action `toggle` for selector `@checkbox` is not supported.",
+        ))
+        .stderr(predicate::str::contains(
+            "Use `agent-tui press`, `agent-tui type`, or `agent-tui scroll`.",
+        ))
+        .stderr(predicate::str::contains("unrecognized subcommand").not());
+}
+
+#[test]
+fn legacy_action_unsupported_semantics_do_not_require_daemon() {
+    let env = StandaloneEnv::new();
+
+    env.run(&["action", "@checkbox", "toggle"])
+        .code(64)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "Legacy action `toggle` for selector `@checkbox` is not supported.",
+        ))
+        .stderr(predicate::str::contains("Daemon is not running").not())
+        .stderr(predicate::str::contains("unrecognized subcommand").not());
+}
+
+#[test]
+fn legacy_action_missing_operation_returns_compat_error() {
+    let env = StandaloneEnv::new();
+
+    env.run(&["action", "@checkbox"])
+        .code(64)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "Legacy action `missing` for selector `@checkbox` is not supported.",
+        ))
+        .stderr(predicate::str::contains("2 values required").not())
+        .stderr(predicate::str::contains("Daemon is not running").not());
+}
+
+#[test]
 fn wait_assert_returns_non_zero_on_timeout() {
     let harness = TestHarness::new();
     harness.set_response(
@@ -791,6 +931,7 @@ fn help_entrypoints_remain_valid() {
         &["resize", "--help"],
         &["restart", "--help"],
         &["press", "--help"],
+        &["action", "--help"],
         &["type", "--help"],
         &["wait", "--help"],
         &["kill", "--help"],

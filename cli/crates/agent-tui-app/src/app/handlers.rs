@@ -526,8 +526,13 @@ pub(crate) fn handle_type<C: DaemonClient>(
 }
 
 pub(crate) fn warn_legacy_deprecation(command: &str, replacement: &str) {
+    let replacement_display = format!("`agent-tui {replacement}`");
+    warn_legacy_deprecation_with_replacement(command, &replacement_display);
+}
+
+pub(crate) fn warn_legacy_deprecation_with_replacement(command: &str, replacement_display: &str) {
     eprintln!(
-        "Warning: agent-tui {command} is deprecated; use `agent-tui {replacement}` instead. It will be deprecated in the next major release."
+        "Warning: agent-tui {command} is deprecated; use {replacement_display} instead. It will be deprecated in the next major release."
     );
 }
 

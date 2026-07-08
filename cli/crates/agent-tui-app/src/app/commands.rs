@@ -348,6 +348,23 @@ LEGACY COMPATIBILITY:
         #[arg(long = "interactive-only", help_heading = "Legacy Compatibility")]
         legacy_interactive_only: bool,
     },
+
+    /// Deprecated selector action compatibility command
+    #[command(long_about = "\
+Deprecated compatibility command for old selector-based action workflows.
+
+Use current terminal commands (`press`, `type`, and `scroll`) for new scripts.")]
+    #[command(after_long_help = "\
+SUPPORTED COMPATIBILITY FORMS:
+    agent-tui action <selector> click        # Sends Enter with `agent-tui press Enter`
+    agent-tui action <selector> fill <text>  # Types text with `agent-tui type <text>`
+
+Unsupported selector actions return a compatibility error with migration guidance.")]
+    Action {
+        /// Legacy selector/action form
+        #[arg(value_name = "FORM", required = true, num_args = 1.., allow_hyphen_values = true)]
+        form: Vec<String>,
+    },
     /// Resize the session terminal
     #[command(long_about = "\
 Resize the current session terminal.")]

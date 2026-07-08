@@ -18,6 +18,7 @@ Usage: agent-tui [OPTIONS] <COMMAND>
 Commands:
   run          Run a TUI application in a virtual terminal
   screenshot   Capture a screenshot of the current session
+  action       Deprecated selector action compatibility command
   resize       Resize the session terminal
   restart      Restart the current session
   press        Send key press(es) to the terminal (supports modifier hold/release)
@@ -272,6 +273,58 @@ LEGACY COMPATIBILITY:
     agent-tui screenshot -e             # Deprecated; returns the standard screenshot
     agent-tui screenshot -a             # Deprecated; returns the standard screenshot
     agent-tui screenshot --interactive-only # Deprecated; returns the standard screenshot
+```
+
+## `agent-tui action`
+
+```text
+Deprecated compatibility command for old selector-based action workflows.
+
+Use current terminal commands (`press`, `type`, and `scroll`) for new scripts.
+
+Usage: action [OPTIONS] <FORM>...
+
+Arguments:
+  <FORM>...
+          Legacy selector/action form
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Session Options:
+  -s, --session <ID>
+          Session ID to use (defaults to the most recent session)
+
+Output Options:
+  -f, --format <FORMAT>
+          Output format (text or json)
+
+          [default: text]
+          [possible values: text, json]
+
+      --json
+          Shorthand for --format json (overrides --format if both are set)
+
+      --no-color
+          Disable colored output (also respects NO_COLOR)
+
+          [env: NO_COLOR=1]
+
+Interaction Options:
+      --no-input
+          Disable prompts and interactive TTY behavior; require explicit flags instead
+
+          [env: AGENT_TUI_NO_INPUT=]
+
+SUPPORTED COMPATIBILITY FORMS:
+    agent-tui action <selector> click        # Sends Enter with `agent-tui press Enter`
+    agent-tui action <selector> fill <text>  # Types text with `agent-tui type <text>`
+
+Unsupported selector actions return a compatibility error with migration guidance.
 ```
 
 ## `agent-tui resize`

@@ -204,6 +204,15 @@ fn test_screenshot_output_mode_flags_conflict() {
 }
 
 #[test]
+fn test_legacy_action_command() {
+    let cli = Cli::parse_from(["agent-tui", "action", "@submit", "click"]);
+    let Commands::Action { form } = cli.command else {
+        panic!("Expected Action command, got {:?}", cli.command);
+    };
+    assert_eq!(form, vec!["@submit".to_string(), "click".to_string()]);
+}
+
+#[test]
 fn test_wait_requires_condition() {
     let err = Cli::try_parse_from(["agent-tui", "wait"])
         .err()

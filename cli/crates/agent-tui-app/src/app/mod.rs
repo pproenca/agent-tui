@@ -85,6 +85,86 @@ enum InstallOutcome {
     AlreadyUpToDate(PathBuf),
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum LegacyActionOperation {
+    Click,
+    Fill(String),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct LegacyActionInvocation {
+    selector: String,
+    operation_name: String,
+    operation: LegacyActionOperation,
+}
+
+fn parse_legacy_action_invocation(
+    format: OutputFormat,
+    form: &[String],
+) -> Result<LegacyActionInvocation> {
+    let [selector, operation_name, rest @ ..] = form else {
+        let selector = form.first().map(String::as_str).unwrap_or("<missing>");
+        return Err(legacy_action_compatibility_error(format, selector, "missing").into());
+    };
+
+    match operation_name.as_str() {
+        "click" if rest.is_empty() => Ok(LegacyActionInvocation {
+            selector: selector.clone(),
+            operation_name: operation_name.clone(),
+            operation: LegacyActionOperation::Click,
+        }),
+        "fill" if !rest.is_empty() => Ok(LegacyActionInvocation {
+            selector: selector.clone(),
+            operation_name: operation_name.clone(),
+            operation: LegacyActionOperation::Fill(rest.join(" ")),
+        }),
+        _ => Err(legacy_action_compatibility_error(format, selector, operation_name).into()),
+    }
+}
+
+fn legacy_action_compatibility_error(
+    format: OutputFormat,
+    selector: &str,
+    operation: &str,
+) -> CliError {
+    let selector = if selector.is_empty() {
+        "<missing>"
+    } else {
+        selector
+    };
+    let operation = if operation.is_empty() {
+        "<missing>"
+    } else {
+        operation
+    };
+    let message =
+        format!("Legacy action `{operation}` for selector `{selector}` is not supported.");
+    let suggestion = "Use `agent-tui press`, `agent-tui type`, or `agent-tui scroll`.";
+    let json = if format == OutputFormat::Json {
+        let output = serde_json::json!({
+            "code": exit_codes::USAGE,
+            "message": message.as_str(),
+            "category": "invalid_input",
+            "retryable": false,
+            "suggestion": suggestion,
+            "context": {
+                "selector": selector,
+                "operation": operation,
+            }
+        });
+        Some(output.to_string())
+    } else {
+        None
+    };
+
+    CliError::new(
+        format,
+        format!("{message} {suggestion}"),
+        json,
+        exit_codes::USAGE,
+    )
+}
+
 fn handle_completions_command(
     format: OutputFormat,
     shell: Option<CompletionShell>,
@@ -800,6 +880,15 @@ impl Application {
                 handlers::handle_env(cli.effective_format())?;
                 Ok(true)
             }
+            Commands::Action { form } => {
+                match parse_legacy_action_invocation(cli.effective_format(), form) {
+                    Ok(_) => Ok(false),
+                    Err(error) => {
+                        warn_legacy_action_deprecation();
+                        Err(error)
+                    }
+                }
+            }
             _ => Ok(false),
         }
     }
@@ -874,6 +963,16 @@ impl Application {
                     );
                 }
                 handlers::handle_snapshot(ctx, region, strip_ansi, retain_ansi, include_cursor)?
+            }
+            Commands::Action { form } => {
+                warn_legacy_action_deprecation();
+                let action = parse_legacy_action_invocation(ctx.format, &form)?;
+                match action.operation {
+                    LegacyActionOperation::Click => {
+                        handlers::handle_press(ctx, "Enter".to_string())?
+                    }
+                    LegacyActionOperation::Fill(text) => handlers::handle_type(ctx, text)?,
+                }
             }
 
             Commands::Resize { cols, rows } => handlers::handle_resize(ctx, cols, rows)?,
@@ -1064,6 +1163,13 @@ impl Application {
             exit_codes::GENERAL_ERROR
         }
     }
+}
+
+fn warn_legacy_action_deprecation() {
+    handlers::warn_legacy_deprecation_with_replacement(
+        "action",
+        "`agent-tui press`, `agent-tui type`, or `agent-tui scroll`",
+    );
 }
 
 impl Application {

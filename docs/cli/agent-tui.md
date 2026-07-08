@@ -243,6 +243,16 @@ Output Options:
 
           [env: NO_COLOR=1]
 
+Legacy Compatibility:
+  -e
+          Deprecated compatibility flag; returns the standard terminal screenshot
+
+  -a
+          Deprecated compatibility flag; returns the standard terminal screenshot
+
+      --interactive-only
+          Deprecated compatibility flag; returns the standard terminal screenshot
+
 Session Options:
   -s, --session <ID>
           Session ID to use (defaults to the most recent session)
@@ -257,6 +267,11 @@ EXAMPLES:
     agent-tui screenshot               # Screenshot with terminal colors/styles
     agent-tui screenshot --retain-ansi # Explicitly preserve terminal colors/styles
     agent-tui screenshot --strip-ansi  # Plain text without colors
+
+LEGACY COMPATIBILITY:
+    agent-tui screenshot -e             # Deprecated; returns the standard screenshot
+    agent-tui screenshot -a             # Deprecated; returns the standard screenshot
+    agent-tui screenshot --interactive-only # Deprecated; returns the standard screenshot
 ```
 
 ## `agent-tui resize`

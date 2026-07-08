@@ -384,6 +384,115 @@ fn type_dash_reads_from_stdin() {
 }
 
 #[test]
+fn legacy_screenshot_element_flag_preserves_json_stdout() {
+    let harness = TestHarness::new();
+
+    let output = harness
+        .cli_command()
+        .args(["--format", "json", "screenshot", "-e"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "agent-tui screenshot -e is deprecated; use `agent-tui screenshot` instead. It will be deprecated in the next major release.",
+        ))
+        .get_output()
+        .clone();
+
+    let stdout_text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout_text.contains("deprecated"),
+        "deprecation notice must not be written to JSON stdout: {stdout_text}"
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout).expect("valid JSON stdout");
+    assert_eq!(parsed["screenshot"], "Test screen content\n");
+
+    harness.assert_method_called_with(
+        "snapshot",
+        json!({
+            "retain_ansi": true,
+            "include_render": true
+        }),
+    );
+}
+
+#[test]
+fn legacy_screenshot_element_flag_returns_text_compat_output() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["screenshot", "-e"])
+        .success()
+        .stdout(predicate::str::contains("Screenshot:"))
+        .stdout(predicate::str::contains("Test screen content"))
+        .stderr(predicate::str::contains(
+            "agent-tui screenshot -e is deprecated; use `agent-tui screenshot` instead. It will be deprecated in the next major release.",
+        ));
+
+    harness.assert_method_called("snapshot");
+}
+
+#[test]
+fn legacy_screenshot_accessibility_flag_returns_text_compat_output() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["screenshot", "-a"])
+        .success()
+        .stdout(predicate::str::contains("Screenshot:"))
+        .stdout(predicate::str::contains("Test screen content"))
+        .stderr(predicate::str::contains(
+            "agent-tui screenshot -a is deprecated; use `agent-tui screenshot` instead. It will be deprecated in the next major release.",
+        ));
+
+    harness.assert_method_called("snapshot");
+}
+
+#[test]
+fn legacy_screenshot_interactive_only_flag_returns_text_compat_output() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["screenshot", "--interactive-only"])
+        .success()
+        .stdout(predicate::str::contains("Screenshot:"))
+        .stdout(predicate::str::contains("Test screen content"))
+        .stderr(predicate::str::contains(
+            "agent-tui screenshot --interactive-only is deprecated; use `agent-tui screenshot` instead. It will be deprecated in the next major release.",
+        ));
+
+    harness.assert_method_called("snapshot");
+}
+
+#[test]
+fn legacy_screenshot_accessibility_flags_preserve_json_stdout() {
+    let harness = TestHarness::new();
+
+    let output = harness
+        .cli_command()
+        .args(["--format", "json", "screenshot", "-a", "--interactive-only"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "agent-tui screenshot -a is deprecated; use `agent-tui screenshot` instead. It will be deprecated in the next major release.",
+        ))
+        .stderr(predicate::str::contains(
+            "agent-tui screenshot --interactive-only is deprecated; use `agent-tui screenshot` instead. It will be deprecated in the next major release.",
+        ))
+        .get_output()
+        .clone();
+
+    let stdout_text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout_text.contains("deprecated"),
+        "deprecation notice must not be written to JSON stdout: {stdout_text}"
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout).expect("valid JSON stdout");
+    assert_eq!(parsed["screenshot"], "Test screen content\n");
+
+    harness.assert_method_called("snapshot");
+}
+
+#[test]
 fn legacy_input_alias_types_text_and_warns_to_stderr() {
     let harness = TestHarness::new();
 

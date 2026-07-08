@@ -313,7 +313,12 @@ Returns the current terminal screenshot content.")]
 EXAMPLES:
     agent-tui screenshot               # Screenshot with terminal colors/styles
     agent-tui screenshot --retain-ansi # Explicitly preserve terminal colors/styles
-    agent-tui screenshot --strip-ansi  # Plain text without colors")]
+    agent-tui screenshot --strip-ansi  # Plain text without colors
+
+LEGACY COMPATIBILITY:
+    agent-tui screenshot -e             # Deprecated; returns the standard screenshot
+    agent-tui screenshot -a             # Deprecated; returns the standard screenshot
+    agent-tui screenshot --interactive-only # Deprecated; returns the standard screenshot")]
     Screenshot {
         /// Reserved for future named regions; currently rejected if provided
         #[arg(long, value_name = "REGION", help_heading = "Filtering")]
@@ -330,6 +335,18 @@ EXAMPLES:
         /// Include cursor position in output
         #[arg(long, help_heading = "Output Options")]
         include_cursor: bool,
+
+        /// Deprecated compatibility flag; returns the standard terminal screenshot
+        #[arg(short = 'e', help_heading = "Legacy Compatibility")]
+        legacy_element: bool,
+
+        /// Deprecated compatibility flag; returns the standard terminal screenshot
+        #[arg(short = 'a', help_heading = "Legacy Compatibility")]
+        legacy_accessibility: bool,
+
+        /// Deprecated compatibility flag; returns the standard terminal screenshot
+        #[arg(long = "interactive-only", help_heading = "Legacy Compatibility")]
+        legacy_interactive_only: bool,
     },
     /// Resize the session terminal
     #[command(long_about = "\

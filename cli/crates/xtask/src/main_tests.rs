@@ -673,6 +673,34 @@ fn release_workflow_publishes_and_smokes_crates_io_and_source_install() -> Resul
 }
 
 #[test]
+fn release_workflow_publishes_verifies_and_smokes_homebrew_channel() -> Result<()> {
+    let root = repository_root(&workspace_root()?)?;
+    let workflow = fs::read_to_string(root.join(".github/workflows/release.yml"))
+        .with_context(|| "failed to read release workflow")?;
+
+    for needle in [
+        "publish-homebrew:",
+        "HOMEBREW_TAP_TOKEN",
+        "agent-tui-darwin-arm64",
+        "agent-tui-darwin-x64",
+        "Formula/agent-tui.rb",
+        "--channel homebrew",
+        "brew tap pproenca/tap",
+        "brew install pproenca/tap/agent-tui",
+        "brew upgrade pproenca/tap/agent-tui",
+        "agent-tui --version",
+        "chmod 0755, bin/\"agent-tui\"",
+    ] {
+        assert!(
+            workflow.contains(needle),
+            "release workflow missing expected Homebrew release step: {needle}"
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
 fn build_scripts_accept_packaged_vcs_metadata_without_git() -> Result<()> {
     let root = repository_root(&workspace_root()?)?;
     let build_script_paths = [
@@ -751,6 +779,26 @@ fn readme_documents_crates_io_and_source_install_paths() -> Result<()> {
         assert!(
             readme.contains(needle),
             "README missing expected Rust install command: {needle}"
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn readme_documents_homebrew_install_and_upgrade_paths() -> Result<()> {
+    let root = repository_root(&workspace_root()?)?;
+    let readme =
+        fs::read_to_string(root.join("README.md")).with_context(|| "failed to read README.md")?;
+
+    for needle in [
+        "brew tap pproenca/tap",
+        "brew install agent-tui",
+        "brew upgrade agent-tui",
+    ] {
+        assert!(
+            readme.contains(needle),
+            "README missing expected Homebrew command: {needle}"
         );
     }
 

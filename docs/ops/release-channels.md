@@ -46,6 +46,23 @@ cargo install --git https://github.com/pproenca/agent-tui.git --tag v1.0.2 --pat
 cargo install --path cli/crates/agent-tui --locked
 ```
 
+For Homebrew, the release workflow updates `pproenca/homebrew-tap` with the macOS release asset URLs and `sha256` values, then verifies the channel:
+
+```bash
+cd cli
+cargo run -p xtask -- release-channels verify \
+  --target-version 1.0.2 \
+  --channel homebrew
+```
+
+Users install and upgrade through the tap:
+
+```bash
+brew tap pproenca/tap
+brew install agent-tui
+brew upgrade agent-tui
+```
+
 For CI or local tests that must not depend on live public registry state, pass a fixture file. Relative fixture paths are resolved from `cli/`; absolute paths are accepted.
 
 ```bash

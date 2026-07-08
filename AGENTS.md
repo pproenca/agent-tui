@@ -87,7 +87,7 @@ Three specialized agents run during code review (see `.claude/agents/`):
 
 ### Issue tracker
 
-Issues are tracked in GitHub Issues for `pproenca/agent-tui`; external PRs are also a triage surface. See `docs/agents/issue-tracker.md`.
+Issues are tracked in GitHub Issues for `pproenca/agent-tui`; external PRs are also a triage surface, and progress is tracked in the `agent-tui Roadmap` GitHub Project. See `docs/agents/issue-tracker.md` and `docs/agents/project-board.md`.
 
 ### Triage labels
 

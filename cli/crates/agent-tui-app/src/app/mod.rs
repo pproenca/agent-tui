@@ -39,9 +39,12 @@ use crate::app::commands::Cli;
 use crate::app::commands::Commands;
 use crate::app::commands::CompletionShell;
 use crate::app::commands::DaemonCommand;
+use crate::app::commands::LegacyActionOperation;
+use crate::app::commands::LegacyActionParseError;
 use crate::app::commands::LiveCommand;
 use crate::app::commands::LiveStartArgs;
 use crate::app::commands::env_assignments_to_map;
+use crate::app::commands::parse_legacy_action_invocation;
 use crate::app::error::CliError;
 use crate::app::error::DaemonNotRunningError;
 use crate::app::handlers::HandlerContext;
@@ -85,58 +88,12 @@ enum InstallOutcome {
     AlreadyUpToDate(PathBuf),
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum LegacyActionOperation {
-    Click,
-    Fill(String),
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct LegacyActionInvocation {
-    selector: String,
-    operation_name: String,
-    operation: LegacyActionOperation,
-}
-
-fn parse_legacy_action_invocation(
-    format: OutputFormat,
-    form: &[String],
-) -> Result<LegacyActionInvocation> {
-    let [selector, operation_name, rest @ ..] = form else {
-        let selector = form.first().map(String::as_str).unwrap_or("<missing>");
-        return Err(legacy_action_compatibility_error(format, selector, "missing").into());
-    };
-
-    match operation_name.as_str() {
-        "click" if rest.is_empty() => Ok(LegacyActionInvocation {
-            selector: selector.clone(),
-            operation_name: operation_name.clone(),
-            operation: LegacyActionOperation::Click,
-        }),
-        "fill" if !rest.is_empty() => Ok(LegacyActionInvocation {
-            selector: selector.clone(),
-            operation_name: operation_name.clone(),
-            operation: LegacyActionOperation::Fill(rest.join(" ")),
-        }),
-        _ => Err(legacy_action_compatibility_error(format, selector, operation_name).into()),
-    }
-}
-
 fn legacy_action_compatibility_error(
     format: OutputFormat,
-    selector: &str,
-    operation: &str,
+    parse_error: LegacyActionParseError,
 ) -> CliError {
-    let selector = if selector.is_empty() {
-        "<missing>"
-    } else {
-        selector
-    };
-    let operation = if operation.is_empty() {
-        "<missing>"
-    } else {
-        operation
-    };
+    let selector = parse_error.selector();
+    let operation = parse_error.operation();
     let message =
         format!("Legacy action `{operation}` for selector `{selector}` is not supported.");
     let suggestion = "Use `agent-tui press`, `agent-tui type`, or `agent-tui scroll`.";
@@ -163,6 +120,14 @@ fn legacy_action_compatibility_error(
         json,
         exit_codes::USAGE,
     )
+}
+
+fn legacy_action_compatibility_result(
+    format: OutputFormat,
+    form: &[String],
+) -> Result<crate::app::commands::LegacyActionInvocation> {
+    parse_legacy_action_invocation(form)
+        .map_err(|err| anyhow::Error::new(legacy_action_compatibility_error(format, err)))
 }
 
 fn parse_legacy_scroll_into_view_invocation(
@@ -324,6 +289,18 @@ fn handle_completions_command(
 
     run_completions_wizard(shell, install, yes, false)?;
     Ok(())
+}
+
+fn single_modifier_key(format: OutputFormat, flag: &str, keys: &[String]) -> Result<String> {
+    match keys {
+        [key] => Ok(key.clone()),
+        _ => Err(anyhow::Error::new(CliError::new(
+            format,
+            format!("Press {flag} requires exactly one key (Ctrl, Alt, Shift, Meta)"),
+            None,
+            exit_codes::USAGE,
+        ))),
+    }
 }
 
 fn completions_cli_error(
@@ -969,7 +946,7 @@ impl Application {
                 Ok(true)
             }
             Commands::Action { form } => {
-                match parse_legacy_action_invocation(cli.effective_format(), form) {
+                match legacy_action_compatibility_result(cli.effective_format(), form) {
                     Ok(_) => Ok(false),
                     Err(error) => {
                         warn_legacy_action_deprecation();
@@ -1061,7 +1038,7 @@ impl Application {
             }
             Commands::Action { form } => {
                 warn_legacy_action_deprecation();
-                let action = parse_legacy_action_invocation(ctx.format, &form)?;
+                let action = legacy_action_compatibility_result(ctx.format, &form)?;
                 match action.operation {
                     LegacyActionOperation::Click => {
                         handlers::handle_press(ctx, "Enter".to_string())?
@@ -1074,52 +1051,16 @@ impl Application {
             Commands::Restart { dry_run, yes } => handlers::handle_restart(ctx, dry_run, yes)?,
 
             Commands::Press {
-                mut keys,
+                keys,
                 hold,
                 release,
             } => {
                 const PRESS_INTER_KEY_DELAY_MS: u64 = 50;
                 if hold {
-                    if keys.len() != 1 {
-                        return Err(anyhow::Error::new(crate::app::error::CliError::new(
-                            ctx.format,
-                            "Press --hold requires exactly one key (Ctrl, Alt, Shift, Meta)",
-                            None,
-                            exit_codes::USAGE,
-                        )));
-                    }
-                    let key = match keys.pop() {
-                        Some(key) => key,
-                        None => {
-                            return Err(anyhow::Error::new(crate::app::error::CliError::new(
-                                ctx.format,
-                                "Press --hold requires exactly one key (Ctrl, Alt, Shift, Meta)",
-                                None,
-                                exit_codes::USAGE,
-                            )));
-                        }
-                    };
+                    let key = single_modifier_key(ctx.format, "--hold", &keys)?;
                     handlers::handle_keydown(ctx, key)?
                 } else if release {
-                    if keys.len() != 1 {
-                        return Err(anyhow::Error::new(crate::app::error::CliError::new(
-                            ctx.format,
-                            "Press --release requires exactly one key (Ctrl, Alt, Shift, Meta)",
-                            None,
-                            exit_codes::USAGE,
-                        )));
-                    }
-                    let key = match keys.pop() {
-                        Some(key) => key,
-                        None => {
-                            return Err(anyhow::Error::new(crate::app::error::CliError::new(
-                                ctx.format,
-                                "Press --release requires exactly one key (Ctrl, Alt, Shift, Meta)",
-                                None,
-                                exit_codes::USAGE,
-                            )));
-                        }
-                    };
+                    let key = single_modifier_key(ctx.format, "--release", &keys)?;
                     handlers::handle_keyup(ctx, key)?
                 } else {
                     let key_count = keys.len();

@@ -406,6 +406,22 @@ fn current_command_smokes_do_not_emit_deprecation_notices() {
 }
 
 #[test]
+fn scroll_rejects_zero_amount_before_rpc() {
+    let harness = TestHarness::new();
+
+    harness
+        .run(&["scroll", "down", "0"])
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("invalid value '0' for '[AMOUNT]'"));
+
+    assert!(
+        harness.get_requests().is_empty(),
+        "invalid scroll amount must fail before sending RPC"
+    );
+}
+
+#[test]
 fn sessions_cleanup_kills_stopped_sessions() {
     let harness = TestHarness::new();
     setup_mixed_sessions(&harness);

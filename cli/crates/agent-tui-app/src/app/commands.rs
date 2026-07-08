@@ -7,6 +7,7 @@ use clap::Subcommand;
 use clap::ValueEnum;
 use clap::ValueHint;
 use std::collections::HashMap;
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 
 pub use crate::adapters::presenter::OutputFormat;
@@ -244,6 +245,72 @@ impl Cli {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum LegacyActionOperation {
+    Click,
+    Fill(String),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct LegacyActionInvocation {
+    pub operation: LegacyActionOperation,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct LegacyActionParseError {
+    selector: String,
+    operation: String,
+}
+
+impl LegacyActionParseError {
+    pub fn selector(&self) -> &str {
+        &self.selector
+    }
+
+    pub fn operation(&self) -> &str {
+        &self.operation
+    }
+}
+
+fn legacy_action_parse_error(
+    selector: impl Into<String>,
+    operation: impl Into<String>,
+) -> LegacyActionParseError {
+    let selector = selector.into();
+    let operation = operation.into();
+    LegacyActionParseError {
+        selector: if selector.is_empty() {
+            "<missing>".to_string()
+        } else {
+            selector
+        },
+        operation: if operation.is_empty() {
+            "<missing>".to_string()
+        } else {
+            operation
+        },
+    }
+}
+
+pub(crate) fn parse_legacy_action_invocation(
+    form: &[String],
+) -> Result<LegacyActionInvocation, LegacyActionParseError> {
+    let [selector, operation_name, rest @ ..] = form else {
+        let selector = form.first().map(String::as_str).unwrap_or("<missing>");
+        return Err(legacy_action_parse_error(selector, "missing"));
+    };
+
+    match operation_name.as_str() {
+        "click" if rest.is_empty() => Ok(LegacyActionInvocation {
+            operation: LegacyActionOperation::Click,
+        }),
+        "fill" if !rest.is_empty() => Ok(LegacyActionInvocation {
+            operation: LegacyActionOperation::Fill(rest.join(" ")),
+        }),
+        _ => Err(legacy_action_parse_error(selector, operation_name)),
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Run a TUI application in a virtual terminal
@@ -469,8 +536,8 @@ EXAMPLES:
         direction: ScrollDirection,
 
         /// Number of steps to send
-        #[arg(default_value_t = 1, value_name = "AMOUNT")]
-        amount: u16,
+        #[arg(default_value_t = NonZeroU16::MIN, value_name = "AMOUNT")]
+        amount: NonZeroU16,
     },
 
     /// Deprecated element scroll compatibility command

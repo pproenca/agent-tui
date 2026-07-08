@@ -4,6 +4,8 @@ GitHub Project: https://github.com/users/pproenca/projects/1
 
 Use this Project as the progress dashboard for issues and external PRs in `pproenca/agent-tui`. GitHub Issues remain the source of truth for requirements and discussion; the Project is for workflow state, prioritization, and filtering.
 
+Do not track active work in repo-local `docs/exec-plans/` files. If a piece of work needs planning, create a PRD issue, split it into implementation issues, and keep this Project in sync with the labels in `docs/agents/triage-labels.md`.
+
 The Project's **Auto-add to project** workflow is enabled for `agent-tui` with the filter `is:issue,pr is:open`, so new open issues and PRs are automatically added to the board.
 
 ## Fields

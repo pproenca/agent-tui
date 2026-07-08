@@ -10,6 +10,16 @@ Progress is tracked in the **agent-tui Roadmap** GitHub Project:
 
 See `docs/agents/project-board.md` for field meanings and label-to-workflow conventions.
 
+## Workflow source of truth
+
+This repo uses the Matt Pocock skills workflow instead of repo-local exec plans.
+
+- Do not create or update `docs/exec-plans/` files for new work.
+- PRDs belong in GitHub Issues.
+- Implementation work should be split into independently grabbable GitHub issues, usually via `to-prd` and `to-issues`.
+- Use labels plus the `agent-tui Roadmap` Project fields to represent workflow state.
+- When migrating an existing exec plan, publish the PRD and slice issues to GitHub, link the issue set, then remove the local plan artifact.
+
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.

@@ -2,6 +2,7 @@
 
 use crate::adapters::rpc::RpcResponse;
 use crate::common::DaemonError;
+use crate::common::join_thread_and_warn_on_panic;
 use crate::common::join_thread_with_timeout_or_reap;
 use crate::common::telemetry;
 use libc::POLLIN;
@@ -219,7 +220,7 @@ impl ThreadPool {
     fn shutdown(self) {
         drop(self.sender);
         for worker in self.workers {
-            let _ = worker.join();
+            join_thread_and_warn_on_panic(worker, "daemon worker");
         }
     }
 }
@@ -244,10 +245,6 @@ impl DaemonServer {
             connection_cv: Arc::new(std::sync::Condvar::new()),
             stream_threads: std::sync::Mutex::new(Vec::new()),
         })
-    }
-
-    fn session_repository_handle(&self) -> Arc<dyn crate::usecases::ports::SessionRepository> {
-        self.core.session_repository_handle()
     }
 
     pub fn shutdown_all_sessions(&self) {
@@ -357,7 +354,9 @@ impl DaemonServer {
                             max_bytes / 1024 / 1024
                         ),
                     );
-                    let _ = conn.write_response(&error_response);
+                    if let Err(error) = conn.write_response(&error_response) {
+                        debug!(error = %error, "Failed to send request-size error response");
+                    }
                     break;
                 }
                 Err(TransportError::Parse { source, request_id }) => {
@@ -367,7 +366,9 @@ impl DaemonServer {
                         || RpcResponse::error_without_id(-32700, &message),
                         |id| RpcResponse::error(id, -32700, &message),
                     );
-                    let _ = conn.write_response(&error_response);
+                    if let Err(error) = conn.write_response(&error_response) {
+                        debug!(error = %error, "Failed to send request-parse error response");
+                    }
                     continue;
                 }
                 Err(TransportError::Serialize(err)) => {
@@ -511,7 +512,11 @@ impl DaemonServer {
 
                 warn!("Failed to spawn stream thread, handling on worker thread");
                 let mut writer = UnixRpcWriter { conn: &mut conn };
-                let _ = server.core.handle_stream(&mut writer, request, kind, None);
+                if let Err(error) = server.core.handle_stream(&mut writer, request, kind, None)
+                    && !matches!(error, RpcCoreError::ConnectionClosed)
+                {
+                    error!(error = %error, "RPC stream failed on worker fallback");
+                }
 
                 let remaining = server.active_connections.fetch_sub(1, Ordering::Relaxed) - 1;
                 if remaining == 0 {

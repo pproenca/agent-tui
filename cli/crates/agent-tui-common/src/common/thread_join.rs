@@ -50,8 +50,14 @@ pub fn join_thread_with_timeout_or_reap_with_poll_interval(
         }
         thread::park_timeout(poll_interval);
     }
-    let _ = handle.join();
+    join_thread_and_warn_on_panic(handle, thread_label);
     ThreadJoinOutcome::Joined
+}
+
+pub fn join_thread_and_warn_on_panic(handle: thread::JoinHandle<()>, thread_label: &'static str) {
+    if handle.join().is_err() {
+        warn!(thread = thread_label, "Joined thread exited with a panic");
+    }
 }
 
 fn spawn_join_reaper(
@@ -72,12 +78,7 @@ fn spawn_join_reaper(
                 return;
             };
 
-            if handle.join().is_err() {
-                warn!(
-                    thread = thread_label,
-                    "Background reaper observed thread panic"
-                );
-            }
+            join_thread_and_warn_on_panic(handle, thread_label);
         }) {
         Ok(_) => ThreadJoinOutcome::ReapingInBackground,
         Err(err) => {
@@ -87,12 +88,12 @@ fn spawn_join_reaper(
                 error = %err,
                 "Failed to spawn background join reaper; joining synchronously"
             );
-            if let Some(handle) = handle_cell
+            let handle = handle_cell
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .take()
-            {
-                let _ = handle.join();
+                .take();
+            if let Some(handle) = handle {
+                join_thread_and_warn_on_panic(handle, thread_label);
             }
             ThreadJoinOutcome::Joined
         }

@@ -21,6 +21,7 @@ use crate::app::rpc_client::RpcStream;
 use crate::app::rpc_client::call_stream_with_params;
 use crate::app::rpc_client::call_with_params;
 use crate::common::Colors;
+use crate::common::join_thread_and_warn_on_panic;
 use crate::domain::session_types::TerminalSize;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::DaemonClient;
@@ -49,7 +50,7 @@ type SharedPanicHook = Arc<Mutex<Option<PanicHook>>>;
 /// Restores terminal state on drop to avoid leaving the user's shell in a broken mode.
 #[must_use = "TerminalGuard must be held for the duration of the attach session"]
 struct TerminalGuard {
-    panic_hook_guard: TerminalPanicHookGuard,
+    _panic_hook_guard: TerminalPanicHookGuard,
 }
 
 impl TerminalGuard {
@@ -59,7 +60,9 @@ impl TerminalGuard {
         let mut stdout = io::stdout();
         prepare_terminal_with_rollback(&mut stdout, prepare_terminal)
             .map_err(AttachError::Terminal)?;
-        Ok(Self { panic_hook_guard })
+        Ok(Self {
+            _panic_hook_guard: panic_hook_guard,
+        })
     }
 }
 
@@ -1044,7 +1047,7 @@ fn join_thread_with_timeout(
         }
         thread::park_timeout(Duration::from_millis(10));
     }
-    let _ = handle.join();
+    join_thread_and_warn_on_panic(handle, name);
 }
 
 fn spawn_stdin_reader() -> AttachReaderWorker<StdinMessage> {

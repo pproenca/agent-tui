@@ -18,6 +18,7 @@ use super::TransportConnection;
 use super::TransportError;
 use super::TransportListener;
 
+#[cfg(test)]
 const DEFAULT_MAX_REQUEST_SIZE: usize = 1024 * 1024;
 
 struct SizeLimitedReader<R> {
@@ -61,6 +62,7 @@ pub(crate) struct UnixSocketConnection {
 }
 
 impl UnixSocketConnection {
+    #[cfg(test)]
     pub(crate) fn new(stream: UnixStream) -> Result<Self, TransportError> {
         Self::new_with_max(stream, DEFAULT_MAX_REQUEST_SIZE)
     }
@@ -127,10 +129,6 @@ impl UnixSocketListener {
             inner: listener,
             max_request_bytes,
         })
-    }
-
-    pub(crate) fn into_inner(self) -> UnixListener {
-        self.inner
     }
 }
 

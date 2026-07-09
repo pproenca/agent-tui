@@ -20,5 +20,6 @@ pub use sync::mutex_lock_or_recover;
 pub use sync::rwlock_read_or_recover;
 pub use sync::rwlock_write_or_recover;
 pub use thread_join::ThreadJoinOutcome;
+pub use thread_join::join_thread_and_warn_on_panic;
 pub use thread_join::join_thread_with_timeout_or_reap;
 pub use thread_join::join_thread_with_timeout_or_reap_with_poll_interval;

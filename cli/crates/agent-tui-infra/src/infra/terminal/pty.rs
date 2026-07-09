@@ -18,7 +18,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crossbeam_channel as channel;
-use crossterm::event::KeyCode;
 use libc::POLLERR;
 use libc::POLLHUP;
 use libc::POLLIN;
@@ -755,17 +754,6 @@ pub fn key_to_escape_sequence(key: &str) -> Option<Vec<u8>> {
 
         _ => None,
     }
-}
-
-pub(crate) fn keycode_to_escape_sequence(code: KeyCode) -> Option<Vec<u8>> {
-    let key = match code {
-        KeyCode::Up => "Up",
-        KeyCode::Down => "Down",
-        KeyCode::Left => "Left",
-        KeyCode::Right => "Right",
-        _ => return None,
-    };
-    key_to_escape_sequence(key)
 }
 
 fn classify_spawn_error(error: &(dyn StdError + 'static), reason: &str) -> SpawnErrorKind {

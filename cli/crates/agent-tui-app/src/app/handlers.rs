@@ -39,7 +39,6 @@ use crate::infra::ipc::get_daemon_process_identity;
 use crate::infra::ipc::socket_path;
 use crate::infra::ipc::start_daemon_background;
 
-use crate::adapters::presenter::ClientErrorView;
 use crate::adapters::presenter::Presenter;
 use crate::adapters::presenter::create_presenter;
 use crate::app::attach::DetachKeys;
@@ -74,15 +73,6 @@ fn daemon_pid(ws_state: Option<&WsState>) -> Option<u32> {
         DaemonProcessLookupResult::NotRunning | DaemonProcessLookupResult::InvalidState { .. } => {
             ws_state.map(|state| state.pid)
         }
-    }
-}
-
-fn client_error_view(error: &ClientError) -> ClientErrorView {
-    ClientErrorView {
-        message: error.to_string(),
-        suggestion: error.suggestion().map(str::to_string),
-        retryable: error.is_retryable(),
-        json: Some(error.to_json_string()),
     }
 }
 
@@ -378,11 +368,6 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
     ) -> HandlerResult {
         self.output_success_result(result, success_msg, failure_prefix)?;
         Ok(())
-    }
-
-    pub fn display_error(&self, error: &ClientError) {
-        let view = client_error_view(error);
-        self.presenter.present_client_error(&view);
     }
 }
 
@@ -2519,93 +2504,6 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
     Ok(())
 }
 
-pub(crate) fn handle_assert<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    condition: String,
-) -> HandlerResult {
-    let (cond_type, cond_value) = condition.split_once(':').ok_or_else(|| {
-        CliError::new(
-            ctx.format,
-            "Invalid condition format. Use: text:pattern or session:id",
-            None,
-            super::exit_codes::USAGE,
-        )
-    })?;
-
-    let passed = match cond_type {
-        "text" => {
-            let params = params::SnapshotParams {
-                session: ctx.session.clone(),
-                region: None,
-                strip_ansi: true,
-                retain_ansi: false,
-                include_cursor: false,
-                include_render: false,
-            };
-            let result = call_with_params(ctx.client, "snapshot", params)?;
-            result.str_or("screenshot", "").contains(cond_value)
-        }
-        "session" => {
-            let result = call_no_params(ctx.client, "sessions")?;
-            if let Some(sessions) = result.get("sessions").and_then(|v| v.as_array()) {
-                sessions
-                    .iter()
-                    .any(|s| s.str_or("id", "") == cond_value && s.bool_or("running", false))
-            } else {
-                false
-            }
-        }
-        _ => {
-            return Err(CliError::new(
-                ctx.format,
-                format!("Unknown condition type: {cond_type}. Use: text or session"),
-                None,
-                super::exit_codes::USAGE,
-            )
-            .into());
-        }
-    };
-
-    if passed {
-        match ctx.format {
-            OutputFormat::Json => {
-                #[derive(Serialize)]
-                struct AssertOutput<'a> {
-                    condition: &'a str,
-                    passed: bool,
-                }
-                let output = AssertOutput {
-                    condition: &condition,
-                    passed,
-                };
-                println!("{}", serde_json::to_string_pretty(&output)?);
-            }
-            OutputFormat::Text => {
-                let assert_result = crate::adapters::presenter::AssertResult { passed, condition };
-                ctx.presenter().present_assert_result(&assert_result);
-            }
-        }
-    } else {
-        #[derive(Serialize)]
-        struct AssertOutput<'a> {
-            condition: &'a str,
-            passed: bool,
-        }
-        let output = AssertOutput {
-            condition: &condition,
-            passed,
-        };
-        return Err(CliError::new(
-            ctx.format,
-            format!("Assertion failed: {condition}"),
-            Some(serde_json::to_string_pretty(&output)?),
-            super::exit_codes::GENERAL_ERROR,
-        )
-        .into());
-    }
-    Ok(())
-}
-
 /// Result of the daemon stop operation.
 pub enum StopResult {
     /// Daemon was stopped successfully.
@@ -2686,39 +2584,6 @@ pub(crate) fn stop_daemon_core(force: bool) -> Result<StopResult> {
 
     remove_ws_state_file();
     Ok(stop_result)
-}
-
-pub(crate) fn handle_daemon_stop<C: DaemonClient>(
-    ctx: &mut HandlerContext<C>,
-    force: bool,
-) -> HandlerResult {
-    match stop_daemon_core(force)? {
-        StopResult::Stopped { warnings, .. } => {
-            for warning in &warnings {
-                eprintln!("{}", Colors::warning(warning));
-            }
-            ctx.presenter().present_success("Daemon stopped", None);
-        }
-        StopResult::AlreadyStopped => {
-            ctx.presenter()
-                .present_success("Daemon is not running (already stopped)", None);
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn handle_daemon_restart<C: DaemonClient>(ctx: &HandlerContext<C>) -> HandlerResult {
-    if let OutputFormat::Text = ctx.format {
-        ctx.presenter().present_info("Restarting daemon...");
-    }
-    let warnings = restart_daemon_core()?;
-
-    for warning in &warnings {
-        eprintln!("{}", Colors::warning(warning));
-    }
-
-    ctx.presenter().present_success("Daemon restarted", None);
-    Ok(())
 }
 
 #[cfg(test)]

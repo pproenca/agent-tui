@@ -1,6 +1,4 @@
 #![deny(clippy::all)]
-#![allow(dead_code)]
-#![cfg_attr(test, allow(clippy::expect_used))]
 
 //! Domain layer crate.
 

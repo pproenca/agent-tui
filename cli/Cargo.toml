@@ -70,6 +70,8 @@ insta = "1.43"
 rust = {}
 
 [workspace.lints.clippy]
+await_holding_invalid_type = "deny"
+await_holding_lock = "deny"
 unwrap_used = "deny"
 expect_used = "deny"
 identity_op = "deny"

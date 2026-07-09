@@ -41,6 +41,7 @@ use sysinfo::System;
 use sysinfo::UpdateKind;
 use uuid::Uuid;
 
+use crate::common::join_thread_and_warn_on_panic;
 use crate::common::mutex_lock_or_recover;
 use crate::common::rwlock_read_or_recover;
 use crate::common::rwlock_write_or_recover;
@@ -1221,7 +1222,7 @@ impl SessionManager {
             if let Err(err) = sess.kill() {
                 drop(sess);
                 if let Some(join) = join {
-                    let _ = join.join();
+                    join_thread_and_warn_on_panic(join, "session pump");
                 }
                 let _ = replacement_pty.kill();
                 if let Err(cleanup_err) = self.persistence.remove_session(&new_session_id) {
@@ -1236,7 +1237,7 @@ impl SessionManager {
             join
         };
         if let Some(join) = old_join {
-            let _ = join.join();
+            join_thread_and_warn_on_panic(join, "session pump");
         }
 
         let new_session = Arc::new(Mutex::new(Session::new(
@@ -1260,7 +1261,7 @@ impl SessionManager {
                 let join = { mutex_lock_or_recover(&new_session).shutdown_pump() };
                 let _ = mutex_lock_or_recover(&new_session).kill();
                 if let Some(join) = join {
-                    let _ = join.join();
+                    join_thread_and_warn_on_panic(join, "session pump");
                 }
                 if let Err(cleanup_err) = self.persistence.remove_session(&new_session_id) {
                     warn!(
@@ -1356,7 +1357,7 @@ impl SessionManager {
             sess.kill()?;
             drop(sess);
             if let Some(join) = join {
-                let _ = join.join();
+                join_thread_and_warn_on_panic(join, "session pump");
             }
         }
 
@@ -1763,7 +1764,13 @@ impl SessionPersistence {
     pub fn load(&self) -> Vec<PersistedSession> {
         match self.acquire_lock() {
             Ok(_lock) => {
-                let _ = self.migrate_legacy_if_needed_locked();
+                if let Err(error) = self.migrate_legacy_if_needed_locked() {
+                    warn!(
+                        path = %self.path.display(),
+                        error = %error,
+                        "Failed to migrate legacy session metadata while loading sessions"
+                    );
+                }
                 self.load_unlocked()
             }
             Err(e) => {
@@ -1771,23 +1778,6 @@ impl SessionPersistence {
                 self.load_unlocked()
             }
         }
-    }
-
-    pub fn save(&self, sessions: &[PersistedSession]) -> Result<(), SessionError> {
-        let _lock = self.acquire_lock()?;
-        self.migrate_legacy_if_needed_locked()?;
-        let state = self.load_log_state_unlocked();
-        if state.unknown_records > 0 {
-            return Err(SessionError::Persistence {
-                operation: "save".to_string(),
-                reason: format!(
-                    "refusing to rewrite session log with {} unknown record(s)",
-                    state.unknown_records
-                ),
-                source: None,
-            });
-        }
-        self.save_unlocked(sessions)
     }
 
     pub fn add_session(&self, session: PersistedSession) -> Result<(), SessionError> {
@@ -2243,6 +2233,7 @@ fn process_info_from_sysinfo(pid: u32) -> Option<ProcessInfo> {
     })
 }
 
+#[cfg(target_os = "linux")]
 fn parse_cmdline_bytes(bytes: &[u8]) -> Option<String> {
     if bytes.is_empty() {
         return None;

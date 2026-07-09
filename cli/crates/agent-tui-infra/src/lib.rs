@@ -1,6 +1,8 @@
 #![deny(clippy::all)]
-#![allow(dead_code)]
-#![cfg_attr(test, allow(clippy::expect_used))]
+#![cfg_attr(
+    test,
+    allow(dead_code, reason = "snapshot fixtures expose fields through Debug")
+)]
 
 //! Infrastructure adapters crate.
 

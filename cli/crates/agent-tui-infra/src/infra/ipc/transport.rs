@@ -354,6 +354,7 @@ pub(crate) struct WsSocketTransport {
 }
 
 impl WsSocketTransport {
+    #[cfg(test)]
     pub(crate) fn new(addr: Url) -> Self {
         Self { addr: Some(addr) }
     }
@@ -386,10 +387,12 @@ impl IpcTransport for WsSocketTransport {
     }
 }
 
+#[cfg(test)]
 pub(crate) struct InMemoryTransport {
     handler: std::sync::Arc<dyn Fn(String) -> String + Send + Sync>,
 }
 
+#[cfg(test)]
 impl InMemoryTransport {
     pub(crate) fn new<F>(handler: F) -> Self
     where
@@ -401,6 +404,7 @@ impl InMemoryTransport {
     }
 }
 
+#[cfg(test)]
 impl IpcTransport for InMemoryTransport {
     fn connect_connection(&self) -> Result<ClientConnection, ClientError> {
         let (client, mut server) = UnixStream::pair()?;

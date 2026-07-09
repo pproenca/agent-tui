@@ -4,7 +4,6 @@ use serde::Serialize;
 
 use crate::adapters::RpcValue;
 use crate::adapters::rpc::to_value;
-use crate::adapters::rpc::to_value_opt;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::client::DaemonClient;
 use crate::infra::ipc::client::StreamAbortHandle;
@@ -41,19 +40,6 @@ where
 {
     let value = to_value(params)?;
     client.call(method, Some(value)).map(RpcValue::new)
-}
-
-pub(crate) fn call_with_optional_params<C, P>(
-    client: &mut C,
-    method: &str,
-    params: Option<P>,
-) -> Result<RpcValue, ClientError>
-where
-    C: DaemonClient,
-    P: Serialize,
-{
-    let value = to_value_opt(params)?;
-    client.call(method, value).map(RpcValue::new)
 }
 
 pub(crate) fn call_no_params<C>(client: &mut C, method: &str) -> Result<RpcValue, ClientError>

@@ -1,6 +1,8 @@
 #![deny(clippy::all)]
-#![allow(dead_code)]
-#![cfg_attr(test, allow(clippy::expect_used))]
+#![cfg_attr(
+    test,
+    allow(dead_code, reason = "test fixtures expose inspection-only helpers")
+)]
 
 //! Application composition and command handling crate.
 
@@ -9,8 +11,15 @@ compile_error!(
     "agent-tui is Unix-only. Supported environments are Linux, macOS, and other Unix-like systems with PTYs, Unix domain sockets, and POSIX signals."
 );
 
+use clap::CommandFactory;
+
 pub mod app;
 pub use app::*;
+
+/// Build the clap command exposed by the facade crate and documentation tooling.
+pub fn cli_command() -> clap::Command {
+    app::commands::Cli::command()
+}
 
 pub mod common {
     pub use agent_tui_common::common::*;

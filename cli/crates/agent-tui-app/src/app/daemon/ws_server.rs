@@ -39,6 +39,7 @@ use crate::app::daemon::rpc_core::RpcCore;
 use crate::app::daemon::rpc_core::RpcCoreError;
 use crate::app::daemon::rpc_core::RpcResponseWriter;
 use crate::common::ThreadJoinOutcome;
+use crate::common::join_thread_and_warn_on_panic;
 use crate::common::join_thread_with_timeout_or_reap;
 use crate::infra::ipc::current_process_identity;
 
@@ -311,11 +312,11 @@ pub(crate) fn start_ws_server(
     match startup_rx.recv() {
         Ok(Ok(())) => {}
         Ok(Err(err)) => {
-            let _ = join.join();
+            join_thread_and_warn_on_panic(join, "WebSocket server");
             return Err(err);
         }
         Err(err) => {
-            let _ = join.join();
+            join_thread_and_warn_on_panic(join, "WebSocket server");
             return Err(WsServerError::Io {
                 operation: "wait for ws startup",
                 source: std::io::Error::other(err.to_string()),
@@ -502,6 +503,11 @@ enum WsConnectionError {
         #[source]
         source: tokio::task::JoinError,
     },
+    #[error("websocket RPC stream failed: {source}")]
+    StreamCore {
+        #[source]
+        source: RpcCoreError,
+    },
     #[error("websocket stream task did not stop within {timeout_ms} ms")]
     StreamTaskShutdownTimedOut { timeout_ms: u128 },
     #[error("failed to serialize websocket RPC response: {source}")]
@@ -514,6 +520,7 @@ enum WsConnectionError {
 fn log_ws_connection_error(context: &'static str, err: &WsConnectionError) {
     match err {
         WsConnectionError::SerializeResponse { .. }
+        | WsConnectionError::StreamCore { .. }
         | WsConnectionError::StreamTaskFailed { .. } => {
             error!(context, error = %err, "WS connection failed");
         }
@@ -754,12 +761,15 @@ async fn run_stream_connection(
 
     let mut stream_task = tokio::task::spawn_blocking(move || {
         let mut writer = ChannelWriter { tx };
-        let _ = core.handle_stream(
+        match core.handle_stream(
             &mut writer,
             request,
             kind,
             Some(stream_cancelled_for_task.as_ref()),
-        );
+        ) {
+            Ok(()) | Err(RpcCoreError::ConnectionClosed) => Ok(()),
+            Err(error) => Err(error),
+        }
     });
 
     let mut pong_watchdog = WsPongWatchdog::default();
@@ -864,7 +874,7 @@ async fn run_stream_connection(
         }
     }
 
-    cancel_stream_task(&stream_cancelled, &mut rx, &mut stream_task)
+    cancel_rpc_stream_task(&stream_cancelled, &mut rx, &mut stream_task)
         .await
         .map(|()| WsConnectionEnd::Completed)
 }
@@ -872,12 +882,12 @@ async fn run_stream_connection(
 async fn cancel_stream_task_preserving_end(
     stream_cancelled: &Arc<AtomicBool>,
     rx: &mut Option<mpsc::Receiver<String>>,
-    stream_task: &mut tokio::task::JoinHandle<()>,
+    stream_task: &mut tokio::task::JoinHandle<Result<(), RpcCoreError>>,
     primary_result: Result<WsConnectionEnd, WsConnectionError>,
 ) -> Result<WsConnectionEnd, WsConnectionError> {
     match (
         primary_result,
-        cancel_stream_task(stream_cancelled, rx, stream_task).await,
+        cancel_rpc_stream_task(stream_cancelled, rx, stream_task).await,
     ) {
         (Ok(end), Ok(())) => Ok(end),
         (Ok(_), Err(cleanup_err)) => Err(cleanup_err),
@@ -889,21 +899,22 @@ async fn cancel_stream_task_preserving_end(
     }
 }
 
-async fn cancel_stream_task(
+async fn cancel_rpc_stream_task(
     stream_cancelled: &Arc<AtomicBool>,
     rx: &mut Option<mpsc::Receiver<String>>,
-    stream_task: &mut tokio::task::JoinHandle<()>,
+    stream_task: &mut tokio::task::JoinHandle<Result<(), RpcCoreError>>,
 ) -> Result<(), WsConnectionError> {
     stream_cancelled.store(true, Ordering::Relaxed);
     let _ = rx.take();
-    wait_for_stream_task(stream_task).await
+    wait_for_rpc_stream_task(stream_task).await
 }
 
-async fn wait_for_stream_task(
-    stream_task: &mut tokio::task::JoinHandle<()>,
+async fn wait_for_rpc_stream_task(
+    stream_task: &mut tokio::task::JoinHandle<Result<(), RpcCoreError>>,
 ) -> Result<(), WsConnectionError> {
     match tokio::time::timeout(WS_STREAM_TASK_SHUTDOWN_TIMEOUT, &mut *stream_task).await {
-        Ok(Ok(())) => Ok(()),
+        Ok(Ok(Ok(()))) => Ok(()),
+        Ok(Ok(Err(source))) => Err(WsConnectionError::StreamCore { source }),
         Ok(Err(err)) => {
             warn!(error = %err, "WS stream task failed");
             Err(WsConnectionError::StreamTaskFailed { source: err })
@@ -913,6 +924,26 @@ async fn wait_for_stream_task(
                 timeout_ms = WS_STREAM_TASK_SHUTDOWN_TIMEOUT.as_millis(),
                 "WS stream task shutdown timed out; aborting"
             );
+            stream_task.abort();
+            Err(WsConnectionError::StreamTaskShutdownTimedOut {
+                timeout_ms: WS_STREAM_TASK_SHUTDOWN_TIMEOUT.as_millis(),
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+async fn cancel_stream_task(
+    stream_cancelled: &Arc<AtomicBool>,
+    rx: &mut Option<mpsc::Receiver<String>>,
+    stream_task: &mut tokio::task::JoinHandle<()>,
+) -> Result<(), WsConnectionError> {
+    stream_cancelled.store(true, Ordering::Relaxed);
+    let _ = rx.take();
+    match tokio::time::timeout(WS_STREAM_TASK_SHUTDOWN_TIMEOUT, &mut *stream_task).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(source)) => Err(WsConnectionError::StreamTaskFailed { source }),
+        Err(_) => {
             stream_task.abort();
             Err(WsConnectionError::StreamTaskShutdownTimedOut {
                 timeout_ms: WS_STREAM_TASK_SHUTDOWN_TIMEOUT.as_millis(),

@@ -11,6 +11,6 @@ pub trait Clock: Send + Sync {
     }
 
     fn elapsed_ms(&self, start: Instant) -> u64 {
-        self.elapsed(start).as_millis() as u64
+        u64::try_from(self.elapsed(start).as_millis()).unwrap_or(u64::MAX)
     }
 }

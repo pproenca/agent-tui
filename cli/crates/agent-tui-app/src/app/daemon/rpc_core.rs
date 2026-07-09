@@ -210,11 +210,6 @@ impl RpcCore {
         ))
     }
 
-    pub fn session_repository_handle(&self) -> Arc<dyn SessionRepository> {
-        let repository: Arc<dyn SessionRepository> = self.session_manager.clone();
-        repository
-    }
-
     pub fn shutdown_all_sessions(&self) {
         let sessions = self.session_manager.list();
         for info in sessions {
@@ -299,7 +294,7 @@ impl RpcCore {
         let input = match parse_attach_input(&request) {
             Ok(input) => input,
             Err(response) => {
-                let _ = writer.write_response(&response);
+                writer.write_response(&response)?;
                 return Ok(());
             }
         };
@@ -312,7 +307,7 @@ impl RpcCore {
             }
             Err(err) => {
                 let response = session_error_response(&req_id, err);
-                let _ = writer.write_response(&response);
+                writer.write_response(&response)?;
                 return Ok(());
             }
         };
@@ -322,14 +317,14 @@ impl RpcCore {
                 Ok(session) => session,
                 Err(err) => {
                     let response = session_error_response(&req_id, err);
-                    let _ = writer.write_response(&response);
+                    writer.write_response(&response)?;
                     return Ok(());
                 }
             };
 
         if let Err(err) = session.update() {
             let response = session_error_response(&req_id, err);
-            let _ = writer.write_response(&response);
+            writer.write_response(&response)?;
             return Ok(());
         }
 
@@ -374,7 +369,7 @@ impl RpcCore {
         loop {
             if self.should_stream_terminate(connection_cancelled) {
                 let response = RpcResponse::success_json(&req_id, &AttachEvent { event: "closed" });
-                let _ = writer.write_response(&response);
+                writer.write_response(&response)?;
                 return Ok(());
             }
             let mut budget = ATTACH_STREAM_MAX_TICK_BYTES;
@@ -384,7 +379,7 @@ impl RpcCore {
                 if self.should_stream_terminate(connection_cancelled) {
                     let response =
                         RpcResponse::success_json(&req_id, &AttachEvent { event: "closed" });
-                    let _ = writer.write_response(&response);
+                    writer.write_response(&response)?;
                     return Ok(());
                 }
                 if budget == 0 {
@@ -396,7 +391,7 @@ impl RpcCore {
                     Ok(read) => read,
                     Err(err) => {
                         let response = session_error_response(&req_id, err);
-                        let _ = writer.write_response(&response);
+                        writer.write_response(&response)?;
                         return Ok(());
                     }
                 };
@@ -430,7 +425,7 @@ impl RpcCore {
                     if read.closed {
                         let response =
                             RpcResponse::success_json(&req_id, &AttachEvent { event: "closed" });
-                        let _ = writer.write_response(&response);
+                        writer.write_response(&response)?;
                         return Ok(());
                     }
                     continue;
@@ -439,7 +434,7 @@ impl RpcCore {
                 if read.closed {
                     let response =
                         RpcResponse::success_json(&req_id, &AttachEvent { event: "closed" });
-                    let _ = writer.write_response(&response);
+                    writer.write_response(&response)?;
                     return Ok(());
                 }
 
@@ -464,7 +459,7 @@ impl RpcCore {
                 StreamWaitStatus::Terminated => {
                     let response =
                         RpcResponse::success_json(&req_id, &AttachEvent { event: "closed" });
-                    let _ = writer.write_response(&response);
+                    writer.write_response(&response)?;
                     return Ok(());
                 }
             }
@@ -481,7 +476,7 @@ impl RpcCore {
         let session_param = match parse_live_preview_session_selector(&request) {
             Ok(session_id) => session_id,
             Err(response) => {
-                let _ = writer.write_response(&response);
+                writer.write_response(&response)?;
                 return Ok(());
             }
         };
@@ -492,14 +487,14 @@ impl RpcCore {
                 Ok(session) => session,
                 Err(err) => {
                     let response = session_error_response(&req_id, err);
-                    let _ = writer.write_response(&response);
+                    writer.write_response(&response)?;
                     return Ok(());
                 }
             };
 
         if let Err(err) = session.update() {
             let response = session_error_response(&req_id, err);
-            let _ = writer.write_response(&response);
+            writer.write_response(&response)?;
             return Ok(());
         }
 
@@ -593,7 +588,7 @@ impl RpcCore {
                         time: start_time.elapsed().as_secs_f64(),
                     },
                 );
-                let _ = writer.write_response(&response);
+                writer.write_response(&response)?;
                 return Ok(());
             }
             let mut budget = LIVE_PREVIEW_STREAM_MAX_TICK_BYTES;
@@ -608,7 +603,7 @@ impl RpcCore {
                             time: start_time.elapsed().as_secs_f64(),
                         },
                     );
-                    let _ = writer.write_response(&response);
+                    writer.write_response(&response)?;
                     return Ok(());
                 }
                 if budget == 0 {
@@ -620,7 +615,7 @@ impl RpcCore {
                     Ok(read) => read,
                     Err(err) => {
                         let response = session_error_response(&req_id, err);
-                        let _ = writer.write_response(&response);
+                        writer.write_response(&response)?;
                         return Ok(());
                     }
                 };
@@ -637,7 +632,7 @@ impl RpcCore {
                     writer.write_response(&dropped)?;
                     if let Err(err) = session.update() {
                         let response = session_error_response(&req_id, err);
-                        let _ = writer.write_response(&response);
+                        writer.write_response(&response)?;
                         return Ok(());
                     }
                     let snapshot = session.live_preview_snapshot();
@@ -679,7 +674,7 @@ impl RpcCore {
                                 time: start_time.elapsed().as_secs_f64(),
                             },
                         );
-                        let _ = writer.write_response(&response);
+                        writer.write_response(&response)?;
                         return Ok(());
                     }
                     continue;
@@ -693,7 +688,7 @@ impl RpcCore {
                             time: start_time.elapsed().as_secs_f64(),
                         },
                     );
-                    let _ = writer.write_response(&response);
+                    writer.write_response(&response)?;
                     return Ok(());
                 }
 
@@ -744,7 +739,7 @@ impl RpcCore {
                             time: start_time.elapsed().as_secs_f64(),
                         },
                     );
-                    let _ = writer.write_response(&response);
+                    writer.write_response(&response)?;
                     return Ok(());
                 }
             }
@@ -829,13 +824,13 @@ impl RpcCore {
 
         loop {
             if self.should_stream_terminate(connection_cancelled) {
-                let _ = writer.write_response(&RpcResponse::success_json(
+                writer.write_response(&RpcResponse::success_json(
                     &req_id,
                     &FlightdeckClosed {
                         event: "closed",
                         time: start_time.elapsed().as_secs_f64(),
                     },
-                ));
+                ))?;
                 return Ok(());
             }
 

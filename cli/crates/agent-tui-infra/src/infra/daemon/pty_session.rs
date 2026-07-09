@@ -36,12 +36,6 @@ impl PtySession {
             .map_err(|err| SessionError::Terminal(err.into_port_error()))
     }
 
-    pub fn try_read(&mut self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
-        self.handle
-            .try_read(buf, timeout_ms)
-            .map_err(|err| SessionError::Terminal(err.into_port_error()))
-    }
-
     pub(crate) fn take_read_rx(&mut self) -> Option<Receiver<ReadEvent>> {
         self.handle.take_read_rx()
     }

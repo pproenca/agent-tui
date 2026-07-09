@@ -9,7 +9,6 @@ use std::time::Instant;
 
 use crate::infra::daemon::session::Session;
 
-pub const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 pub const MAX_BACKOFF: Duration = Duration::from_millis(50);
 
 fn compute_jitter(backoff_micros: u64) -> u64 {

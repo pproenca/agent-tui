@@ -2269,7 +2269,11 @@ fn sha256_file(path: &Path) -> Result<String> {
         hasher.update(&buf[..bytes_read]);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn make_executable(_path: &Path) -> Result<()> {

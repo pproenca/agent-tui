@@ -340,7 +340,7 @@ fn read_text_responding_to_pings(
 ) -> String {
     for _ in 0..16 {
         match socket.read().expect("read websocket frame") {
-            WsMessage::Text(text) => return text,
+            WsMessage::Text(text) => return text.to_string(),
             WsMessage::Ping(payload) => socket
                 .send(WsMessage::Pong(payload))
                 .expect("pong should send"),
@@ -604,7 +604,8 @@ fn ws_pong_keeps_connection_alive() {
                 "id": "after-pong",
                 "method": "ping",
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ))
         .expect("send ping request");
 
@@ -628,7 +629,8 @@ fn ws_rpc_echoes_string_request_id() {
                 "id": "req-1",
                 "method": "ping",
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ))
         .expect("send ping request");
 
@@ -690,7 +692,8 @@ fn blocking_ws_rpc_does_not_starve_other_connections() {
                     "timeout_ms": 2000,
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )
     };
     waiting_a.send(wait_request(10)).expect("send first wait");
@@ -715,7 +718,8 @@ fn blocking_ws_rpc_does_not_starve_other_connections() {
                 "id": "responsive-ping",
                 "method": "ping",
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ))
         .expect("send ping while waits are active");
     let started = Instant::now();
@@ -758,7 +762,8 @@ fn ws_missing_pong_disconnects_stream_connection() {
                     "interval_ms": 1000,
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ))
         .expect("send flightdeck request");
 
@@ -793,7 +798,8 @@ fn ws_stream_peer_close_is_quiet() {
                         "interval_ms": 1000,
                     }
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             ))
             .expect("send flightdeck request");
 
@@ -828,7 +834,8 @@ fn api_stream_alias_accepts_authenticated_flightdeck_stream() {
                     "interval_ms": 1000,
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ))
         .expect("send flightdeck request");
 
@@ -858,7 +865,8 @@ fn ws_shutdown_terminates_active_stream_connection() {
                     "interval_ms": 1000,
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ))
         .expect("send flightdeck request");
 
@@ -904,7 +912,8 @@ fn live_preview_stream_over_ws_emits_ready_init_output_and_closed() {
                     "session": session_id,
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ))
         .expect("send live preview request");
 
@@ -1020,7 +1029,8 @@ fn live_preview_stream_client_disconnect_after_closed_event_is_quiet() {
                         "session": session_id,
                     }
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             ))
             .expect("send live preview request");
 
@@ -1097,7 +1107,8 @@ fn live_preview_stream_over_ws_emits_heartbeat_when_idle() {
                     "session": session_id,
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ))
         .expect("send live preview request");
 

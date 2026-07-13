@@ -559,7 +559,7 @@ async fn send_keepalive_ping(
     if pong_watchdog.is_waiting() {
         return Ok(());
     }
-    send_ws_message(socket, Message::Ping(Vec::new())).await?;
+    send_ws_message(socket, Message::Ping(Vec::new().into())).await?;
     pong_watchdog.start();
     Ok(())
 }
@@ -861,7 +861,7 @@ async fn run_stream_connection(
                 let Some(payload) = payload else {
                     break;
                 };
-                if let Err(err) = send_ws_message(socket, Message::Text(payload)).await {
+                if let Err(err) = send_ws_message(socket, Message::Text(payload.into())).await {
                     return cancel_stream_task_preserving_end(
                         &stream_cancelled,
                         &mut rx,
@@ -997,7 +997,7 @@ async fn send_rpc_response(
             return Err(WsConnectionError::SerializeResponse { source: err });
         }
     };
-    send_ws_message(socket, Message::Text(payload)).await
+    send_ws_message(socket, Message::Text(payload.into())).await
 }
 
 fn parse_bool(value: &str) -> Option<bool> {

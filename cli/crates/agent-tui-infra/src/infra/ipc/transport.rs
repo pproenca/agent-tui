@@ -261,7 +261,7 @@ impl ClientConnection {
             }
             Self::Ws(conn) => {
                 conn.socket
-                    .send(Message::Text(message.to_string()))
+                    .send(Message::Text(message.to_string().into()))
                     .map_err(ws_error_to_client)?;
             }
         }
@@ -287,7 +287,7 @@ impl ClientConnection {
             }
             Self::Ws(conn) => loop {
                 match conn.socket.read() {
-                    Ok(Message::Text(text)) => return Ok(Some(text)),
+                    Ok(Message::Text(text)) => return Ok(Some(text.to_string())),
                     Ok(Message::Binary(_)) => {
                         return Err(ClientError::UnexpectedResponse {
                             message: "received binary websocket frame; expected text JSON-RPC"

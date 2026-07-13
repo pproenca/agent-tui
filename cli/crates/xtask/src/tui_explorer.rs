@@ -654,7 +654,7 @@ fn compute_state_hash(screenshot: &str, cursor: &Cursor, cols: u16, rows: u16) -
     let mut hasher = Sha256::new();
     hasher.update(payload.as_bytes());
     let digest = hasher.finalize();
-    format!("{digest:x}")
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn contains_clock_like_token(line: &str) -> bool {

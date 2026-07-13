@@ -46,7 +46,7 @@ axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.7", features = ["cors"] }
 libc = "0.2"
 signal-hook = "0.4"
-sysinfo = "0.39"
+sysinfo = "0.38.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"

@@ -105,11 +105,9 @@ fn test_builder_with_sessions_list() {
     let repo = MockSessionRepository::builder()
         .with_sessions(sessions)
         .with_active_session("sess1")
-        .with_session_count(1)
         .build();
 
     assert_eq!(repo.list().len(), 1);
-    assert_eq!(repo.session_count(), 1);
     assert_eq!(
         repo.active_session_id()
             .as_ref()

@@ -235,7 +235,6 @@ fn test_restart_daemon_start_fails_when_not_running() {
 }
 
 use serde_json::Value;
-use serde_json::json;
 use std::sync::Mutex;
 
 struct MockDaemonClient {
@@ -246,7 +245,7 @@ struct MockDaemonClient {
 impl MockDaemonClient {
     fn new() -> Self {
         Self {
-            shutdown_response: Mutex::new(Some(Ok(json!({ "acknowledged": true })))),
+            shutdown_response: Mutex::new(Some(Ok(Value::Null))),
             calls: Mutex::new(Vec::new()),
         }
     }
@@ -295,21 +294,6 @@ fn test_stop_daemon_via_rpc_success() {
     let stop_result = result.expect("stop_daemon_via_rpc should succeed");
     assert!(stop_result.warnings.is_empty());
     assert_eq!(client.calls(), vec!["shutdown"]);
-}
-
-#[test]
-fn test_stop_daemon_via_rpc_not_acknowledged() {
-    let mut client =
-        MockDaemonClient::new().with_shutdown_response(Ok(json!({ "acknowledged": false })));
-    let dir = tempdir().expect("temp dir should be created");
-    let socket = dir.path().join("test.sock");
-
-    let result = stop_daemon_via_rpc(&mut client, &socket);
-
-    assert!(matches!(
-        result,
-        Err(ClientError::UnexpectedResponse { message }) if message.contains("not acknowledged")
-    ));
 }
 
 #[test]

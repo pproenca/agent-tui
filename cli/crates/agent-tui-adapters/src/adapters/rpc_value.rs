@@ -1,6 +1,7 @@
 //! RPC value wrappers and helpers.
 
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tracing::debug;
 
@@ -22,6 +23,10 @@ impl RpcValue {
 
     pub fn as_ref(&self) -> RpcValueRef<'_> {
         RpcValueRef(&self.0)
+    }
+
+    pub fn deserialize<T: DeserializeOwned>(self) -> Result<T, serde_json::Error> {
+        serde_json::from_value(self.0)
     }
 
     pub fn get(&self, key: &str) -> Option<RpcValueRef<'_>> {

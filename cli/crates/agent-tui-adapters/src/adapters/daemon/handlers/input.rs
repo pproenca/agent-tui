@@ -9,12 +9,13 @@ use crate::adapters::parse_keydown_input;
 use crate::adapters::parse_keystroke_input;
 use crate::adapters::parse_keyup_input;
 use crate::adapters::parse_type_input;
-use crate::usecases::KeydownUseCase;
-use crate::usecases::KeystrokeUseCase;
-use crate::usecases::KeyupUseCase;
-use crate::usecases::TypeUseCase;
+use crate::usecases::input as input_usecase;
+use crate::usecases::ports::SessionRepository;
 
-pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+pub fn handle_keystroke_uc<R: SessionRepository + ?Sized>(
+    repository: &R,
+    request: RpcRequest,
+) -> RpcResponse {
     let _span = common::handler_span(&request, "keystroke").entered();
     let req_id = request.id.clone();
     let input = match parse_keystroke_input(&request) {
@@ -22,13 +23,16 @@ pub fn handle_keystroke_uc<U: KeystrokeUseCase>(usecase: &U, request: RpcRequest
         Err(resp) => return resp,
     };
 
-    match usecase.execute(input) {
-        Ok(_) => RpcResponse::action_success(req_id),
+    match input_usecase::keystroke(repository, input) {
+        Ok(()) => RpcResponse::success(req_id, serde_json::Value::Null),
         Err(e) => session_error_response(req_id, e),
     }
 }
 
-pub fn handle_type_uc<U: TypeUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+pub fn handle_type_uc<R: SessionRepository + ?Sized>(
+    repository: &R,
+    request: RpcRequest,
+) -> RpcResponse {
     let _span = common::handler_span(&request, "type").entered();
     let req_id = request.id.clone();
     let input = match parse_type_input(&request) {
@@ -36,13 +40,16 @@ pub fn handle_type_uc<U: TypeUseCase>(usecase: &U, request: RpcRequest) -> RpcRe
         Err(resp) => return resp,
     };
 
-    match usecase.execute(input) {
-        Ok(_) => RpcResponse::action_success(req_id),
+    match input_usecase::type_text(repository, input) {
+        Ok(()) => RpcResponse::success(req_id, serde_json::Value::Null),
         Err(e) => session_error_response(req_id, e),
     }
 }
 
-pub fn handle_keydown_uc<U: KeydownUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+pub fn handle_keydown_uc<R: SessionRepository + ?Sized>(
+    repository: &R,
+    request: RpcRequest,
+) -> RpcResponse {
     let _span = common::handler_span(&request, "keydown").entered();
     let req_id = request.id.clone();
     let input = match parse_keydown_input(&request) {
@@ -50,13 +57,16 @@ pub fn handle_keydown_uc<U: KeydownUseCase>(usecase: &U, request: RpcRequest) ->
         Err(resp) => return resp,
     };
 
-    match usecase.execute(input) {
-        Ok(_) => RpcResponse::action_success(req_id),
+    match input_usecase::keydown(repository, input) {
+        Ok(()) => RpcResponse::success(req_id, serde_json::Value::Null),
         Err(e) => session_error_response(req_id, e),
     }
 }
 
-pub fn handle_keyup_uc<U: KeyupUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+pub fn handle_keyup_uc<R: SessionRepository + ?Sized>(
+    repository: &R,
+    request: RpcRequest,
+) -> RpcResponse {
     let _span = common::handler_span(&request, "keyup").entered();
     let req_id = request.id.clone();
     let input = match parse_keyup_input(&request) {
@@ -64,8 +74,8 @@ pub fn handle_keyup_uc<U: KeyupUseCase>(usecase: &U, request: RpcRequest) -> Rpc
         Err(resp) => return resp,
     };
 
-    match usecase.execute(input) {
-        Ok(_) => RpcResponse::action_success(req_id),
+    match input_usecase::keyup(repository, input) {
+        Ok(()) => RpcResponse::success(req_id, serde_json::Value::Null),
         Err(e) => session_error_response(req_id, e),
     }
 }

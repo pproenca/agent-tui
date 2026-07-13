@@ -164,7 +164,8 @@ fn test_render_initial_screen_writes_snapshot() {
     );
 
     let mut buffer = Vec::new();
-    render_initial_screen(&mut client, "sess1", &mut buffer);
+    render_initial_screen(&mut client, "sess1", &mut buffer)
+        .expect("initial snapshot should render");
 
     let output = String::from_utf8_lossy(&buffer);
     let mut expected_prefix = Vec::new();
@@ -213,7 +214,8 @@ fn test_render_initial_screen_prefers_full_rendered_snapshot() {
     );
 
     let mut buffer = Vec::new();
-    render_initial_screen(&mut client, "sess1", &mut buffer);
+    render_initial_screen(&mut client, "sess1", &mut buffer)
+        .expect("initial snapshot should render");
 
     let output = String::from_utf8_lossy(&buffer);
     assert!(output.contains("hello     \nworld"));

@@ -48,18 +48,18 @@ use crate::common::rwlock_write_or_recover;
 use crate::infra::terminal::CursorPosition;
 use crate::infra::terminal::PtyHandle;
 use crate::infra::terminal::ReadEvent;
+use crate::infra::terminal::VirtualTerminal;
 use crate::infra::terminal::key_to_escape_sequence;
 use crate::infra::terminal::render_screen;
 use crate::infra::terminal::render_screen_trimmed;
 use crate::usecases::ports::LivePreviewSnapshot;
+use crate::usecases::ports::SpawnErrorKind;
 use crate::usecases::ports::StreamCursor;
 use crate::usecases::ports::StreamRead;
 use crate::usecases::ports::StreamWaiter;
 use crate::usecases::ports::StreamWaiterHandle;
 
-use super::pty_session::PtySession;
 use crate::domain::RestartOutput;
-use crate::infra::daemon::TerminalState;
 
 pub use crate::domain::session_types::SessionId;
 pub use crate::domain::session_types::SessionInfo;
@@ -67,7 +67,6 @@ use crate::domain::session_types::TerminalSize;
 pub use crate::infra::daemon::SessionError;
 
 const DEFAULT_STREAM_MAX_BUFFER_BYTES: usize = 8 * 1024 * 1024;
-const COMMAND_TIMELINE_MAX_ENTRIES: usize = 512;
 pub(crate) const PUMP_FLUSH_TIMEOUT: Duration = Duration::from_millis(50);
 const SESSION_QUERY_LOCK_TIMEOUT: Duration = Duration::from_millis(100);
 const STARTUP_TERMINATE_TIMEOUT: Duration = Duration::from_millis(500);
@@ -77,6 +76,20 @@ const STARTUP_PID_START_TOLERANCE_SECS: i64 = 30;
 
 pub fn generate_session_id() -> SessionId {
     SessionId::new_unchecked(Uuid::new_v4().to_string()[..8].to_string())
+}
+
+fn spawned_process_id(pty: &mut PtyHandle) -> Result<u32, SessionError> {
+    if let Some(pid) = pty.pid() {
+        return Ok(pid);
+    }
+
+    let _ = pty.kill();
+    Err(SessionError::Terminal(
+        crate::usecases::ports::TerminalError::Spawn {
+            reason: "spawned process did not expose a process ID".to_string(),
+            kind: SpawnErrorKind::Other,
+        },
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -93,8 +106,24 @@ struct StreamState {
     base_seq: u64,
     next_seq: u64,
     dropped_bytes: u64,
-    closed: bool,
-    error: Option<String>,
+    status: StreamStatus,
+}
+
+enum StreamStatus {
+    Open,
+    Closed,
+    Failed(String),
+}
+
+enum StreamEnd {
+    Closed,
+    Failed(String),
+}
+
+impl StreamStatus {
+    fn is_closed(&self) -> bool {
+        !matches!(self, Self::Open)
+    }
 }
 
 type WaitNotifiers = Arc<Mutex<Vec<(u64, channel::Sender<()>)>>>;
@@ -171,8 +200,7 @@ impl StreamBuffer {
                 base_seq: 0,
                 next_seq: 0,
                 dropped_bytes: 0,
-                closed: false,
-                error: None,
+                status: StreamStatus::Open,
             }),
             wait_lock: Mutex::new(()),
             cv: Condvar::new(),
@@ -231,7 +259,7 @@ impl StreamBuffer {
         self.cv.notify_all();
     }
 
-    fn close(&self, error: Option<String>) {
+    fn finish(&self, end: StreamEnd) {
         let _wait_guard = self
             .wait_lock
             .lock()
@@ -240,8 +268,10 @@ impl StreamBuffer {
             .state
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.closed = true;
-        state.error = error;
+        state.status = match end {
+            StreamEnd::Closed => StreamStatus::Closed,
+            StreamEnd::Failed(error) => StreamStatus::Failed(error),
+        };
         drop(state);
         self.notify_listeners();
         self.cv.notify_all();
@@ -324,7 +354,7 @@ impl StreamBuffer {
                 .state
                 .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if state.next_seq > cursor.seq || state.closed {
+            if state.next_seq > cursor.seq || state.status.is_closed() {
                 break;
             }
             drop(state);
@@ -351,10 +381,10 @@ impl StreamBuffer {
             .state
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(error) = state.error.clone() {
+        if let StreamStatus::Failed(error) = &state.status {
             return Err(SessionError::Terminal(
                 crate::usecases::ports::TerminalError::Read {
-                    reason: error,
+                    reason: error.clone(),
                     source: None,
                 },
             ));
@@ -363,7 +393,7 @@ impl StreamBuffer {
         let latest_cursor = StreamCursor {
             seq: state.next_seq,
         };
-        let closed = state.closed;
+        let closed = state.status.is_closed();
         let dropped_bytes = state.base_seq.saturating_sub(cursor.seq);
 
         if cursor.seq < state.base_seq {
@@ -497,7 +527,7 @@ fn pump_loop(
                 }
                 Ok(PumpCommand::Shutdown) | Err(_) => {
                     if let Ok(sess) = session.lock() {
-                        sess.stream.close(None);
+                        sess.stream.finish(StreamEnd::Closed);
                     }
                     return;
                 }
@@ -514,7 +544,7 @@ fn pump_loop(
                 }
                 Err(_) => {
                     if let Ok(sess) = session.lock() {
-                        sess.stream.close(None);
+                        sess.stream.finish(StreamEnd::Closed);
                     }
                     return;
                 }
@@ -686,90 +716,16 @@ fn control_byte_for_char(ch: char) -> Option<u8> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommandTimelineEntry {
-    pub seq: u64,
-    pub kind: String,
-    pub value: String,
-}
-
-#[derive(Default)]
-struct CommandTimeline {
-    entries: VecDeque<CommandTimelineEntry>,
-    base_seq: u64,
-    next_seq: u64,
-}
-
-impl CommandTimeline {
-    fn push(&mut self, kind: &str, value: String) {
-        let entry = CommandTimelineEntry {
-            seq: self.next_seq,
-            kind: kind.to_string(),
-            value,
-        };
-        self.entries.push_back(entry);
-        self.next_seq = self.next_seq.saturating_add(1);
-
-        while self.entries.len() > COMMAND_TIMELINE_MAX_ENTRIES {
-            let _ = self.entries.pop_front();
-            self.base_seq = self.base_seq.saturating_add(1);
-        }
-    }
-
-    fn read(&self, cursor: &mut u64, max_entries: usize) -> Vec<CommandTimelineEntry> {
-        if max_entries == 0 {
-            return Vec::new();
-        }
-
-        if *cursor < self.base_seq {
-            *cursor = self.base_seq;
-        }
-
-        let offset = cursor.saturating_sub(self.base_seq) as usize;
-        if offset >= self.entries.len() {
-            return Vec::new();
-        }
-
-        let take = (self.entries.len() - offset).min(max_entries);
-        let items = self
-            .entries
-            .iter()
-            .skip(offset)
-            .take(take)
-            .cloned()
-            .collect::<Vec<_>>();
-        *cursor = cursor.saturating_add(take as u64);
-        items
-    }
-}
-
-fn sanitize_command_timeline_value(value: &str) -> String {
-    const MAX_CHARS: usize = 160;
-    let normalized = value
-        .replace('\r', "\\r")
-        .replace('\n', "\\n")
-        .replace('\t', "\\t");
-    let mut chars = normalized.chars();
-    let clipped = chars.by_ref().take(MAX_CHARS).collect::<String>();
-    if chars.next().is_some() {
-        format!("{clipped}...")
-    } else {
-        clipped
-    }
-}
-
 pub struct Session {
     pub id: SessionId,
-    pub command: String,
     pub created_at: DateTime<Utc>,
-    launch: SessionLaunchSpec,
-    pty: PtySession,
-    terminal: TerminalState,
+    launch: Arc<SessionLaunchSpec>,
+    pid: u32,
+    pty: PtyHandle,
+    terminal: VirtualTerminal,
     held_modifiers: ModifierState,
     stream: Arc<StreamBuffer>,
-    command_timeline: CommandTimeline,
     pty_rx: Option<channel::Receiver<ReadEvent>>,
-    pty_cursor: Arc<Mutex<StreamCursor>>,
     pump_tx: Option<channel::Sender<PumpCommand>>,
     pump_join: Option<thread::JoinHandle<()>>,
 }
@@ -777,38 +733,32 @@ pub struct Session {
 impl Session {
     fn new(
         id: SessionId,
-        launch: SessionLaunchSpec,
+        launch: Arc<SessionLaunchSpec>,
+        pid: u32,
         pty: PtyHandle,
         size: TerminalSize,
         stream_max_buffer_bytes: usize,
     ) -> Self {
         let stream = Arc::new(StreamBuffer::new(stream_max_buffer_bytes));
-        let mut pty = PtySession::new(pty);
+        let mut pty = pty;
         let pty_rx = pty.take_read_rx();
         Self {
             id,
-            command: launch.command.clone(),
             created_at: Utc::now(),
             launch,
+            pid,
             pty,
-            terminal: TerminalState::new(size),
+            terminal: VirtualTerminal::new(size),
             held_modifiers: ModifierState::default(),
             stream,
-            command_timeline: CommandTimeline::default(),
             pty_rx,
-            pty_cursor: Arc::new(Mutex::new(StreamCursor::default())),
             pump_tx: None,
             pump_join: None,
         }
     }
 
-    fn record_command_timeline_entry(&mut self, kind: &str, value: String) {
-        self.command_timeline.push(kind, value);
-        self.stream.notify();
-    }
-
-    pub fn pid(&self) -> Option<u32> {
-        self.pty.pid()
+    pub fn pid(&self) -> u32 {
+        self.pid
     }
 
     pub fn is_running(&mut self) -> bool {
@@ -819,8 +769,8 @@ impl Session {
         self.terminal.size()
     }
 
-    fn launch_spec(&self) -> SessionLaunchSpec {
-        self.launch.clone()
+    fn launch_spec(&self) -> Arc<SessionLaunchSpec> {
+        Arc::clone(&self.launch)
     }
 
     pub fn request_flush(&self) -> Option<channel::Receiver<()>> {
@@ -853,8 +803,9 @@ impl Session {
 
     pub fn keystroke(&mut self, key: &str) -> Result<(), SessionError> {
         let seq = self.held_modifiers.keystroke_bytes(key)?;
-        self.pty.write(&seq)?;
-        self.record_command_timeline_entry("press", key.to_string());
+        self.pty
+            .write(&seq)
+            .map_err(|err| SessionError::Terminal(err.into_port_error()))?;
         Ok(())
     }
 
@@ -865,7 +816,6 @@ impl Session {
             ))
         })?;
         self.held_modifiers.set(modifier, true);
-        self.record_command_timeline_entry("keydown", key.to_string());
         Ok(())
     }
 
@@ -876,37 +826,43 @@ impl Session {
             ))
         })?;
         self.held_modifiers.set(modifier, false);
-        self.record_command_timeline_entry("keyup", key.to_string());
         Ok(())
     }
 
     pub fn type_text(&mut self, text: &str) -> Result<(), SessionError> {
         if self.held_modifiers.is_empty() {
-            self.pty.write_str(text)?;
+            self.pty
+                .write_str(text)
+                .map_err(|err| SessionError::Terminal(err.into_port_error()))?;
         } else {
             let bytes = self.held_modifiers.typed_bytes(text);
-            self.pty.write(&bytes)?;
+            self.pty
+                .write(&bytes)
+                .map_err(|err| SessionError::Terminal(err.into_port_error()))?;
         }
-        self.record_command_timeline_entry("type", sanitize_command_timeline_value(text));
         Ok(())
     }
 
     pub fn resize(&mut self, size: TerminalSize) -> Result<(), SessionError> {
-        self.pty.resize(size)?;
+        self.pty
+            .resize(size)
+            .map_err(|err| SessionError::Terminal(err.into_port_error()))?;
         self.terminal.resize(size);
-        self.record_command_timeline_entry("resize", format!("{}x{}", size.cols(), size.rows()));
         self.stream.notify();
         Ok(())
     }
 
     pub fn kill(&mut self) -> Result<(), SessionError> {
-        self.pty.kill()?;
+        self.pty
+            .kill()
+            .map_err(|err| SessionError::Terminal(err.into_port_error()))?;
         Ok(())
     }
 
     pub fn pty_write(&mut self, data: &[u8]) -> Result<(), SessionError> {
-        self.pty.write(data)?;
-        self.record_command_timeline_entry("write", format!("{} bytes", data.len()));
+        self.pty
+            .write(data)
+            .map_err(|err| SessionError::Terminal(err.into_port_error()))?;
         Ok(())
     }
 
@@ -923,20 +879,8 @@ impl Session {
         StreamReader::new(Arc::clone(&self.stream))
     }
 
-    pub fn command_timeline_read(
-        &self,
-        cursor: &mut u64,
-        max_entries: usize,
-    ) -> Vec<CommandTimelineEntry> {
-        self.command_timeline.read(cursor, max_entries)
-    }
-
     pub fn stream_subscribe(&self) -> StreamWaiterHandle {
         self.stream.subscribe()
-    }
-
-    pub fn pty_cursor_handle(&self) -> Arc<Mutex<StreamCursor>> {
-        Arc::clone(&self.pty_cursor)
     }
 
     fn take_pty_rx(&mut self) -> Option<channel::Receiver<ReadEvent>> {
@@ -951,12 +895,12 @@ impl Session {
                 true
             }
             ReadEvent::Eof => {
-                self.stream.close(None);
+                self.stream.finish(StreamEnd::Closed);
                 let _ = self.pty.is_running();
                 false
             }
             ReadEvent::Error(error) => {
-                self.stream.close(Some(error));
+                self.stream.finish(StreamEnd::Failed(error));
                 let _ = self.pty.is_running();
                 false
             }
@@ -1091,12 +1035,12 @@ impl SessionManager {
         }
 
         let id = session_id.unwrap_or_else(|| self.next_session_id());
-        let launch = SessionLaunchSpec {
+        let launch = Arc::new(SessionLaunchSpec {
             command: command.to_string(),
             args: args.to_vec(),
             cwd: cwd.map(str::to_string),
             env: env.cloned(),
-        };
+        });
 
         let mut pty = PtyHandle::spawn(
             &launch.command,
@@ -1106,7 +1050,7 @@ impl SessionManager {
             size,
         )
         .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
-        let pid = pty.pid().unwrap_or(0);
+        let pid = spawned_process_id(&mut pty)?;
 
         let persisted = Self::persisted_session(&id, &launch.command, pid, size);
         if let Err(err) = self.persistence.add_session(persisted) {
@@ -1114,7 +1058,14 @@ impl SessionManager {
             return Err(err);
         }
 
-        let session = Session::new(id.clone(), launch, pty, size, self.stream_max_buffer_bytes);
+        let session = Session::new(
+            id.clone(),
+            launch,
+            pid,
+            pty,
+            size,
+            self.stream_max_buffer_bytes,
+        );
         let session = Arc::new(Mutex::new(session));
         let thread_name = format!("session-pump-{}", id.as_str());
         let (pump_tx, pump_join) = spawn_pump(Arc::clone(&session), thread_name);
@@ -1209,7 +1160,7 @@ impl SessionManager {
             size,
         )
         .map_err(|e| SessionError::Terminal(e.into_port_error()))?;
-        let pid = replacement_pty.pid().unwrap_or(0);
+        let pid = spawned_process_id(&mut replacement_pty)?;
         let persisted = Self::persisted_session(&new_session_id, &launch.command, pid, size);
         if let Err(err) = self.persistence.add_session(persisted) {
             let _ = replacement_pty.kill();
@@ -1242,7 +1193,8 @@ impl SessionManager {
 
         let new_session = Arc::new(Mutex::new(Session::new(
             new_session_id.clone(),
-            launch.clone(),
+            Arc::clone(&launch),
+            pid,
             replacement_pty,
             size,
             self.stream_max_buffer_bytes,
@@ -1285,7 +1237,7 @@ impl SessionManager {
         Ok(RestartOutput {
             old_session_id,
             new_session_id,
-            command: launch.command,
+            command: launch.command.clone(),
             pid,
         })
     }
@@ -1310,30 +1262,26 @@ impl SessionManager {
 
         session_refs
             .into_iter()
-            .map(|(id, session)| {
+            .filter_map(|(id, session)| {
                 if let Some(mut sess) = acquire_session_lock(&session, SESSION_QUERY_LOCK_TIMEOUT) {
-                    SessionInfo {
+                    Some(SessionInfo {
                         id,
-                        command: sess.command.clone(),
-                        pid: sess.pid().unwrap_or(0),
+                        command: sess.launch.command.clone(),
+                        pid: sess.pid(),
                         running: sess.is_running(),
                         created_at: sess.created_at.to_rfc3339(),
                         size: sess.size(),
-                    }
+                    })
                 } else {
-                    let persisted = persisted_sessions.get(id.as_str());
-                    SessionInfo {
+                    let persisted = persisted_sessions.get(id.as_str())?;
+                    Some(SessionInfo {
                         id,
-                        command: persisted
-                            .map(|session| session.command.clone())
-                            .unwrap_or_else(|| "(locked)".to_string()),
-                        pid: persisted.map(|session| session.pid).unwrap_or(0),
-                        running: true,
-                        created_at: persisted
-                            .map(|session| session.created_at.clone())
-                            .unwrap_or_default(),
-                        size: persisted.map(|session| session.size).unwrap_or_default(),
-                    }
+                        command: persisted.command.clone(),
+                        pid: persisted.pid,
+                        running: is_process_running(persisted.pid),
+                        created_at: persisted.created_at.clone(),
+                        size: persisted.size,
+                    })
                 }
             })
             .collect()
@@ -1872,6 +1820,7 @@ impl SessionPersistence {
 mod stream_tests {
     use super::StreamBuffer;
     use super::StreamCursor;
+    use super::StreamEnd;
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
@@ -1965,7 +1914,7 @@ mod stream_tests {
     fn stream_subscribe_notifies_on_close() {
         let buffer = StreamBuffer::new(16);
         let subscription = buffer.subscribe();
-        buffer.close(None);
+        buffer.finish(StreamEnd::Closed);
         assert!(subscription.wait(Some(Duration::from_millis(50))));
     }
 
@@ -2010,14 +1959,16 @@ mod pump_tests {
         };
         let pty = PtyHandle::spawn(shell, &args, Some("/tmp"), None, TerminalSize::default())
             .expect("PTY should spawn");
+        let pid = pty.pid().expect("spawned test process should have a PID");
         let session = Session::new(
             SessionId::try_new("test-session").expect("valid session id"),
-            super::SessionLaunchSpec {
+            Arc::new(super::SessionLaunchSpec {
                 command: "sh".to_string(),
                 args,
                 cwd: Some("/tmp".to_string()),
                 env: None,
-            },
+            }),
+            pid,
             pty,
             TerminalSize::default(),
             super::DEFAULT_STREAM_MAX_BUFFER_BYTES,

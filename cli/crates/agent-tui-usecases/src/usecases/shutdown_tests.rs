@@ -11,59 +11,38 @@ impl crate::usecases::ports::ShutdownNotifier for FailingShutdownNotifier {
 
 #[test]
 fn test_shutdown_usecase_sets_flag_to_true() {
-    let shutdown_flag = Arc::new(AtomicBool::new(false));
-    let usecase = ShutdownUseCaseImpl::new(
-        Arc::clone(&shutdown_flag),
-        Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier),
-    );
+    let shutdown_flag = AtomicBool::new(false);
+    let notifier = crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier;
 
     assert!(!shutdown_flag.load(Ordering::SeqCst));
 
-    let output = usecase.execute(ShutdownInput);
+    shutdown(&shutdown_flag, &notifier, ShutdownInput)
+        .expect("shutdown notification should succeed");
 
     assert!(shutdown_flag.load(Ordering::SeqCst));
-    assert!(output.acknowledged);
 }
 
 #[test]
-fn test_shutdown_usecase_returns_acknowledged_true() {
-    let shutdown_flag = Arc::new(AtomicBool::new(false));
-    let usecase = ShutdownUseCaseImpl::new(
-        shutdown_flag,
-        Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier),
-    );
+fn test_shutdown_usecase_propagates_notify_failure() {
+    let shutdown_flag = AtomicBool::new(false);
 
-    let output = usecase.execute(ShutdownInput);
-
-    assert!(output.acknowledged);
-}
-
-#[test]
-fn test_shutdown_usecase_returns_acknowledged_false_when_notify_fails() {
-    let shutdown_flag = Arc::new(AtomicBool::new(false));
-    let usecase = ShutdownUseCaseImpl::new(
-        Arc::clone(&shutdown_flag),
-        Arc::new(FailingShutdownNotifier),
-    );
-
-    let output = usecase.execute(ShutdownInput);
+    let error = shutdown(&shutdown_flag, &FailingShutdownNotifier, ShutdownInput)
+        .expect_err("shutdown notification should fail");
 
     assert!(shutdown_flag.load(Ordering::SeqCst));
-    assert!(!output.acknowledged);
+    assert_eq!(error.kind(), io::ErrorKind::Other);
+    assert_eq!(error.to_string(), "wakeup pipe closed");
 }
 
 #[test]
 fn test_shutdown_usecase_is_idempotent() {
-    let shutdown_flag = Arc::new(AtomicBool::new(false));
-    let usecase = ShutdownUseCaseImpl::new(
-        Arc::clone(&shutdown_flag),
-        Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier),
-    );
+    let shutdown_flag = AtomicBool::new(false);
+    let notifier = crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier;
 
-    let output1 = usecase.execute(ShutdownInput);
-    let output2 = usecase.execute(ShutdownInput);
+    shutdown(&shutdown_flag, &notifier, ShutdownInput)
+        .expect("first shutdown notification should succeed");
+    shutdown(&shutdown_flag, &notifier, ShutdownInput)
+        .expect("second shutdown notification should succeed");
 
-    assert!(output1.acknowledged);
-    assert!(output2.acknowledged);
     assert!(shutdown_flag.load(Ordering::SeqCst));
 }

@@ -139,9 +139,11 @@ fn ws_transport_logs_redacted_websocket_address() {
         .with_ansi(false)
         .without_time()
         .finish();
-    let transport = WsSocketTransport::new(
-        Url::parse("ws://127.0.0.1:1/ws?token=super-secret").expect("url should parse"),
-    );
+    let transport = IpcTransport::WebSocket {
+        address: Some(
+            Url::parse("ws://127.0.0.1:1/ws?token=super-secret").expect("url should parse"),
+        ),
+    };
 
     tracing::subscriber::with_default(subscriber, || {
         let _ = transport.connect_connection();

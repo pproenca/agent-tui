@@ -26,33 +26,55 @@ const DEFAULT_WS_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TransportKind {
+#[derive(Debug)]
+pub(crate) enum IpcTransport {
     Unix,
-    Ws,
+    WebSocket {
+        address: Option<Url>,
+    },
+    #[cfg(test)]
+    InMemory {
+        respond: fn(String, usize) -> String,
+        request_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    },
 }
 
-fn transport_kind() -> TransportKind {
-    let raw = std::env::var("AGENT_TUI_TRANSPORT")
-        .unwrap_or_else(|_| DEFAULT_TRANSPORT.to_string())
-        .to_ascii_lowercase();
-    let kind = match raw.as_str() {
-        "unix" => TransportKind::Unix,
-        "ws" | "websocket" => TransportKind::Ws,
-        other => {
-            warn!(
-                transport = %other,
-                "Unknown AGENT_TUI_TRANSPORT value; defaulting to unix"
-            );
-            TransportKind::Unix
+impl IpcTransport {
+    pub(crate) fn from_env() -> Self {
+        let raw = std::env::var("AGENT_TUI_TRANSPORT")
+            .unwrap_or_else(|_| DEFAULT_TRANSPORT.to_string())
+            .to_ascii_lowercase();
+        let (transport, name) = match raw.as_str() {
+            "unix" => (Self::Unix, "unix"),
+            "ws" | "websocket" => (
+                Self::WebSocket {
+                    address: ws_addr_from_env().or_else(ws_addr_from_state),
+                },
+                "websocket",
+            ),
+            other => {
+                warn!(
+                    transport = %other,
+                    "Unknown AGENT_TUI_TRANSPORT value; defaulting to unix"
+                );
+                (Self::Unix, "unix")
+            }
+        };
+        debug!(transport = name, "IPC transport selected");
+        transport
+    }
+
+    #[cfg(test)]
+    pub(crate) fn in_memory(respond: fn(String, usize) -> String) -> Self {
+        Self::InMemory {
+            respond,
+            request_count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
-    };
-    debug!(transport = ?kind, "IPC transport selected");
-    kind
+    }
 }
 
 pub fn daemon_uses_client_working_directory() -> bool {
-    matches!(transport_kind(), TransportKind::Unix)
+    matches!(IpcTransport::from_env(), IpcTransport::Unix)
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,13 +118,6 @@ fn redact_ws_url_for_log(url: &Url) -> String {
         rendered.push_str("?redacted");
     }
     rendered
-}
-
-pub(crate) fn default_transport() -> std::sync::Arc<dyn IpcTransport> {
-    match transport_kind() {
-        TransportKind::Unix => std::sync::Arc::new(UnixSocketTransport),
-        TransportKind::Ws => std::sync::Arc::new(WsSocketTransport::from_env()),
-    }
 }
 
 pub(crate) struct UnixMessageConnection {
@@ -305,150 +320,96 @@ impl ClientConnection {
     }
 }
 
-pub(crate) trait IpcTransport: Send + Sync {
-    fn connect_connection(&self) -> Result<ClientConnection, ClientError>;
-    fn is_daemon_running(&self) -> bool;
-
-    fn supports_autostart(&self) -> bool {
-        false
-    }
-
-    fn start_daemon_background(&self) -> Result<(), ClientError> {
-        Err(ClientError::DaemonNotRunning)
-    }
-}
-
-pub(crate) struct UnixSocketTransport;
-
-impl IpcTransport for UnixSocketTransport {
-    fn connect_connection(&self) -> Result<ClientConnection, ClientError> {
-        let path = socket_path();
-        if !path.exists() {
-            debug!(socket = %path.display(), "Daemon socket missing");
-            return Err(ClientError::DaemonNotRunning);
-        }
-        debug!(socket = %path.display(), "Connecting to daemon socket");
-        let stream = UnixStream::connect(&path)?;
-        Ok(ClientConnection::Unix(UnixMessageConnection::new(stream)?))
-    }
-
-    fn is_daemon_running(&self) -> bool {
-        let path = socket_path();
-        if !path.exists() {
-            return false;
-        }
-        UnixStream::connect(path).is_ok()
-    }
-
-    fn supports_autostart(&self) -> bool {
-        true
-    }
-
-    fn start_daemon_background(&self) -> Result<(), ClientError> {
-        start_daemon_background()
-    }
-}
-
-pub(crate) struct WsSocketTransport {
-    addr: Option<Url>,
-}
-
-impl WsSocketTransport {
-    #[cfg(test)]
-    pub(crate) fn new(addr: Url) -> Self {
-        Self { addr: Some(addr) }
-    }
-
-    fn from_env() -> Self {
-        Self {
-            addr: ws_addr_from_env().or_else(ws_addr_from_state),
-        }
-    }
-}
-
-impl IpcTransport for WsSocketTransport {
-    fn connect_connection(&self) -> Result<ClientConnection, ClientError> {
-        let Some(addr) = self.addr.as_ref() else {
-            debug!("WS transport configured without AGENT_TUI_WS_ADDR and no state file");
-            return Err(ClientError::DaemonNotRunning);
-        };
-        debug!(addr = %redact_ws_url_for_log(addr), "Connecting to daemon websocket");
-        let socket = connect_ws_socket(addr)?;
-        Ok(ClientConnection::Ws(Box::new(WsMessageConnection {
-            socket,
-        })))
-    }
-
-    fn is_daemon_running(&self) -> bool {
-        let Some(addr) = self.addr.as_ref() else {
-            return false;
-        };
-        connect_ws_socket(addr).is_ok()
-    }
-}
-
-#[cfg(test)]
-pub(crate) struct InMemoryTransport {
-    handler: std::sync::Arc<dyn Fn(String) -> String + Send + Sync>,
-}
-
-#[cfg(test)]
-impl InMemoryTransport {
-    pub(crate) fn new<F>(handler: F) -> Self
-    where
-        F: Fn(String) -> String + Send + Sync + 'static,
-    {
-        Self {
-            handler: std::sync::Arc::new(handler),
-        }
-    }
-}
-
-#[cfg(test)]
-impl IpcTransport for InMemoryTransport {
-    fn connect_connection(&self) -> Result<ClientConnection, ClientError> {
-        let (client, mut server) = UnixStream::pair()?;
-        let handler = self.handler.clone();
-
-        let span = tracing::debug_span!("ipc_in_memory");
-        let builder = std::thread::Builder::new().name("ipc-in-memory".to_string());
-        builder
-            .spawn(move || {
-                let _guard = span.enter();
-                let reader_stream = match server.try_clone() {
-                    Ok(stream) => stream,
-                    Err(_) => return,
-                };
-                let mut reader = BufReader::new(reader_stream);
-
-                loop {
-                    let mut line = String::new();
-                    match reader.read_line(&mut line) {
-                        Ok(0) => break,
-                        Ok(_) => {}
-                        Err(_) => break,
-                    }
-
-                    let request = line.trim_end_matches(['\r', '\n']).to_string();
-                    let mut response = (handler)(request);
-                    if !response.ends_with('\n') {
-                        response.push('\n');
-                    }
-
-                    if server.write_all(response.as_bytes()).is_err() {
-                        break;
-                    }
-                    let _ = server.flush();
+impl IpcTransport {
+    pub(crate) fn connect_connection(&self) -> Result<ClientConnection, ClientError> {
+        match self {
+            Self::Unix => {
+                let path = socket_path();
+                if !path.exists() {
+                    debug!(socket = %path.display(), "Daemon socket missing");
+                    return Err(ClientError::DaemonNotRunning);
                 }
-            })
-            .map_err(|err| ClientError::ConnectionFailed(std::io::Error::other(err.to_string())))?;
-
-        Ok(ClientConnection::Unix(UnixMessageConnection::new(client)?))
+                debug!(socket = %path.display(), "Connecting to daemon socket");
+                let stream = UnixStream::connect(&path)?;
+                Ok(ClientConnection::Unix(UnixMessageConnection::new(stream)?))
+            }
+            Self::WebSocket { address } => {
+                let Some(address) = address.as_ref() else {
+                    debug!("WS transport configured without AGENT_TUI_WS_ADDR and no state file");
+                    return Err(ClientError::DaemonNotRunning);
+                };
+                debug!(addr = %redact_ws_url_for_log(address), "Connecting to daemon websocket");
+                let socket = connect_ws_socket(address)?;
+                Ok(ClientConnection::Ws(Box::new(WsMessageConnection {
+                    socket,
+                })))
+            }
+            #[cfg(test)]
+            Self::InMemory {
+                respond,
+                request_count,
+            } => connect_in_memory(*respond, std::sync::Arc::clone(request_count)),
+        }
     }
 
-    fn is_daemon_running(&self) -> bool {
-        true
+    pub(crate) fn is_daemon_running(&self) -> bool {
+        match self {
+            Self::Unix => {
+                let path = socket_path();
+                path.exists() && UnixStream::connect(path).is_ok()
+            }
+            Self::WebSocket { address } => address
+                .as_ref()
+                .is_some_and(|address| connect_ws_socket(address).is_ok()),
+            #[cfg(test)]
+            Self::InMemory { .. } => true,
+        }
     }
+}
+
+#[cfg(test)]
+fn connect_in_memory(
+    respond: fn(String, usize) -> String,
+    request_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+) -> Result<ClientConnection, ClientError> {
+    let (client, mut server) = UnixStream::pair()?;
+    let span = tracing::debug_span!("ipc_in_memory");
+    std::thread::Builder::new()
+        .name("ipc-in-memory".to_string())
+        .spawn(move || {
+            let _guard = span.enter();
+            let reader_stream = match server.try_clone() {
+                Ok(stream) => stream,
+                Err(_) => return,
+            };
+            let mut reader = BufReader::new(reader_stream);
+
+            loop {
+                let mut line = String::new();
+                match reader.read_line(&mut line) {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+
+                let request = line.trim_end_matches(['\r', '\n']).to_string();
+                let attempt = request_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                let mut response = respond(request, attempt);
+                if !response.ends_with('\n') {
+                    response.push('\n');
+                }
+
+                if server.write_all(response.as_bytes()).is_err() {
+                    break;
+                }
+                if server.flush().is_err() {
+                    break;
+                }
+            }
+        })
+        .map_err(|err| ClientError::ConnectionFailed(std::io::Error::other(err.to_string())))?;
+
+    Ok(ClientConnection::Unix(UnixMessageConnection::new(client)?))
 }
 
 static TEST_LISTENER: std::sync::OnceLock<
@@ -614,7 +575,7 @@ fn start_daemon_background_impl() -> Result<(), ClientError> {
     };
 
     let mut delay = polling::INITIAL_POLL_INTERVAL;
-    let transport = UnixSocketTransport;
+    let transport = IpcTransport::Unix;
     for i in 0..polling::MAX_STARTUP_POLLS {
         if let Ok(Some(_status)) = child.try_wait() {
             #[cfg(test)]

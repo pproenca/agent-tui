@@ -26,7 +26,6 @@ impl StreamWaiter for MockStreamWaiter {
 
 pub struct MockSession {
     pub id: String,
-    command: String,
     size: TerminalSize,
     cursor: CursorPosition,
     screen_text: String,
@@ -42,7 +41,6 @@ impl MockSession {
     pub fn new(id: impl Into<String>) -> Self {
         Self {
             id: id.into(),
-            command: "mock".to_string(),
             size: TerminalSize::default(),
             cursor: CursorPosition {
                 row: 0,
@@ -108,10 +106,6 @@ impl SessionOps for MockSession {
         }
     }
 
-    fn terminal_try_read(&self, _buf: &mut [u8], _timeout_ms: i32) -> Result<usize, SessionError> {
-        Ok(0)
-    }
-
     fn stream_read(
         &self,
         cursor: &mut StreamCursor,
@@ -162,10 +156,6 @@ impl SessionOps for MockSession {
 
     fn session_id(&self) -> SessionId {
         SessionId::try_new(self.id.clone()).expect("mock session id should be valid")
-    }
-
-    fn command(&self) -> String {
-        self.command.clone()
     }
 
     fn size(&self) -> TerminalSize {

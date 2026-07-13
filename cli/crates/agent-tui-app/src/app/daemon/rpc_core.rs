@@ -2,7 +2,6 @@
 
 use crate::adapters::attach_output_to_response;
 use crate::adapters::daemon::Router;
-use crate::adapters::daemon::UseCaseContainer;
 use crate::adapters::parse_attach_input;
 use crate::adapters::parse_session_selector;
 use crate::adapters::rpc::RpcRequest;
@@ -23,11 +22,11 @@ use crate::domain::TerminalSize;
 use crate::infra::daemon::DaemonConfig;
 use crate::infra::daemon::SessionManager;
 use crate::infra::daemon::SystemClock;
-use crate::usecases::AttachUseCase;
 use crate::usecases::ports::SessionRepository;
 use crate::usecases::ports::ShutdownNotifierHandle;
 use crate::usecases::ports::StreamCursor;
 use crate::usecases::ports::StreamWaiterHandle;
+use crate::usecases::session;
 
 const ATTACH_STREAM_MAX_CHUNK_BYTES: usize = 64 * 1024;
 const ATTACH_STREAM_MAX_TICK_BYTES: usize = 512 * 1024;
@@ -150,8 +149,9 @@ pub(crate) trait RpcResponseWriter {
 
 pub(crate) struct RpcCore {
     session_manager: Arc<SessionManager>,
-    usecases: UseCaseContainer<SessionManager>,
+    clock: SystemClock,
     shutdown_flag: Arc<AtomicBool>,
+    shutdown_notifier: ShutdownNotifierHandle,
     stream_timing: StreamTiming,
 }
 
@@ -162,17 +162,11 @@ impl RpcCore {
         shutdown_notifier: ShutdownNotifierHandle,
         stream_timing: StreamTiming,
     ) -> Self {
-        let clock = Arc::new(SystemClock::new());
-        let usecases = UseCaseContainer::new(
-            Arc::clone(&session_manager),
-            clock,
-            Arc::clone(&shutdown_flag),
-            shutdown_notifier,
-        );
         Self {
             session_manager,
-            usecases,
+            clock: SystemClock::new(),
             shutdown_flag,
+            shutdown_notifier,
             stream_timing,
         }
     }
@@ -182,7 +176,7 @@ impl RpcCore {
         shutdown_flag: Arc<AtomicBool>,
         shutdown_notifier: ShutdownNotifierHandle,
     ) -> Result<Self, crate::infra::daemon::SessionError> {
-        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions())?);
+        let session_manager = Arc::new(SessionManager::with_max_sessions(config.max_sessions)?);
         Ok(Self::build(
             session_manager,
             shutdown_flag,
@@ -199,7 +193,7 @@ impl RpcCore {
         test_config: RpcCoreTestConfig,
     ) -> Result<Self, crate::infra::daemon::SessionError> {
         let session_manager = Arc::new(SessionManager::with_test_limits(
-            config.max_sessions(),
+            config.max_sessions,
             test_config.stream_max_buffer_bytes,
         )?);
         Ok(Self::build(
@@ -220,7 +214,12 @@ impl RpcCore {
     }
 
     pub fn route(&self, request: RpcRequest) -> RpcResponse {
-        let router = Router::new(&self.usecases);
+        let router = Router::new(
+            self.session_manager.as_ref(),
+            &self.clock,
+            self.shutdown_flag.as_ref(),
+            self.shutdown_notifier.as_ref(),
+        );
         router.route(request)
     }
 
@@ -299,7 +298,7 @@ impl RpcCore {
             }
         };
 
-        let session_id = match self.usecases.session.attach.execute(input) {
+        let session_id = match session::attach(self.session_manager.as_ref(), input) {
             Ok(output) => {
                 let response = attach_output_to_response(&req_id, &output);
                 writer.write_response(&response)?;

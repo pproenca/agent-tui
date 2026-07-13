@@ -326,7 +326,7 @@ impl DaemonServer {
     }
 
     fn handle_client(self: Arc<Self>, mut conn: UnixSocketConnection) {
-        let idle_timeout = DaemonConfig::from_env().idle_timeout();
+        let idle_timeout = DaemonConfig::from_env().idle_timeout;
         let conn_id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
         let conn_fd = conn.raw_fd();
         self.register_connection(conn_fd);
@@ -685,8 +685,8 @@ pub fn start_daemon() -> Result<(), DaemonError> {
     let _lock = LockFile::acquire(&lock_path)?;
 
     let config = DaemonConfig::from_env();
-    let max_connections = config.max_connections();
-    let max_request_bytes = config.max_request_bytes();
+    let max_connections = config.max_connections;
+    let max_request_bytes = config.max_request_bytes;
     let listener = bind_socket(&socket_path, max_request_bytes)?;
     info!(socket = %socket_path.display(), pid = std::process::id(), "Daemon started");
 

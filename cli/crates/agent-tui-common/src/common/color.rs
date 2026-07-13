@@ -25,8 +25,6 @@ mod codes {
     pub const BOLD: &str = "\x1b[1m";
 }
 
-pub struct Colors;
-
 fn wrap_with_ansi(text: &str, prefixes: &[&str]) -> String {
     let prefix_len: usize = prefixes.iter().map(|prefix| prefix.len()).sum();
     let mut out = String::with_capacity(prefix_len + text.len() + codes::RESET.len());
@@ -38,61 +36,59 @@ fn wrap_with_ansi(text: &str, prefixes: &[&str]) -> String {
     out
 }
 
-impl Colors {
-    pub fn success(text: &str) -> String {
-        if is_disabled() {
-            text.to_string()
-        } else {
-            wrap_with_ansi(text, &[codes::GREEN])
-        }
+pub fn success(text: &str) -> String {
+    if is_disabled() {
+        text.to_string()
+    } else {
+        wrap_with_ansi(text, &[codes::GREEN])
     }
+}
 
-    pub fn error(text: &str) -> String {
-        if is_disabled() {
-            text.to_string()
-        } else {
-            wrap_with_ansi(text, &[codes::RED])
-        }
+pub fn error(text: &str) -> String {
+    if is_disabled() {
+        text.to_string()
+    } else {
+        wrap_with_ansi(text, &[codes::RED])
     }
+}
 
-    pub fn info(text: &str) -> String {
-        if is_disabled() {
-            text.to_string()
-        } else {
-            wrap_with_ansi(text, &[codes::CYAN])
-        }
+pub fn info(text: &str) -> String {
+    if is_disabled() {
+        text.to_string()
+    } else {
+        wrap_with_ansi(text, &[codes::CYAN])
     }
+}
 
-    pub fn warning(text: &str) -> String {
-        if is_disabled() {
-            text.to_string()
-        } else {
-            wrap_with_ansi(text, &[codes::YELLOW])
-        }
+pub fn warning(text: &str) -> String {
+    if is_disabled() {
+        text.to_string()
+    } else {
+        wrap_with_ansi(text, &[codes::YELLOW])
     }
+}
 
-    pub fn dim(text: &str) -> String {
-        if is_disabled() {
-            text.to_string()
-        } else {
-            wrap_with_ansi(text, &[codes::DIM])
-        }
+pub fn dim(text: &str) -> String {
+    if is_disabled() {
+        text.to_string()
+    } else {
+        wrap_with_ansi(text, &[codes::DIM])
     }
+}
 
-    pub fn bold(text: &str) -> String {
-        if is_disabled() {
-            text.to_string()
-        } else {
-            wrap_with_ansi(text, &[codes::BOLD])
-        }
+pub fn bold(text: &str) -> String {
+    if is_disabled() {
+        text.to_string()
+    } else {
+        wrap_with_ansi(text, &[codes::BOLD])
     }
+}
 
-    pub fn session_id(text: &str) -> String {
-        if is_disabled() {
-            text.to_string()
-        } else {
-            wrap_with_ansi(text, &[codes::BOLD, codes::CYAN])
-        }
+pub fn session_id(text: &str) -> String {
+    if is_disabled() {
+        text.to_string()
+    } else {
+        wrap_with_ansi(text, &[codes::BOLD, codes::CYAN])
     }
 }
 

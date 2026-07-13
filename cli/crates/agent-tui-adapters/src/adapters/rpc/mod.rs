@@ -33,7 +33,6 @@ use crate::domain::RestartOutput;
 use crate::domain::SessionId;
 use crate::domain::SessionInput;
 use crate::domain::SessionsOutput;
-use crate::domain::ShutdownOutput;
 use crate::domain::SnapshotInput;
 use crate::domain::SnapshotOutput;
 use crate::domain::SpawnInput;
@@ -364,7 +363,6 @@ pub fn kill_output_to_response(id: impl Into<RpcId>, output: KillOutput) -> RpcR
     RpcResponse::success(
         id,
         json!({
-            "success": output.success,
             "session_id": output.session_id.as_str()
         }),
     )
@@ -394,7 +392,6 @@ pub fn resize_output_to_response(id: impl Into<RpcId>, output: ResizeOutput) -> 
     RpcResponse::success(
         id,
         json!({
-            "success": output.success,
             "session_id": output.session_id.as_str(),
             "cols": output.size.cols(),
             "rows": output.size.rows()
@@ -435,7 +432,6 @@ pub fn attach_output_to_response(id: impl Into<RpcId>, output: &AttachOutput) ->
         id,
         json!({
             "session_id": session_id,
-            "success": output.success,
             "message": message
         }),
     )
@@ -489,10 +485,6 @@ pub fn assert_output_to_response(id: impl Into<RpcId>, output: AssertOutput) -> 
     )
 }
 
-pub fn shutdown_output_to_response(id: impl Into<RpcId>, output: ShutdownOutput) -> RpcResponse {
-    RpcResponse::success(id, json!({ "acknowledged": output.acknowledged }))
-}
-
 pub fn terminal_write_output_to_response(
     id: impl Into<RpcId>,
     output: TerminalWriteOutput,
@@ -501,8 +493,7 @@ pub fn terminal_write_output_to_response(
         id,
         json!({
             "session_id": output.session_id.as_str(),
-            "bytes_written": output.bytes_written,
-            "success": output.success
+            "bytes_written": output.bytes_written
         }),
     )
 }

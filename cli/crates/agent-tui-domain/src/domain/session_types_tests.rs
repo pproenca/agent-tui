@@ -47,57 +47,6 @@ fn test_session_info_creation() {
     assert!(info.running);
 }
 
-#[test]
-fn test_session_info_is_active() {
-    let running = SessionInfo {
-        id: SessionId::try_new("test").expect("valid session id"),
-        command: "bash".to_string(),
-        pid: 1234,
-        running: true,
-        created_at: "2024-01-01T00:00:00Z".to_string(),
-        size: TerminalSize::default(),
-    };
-    assert!(running.is_active());
-
-    let stopped = SessionInfo {
-        id: SessionId::try_new("test2").expect("valid session id"),
-        command: "bash".to_string(),
-        pid: 1235,
-        running: false,
-        created_at: "2024-01-01T00:00:00Z".to_string(),
-        size: TerminalSize::default(),
-    };
-    assert!(!stopped.is_active());
-}
-
-#[test]
-fn test_session_info_dimensions() {
-    let info = SessionInfo {
-        id: SessionId::try_new("test").expect("valid session id"),
-        command: "bash".to_string(),
-        pid: 1234,
-        running: true,
-        created_at: "2024-01-01T00:00:00Z".to_string(),
-        size: TerminalSize::try_new(120, 40).expect("valid terminal size"),
-    };
-    assert_eq!(info.dimensions(), (120, 40));
-    assert_eq!(info.cols(), 120);
-    assert_eq!(info.rows(), 40);
-}
-
-#[test]
-fn test_session_info_created_at() {
-    let info = SessionInfo {
-        id: SessionId::try_new("test").expect("valid session id"),
-        command: "bash".to_string(),
-        pid: 1234,
-        running: true,
-        created_at: "2024-01-01T12:30:45Z".to_string(),
-        size: TerminalSize::default(),
-    };
-    assert_eq!(info.created_at(), "2024-01-01T12:30:45Z");
-}
-
 mod session_id_validation_tests {
     use super::*;
 

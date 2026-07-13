@@ -2,7 +2,7 @@
 
 //! Shared utilities used across layers without domain logic.
 
-mod color;
+pub mod color;
 pub mod daemon_error;
 pub mod error_codes;
 mod rpc_id;
@@ -11,7 +11,6 @@ mod sync;
 pub mod telemetry;
 mod thread_join;
 
-pub use color::Colors;
 pub use color::init as color_init;
 pub use daemon_error::DaemonError;
 pub use rpc_id::RpcId;

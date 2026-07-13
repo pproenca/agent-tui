@@ -1,15 +1,10 @@
 use super::*;
-use crate::adapters::RpcValue;
-use crate::adapters::presenter::ClientErrorView;
 use crate::adapters::presenter::Presenter;
-use crate::adapters::presenter::TextPresenter;
 use crate::app::commands::OutputFormat;
 use crate::infra::ipc::MockClient;
 use crate::infra::ipc::ProcessStatus;
 use crate::test_support::env_lock;
-use std::cell::RefCell;
 use std::fs;
-use std::rc::Rc;
 use std::sync::Mutex;
 use tempfile::TempDir;
 
@@ -117,118 +112,12 @@ impl ProcessController for StopUiController {
     }
 }
 
-struct MockPresenter {
-    output: Rc<RefCell<Vec<String>>>,
-}
-
-impl MockPresenter {
-    fn new() -> (Self, Rc<RefCell<Vec<String>>>) {
-        let output = Rc::new(RefCell::new(Vec::new()));
-        (
-            Self {
-                output: output.clone(),
-            },
-            output,
-        )
-    }
-}
-
-impl Presenter for MockPresenter {
-    fn present_success(&self, message: &str, warning: Option<&str>) {
-        self.output.borrow_mut().push(format!("success: {message}"));
-        if let Some(w) = warning {
-            self.output.borrow_mut().push(format!("warning: {w}"));
-        }
-    }
-
-    fn present_error(&self, message: &str) {
-        self.output.borrow_mut().push(format!("error: {message}"));
-    }
-
-    fn present_value(&self, value: &RpcValue) {
-        self.output
-            .borrow_mut()
-            .push(format!("value: {}", value.to_pretty_json()));
-    }
-
-    fn present_client_error(&self, error: &ClientErrorView) {
-        self.output
-            .borrow_mut()
-            .push(format!("client_error: {}", error.message));
-    }
-
-    fn present_kv(&self, key: &str, value: &str) {
-        self.output.borrow_mut().push(format!("kv: {key}={value}"));
-    }
-
-    fn present_session_id(&self, session_id: &str, label: Option<&str>) {
-        self.output
-            .borrow_mut()
-            .push(format!("session: {session_id} {label:?}"));
-    }
-
-    fn present_list_header(&self, title: &str) {
-        self.output.borrow_mut().push(format!("header: {title}"));
-    }
-
-    fn present_list_item(&self, item: &str) {
-        self.output.borrow_mut().push(format!("item: {item}"));
-    }
-
-    fn present_info(&self, message: &str) {
-        self.output.borrow_mut().push(format!("info: {message}"));
-    }
-
-    fn present_header(&self, text: &str) {
-        self.output.borrow_mut().push(format!("bold: {text}"));
-    }
-
-    fn present_raw(&self, text: &str) {
-        self.output.borrow_mut().push(format!("raw: {text}"));
-    }
-
-    fn present_wait_result(&self, result: &crate::adapters::presenter::WaitResult) {
-        self.output.borrow_mut().push(format!(
-            "wait: found={}, elapsed={}ms",
-            result.found, result.elapsed_ms
-        ));
-    }
-
-    fn present_assert_result(&self, result: &crate::adapters::presenter::AssertResult) {
-        self.output.borrow_mut().push(format!(
-            "assert: passed={}, condition={}",
-            result.passed, result.condition
-        ));
-    }
-
-    fn present_cleanup(&self, result: &crate::adapters::presenter::CleanupResult) {
-        self.output.borrow_mut().push(format!(
-            "cleanup: cleaned={}, failed={}",
-            result.cleaned,
-            result.failures.len()
-        ));
-    }
-}
-
 #[test]
-fn test_handler_context_has_presenter() {
-    let presenter = TextPresenter;
+fn handler_context_selects_presenter_from_output_format() {
+    let mut client = MockClient::new();
+    let context = HandlerContext::new(&mut client, None, OutputFormat::Json, false);
 
-    let _: &dyn Presenter = &presenter;
-}
-
-#[test]
-fn test_mock_presenter_captures_output() {
-    let (presenter, output) = MockPresenter::new();
-
-    presenter.present_success("Operation completed", None);
-    presenter.present_error("Something failed");
-    presenter.present_kv("key", "value");
-
-    let captured = output.borrow();
-    assert!(captured.iter().any(|s| s.contains("success:")));
-    assert!(captured.iter().any(|s| s.contains("error:")));
-    assert!(captured.iter().any(|s| s.contains("kv:")));
+    assert_eq!(context.presenter(), &Presenter::Json);
 }
 
 #[test]
@@ -247,13 +136,12 @@ fn handle_spawn_uses_invocation_cwd_for_local_transport_when_cwd_omitted() {
         }),
     );
 
-    let (presenter, _output) = MockPresenter::new();
     let mut ctx = HandlerContext {
         client: &mut client,
         session: None,
         format: OutputFormat::Json,
         no_input: false,
-        presenter: Box::new(presenter),
+        presenter: Presenter::Json,
         current_dir_override: Some(expected_cwd.clone()),
     };
 
@@ -289,13 +177,12 @@ fn handle_spawn_omits_default_cwd_for_websocket_transport() {
         }),
     );
 
-    let (presenter, _output) = MockPresenter::new();
     let mut ctx = HandlerContext {
         client: &mut client,
         session: None,
         format: OutputFormat::Json,
         no_input: false,
-        presenter: Box::new(presenter),
+        presenter: Presenter::Json,
         current_dir_override: None,
     };
 
@@ -323,13 +210,12 @@ fn handle_spawn_omits_default_cwd_for_websocket_transport() {
 #[test]
 fn handle_spawn_rejects_invalid_terminal_size_before_rpc() {
     let mut client = MockClient::new();
-    let (presenter, _output) = MockPresenter::new();
     let mut ctx = HandlerContext {
         client: &mut client,
         session: None,
         format: OutputFormat::Json,
         no_input: false,
-        presenter: Box::new(presenter),
+        presenter: Presenter::Json,
         current_dir_override: None,
     };
 
@@ -354,13 +240,12 @@ fn handle_spawn_forwards_env_overrides() {
         }),
     );
 
-    let (presenter, _output) = MockPresenter::new();
     let mut ctx = HandlerContext {
         client: &mut client,
         session: None,
         format: OutputFormat::Json,
         no_input: false,
-        presenter: Box::new(presenter),
+        presenter: Presenter::Json,
         current_dir_override: None,
     };
 

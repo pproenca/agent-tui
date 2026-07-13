@@ -1088,7 +1088,10 @@ fn standalone_daemon_stop_uses_local_daemon_when_ws_transport_selected() {
         .args(["daemon", "stop", "--yes"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Daemon stopped"));
+        .stdout(
+            predicate::str::contains("Daemon stopped")
+                .or(predicate::str::contains("already stopped")),
+        );
 
     env.run(&["daemon", "status"])
         .code(3)

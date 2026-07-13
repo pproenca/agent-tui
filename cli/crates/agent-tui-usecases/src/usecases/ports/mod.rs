@@ -4,7 +4,6 @@ pub mod clock;
 pub mod errors;
 pub mod session_repository;
 pub mod shutdown_notifier;
-pub mod terminal_engine;
 pub mod test_support;
 
 pub use clock::Clock;
@@ -21,4 +20,3 @@ pub use session_repository::StreamWaiter;
 pub use session_repository::StreamWaiterHandle;
 pub use shutdown_notifier::ShutdownNotifier;
 pub use shutdown_notifier::ShutdownNotifierHandle;
-pub use terminal_engine::TerminalEngine;

@@ -14,10 +14,7 @@ use tattoy_wezterm_term::color::ColorPalette;
 
 use crate::domain::core::CellStyle;
 use crate::domain::core::Color;
-use crate::domain::core::ScreenGrid;
-use crate::domain::core::ScreenSnapshot;
 use crate::domain::session_types::TerminalSize;
-use crate::usecases::ports::TerminalEngine;
 
 #[derive(Debug, Clone)]
 pub struct Cell {
@@ -34,23 +31,6 @@ pub struct ScreenBuffer {
 pub(crate) struct TrimmedScreenBuffer<'a> {
     pub rows: Vec<&'a [Cell]>,
     pub total_trimmed_chars: usize,
-}
-
-impl ScreenGrid for ScreenBuffer {
-    fn rows(&self) -> usize {
-        self.cells.len()
-    }
-
-    fn cols(&self) -> usize {
-        self.cells.first().map(std::vec::Vec::len).unwrap_or(0)
-    }
-
-    fn cell(&self, row: usize, col: usize) -> Option<(char, CellStyle)> {
-        self.cells
-            .get(row)
-            .and_then(|r| r.get(col))
-            .map(|c| (c.char, c.style))
-    }
 }
 
 impl ScreenBuffer {
@@ -205,41 +185,6 @@ impl VirtualTerminal {
 
     pub fn size(&self) -> TerminalSize {
         self.size
-    }
-}
-
-impl TerminalEngine for VirtualTerminal {
-    fn process_bytes(&mut self, bytes: &[u8]) {
-        self.process(bytes);
-    }
-
-    fn resize(&mut self, size: TerminalSize) {
-        self.resize(size);
-    }
-
-    fn snapshot(&self) -> ScreenSnapshot {
-        let buffer = self.screen_buffer();
-        ScreenSnapshot {
-            cols: self.size.cols(),
-            rows: self.size.rows(),
-            cells: buffer
-                .cells
-                .into_iter()
-                .map(|row| {
-                    row.into_iter()
-                        .map(|cell| crate::domain::core::ScreenCell {
-                            ch: cell.char,
-                            style: cell.style,
-                        })
-                        .collect()
-                })
-                .collect(),
-            cursor: self.cursor(),
-        }
-    }
-
-    fn plain_text(&self) -> String {
-        self.screen_text()
     }
 }
 

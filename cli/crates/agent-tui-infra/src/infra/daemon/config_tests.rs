@@ -36,13 +36,13 @@ impl Drop for EnvGuard {
 #[test]
 fn test_default_config() {
     let config = DaemonConfig::default();
-    assert_eq!(config.max_connections(), DEFAULT_MAX_CONNECTIONS);
+    assert_eq!(config.max_connections, DEFAULT_MAX_CONNECTIONS);
     assert_eq!(
-        config.idle_timeout(),
+        config.idle_timeout,
         Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS)
     );
-    assert_eq!(config.max_request_bytes(), DEFAULT_MAX_REQUEST_BYTES);
-    assert_eq!(config.max_sessions(), DEFAULT_MAX_SESSIONS);
+    assert_eq!(config.max_request_bytes, DEFAULT_MAX_REQUEST_BYTES);
+    assert_eq!(config.max_sessions, DEFAULT_MAX_SESSIONS);
 }
 
 #[test]
@@ -53,11 +53,11 @@ fn test_invalid_env_uses_defaults() {
     let _max_sessions = EnvGuard::set("AGENT_TUI_MAX_SESSIONS", "bad");
 
     let config = DaemonConfig::from_env();
-    assert_eq!(config.max_connections(), DEFAULT_MAX_CONNECTIONS);
+    assert_eq!(config.max_connections, DEFAULT_MAX_CONNECTIONS);
     assert_eq!(
-        config.idle_timeout(),
+        config.idle_timeout,
         Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS)
     );
-    assert_eq!(config.max_request_bytes(), DEFAULT_MAX_REQUEST_BYTES);
-    assert_eq!(config.max_sessions(), DEFAULT_MAX_SESSIONS);
+    assert_eq!(config.max_request_bytes, DEFAULT_MAX_REQUEST_BYTES);
+    assert_eq!(config.max_sessions, DEFAULT_MAX_SESSIONS);
 }

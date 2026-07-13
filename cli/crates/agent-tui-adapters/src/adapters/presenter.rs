@@ -4,7 +4,7 @@
 //! CLI output presenter.
 
 use crate::adapters::RpcValue;
-use crate::common::Colors;
+use crate::common::color;
 use clap::ValueEnum;
 
 /// Output format for CLI commands
@@ -15,34 +15,19 @@ pub enum OutputFormat {
     Json,
 }
 
-pub trait Presenter {
-    fn present_success(&self, message: &str, warning: Option<&str>);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Presenter {
+    Text,
+    Json,
+}
 
-    fn present_error(&self, message: &str);
-
-    fn present_value(&self, value: &RpcValue);
-
-    fn present_client_error(&self, error: &ClientErrorView);
-
-    fn present_kv(&self, key: &str, value: &str);
-
-    fn present_session_id(&self, session_id: &str, label: Option<&str>);
-
-    fn present_list_header(&self, title: &str);
-
-    fn present_list_item(&self, item: &str);
-
-    fn present_info(&self, message: &str);
-
-    fn present_header(&self, text: &str);
-
-    fn present_raw(&self, text: &str);
-
-    fn present_wait_result(&self, result: &WaitResult);
-
-    fn present_assert_result(&self, result: &AssertResult);
-
-    fn present_cleanup(&self, result: &CleanupResult);
+impl From<OutputFormat> for Presenter {
+    fn from(format: OutputFormat) -> Self {
+        match format {
+            OutputFormat::Text => Self::Text,
+            OutputFormat::Json => Self::Json,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -82,284 +67,263 @@ pub struct CleanupFailure {
     pub error: String,
 }
 
-pub struct TextPresenter;
 const PROGRAM_NAME: &str = "agent-tui";
 
-impl Presenter for TextPresenter {
-    fn present_success(&self, message: &str, warning: Option<&str>) {
-        println!("{} {}", Colors::success("✓"), message);
-        if let Some(w) = warning {
-            eprintln!("{} {}", Colors::dim("Warning:"), w);
-        }
-    }
-
-    fn present_error(&self, message: &str) {
-        eprintln!("{}: {} {}", PROGRAM_NAME, Colors::error("Error:"), message);
-    }
-
-    fn present_value(&self, value: &RpcValue) {
-        let value_ref = value.as_ref();
-        if let Some(s) = value_ref.as_str() {
-            println!("{s}");
-        } else if let Some(n) = value_ref.as_u64() {
-            println!("{n}");
-        } else if let Some(b) = value_ref.as_bool() {
-            println!("{b}");
-        } else {
-            println!("{}", value.to_pretty_json());
-        }
-    }
-
-    fn present_client_error(&self, error: &ClientErrorView) {
-        eprintln!(
-            "{}: {} {}",
-            PROGRAM_NAME,
-            Colors::error("Error:"),
-            error.message
-        );
-        if let Some(suggestion) = error.suggestion.as_deref() {
-            eprintln!("{} {}", Colors::dim("Suggestion:"), suggestion);
-        }
-        if error.retryable {
-            eprintln!(
-                "{}",
-                Colors::dim("(This error may be transient - retry may succeed)")
-            );
-        }
-    }
-
-    fn present_kv(&self, key: &str, value: &str) {
-        println!("  {key}: {value}");
-    }
-
-    fn present_session_id(&self, session_id: &str, label: Option<&str>) {
-        if let Some(l) = label {
-            println!("{} {}", l, Colors::session_id(session_id));
-        } else {
-            println!("{}", Colors::session_id(session_id));
-        }
-    }
-
-    fn present_list_header(&self, title: &str) {
-        println!("{}", Colors::bold(title));
-    }
-
-    fn present_list_item(&self, item: &str) {
-        println!("  {item}");
-    }
-
-    fn present_info(&self, message: &str) {
-        println!("{}", Colors::dim(message));
-    }
-
-    fn present_header(&self, text: &str) {
-        println!("{}", Colors::bold(text));
-    }
-
-    fn present_raw(&self, text: &str) {
-        println!("{text}");
-    }
-
-    fn present_wait_result(&self, result: &WaitResult) {
-        if result.found {
-            println!("Found after {}ms", result.elapsed_ms);
-        } else {
-            println!("Timeout after {}ms - not found", result.elapsed_ms);
-        }
-    }
-
-    fn present_assert_result(&self, result: &AssertResult) {
-        if result.passed {
-            println!(
-                "{} Assertion passed: {}",
-                Colors::success("✓"),
-                result.condition
-            );
-        } else {
-            eprintln!(
-                "{}: {} Assertion failed: {}",
-                PROGRAM_NAME,
-                Colors::error("Error:"),
-                result.condition
-            );
-        }
-    }
-
-    fn present_cleanup(&self, result: &CleanupResult) {
-        if result.cleaned > 0 {
-            println!(
-                "{} Cleaned up {} session(s)",
-                Colors::success("Done:"),
-                result.cleaned
-            );
-        } else if result.failures.is_empty() {
-            println!("{}", Colors::dim("No sessions to clean up"));
-        }
-
-        if !result.failures.is_empty() {
-            eprintln!();
-            eprintln!(
-                "{}: {} Failed to clean up {} session(s):",
-                PROGRAM_NAME,
-                Colors::error("Error:"),
-                result.failures.len()
-            );
-            for failure in &result.failures {
-                eprintln!(
-                    "  {}: {}",
-                    Colors::session_id(&failure.session_id),
-                    failure.error
-                );
+impl Presenter {
+    pub fn present_success(&self, message: &str, warning: Option<&str>) {
+        match self {
+            Self::Text => {
+                println!("{} {}", color::success("✓"), message);
+                if let Some(warning) = warning {
+                    eprintln!("{} {}", color::dim("Warning:"), warning);
+                }
+            }
+            Self::Json => {
+                let mut output = serde_json::json!({
+                    "success": true,
+                    "message": message
+                });
+                if let Some(warning) = warning {
+                    output["warning"] = serde_json::json!(warning);
+                }
+                println!("{output:#}");
             }
         }
     }
-}
 
-pub struct JsonPresenter;
-
-impl Presenter for JsonPresenter {
-    fn present_success(&self, message: &str, warning: Option<&str>) {
-        let mut output = serde_json::json!({
-            "success": true,
-            "message": message
-        });
-        if let Some(w) = warning {
-            output["warning"] = serde_json::json!(w);
+    pub fn present_error(&self, message: &str) {
+        match self {
+            Self::Text => {
+                eprintln!("{}: {} {}", PROGRAM_NAME, color::error("Error:"), message);
+            }
+            Self::Json => {
+                let output = serde_json::json!({
+                    "success": false,
+                    "error": message
+                });
+                eprintln!("{output:#}");
+            }
         }
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
     }
 
-    fn present_error(&self, message: &str) {
-        let output = serde_json::json!({
-            "success": false,
-            "error": message
-        });
-        eprintln!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
-    }
-
-    fn present_value(&self, value: &RpcValue) {
-        println!("{}", value.to_pretty_json());
-    }
-
-    fn present_client_error(&self, error: &ClientErrorView) {
-        if let Some(json) = error.json.as_deref() {
-            eprintln!("{json}");
-            return;
+    pub fn present_value(&self, value: &RpcValue) {
+        match self {
+            Self::Text => {
+                let value_ref = value.as_ref();
+                if let Some(value) = value_ref.as_str() {
+                    println!("{value}");
+                } else if let Some(value) = value_ref.as_u64() {
+                    println!("{value}");
+                } else if let Some(value) = value_ref.as_bool() {
+                    println!("{value}");
+                } else {
+                    println!("{}", value.to_pretty_json());
+                }
+            }
+            Self::Json => println!("{}", value.to_pretty_json()),
         }
+    }
 
-        let mut output = serde_json::json!({
-            "success": false,
-            "error": error.message,
-            "retryable": error.retryable,
-        });
-        if let Some(suggestion) = error.suggestion.as_ref() {
-            output["suggestion"] = serde_json::json!(suggestion);
+    pub fn present_client_error(&self, error: &ClientErrorView) {
+        match self {
+            Self::Text => {
+                eprintln!(
+                    "{}: {} {}",
+                    PROGRAM_NAME,
+                    color::error("Error:"),
+                    error.message
+                );
+                if let Some(suggestion) = error.suggestion.as_deref() {
+                    eprintln!("{} {}", color::dim("Suggestion:"), suggestion);
+                }
+                if error.retryable {
+                    eprintln!(
+                        "{}",
+                        color::dim("(This error may be transient - retry may succeed)")
+                    );
+                }
+            }
+            Self::Json => {
+                if let Some(json) = error.json.as_deref() {
+                    eprintln!("{json}");
+                    return;
+                }
+
+                let mut output = serde_json::json!({
+                    "success": false,
+                    "error": error.message,
+                    "retryable": error.retryable,
+                });
+                if let Some(suggestion) = error.suggestion.as_ref() {
+                    output["suggestion"] = serde_json::json!(suggestion);
+                }
+                eprintln!("{output:#}");
+            }
         }
-        eprintln!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
     }
 
-    fn present_kv(&self, key: &str, value: &str) {
-        let output = serde_json::json!({ key: value });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
+    pub fn present_kv(&self, key: &str, value: &str) {
+        match self {
+            Self::Text => println!("  {key}: {value}"),
+            Self::Json => {
+                let output = serde_json::json!({ (key): value });
+                println!("{output:#}");
+            }
+        }
     }
 
-    fn present_session_id(&self, session_id: &str, label: Option<&str>) {
-        let output = if let Some(l) = label {
-            serde_json::json!({ "label": l, "session_id": session_id })
-        } else {
-            serde_json::json!({ "session_id": session_id })
-        };
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
+    pub fn present_session_id(&self, session_id: &str, label: Option<&str>) {
+        match self {
+            Self::Text => {
+                if let Some(label) = label {
+                    println!("{} {}", label, color::session_id(session_id));
+                } else {
+                    println!("{}", color::session_id(session_id));
+                }
+            }
+            Self::Json => {
+                let output = if let Some(label) = label {
+                    serde_json::json!({ "label": label, "session_id": session_id })
+                } else {
+                    serde_json::json!({ "session_id": session_id })
+                };
+                println!("{output:#}");
+            }
+        }
     }
 
-    fn present_list_header(&self, _title: &str) {}
-
-    fn present_list_item(&self, item: &str) {
-        println!("\"{item}\"");
+    pub fn present_list_header(&self, title: &str) {
+        if matches!(self, Self::Text) {
+            println!("{}", color::bold(title));
+        }
     }
 
-    fn present_info(&self, message: &str) {
-        let output = serde_json::json!({ "info": message });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
+    pub fn present_list_item(&self, item: &str) {
+        match self {
+            Self::Text => println!("  {item}"),
+            Self::Json => {
+                let output = serde_json::Value::String(item.to_string());
+                println!("{output:#}");
+            }
+        }
     }
 
-    fn present_header(&self, _text: &str) {}
-
-    fn present_raw(&self, text: &str) {
-        let output = serde_json::json!({ "output": text });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
+    pub fn present_info(&self, message: &str) {
+        match self {
+            Self::Text => println!("{}", color::dim(message)),
+            Self::Json => {
+                let output = serde_json::json!({ "info": message });
+                println!("{output:#}");
+            }
+        }
     }
 
-    fn present_wait_result(&self, result: &WaitResult) {
-        let output = serde_json::json!({
-            "found": result.found,
-            "elapsed_ms": result.elapsed_ms
-        });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
+    pub fn present_header(&self, text: &str) {
+        if matches!(self, Self::Text) {
+            println!("{}", color::bold(text));
+        }
     }
 
-    fn present_assert_result(&self, result: &AssertResult) {
-        let output = serde_json::json!({
-            "condition": result.condition,
-            "passed": result.passed
-        });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
+    pub fn present_raw(&self, text: &str) {
+        match self {
+            Self::Text => println!("{text}"),
+            Self::Json => {
+                let output = serde_json::json!({ "output": text });
+                println!("{output:#}");
+            }
+        }
     }
 
-    fn present_cleanup(&self, result: &CleanupResult) {
-        let failures: Vec<_> = result
-            .failures
-            .iter()
-            .map(|f| {
-                serde_json::json!({
-                    "session": f.session_id,
-                    "error": f.error
-                })
-            })
-            .collect();
-        let output = serde_json::json!({
-            "sessions_cleaned": result.cleaned,
-            "sessions_failed": result.failures.len(),
-            "failures": failures
-        });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&output).unwrap_or_default()
-        );
+    pub fn present_wait_result(&self, result: &WaitResult) {
+        match self {
+            Self::Text if result.found => println!("Found after {}ms", result.elapsed_ms),
+            Self::Text => println!("Timeout after {}ms - not found", result.elapsed_ms),
+            Self::Json => {
+                let output = serde_json::json!({
+                    "found": result.found,
+                    "elapsed_ms": result.elapsed_ms
+                });
+                println!("{output:#}");
+            }
+        }
     }
-}
 
-pub fn create_presenter(format: &OutputFormat) -> Box<dyn Presenter> {
-    match format {
-        OutputFormat::Json => Box::new(JsonPresenter),
-        OutputFormat::Text => Box::new(TextPresenter),
+    pub fn present_assert_result(&self, result: &AssertResult) {
+        match self {
+            Self::Text if result.passed => {
+                println!(
+                    "{} Assertion passed: {}",
+                    color::success("✓"),
+                    result.condition
+                );
+            }
+            Self::Text => {
+                eprintln!(
+                    "{}: {} Assertion failed: {}",
+                    PROGRAM_NAME,
+                    color::error("Error:"),
+                    result.condition
+                );
+            }
+            Self::Json => {
+                let output = serde_json::json!({
+                    "condition": result.condition,
+                    "passed": result.passed
+                });
+                println!("{output:#}");
+            }
+        }
+    }
+
+    pub fn present_cleanup(&self, result: &CleanupResult) {
+        match self {
+            Self::Text => {
+                if result.cleaned > 0 {
+                    println!(
+                        "{} Cleaned up {} session(s)",
+                        color::success("Done:"),
+                        result.cleaned
+                    );
+                } else if result.failures.is_empty() {
+                    println!("{}", color::dim("No sessions to clean up"));
+                }
+
+                if !result.failures.is_empty() {
+                    eprintln!();
+                    eprintln!(
+                        "{}: {} Failed to clean up {} session(s):",
+                        PROGRAM_NAME,
+                        color::error("Error:"),
+                        result.failures.len()
+                    );
+                    for failure in &result.failures {
+                        eprintln!(
+                            "  {}: {}",
+                            color::session_id(&failure.session_id),
+                            failure.error
+                        );
+                    }
+                }
+            }
+            Self::Json => {
+                let failures: Vec<_> = result
+                    .failures
+                    .iter()
+                    .map(|failure| {
+                        serde_json::json!({
+                            "session": failure.session_id,
+                            "error": failure.error
+                        })
+                    })
+                    .collect();
+                let output = serde_json::json!({
+                    "sessions_cleaned": result.cleaned,
+                    "sessions_failed": result.failures.len(),
+                    "failures": failures
+                });
+                println!("{output:#}");
+            }
+        }
     }
 }
 
@@ -369,8 +333,8 @@ pub struct SpawnResult {
 }
 
 impl SpawnResult {
-    pub fn present(&self, presenter: &dyn Presenter) {
-        presenter.present_session_id(&self.session_id, Some(&Colors::success("Session started:")));
+    pub fn present(&self, presenter: &Presenter) {
+        presenter.present_session_id(&self.session_id, Some(&color::success("Session started:")));
         presenter.present_kv("PID", &self.pid.to_string());
     }
 
@@ -397,7 +361,7 @@ pub struct SessionListItem {
 }
 
 impl SessionListResult {
-    pub fn present(&self, presenter: &dyn Presenter) {
+    pub fn present(&self, presenter: &Presenter) {
         if self.sessions.is_empty() {
             presenter.present_info("No active sessions");
         } else {
@@ -405,18 +369,18 @@ impl SessionListResult {
             for session in &self.sessions {
                 let is_active = self.active_session.as_ref() == Some(&session.id);
                 let active_marker = if is_active {
-                    Colors::success(" (active)")
+                    color::success(" (active)")
                 } else {
                     String::new()
                 };
                 let status = if session.running {
-                    Colors::success("running")
+                    color::success("running")
                 } else {
-                    Colors::error("stopped")
+                    color::error("stopped")
                 };
                 let item = format!(
                     "{} - {} [{}] {}x{} pid:{}{}",
-                    Colors::session_id(&session.id),
+                    color::session_id(&session.id),
                     session.command,
                     status,
                     session.cols,

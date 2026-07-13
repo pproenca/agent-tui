@@ -19,26 +19,24 @@ use serde_json::Value;
 use tracing::debug;
 use tracing::trace;
 
-use crate::common::Colors;
 use crate::common::RpcId;
+use crate::common::color;
 use crate::common::error_codes;
 use crate::infra::ipc::error::ClientError;
 use crate::infra::ipc::process::ProcessIdentity;
 use crate::infra::ipc::socket::socket_path;
 use crate::infra::ipc::transport::ClientConnection;
 use crate::infra::ipc::transport::IpcTransport;
-use crate::infra::ipc::transport::UnixSocketTransport;
-use crate::infra::ipc::transport::default_transport;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 const STREAM_POLL_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone)]
 pub struct DaemonClientConfig {
-    read_timeout: Duration,
-    write_timeout: Duration,
-    max_retries: u32,
-    initial_retry_delay: Duration,
+    pub read_timeout: Duration,
+    pub write_timeout: Duration,
+    pub max_retries: u32,
+    pub initial_retry_delay: Duration,
 }
 
 impl Default for DaemonClientConfig {
@@ -49,44 +47,6 @@ impl Default for DaemonClientConfig {
             max_retries: 3,
             initial_retry_delay: Duration::from_millis(100),
         }
-    }
-}
-
-impl DaemonClientConfig {
-    pub fn read_timeout(&self) -> Duration {
-        self.read_timeout
-    }
-
-    pub fn write_timeout(&self) -> Duration {
-        self.write_timeout
-    }
-
-    pub fn max_retries(&self) -> u32 {
-        self.max_retries
-    }
-
-    pub fn initial_retry_delay(&self) -> Duration {
-        self.initial_retry_delay
-    }
-
-    pub fn with_read_timeout(mut self, timeout: Duration) -> Self {
-        self.read_timeout = timeout;
-        self
-    }
-
-    pub fn with_write_timeout(mut self, timeout: Duration) -> Self {
-        self.write_timeout = timeout;
-        self
-    }
-
-    pub fn with_max_retries(mut self, retries: u32) -> Self {
-        self.max_retries = retries;
-        self
-    }
-
-    pub fn with_initial_retry_delay(mut self, delay: Duration) -> Self {
-        self.initial_retry_delay = delay;
-        self
     }
 }
 
@@ -105,8 +65,23 @@ struct Response {
     _jsonrpc: String,
     #[serde(rename = "id")]
     id: Option<RpcId>,
-    result: Option<Value>,
+    #[serde(default, deserialize_with = "deserialize_response_result")]
+    result: ResponseResult,
     error: Option<RpcError>,
+}
+
+#[derive(Debug, Default)]
+enum ResponseResult {
+    #[default]
+    Missing,
+    Present(Value),
+}
+
+fn deserialize_response_result<'de, D>(deserializer: D) -> Result<ResponseResult, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Value::deserialize(deserializer).map(ResponseResult::Present)
 }
 
 #[derive(Debug, Deserialize)]
@@ -148,21 +123,19 @@ pub trait DaemonClient: Send + Sync {
 }
 
 pub struct UnixSocketClient {
-    transport: std::sync::Arc<dyn IpcTransport>,
+    transport: IpcTransport,
 }
 
 impl UnixSocketClient {
     pub fn connect() -> Result<Self, ClientError> {
-        Self::connect_with_transport(default_transport())
+        Self::connect_with_transport(IpcTransport::from_env())
     }
 
     pub fn connect_local() -> Result<Self, ClientError> {
-        Self::connect_with_transport(std::sync::Arc::new(UnixSocketTransport))
+        Self::connect_with_transport(IpcTransport::Unix)
     }
 
-    pub(crate) fn connect_with_transport(
-        transport: std::sync::Arc<dyn IpcTransport>,
-    ) -> Result<Self, ClientError> {
+    pub(crate) fn connect_with_transport(transport: IpcTransport) -> Result<Self, ClientError> {
         let connection = transport.connect_connection()?;
         drop(connection);
 
@@ -170,7 +143,7 @@ impl UnixSocketClient {
     }
 
     pub fn is_daemon_running() -> bool {
-        default_transport().is_daemon_running()
+        IpcTransport::from_env().is_daemon_running()
     }
 }
 
@@ -277,6 +250,11 @@ fn validate_response_id(response: &Response, expected_id: &RpcId) -> Result<(), 
 fn response_to_result(response: Response, expected_id: &RpcId) -> Result<Value, ClientError> {
     validate_response_id(&response, expected_id)?;
 
+    match (&response.result, &response.error) {
+        (ResponseResult::Present(_), None) | (ResponseResult::Missing, Some(_)) => {}
+        _ => return Err(ClientError::InvalidResponse),
+    }
+
     if let Some(rpc_error) = response.error {
         let (category, retryable, context, suggestion) = if let Some(data) = rpc_error.data.as_ref()
         {
@@ -315,7 +293,10 @@ fn response_to_result(response: Response, expected_id: &RpcId) -> Result<Value, 
         });
     }
 
-    response.result.ok_or(ClientError::InvalidResponse)
+    match response.result {
+        ResponseResult::Present(result) => Ok(result),
+        ResponseResult::Missing => Err(ClientError::InvalidResponse),
+    }
 }
 
 impl DaemonClient for UnixSocketClient {
@@ -340,22 +321,22 @@ impl DaemonClient for UnixSocketClient {
         let request_json = serde_json::to_string(&request)?;
         let start = Instant::now();
         let mut attempt = 0;
-        let mut retry_delay = config.initial_retry_delay();
+        let mut retry_delay = config.initial_retry_delay;
 
         loop {
             debug!(
                 request_id,
                 method = %method,
                 attempt,
-                read_timeout_ms = config.read_timeout().as_millis(),
-                write_timeout_ms = config.write_timeout().as_millis(),
+                read_timeout_ms = config.read_timeout.as_millis(),
+                write_timeout_ms = config.write_timeout.as_millis(),
                 "RPC call started"
             );
 
             let result = (|| {
                 let mut connection = self.transport.connect_connection()?;
-                connection.set_read_timeout(Some(config.read_timeout()))?;
-                connection.set_write_timeout(Some(config.write_timeout()))?;
+                connection.set_read_timeout(Some(config.read_timeout))?;
+                connection.set_write_timeout(Some(config.write_timeout))?;
 
                 trace!(
                     request_id,
@@ -390,8 +371,8 @@ impl DaemonClient for UnixSocketClient {
                     );
                     return Ok(value);
                 }
-                Err(err) if attempt < config.max_retries() && is_retryable_call_error(&err) => {
-                    let delay = next_retry_delay(&err, config.initial_retry_delay(), retry_delay);
+                Err(err) if attempt < config.max_retries && is_retryable_call_error(&err) => {
+                    let delay = next_retry_delay(&err, config.initial_retry_delay, retry_delay);
                     debug!(
                         request_id,
                         method = %method,
@@ -444,22 +425,22 @@ impl DaemonClient for UnixSocketClient {
         let request_json = serde_json::to_string(&request)?;
         let start = Instant::now();
         let mut attempt = 0;
-        let mut retry_delay = config.initial_retry_delay();
+        let mut retry_delay = config.initial_retry_delay;
 
         loop {
             debug!(
                 request_id,
                 method = %method,
                 attempt,
-                read_timeout_ms = config.read_timeout().as_millis(),
-                write_timeout_ms = config.write_timeout().as_millis(),
+                read_timeout_ms = config.read_timeout.as_millis(),
+                write_timeout_ms = config.write_timeout.as_millis(),
                 "RPC stream call started"
             );
 
             let result = (|| {
                 let mut connection = self.transport.connect_connection()?;
-                connection.set_read_timeout(Some(config.read_timeout()))?;
-                connection.set_write_timeout(Some(config.write_timeout()))?;
+                connection.set_read_timeout(Some(config.read_timeout))?;
+                connection.set_write_timeout(Some(config.write_timeout))?;
 
                 trace!(
                     request_id,
@@ -500,8 +481,8 @@ impl DaemonClient for UnixSocketClient {
                     );
                     return Ok(stream);
                 }
-                Err(err) if attempt < config.max_retries() && is_retryable_call_error(&err) => {
-                    let delay = next_retry_delay(&err, config.initial_retry_delay(), retry_delay);
+                Err(err) if attempt < config.max_retries && is_retryable_call_error(&err) => {
+                    let delay = next_retry_delay(&err, config.initial_retry_delay, retry_delay);
                     debug!(
                         request_id,
                         method = %method,
@@ -531,19 +512,19 @@ impl DaemonClient for UnixSocketClient {
 }
 
 pub fn ensure_daemon() -> Result<UnixSocketClient, ClientError> {
-    ensure_daemon_with_transport(default_transport())
+    ensure_daemon_with_transport(IpcTransport::from_env())
 }
 
 pub(crate) fn ensure_daemon_with_transport(
-    transport: std::sync::Arc<dyn IpcTransport>,
+    transport: IpcTransport,
 ) -> Result<UnixSocketClient, ClientError> {
     debug!("Ensuring daemon is running");
     if !transport.is_daemon_running() {
         debug!("Daemon not running");
-        if transport.supports_autostart() {
+        if matches!(&transport, IpcTransport::Unix) {
             debug!("Attempting daemon autostart");
-            eprintln!("{} Starting daemon in background...", Colors::dim("Note:"));
-            transport.start_daemon_background()?;
+            eprintln!("{} Starting daemon in background...", color::dim("Note:"));
+            crate::infra::ipc::transport::start_daemon_background()?;
         } else {
             return Err(ClientError::DaemonNotRunning);
         }

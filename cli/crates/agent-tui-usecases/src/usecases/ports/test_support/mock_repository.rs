@@ -20,12 +20,10 @@ pub struct MockSessionRepository {
     resolve_error: Option<MockError>,
     spawn_error: Option<MockError>,
     kill_error: Option<MockError>,
-    get_error: Option<MockError>,
     set_active_error: Option<MockError>,
     restart_error: Option<MockError>,
     sessions_list: Vec<SessionInfo>,
     active_id: Option<SessionId>,
-    session_count: usize,
     spawn_result: Option<(SessionId, u32)>,
     restart_result: Option<RestartOutput>,
     session_handle: Option<SessionHandle>,
@@ -33,7 +31,6 @@ pub struct MockSessionRepository {
     spawn_calls: AtomicUsize,
     resolve_calls: AtomicUsize,
     kill_calls: AtomicUsize,
-    get_calls: AtomicUsize,
     set_active_calls: AtomicUsize,
     restart_calls: AtomicUsize,
     killed_sessions: Mutex<Vec<String>>,
@@ -125,27 +122,6 @@ impl SessionRepository for MockSessionRepository {
         Err(SessionError::LimitReached(0))
     }
 
-    fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError> {
-        self.get_calls.fetch_add(1, Ordering::SeqCst);
-
-        if let Some(ref err) = self.get_error {
-            return Err(err.to_session_error());
-        }
-
-        self.session_handle
-            .clone()
-            .ok_or_else(|| SessionError::NotFound(session_id.as_str().to_string()))
-    }
-
-    fn active(&self) -> Result<SessionHandle, SessionError> {
-        if let Some(ref err) = self.resolve_error {
-            return Err(err.to_session_error());
-        }
-        self.session_handle
-            .clone()
-            .ok_or(SessionError::NoActiveSession)
-    }
-
     fn resolve(&self, session_id: Option<&SessionId>) -> Result<SessionHandle, SessionError> {
         self.resolve_calls.fetch_add(1, Ordering::SeqCst);
 
@@ -216,10 +192,6 @@ impl SessionRepository for MockSessionRepository {
         })
     }
 
-    fn session_count(&self) -> usize {
-        self.session_count
-    }
-
     fn active_session_id(&self) -> Option<SessionId> {
         self.active_id.clone()
     }
@@ -285,11 +257,6 @@ impl MockSessionRepositoryBuilder {
         self.repo.active_id = Some(
             SessionId::try_new(session_id.into()).expect("builder session id should be valid"),
         );
-        self
-    }
-
-    pub fn with_session_count(mut self, count: usize) -> Self {
-        self.repo.session_count = count;
         self
     }
 

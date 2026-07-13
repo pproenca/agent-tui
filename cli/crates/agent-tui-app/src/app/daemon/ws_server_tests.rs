@@ -309,10 +309,17 @@ fn websocket_connect(
 fn set_websocket_read_timeout(
     socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
 ) {
+    set_websocket_read_timeout_for(socket, Duration::from_secs(2));
+}
+
+fn set_websocket_read_timeout_for(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+    timeout: Duration,
+) {
     match socket.get_mut() {
         tungstenite::stream::MaybeTlsStream::Plain(stream) => {
             stream
-                .set_read_timeout(Some(Duration::from_secs(2)))
+                .set_read_timeout(Some(timeout))
                 .expect("read timeout");
         }
         _ => panic!("test websocket should use a plain tcp stream"),
@@ -645,6 +652,93 @@ fn ws_rpc_echoes_string_request_id() {
 }
 
 #[test]
+fn blocking_ws_rpc_does_not_starve_other_connections() {
+    let server = TestWsServer::start();
+    let spawn_response = server.core.route(RpcRequest::new(
+        1,
+        "spawn".to_string(),
+        Some(serde_json::json!({
+            "command": "sh",
+            "args": [],
+            "session": "ws-concurrency-test",
+        })),
+    ));
+    let spawn_payload = serde_json::to_value(spawn_response).expect("spawn response value");
+    let session_id = spawn_payload["result"]["session_id"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let browser_origin = server.browser_origin();
+    let (mut waiting_a, _response) = websocket_connect(&server.ws_url, Some(&browser_origin));
+    let (mut waiting_b, _response) = websocket_connect(&server.ws_url, Some(&browser_origin));
+    let (mut responsive, _response) = websocket_connect(&server.ws_url, Some(&browser_origin));
+    set_websocket_read_timeout_for(&mut waiting_a, Duration::from_secs(3));
+    set_websocket_read_timeout_for(&mut waiting_b, Duration::from_secs(3));
+    set_websocket_read_timeout_for(&mut responsive, Duration::from_secs(1));
+
+    let wait_request = |id| {
+        WsMessage::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "wait",
+                "params": {
+                    "session": session_id,
+                    "condition": "text",
+                    "text": "marker-that-never-appears",
+                    "timeout_ms": 2000,
+                }
+            })
+            .to_string(),
+        )
+    };
+    waiting_a.send(wait_request(10)).expect("send first wait");
+    waiting_b.send(wait_request(11)).expect("send second wait");
+
+    // Keep this third connection alive long enough for both wait requests to
+    // occupy the runtime workers in the regressed implementation. Receiving
+    // these pings is itself proof that the async runtime remains responsive.
+    for _ in 0..4 {
+        match responsive.read().expect("read server keepalive") {
+            WsMessage::Ping(payload) => responsive
+                .send(WsMessage::Pong(payload))
+                .expect("send keepalive pong"),
+            frame => panic!("expected server keepalive ping, got {frame:?}"),
+        }
+    }
+
+    responsive
+        .send(WsMessage::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "responsive-ping",
+                "method": "ping",
+            })
+            .to_string(),
+        ))
+        .expect("send ping while waits are active");
+    let started = Instant::now();
+    let payload: Value =
+        serde_json::from_str(&read_text_responding_to_pings(&mut responsive)).expect("ping json");
+    assert_eq!(payload["id"], "responsive-ping");
+    assert_eq!(payload["result"]["pong"], true);
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "blocking RPCs starved an unrelated WebSocket connection"
+    );
+
+    let _ = read_text_responding_to_pings(&mut waiting_a);
+    let _ = read_text_responding_to_pings(&mut waiting_b);
+    let kill_response = server.core.route(RpcRequest::new(
+        2,
+        "kill".to_string(),
+        Some(serde_json::json!({ "session": session_id })),
+    ));
+    assert!(kill_response.is_success());
+}
+
+#[test]
 fn ws_missing_pong_disconnects_stream_connection() {
     let server = TestWsServer::start();
     let browser_origin = server.browser_origin();
@@ -831,7 +925,8 @@ fn live_preview_stream_over_ws_emits_ready_init_output_and_closed() {
         })),
     ));
     let write_payload = serde_json::to_value(write_response).expect("write response value");
-    assert_eq!(write_payload["result"]["success"], true);
+    assert_eq!(write_payload["result"]["session_id"], session_id);
+    assert_eq!(write_payload["result"]["bytes_written"], 18);
 
     let mut saw_output = false;
     let mut saw_closed = false;
@@ -946,7 +1041,8 @@ fn live_preview_stream_client_disconnect_after_closed_event_is_quiet() {
             })),
         ));
         let write_payload = serde_json::to_value(write_response).expect("write response value");
-        assert_eq!(write_payload["result"]["success"], true);
+        assert_eq!(write_payload["result"]["session_id"], session_id);
+        assert_eq!(write_payload["result"]["bytes_written"], 5);
 
         let mut saw_closed = false;
         for _ in 0..64 {

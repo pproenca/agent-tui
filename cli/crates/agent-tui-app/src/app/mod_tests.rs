@@ -72,7 +72,6 @@ mod daemon_standalone_tests {
         let socket_path = tmp.path().join("agent-tui-test.sock");
         let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
 
-        let app = Application::new();
         let cli = make_cli(Commands::Daemon(DaemonCommand::Stop {
             force: false,
             dry_run: false,
@@ -81,7 +80,7 @@ mod daemon_standalone_tests {
 
         // When daemon is not running, should succeed (idempotent semantics)
         // The result should be Ok(true), indicating the command was handled
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         assert!(
             result.is_ok(),
             "daemon stop should succeed when daemon not running (idempotent)"
@@ -104,10 +103,9 @@ mod daemon_standalone_tests {
         crate::infra::ipc::transport::USE_DAEMON_START_STUB
             .store(true, std::sync::atomic::Ordering::SeqCst);
 
-        let app = Application::new();
         let cli = make_cli(Commands::Daemon(DaemonCommand::Start {}));
 
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         // Error is acceptable (daemon may fail to start), but it was handled
         if let Ok(handled) = result {
             assert!(handled, "daemon start should be handled as standalone");
@@ -131,14 +129,13 @@ mod daemon_standalone_tests {
         crate::infra::ipc::transport::USE_DAEMON_START_STUB
             .store(true, std::sync::atomic::Ordering::SeqCst);
 
-        let app = Application::new();
         let cli = make_cli(Commands::Daemon(DaemonCommand::Restart {
             dry_run: false,
             yes: true,
         }));
 
         // Restart should be handled as standalone (may error if start fails)
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         if let Ok(handled) = result {
             assert!(handled, "daemon restart should be handled as standalone");
         }
@@ -156,10 +153,9 @@ mod daemon_standalone_tests {
         let socket_path = tmp.path().join("agent-tui-test.sock");
         let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
 
-        let app = Application::new();
         let cli = make_cli(Commands::Daemon(DaemonCommand::Status));
 
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         let err = result.expect_err("daemon status should report not running");
         assert!(
             err.downcast_ref::<DaemonNotRunningError>().is_some(),
@@ -180,10 +176,9 @@ mod daemon_standalone_tests {
         let _transport_guard = EnvVarGuard::set("AGENT_TUI_TRANSPORT", "ws");
         let _ws_addr_guard = EnvVarGuard::set("AGENT_TUI_WS_ADDR", "ws://127.0.0.1:9/ws");
 
-        let app = Application::new();
         let cli = make_cli(Commands::Daemon(DaemonCommand::Status));
 
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         let err = result.expect_err("daemon status should still inspect the local daemon");
         assert!(
             err.downcast_ref::<DaemonNotRunningError>().is_some(),
@@ -204,12 +199,11 @@ mod daemon_standalone_tests {
         let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
         let _ws_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &ws_state);
 
-        let app = Application::new();
         let cli = make_cli(Commands::Live {
             command: Some(LiveCommand::Status),
         });
 
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         assert!(result.is_ok(), "live status should be handled");
         assert!(
             matches!(result, Ok(true)),
@@ -240,10 +234,9 @@ mod daemon_standalone_tests {
         let _transport_guard = EnvVarGuard::set("AGENT_TUI_TRANSPORT", "ws");
         let _ws_addr_guard = EnvVarGuard::set("AGENT_TUI_WS_ADDR", "ws://127.0.0.1:9/ws");
 
-        let app = Application::new();
         let cli = make_cli(Commands::Live { command: None });
 
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         assert!(result.is_ok(), "live start should be handled");
         assert!(
             matches!(result, Ok(true)),
@@ -264,12 +257,11 @@ mod daemon_standalone_tests {
         let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
         let _ws_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &ws_state);
 
-        let app = Application::new();
         let cli = make_cli(Commands::Live {
             command: Some(LiveCommand::Stop),
         });
 
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         assert!(result.is_ok(), "live stop should be handled");
         assert!(matches!(result, Ok(true)), "live stop should be standalone");
         assert!(
@@ -287,14 +279,13 @@ mod daemon_standalone_tests {
         std::fs::write(&lock_path, "999999").expect("write stale lock");
         let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
 
-        let app = Application::new();
         let cli = make_cli(Commands::Daemon(DaemonCommand::Stop {
             force: false,
             dry_run: false,
             yes: true,
         }));
 
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         assert!(
             matches!(result, Ok(true)),
             "daemon stop should be idempotent with stale lock"
@@ -314,14 +305,13 @@ mod daemon_standalone_tests {
         std::fs::write(&lock_path, "999999").expect("write stale lock");
         let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
 
-        let app = Application::new();
         let cli = make_cli(Commands::Daemon(DaemonCommand::Stop {
             force: true,
             dry_run: false,
             yes: true,
         }));
 
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         assert!(
             matches!(result, Ok(true)),
             "daemon stop --force should be idempotent with stale lock"
@@ -342,14 +332,13 @@ mod daemon_standalone_tests {
         let _socket_guard = EnvVarGuard::set_path("AGENT_TUI_SOCKET", &socket_path);
         let _ws_guard = EnvVarGuard::set_path("AGENT_TUI_WS_STATE", &ws_state);
 
-        let app = Application::new();
         let cli = make_cli(Commands::Daemon(DaemonCommand::Stop {
             force: true,
             dry_run: false,
             yes: true,
         }));
 
-        let result = app.handle_standalone_commands(&cli);
+        let result = handle_standalone_commands(&cli);
         assert!(
             matches!(result, Ok(true)),
             "daemon stop should succeed when daemon is already stopped"
@@ -362,8 +351,7 @@ mod daemon_standalone_tests {
 
     #[test]
     fn handle_error_returns_not_running_exit_code() {
-        let app = Application::new();
-        let exit_code = app.handle_error(anyhow::Error::new(DaemonNotRunningError));
+        let exit_code = handle_error(anyhow::Error::new(DaemonNotRunningError));
         assert_eq!(exit_code, exit_codes::NOT_RUNNING);
     }
 

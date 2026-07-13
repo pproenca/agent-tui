@@ -30,23 +30,15 @@ use crate::infra::daemon::session::StreamReader;
 struct SessionHandleImpl {
     inner: Arc<Mutex<Session>>,
     stream: StreamReader,
-    pty_cursor: Arc<Mutex<StreamCursor>>,
 }
 
 impl SessionHandleImpl {
     fn new_handle(inner: Arc<Mutex<Session>>) -> SessionHandle {
-        let (stream, pty_cursor) = {
+        let stream = {
             let session_guard = mutex_lock_or_recover(&inner);
-            (
-                session_guard.stream_reader(),
-                session_guard.pty_cursor_handle(),
-            )
+            session_guard.stream_reader()
         };
-        Arc::new(Self {
-            inner,
-            stream,
-            pty_cursor,
-        })
+        Arc::new(Self { inner, stream })
     }
 }
 
@@ -97,17 +89,6 @@ impl SessionOps for SessionHandleImpl {
     fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError> {
         let mut session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.pty_write(data)
-    }
-
-    fn terminal_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError> {
-        let mut cursor = self
-            .pty_cursor
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let read = self.stream.read(&mut cursor, buf.len(), timeout_ms)?;
-        let bytes_read = read.data.len().min(buf.len());
-        buf[..bytes_read].copy_from_slice(&read.data[..bytes_read]);
-        Ok(bytes_read)
     }
 
     fn stream_read(
@@ -163,11 +144,6 @@ impl SessionOps for SessionHandleImpl {
         session_guard.id.clone()
     }
 
-    fn command(&self) -> String {
-        let session_guard = mutex_lock_or_recover(&self.inner);
-        session_guard.command.clone()
-    }
-
     fn size(&self) -> TerminalSize {
         let session_guard = mutex_lock_or_recover(&self.inner);
         session_guard.size()
@@ -193,16 +169,6 @@ impl SessionRepository for SessionManager {
         SessionManager::spawn(self, command, args, cwd, env, session_id, size)
     }
 
-    fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError> {
-        let session = SessionManager::get(self, session_id)?;
-        Ok(SessionHandleImpl::new_handle(session))
-    }
-
-    fn active(&self) -> Result<SessionHandle, SessionError> {
-        let session = SessionManager::active(self)?;
-        Ok(SessionHandleImpl::new_handle(session))
-    }
-
     fn resolve(&self, session_id: Option<&SessionId>) -> Result<SessionHandle, SessionError> {
         let session = SessionManager::resolve(self, session_id)?;
         Ok(SessionHandleImpl::new_handle(session))
@@ -222,10 +188,6 @@ impl SessionRepository for SessionManager {
 
     fn restart(&self, session_id: Option<&SessionId>) -> Result<RestartOutput, SessionError> {
         SessionManager::restart(self, session_id)
-    }
-
-    fn session_count(&self) -> usize {
-        SessionManager::session_count(self)
     }
 
     fn active_session_id(&self) -> Option<SessionId> {

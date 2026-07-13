@@ -191,28 +191,6 @@ pub struct SessionInfo {
     pub size: TerminalSize,
 }
 
-impl SessionInfo {
-    pub fn is_active(&self) -> bool {
-        self.running
-    }
-
-    pub fn dimensions(&self) -> (u16, u16) {
-        self.size.as_tuple()
-    }
-
-    pub fn cols(&self) -> u16 {
-        self.size.cols()
-    }
-
-    pub fn rows(&self) -> u16 {
-        self.size.rows()
-    }
-
-    pub fn created_at(&self) -> &str {
-        &self.created_at
-    }
-}
-
 #[cfg(test)]
 #[path = "session_types_tests.rs"]
 mod tests;

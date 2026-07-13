@@ -24,8 +24,8 @@ pub mod handlers;
 pub mod rpc_client;
 
 use crate::app::commands::OutputFormat;
-use crate::common::Colors;
 use crate::common::DaemonError;
+use crate::common::color;
 use crate::common::color_init;
 use crate::common::telemetry;
 use crate::infra::ipc::ClientError;
@@ -476,7 +476,7 @@ fn run_completions_wizard(
     yes: bool,
     no_input: bool,
 ) -> Result<()> {
-    println!("{}", Colors::bold("Shell completions"));
+    println!("{}", color::bold("Shell completions"));
     println!("Detected shell: {}", shell_label(shell));
     println!();
 
@@ -485,7 +485,7 @@ fn run_completions_wizard(
     let Some(install_path) = default_completion_path(shell) else {
         println!(
             "{} Automatic install isn't supported for this shell.",
-            Colors::warning("Note:")
+            color::warning("Note:")
         );
         return Ok(());
     };
@@ -493,7 +493,7 @@ fn run_completions_wizard(
     if matches!(shell, CompletionShell::Bash | CompletionShell::Zsh) {
         println!(
             "{} install a static completion file (not required if you use the line above).",
-            Colors::dim("Optional:")
+            color::dim("Optional:")
         );
     }
 
@@ -503,21 +503,21 @@ fn run_completions_wizard(
         CompletionStatus::UpToDate => {
             println!(
                 "{} Completions are up-to-date at {}",
-                Colors::success("✓"),
+                color::success("✓"),
                 install_path.display()
             );
         }
         CompletionStatus::OutOfDate => {
             println!(
                 "{} Completions are out of date at {}",
-                Colors::warning("⚠"),
+                color::warning("⚠"),
                 install_path.display()
             );
         }
         CompletionStatus::Missing => {
             println!(
                 "{} No completion file found at {}",
-                Colors::warning("⚠"),
+                color::warning("⚠"),
                 install_path.display()
             );
         }
@@ -558,20 +558,20 @@ fn supported_shells() -> &'static str {
 }
 
 fn print_shell_detection_help() {
-    println!("{}", Colors::warning("Shell not detected."));
+    println!("{}", color::warning("Shell not detected."));
     println!("Run: {PROGRAM_NAME} completions <shell>");
     println!("Supported shells: {}", supported_shells());
 }
 
 fn print_install_guidance(shell: CompletionShell) {
-    println!("{}", Colors::bold("Recommended setup:"));
+    println!("{}", color::bold("Recommended setup:"));
     match shell {
         CompletionShell::Bash => {
             println!("Add this to ~/.bashrc:");
             println!("  source <(agent-tui completions bash --print)");
             println!(
                 "{}",
-                Colors::dim("This keeps completions in sync with your installed agent-tui.")
+                color::dim("This keeps completions in sync with your installed agent-tui.")
             );
         }
         CompletionShell::Zsh => {
@@ -579,7 +579,7 @@ fn print_install_guidance(shell: CompletionShell) {
             println!("  source <(agent-tui completions zsh --print)");
             println!(
                 "{}",
-                Colors::dim("This keeps completions in sync with your installed agent-tui.")
+                color::dim("This keeps completions in sync with your installed agent-tui.")
             );
         }
         CompletionShell::Fish => {
@@ -589,7 +589,7 @@ fn print_install_guidance(shell: CompletionShell) {
             );
             println!(
                 "{}",
-                Colors::dim("Re-run this after upgrading agent-tui to refresh the file.")
+                color::dim("Re-run this after upgrading agent-tui to refresh the file.")
             );
         }
         CompletionShell::Elvish => {
@@ -597,7 +597,7 @@ fn print_install_guidance(shell: CompletionShell) {
             println!("  agent-tui completions elvish --print > ~/.elvish/lib/agent-tui.elv");
             println!(
                 "{}",
-                Colors::dim("Re-run this after upgrading agent-tui to refresh the file.")
+                color::dim("Re-run this after upgrading agent-tui to refresh the file.")
             );
         }
     }
@@ -725,21 +725,21 @@ fn print_install_outcome(outcome: InstallOutcome) {
         InstallOutcome::Installed(path) => {
             println!(
                 "{} Installed completions to {}",
-                Colors::success("✓"),
+                color::success("✓"),
                 path.display()
             );
         }
         InstallOutcome::Updated(path) => {
             println!(
                 "{} Updated completions at {}",
-                Colors::success("✓"),
+                color::success("✓"),
                 path.display()
             );
         }
         InstallOutcome::AlreadyUpToDate(path) => {
             println!(
                 "{} Completions already up-to-date at {}",
-                Colors::success("✓"),
+                color::success("✓"),
                 path.display()
             );
         }
@@ -750,13 +750,13 @@ fn print_static_install_note(shell: CompletionShell) {
     match shell {
         CompletionShell::Bash => println!(
             "{}",
-            Colors::dim(
+            color::dim(
                 "Note: ensure your shell loads ~/.bash_completion.d (or source the file in ~/.bashrc)."
             )
         ),
         CompletionShell::Zsh => println!(
             "{}",
-            Colors::dim("Note: ensure ~/.zsh/completions is in $fpath and compinit is enabled.")
+            color::dim("Note: ensure ~/.zsh/completions is in $fpath and compinit is enabled.")
         ),
         _ => {}
     }
@@ -786,427 +786,400 @@ pub(crate) fn prompt_yes_no(prompt: &str, default_yes: bool) -> io::Result<bool>
     }
 }
 
-pub struct Application;
-
 enum ParsedCli {
     Ready(Cli),
     Exit(i32),
 }
 
-impl Application {
-    pub fn new() -> Self {
-        Self
-    }
+pub fn run() -> Result<i32> {
+    let cli = match parse_cli() {
+        ParsedCli::Ready(cli) => cli,
+        ParsedCli::Exit(code) => return Ok(code),
+    };
 
-    pub fn run(&self) -> Result<i32> {
-        let cli = match self.parse_cli() {
-            ParsedCli::Ready(cli) => cli,
-            ParsedCli::Exit(code) => return Ok(code),
-        };
+    let exit_code = match execute_with_cli(cli) {
+        Ok(()) => exit_codes::SUCCESS,
+        Err(e) => handle_error(e),
+    };
+    Ok(exit_code)
+}
 
-        let exit_code = match self.execute_with_cli(cli) {
-            Ok(()) => exit_codes::SUCCESS,
-            Err(e) => self.handle_error(e),
-        };
-        Ok(exit_code)
-    }
+fn parse_cli() -> ParsedCli {
+    let raw_args: Vec<OsString> = std::env::args_os().collect();
 
-    fn parse_cli(&self) -> ParsedCli {
-        let raw_args: Vec<OsString> = std::env::args_os().collect();
-
-        match Cli::try_parse_from(raw_args.clone()) {
-            Ok(cli) => ParsedCli::Ready(cli),
-            Err(err) => ParsedCli::Exit(render_parse_error(err, &raw_args)),
-        }
-    }
-
-    fn execute_with_cli(&self, cli: Cli) -> Result<()> {
-        let _telemetry = telemetry::init_tracing("warn");
-        color_init(cli.no_color);
-        let format = cli.effective_format();
-        debug!(
-            command = ?cli.command,
-            session = ?cli.session,
-            format = ?format,
-            "CLI command parsed"
-        );
-
-        if self
-            .handle_standalone_commands(&cli)
-            .map_err(|e| self.wrap_error(e, format))
-            .context("failed to handle standalone command")?
-        {
-            return Ok(());
-        }
-
-        let mut client: UnixSocketClient = if Self::requires_daemon_autostart(&cli.command) {
-            self.connect_to_daemon_autostart()
-                .map_err(|e| self.wrap_error(e, format))
-                .context("failed to connect to daemon with autostart")?
-        } else {
-            self.connect_to_daemon_no_autostart()
-                .map_err(|e| self.wrap_error(e, format))
-                .context("failed to connect to daemon")?
-        };
-
-        let mut ctx = HandlerContext::new(&mut client, cli.session, format, cli.no_input);
-        self.dispatch_command(&mut ctx, cli.command)
-            .map_err(|e| self.wrap_error(e, format))
-            .context("failed to execute command")
-    }
-
-    fn handle_standalone_commands(&self, cli: &Cli) -> Result<bool> {
-        match &cli.command {
-            Commands::Daemon(DaemonCommand::Start {}) => {
-                if daemon_start_requests_foreground() {
-                    crate::app::daemon::start_daemon()?;
-                } else {
-                    handlers::handle_daemon_start_standalone(cli.effective_format())?;
-                }
-                Ok(true)
-            }
-            Commands::Daemon(DaemonCommand::Run) => {
-                crate::app::daemon::start_daemon()?;
-                Ok(true)
-            }
-            Commands::Daemon(DaemonCommand::Status) => {
-                handlers::handle_daemon_status_standalone(cli.effective_format())?;
-                Ok(true)
-            }
-            Commands::Daemon(DaemonCommand::Stop {
-                force,
-                dry_run,
-                yes,
-            }) => {
-                handlers::handle_daemon_stop_standalone(
-                    cli.effective_format(),
-                    *force,
-                    *dry_run,
-                    *yes,
-                    cli.no_input,
-                )?;
-                Ok(true)
-            }
-            Commands::Daemon(DaemonCommand::Restart { dry_run, yes }) => {
-                handlers::handle_daemon_restart_standalone(
-                    cli.effective_format(),
-                    *dry_run,
-                    *yes,
-                    cli.no_input,
-                )?;
-                Ok(true)
-            }
-            Commands::Live { command: None } => {
-                handlers::handle_live_start_standalone(
-                    cli.effective_format(),
-                    LiveStartArgs::default(),
-                )?;
-                Ok(true)
-            }
-            Commands::Live {
-                command: Some(LiveCommand::Start(args)),
-            } => {
-                handlers::handle_live_start_standalone(cli.effective_format(), args.clone())?;
-                Ok(true)
-            }
-            Commands::Live {
-                command: Some(LiveCommand::Stop),
-            } => {
-                handlers::handle_live_stop_standalone(cli.effective_format())?;
-                Ok(true)
-            }
-            Commands::Live {
-                command: Some(LiveCommand::Status),
-            } => {
-                handlers::handle_live_status_standalone(cli.effective_format())?;
-                Ok(true)
-            }
-            Commands::Completions {
-                shell,
-                print,
-                install,
-                yes,
-            } => {
-                handle_completions_command(
-                    cli.effective_format(),
-                    *shell,
-                    *print,
-                    *install,
-                    *yes,
-                    cli.no_input,
-                )?;
-                Ok(true)
-            }
-            Commands::Version => {
-                handlers::handle_version_standalone(cli.effective_format())?;
-                Ok(true)
-            }
-            Commands::Env => {
-                handlers::handle_env(cli.effective_format())?;
-                Ok(true)
-            }
-            Commands::Action { form } => {
-                match legacy_action_compatibility_result(cli.effective_format(), form) {
-                    Ok(_) => Ok(false),
-                    Err(error) => {
-                        warn_legacy_action_deprecation();
-                        Err(error)
-                    }
-                }
-            }
-            Commands::ScrollIntoView { form } => {
-                warn_legacy_scroll_into_view_deprecation();
-                let selector =
-                    parse_legacy_scroll_into_view_invocation(cli.effective_format(), form)?;
-                handle_legacy_scroll_into_view(cli.effective_format(), &selector)?;
-                Ok(true)
-            }
-            _ => Ok(false),
-        }
-    }
-
-    fn requires_daemon_autostart(command: &Commands) -> bool {
-        matches!(command, Commands::Run { .. })
-    }
-
-    fn connect_to_daemon_autostart(&self) -> Result<UnixSocketClient> {
-        ensure_daemon().map_err(Into::into)
-    }
-
-    fn connect_to_daemon_no_autostart(&self) -> Result<UnixSocketClient> {
-        match UnixSocketClient::connect() {
-            Ok(client) => Ok(client),
-            Err(ClientError::DaemonNotRunning) => Err(ClientError::DaemonNotRunning.into()),
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    fn dispatch_command<C: DaemonClient>(
-        &self,
-        ctx: &mut HandlerContext<C>,
-        command: Commands,
-    ) -> Result<()> {
-        match command {
-            Commands::Daemon(daemon_cmd) => match daemon_cmd {
-                DaemonCommand::Start { .. } => unreachable!("Handled in standalone"),
-                DaemonCommand::Run => unreachable!("Handled in standalone"),
-                DaemonCommand::Status => unreachable!("Handled in standalone"),
-                DaemonCommand::Stop { .. } => unreachable!("Handled in standalone"),
-                DaemonCommand::Restart { .. } => unreachable!("Handled in standalone"),
-            },
-            Commands::Completions { .. } => unreachable!("Handled in standalone"),
-
-            Commands::Run {
-                command,
-                args,
-                cwd,
-                env,
-                cols,
-                rows,
-            } => handlers::handle_spawn(
-                ctx,
-                command,
-                args,
-                cwd,
-                env_assignments_to_map(env),
-                cols,
-                rows,
-            )?,
-
-            Commands::Screenshot {
-                region,
-                strip_ansi,
-                retain_ansi,
-                include_cursor,
-                legacy_element,
-                legacy_accessibility,
-                legacy_interactive_only,
-            } => {
-                if legacy_element {
-                    handlers::warn_legacy_deprecation("screenshot -e", "screenshot");
-                }
-                if legacy_accessibility {
-                    handlers::warn_legacy_deprecation("screenshot -a", "screenshot");
-                }
-                if legacy_interactive_only {
-                    handlers::warn_legacy_deprecation(
-                        "screenshot --interactive-only",
-                        "screenshot",
-                    );
-                }
-                handlers::handle_snapshot(ctx, region, strip_ansi, retain_ansi, include_cursor)?
-            }
-            Commands::Action { form } => {
-                warn_legacy_action_deprecation();
-                let action = legacy_action_compatibility_result(ctx.format, &form)?;
-                match action.operation {
-                    LegacyActionOperation::Click => {
-                        handlers::handle_press(ctx, "Enter".to_string())?
-                    }
-                    LegacyActionOperation::Fill(text) => handlers::handle_type(ctx, text)?,
-                }
-            }
-
-            Commands::Resize { cols, rows } => handlers::handle_resize(ctx, cols, rows)?,
-            Commands::Restart { dry_run, yes } => handlers::handle_restart(ctx, dry_run, yes)?,
-
-            Commands::Press {
-                keys,
-                hold,
-                release,
-            } => {
-                const PRESS_INTER_KEY_DELAY_MS: u64 = 50;
-                if hold {
-                    let key = single_modifier_key(ctx.format, "--hold", &keys)?;
-                    handlers::handle_keydown(ctx, key)?
-                } else if release {
-                    let key = single_modifier_key(ctx.format, "--release", &keys)?;
-                    handlers::handle_keyup(ctx, key)?
-                } else {
-                    let key_count = keys.len();
-                    for (idx, key) in keys.into_iter().enumerate() {
-                        handlers::handle_press(ctx, key)?;
-                        if idx + 1 < key_count {
-                            std::thread::park_timeout(std::time::Duration::from_millis(
-                                PRESS_INTER_KEY_DELAY_MS,
-                            ));
-                        }
-                    }
-                }
-            }
-
-            Commands::Type { text } => handlers::handle_type(ctx, text)?,
-            Commands::Input { text } => {
-                handlers::warn_legacy_deprecation("input", "type");
-                handlers::handle_type(ctx, text)?
-            }
-            Commands::Scroll { direction, amount } => {
-                handlers::handle_scroll(ctx, direction, amount)?
-            }
-            Commands::ScrollIntoView { .. } => unreachable!("Handled in standalone"),
-
-            Commands::Wait { params } => {
-                if params.legacy_element.is_some() {
-                    handlers::warn_legacy_deprecation("wait -e", "wait <text>");
-                }
-                handlers::handle_wait(ctx, params)?
-            }
-            Commands::Kill { dry_run, yes } => handlers::handle_kill(ctx, dry_run, yes)?,
-
-            Commands::Sessions { command } => {
-                use crate::app::commands::SessionsCommand;
-
-                match command {
-                    None | Some(SessionsCommand::List) => handlers::handle_sessions(ctx)?,
-                    Some(SessionsCommand::Show { session_id }) => {
-                        handlers::handle_session_show(ctx, session_id)?
-                    }
-                    Some(SessionsCommand::Attach {
-                        no_tty,
-                        detach_keys,
-                    }) => {
-                        let attach_id = handlers::resolve_attach_session_id(ctx)?;
-                        handlers::handle_attach(
-                            ctx,
-                            attach_id,
-                            !no_tty && !ctx.no_input,
-                            detach_keys,
-                        )?
-                    }
-                    Some(SessionsCommand::Switch { session_id }) => {
-                        handlers::handle_session_switch(ctx, session_id)?
-                    }
-                    Some(SessionsCommand::Cleanup { all, dry_run, yes }) => {
-                        handlers::handle_cleanup(ctx, all, dry_run, yes)?
-                    }
-                }
-            }
-
-            Commands::Live { command } => match command {
-                None => handlers::handle_live_start(ctx, LiveStartArgs::default())?,
-                Some(LiveCommand::Start(args)) => handlers::handle_live_start(ctx, args)?,
-                Some(LiveCommand::Stop) => handlers::handle_live_stop(ctx)?,
-                Some(LiveCommand::Status) => handlers::handle_live_status(ctx)?,
-            },
-
-            Commands::Version => unreachable!("Handled in standalone"),
-            Commands::Env => handlers::handle_env(ctx.format)?,
-        }
-        Ok(())
-    }
-
-    fn handle_error(&self, e: anyhow::Error) -> i32 {
-        if find_error::<DaemonNotRunningError>(&e).is_some() {
-            return exit_codes::NOT_RUNNING;
-        }
-
-        if let Some(cli_error) = find_error::<crate::app::error::CliError>(&e) {
-            print_cli_error(cli_error);
-            return cli_error.exit_code;
-        }
-
-        if let Some(client_error) = find_error::<ClientError>(&e) {
-            eprintln!(
-                "{}: {} {}",
-                PROGRAM_NAME,
-                Colors::error("Error:"),
-                client_error
-            );
-            if let Some(suggestion) = client_error.suggestion() {
-                eprintln!("{} {}", Colors::dim("Suggestion:"), suggestion);
-            }
-            if client_error.is_retryable() {
-                eprintln!(
-                    "{}",
-                    Colors::dim("(This error may be transient - retry may succeed)")
-                );
-            }
-            exit_code_for_client_error(client_error)
-        } else if let Some(attach_error) = find_error::<AttachError>(&e) {
-            eprintln!(
-                "{}: {} {}",
-                PROGRAM_NAME,
-                Colors::error("Error:"),
-                attach_error
-            );
-            eprintln!(
-                "{} {}",
-                Colors::dim("Suggestion:"),
-                attach_error.suggestion()
-            );
-            if attach_error.is_retryable() {
-                eprintln!(
-                    "{}",
-                    Colors::dim("(This error may be transient - retry may succeed)")
-                );
-            }
-            attach_error.exit_code()
-        } else if let Some(daemon_error) = find_error::<DaemonError>(&e) {
-            eprintln!(
-                "{}: {} {}",
-                PROGRAM_NAME,
-                Colors::error("Error:"),
-                daemon_error
-            );
-            eprintln!(
-                "{} {}",
-                Colors::dim("Suggestion:"),
-                daemon_error.suggestion()
-            );
-            if daemon_error.is_retryable() {
-                eprintln!(
-                    "{}",
-                    Colors::dim("(This error may be transient - retry may succeed)")
-                );
-            }
-            exit_codes::IOERR
-        } else {
-            eprintln!("{}: {} {}", PROGRAM_NAME, Colors::error("Error:"), e);
-            exit_codes::GENERAL_ERROR
-        }
+    match Cli::try_parse_from(raw_args.clone()) {
+        Ok(cli) => ParsedCli::Ready(cli),
+        Err(err) => ParsedCli::Exit(render_parse_error(err, &raw_args)),
     }
 }
 
+fn execute_with_cli(cli: Cli) -> Result<()> {
+    let _telemetry = telemetry::init_tracing("warn");
+    color_init(cli.no_color);
+    let format = cli.effective_format();
+    debug!(
+        command = ?cli.command,
+        session = ?cli.session,
+        format = ?format,
+        "CLI command parsed"
+    );
+
+    if handle_standalone_commands(&cli)
+        .map_err(|e| wrap_error(e, format))
+        .context("failed to handle standalone command")?
+    {
+        return Ok(());
+    }
+
+    let mut client: UnixSocketClient = if requires_daemon_autostart(&cli.command) {
+        connect_to_daemon_autostart()
+            .map_err(|e| wrap_error(e, format))
+            .context("failed to connect to daemon with autostart")?
+    } else {
+        connect_to_daemon_no_autostart()
+            .map_err(|e| wrap_error(e, format))
+            .context("failed to connect to daemon")?
+    };
+
+    let mut ctx = HandlerContext::new(&mut client, cli.session, format, cli.no_input);
+    dispatch_command(&mut ctx, cli.command)
+        .map_err(|e| wrap_error(e, format))
+        .context("failed to execute command")
+}
+
+fn handle_standalone_commands(cli: &Cli) -> Result<bool> {
+    match &cli.command {
+        Commands::Daemon(DaemonCommand::Start {}) => {
+            if daemon_start_requests_foreground() {
+                crate::app::daemon::start_daemon()?;
+            } else {
+                handlers::handle_daemon_start_standalone(cli.effective_format())?;
+            }
+            Ok(true)
+        }
+        Commands::Daemon(DaemonCommand::Run) => {
+            crate::app::daemon::start_daemon()?;
+            Ok(true)
+        }
+        Commands::Daemon(DaemonCommand::Status) => {
+            handlers::handle_daemon_status_standalone(cli.effective_format())?;
+            Ok(true)
+        }
+        Commands::Daemon(DaemonCommand::Stop {
+            force,
+            dry_run,
+            yes,
+        }) => {
+            handlers::handle_daemon_stop_standalone(
+                cli.effective_format(),
+                *force,
+                *dry_run,
+                *yes,
+                cli.no_input,
+            )?;
+            Ok(true)
+        }
+        Commands::Daemon(DaemonCommand::Restart { dry_run, yes }) => {
+            handlers::handle_daemon_restart_standalone(
+                cli.effective_format(),
+                *dry_run,
+                *yes,
+                cli.no_input,
+            )?;
+            Ok(true)
+        }
+        Commands::Live { command: None } => {
+            handlers::handle_live_start_standalone(
+                cli.effective_format(),
+                LiveStartArgs::default(),
+            )?;
+            Ok(true)
+        }
+        Commands::Live {
+            command: Some(LiveCommand::Start(args)),
+        } => {
+            handlers::handle_live_start_standalone(cli.effective_format(), args.clone())?;
+            Ok(true)
+        }
+        Commands::Live {
+            command: Some(LiveCommand::Stop),
+        } => {
+            handlers::handle_live_stop_standalone(cli.effective_format())?;
+            Ok(true)
+        }
+        Commands::Live {
+            command: Some(LiveCommand::Status),
+        } => {
+            handlers::handle_live_status_standalone(cli.effective_format())?;
+            Ok(true)
+        }
+        Commands::Completions {
+            shell,
+            print,
+            install,
+            yes,
+        } => {
+            handle_completions_command(
+                cli.effective_format(),
+                *shell,
+                *print,
+                *install,
+                *yes,
+                cli.no_input,
+            )?;
+            Ok(true)
+        }
+        Commands::Version => {
+            handlers::handle_version_standalone(cli.effective_format())?;
+            Ok(true)
+        }
+        Commands::Env => {
+            handlers::handle_env(cli.effective_format())?;
+            Ok(true)
+        }
+        Commands::Action { form } => {
+            match legacy_action_compatibility_result(cli.effective_format(), form) {
+                Ok(_) => Ok(false),
+                Err(error) => {
+                    warn_legacy_action_deprecation();
+                    Err(error)
+                }
+            }
+        }
+        Commands::ScrollIntoView { form } => {
+            warn_legacy_scroll_into_view_deprecation();
+            let selector = parse_legacy_scroll_into_view_invocation(cli.effective_format(), form)?;
+            handle_legacy_scroll_into_view(cli.effective_format(), &selector)?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn requires_daemon_autostart(command: &Commands) -> bool {
+    matches!(command, Commands::Run { .. })
+}
+
+fn connect_to_daemon_autostart() -> Result<UnixSocketClient> {
+    ensure_daemon().map_err(Into::into)
+}
+
+fn connect_to_daemon_no_autostart() -> Result<UnixSocketClient> {
+    match UnixSocketClient::connect() {
+        Ok(client) => Ok(client),
+        Err(ClientError::DaemonNotRunning) => Err(ClientError::DaemonNotRunning.into()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn dispatch_command<C: DaemonClient>(ctx: &mut HandlerContext<C>, command: Commands) -> Result<()> {
+    match command {
+        Commands::Daemon(daemon_cmd) => match daemon_cmd {
+            DaemonCommand::Start { .. } => unreachable!("Handled in standalone"),
+            DaemonCommand::Run => unreachable!("Handled in standalone"),
+            DaemonCommand::Status => unreachable!("Handled in standalone"),
+            DaemonCommand::Stop { .. } => unreachable!("Handled in standalone"),
+            DaemonCommand::Restart { .. } => unreachable!("Handled in standalone"),
+        },
+        Commands::Completions { .. } => unreachable!("Handled in standalone"),
+
+        Commands::Run {
+            command,
+            args,
+            cwd,
+            env,
+            cols,
+            rows,
+        } => handlers::handle_spawn(
+            ctx,
+            command,
+            args,
+            cwd,
+            env_assignments_to_map(env),
+            cols,
+            rows,
+        )?,
+
+        Commands::Screenshot {
+            region,
+            strip_ansi,
+            retain_ansi,
+            include_cursor,
+            legacy_element,
+            legacy_accessibility,
+            legacy_interactive_only,
+        } => {
+            if legacy_element {
+                handlers::warn_legacy_deprecation("screenshot -e", "screenshot");
+            }
+            if legacy_accessibility {
+                handlers::warn_legacy_deprecation("screenshot -a", "screenshot");
+            }
+            if legacy_interactive_only {
+                handlers::warn_legacy_deprecation("screenshot --interactive-only", "screenshot");
+            }
+            handlers::handle_snapshot(ctx, region, strip_ansi, retain_ansi, include_cursor)?
+        }
+        Commands::Action { form } => {
+            warn_legacy_action_deprecation();
+            let action = legacy_action_compatibility_result(ctx.format, &form)?;
+            match action.operation {
+                LegacyActionOperation::Click => handlers::handle_press(ctx, "Enter".to_string())?,
+                LegacyActionOperation::Fill(text) => handlers::handle_type(ctx, text)?,
+            }
+        }
+
+        Commands::Resize { cols, rows } => handlers::handle_resize(ctx, cols, rows)?,
+        Commands::Restart { dry_run, yes } => handlers::handle_restart(ctx, dry_run, yes)?,
+
+        Commands::Press {
+            keys,
+            hold,
+            release,
+        } => {
+            const PRESS_INTER_KEY_DELAY_MS: u64 = 50;
+            if hold {
+                let key = single_modifier_key(ctx.format, "--hold", &keys)?;
+                handlers::handle_keydown(ctx, key)?
+            } else if release {
+                let key = single_modifier_key(ctx.format, "--release", &keys)?;
+                handlers::handle_keyup(ctx, key)?
+            } else {
+                let key_count = keys.len();
+                for (idx, key) in keys.into_iter().enumerate() {
+                    handlers::handle_press(ctx, key)?;
+                    if idx + 1 < key_count {
+                        std::thread::park_timeout(std::time::Duration::from_millis(
+                            PRESS_INTER_KEY_DELAY_MS,
+                        ));
+                    }
+                }
+            }
+        }
+
+        Commands::Type { text } => handlers::handle_type(ctx, text)?,
+        Commands::Input { text } => {
+            handlers::warn_legacy_deprecation("input", "type");
+            handlers::handle_type(ctx, text)?
+        }
+        Commands::Scroll { direction, amount } => handlers::handle_scroll(ctx, direction, amount)?,
+        Commands::ScrollIntoView { .. } => unreachable!("Handled in standalone"),
+
+        Commands::Wait { params } => {
+            if params.legacy_element.is_some() {
+                handlers::warn_legacy_deprecation("wait -e", "wait <text>");
+            }
+            handlers::handle_wait(ctx, params)?
+        }
+        Commands::Kill { dry_run, yes } => handlers::handle_kill(ctx, dry_run, yes)?,
+
+        Commands::Sessions { command } => {
+            use crate::app::commands::SessionsCommand;
+
+            match command {
+                None | Some(SessionsCommand::List) => handlers::handle_sessions(ctx)?,
+                Some(SessionsCommand::Show { session_id }) => {
+                    handlers::handle_session_show(ctx, session_id)?
+                }
+                Some(SessionsCommand::Attach {
+                    no_tty,
+                    detach_keys,
+                }) => {
+                    let attach_id = handlers::resolve_attach_session_id(ctx)?;
+                    handlers::handle_attach(ctx, attach_id, !no_tty && !ctx.no_input, detach_keys)?
+                }
+                Some(SessionsCommand::Switch { session_id }) => {
+                    handlers::handle_session_switch(ctx, session_id)?
+                }
+                Some(SessionsCommand::Cleanup { all, dry_run, yes }) => {
+                    handlers::handle_cleanup(ctx, all, dry_run, yes)?
+                }
+            }
+        }
+
+        Commands::Live { command } => match command {
+            None => handlers::handle_live_start(ctx, LiveStartArgs::default())?,
+            Some(LiveCommand::Start(args)) => handlers::handle_live_start(ctx, args)?,
+            Some(LiveCommand::Stop) => handlers::handle_live_stop(ctx)?,
+            Some(LiveCommand::Status) => handlers::handle_live_status(ctx)?,
+        },
+
+        Commands::Version => unreachable!("Handled in standalone"),
+        Commands::Env => handlers::handle_env(ctx.format)?,
+    }
+    Ok(())
+}
+
+fn handle_error(e: anyhow::Error) -> i32 {
+    if find_error::<DaemonNotRunningError>(&e).is_some() {
+        return exit_codes::NOT_RUNNING;
+    }
+
+    if let Some(cli_error) = find_error::<crate::app::error::CliError>(&e) {
+        print_cli_error(cli_error);
+        return cli_error.exit_code;
+    }
+
+    if let Some(client_error) = find_error::<ClientError>(&e) {
+        eprintln!(
+            "{}: {} {}",
+            PROGRAM_NAME,
+            color::error("Error:"),
+            client_error
+        );
+        if let Some(suggestion) = client_error.suggestion() {
+            eprintln!("{} {}", color::dim("Suggestion:"), suggestion);
+        }
+        if client_error.is_retryable() {
+            eprintln!(
+                "{}",
+                color::dim("(This error may be transient - retry may succeed)")
+            );
+        }
+        exit_code_for_client_error(client_error)
+    } else if let Some(attach_error) = find_error::<AttachError>(&e) {
+        eprintln!(
+            "{}: {} {}",
+            PROGRAM_NAME,
+            color::error("Error:"),
+            attach_error
+        );
+        eprintln!(
+            "{} {}",
+            color::dim("Suggestion:"),
+            attach_error.suggestion()
+        );
+        if attach_error.is_retryable() {
+            eprintln!(
+                "{}",
+                color::dim("(This error may be transient - retry may succeed)")
+            );
+        }
+        attach_error.exit_code()
+    } else if let Some(daemon_error) = find_error::<DaemonError>(&e) {
+        eprintln!(
+            "{}: {} {}",
+            PROGRAM_NAME,
+            color::error("Error:"),
+            daemon_error
+        );
+        eprintln!(
+            "{} {}",
+            color::dim("Suggestion:"),
+            daemon_error.suggestion()
+        );
+        if daemon_error.is_retryable() {
+            eprintln!(
+                "{}",
+                color::dim("(This error may be transient - retry may succeed)")
+            );
+        }
+        exit_codes::IOERR
+    } else {
+        eprintln!("{}: {} {}", PROGRAM_NAME, color::error("Error:"), e);
+        exit_codes::GENERAL_ERROR
+    }
+}
 fn warn_legacy_action_deprecation() {
     handlers::warn_legacy_deprecation_with_replacement(
         "action",
@@ -1221,52 +1194,49 @@ fn warn_legacy_scroll_into_view_deprecation() {
     );
 }
 
-impl Application {
-    fn wrap_error(&self, error: anyhow::Error, format: OutputFormat) -> anyhow::Error {
-        if find_error::<DaemonNotRunningError>(&error).is_some() {
-            return error;
-        }
-        if find_error::<crate::app::error::CliError>(&error).is_some() {
-            return error;
-        }
-        if format != OutputFormat::Json {
-            return error;
-        }
-
-        if let Some(client_error) = find_error::<ClientError>(&error) {
-            return anyhow::Error::new(crate::app::error::CliError::new(
-                format,
-                client_error.to_string(),
-                Some(client_error.to_json_string()),
-                exit_code_for_client_error(client_error),
-            ));
-        }
-        if let Some(attach_error) = find_error::<AttachError>(&error) {
-            return anyhow::Error::new(crate::app::error::CliError::new(
-                format,
-                attach_error.to_string(),
-                Some(serde_json::to_string_pretty(&attach_error.to_payload()).unwrap_or_default()),
-                attach_error.exit_code(),
-            ));
-        }
-        if let Some(daemon_error) = find_error::<DaemonError>(&error) {
-            return anyhow::Error::new(crate::app::error::CliError::new(
-                format,
-                daemon_error.to_string(),
-                None,
-                exit_codes::IOERR,
-            ));
-        }
-
-        anyhow::Error::new(crate::app::error::CliError::new(
-            format,
-            error.to_string(),
-            None,
-            exit_codes::GENERAL_ERROR,
-        ))
+fn wrap_error(error: anyhow::Error, format: OutputFormat) -> anyhow::Error {
+    if find_error::<DaemonNotRunningError>(&error).is_some() {
+        return error;
     }
-}
+    if find_error::<crate::app::error::CliError>(&error).is_some() {
+        return error;
+    }
+    if format != OutputFormat::Json {
+        return error;
+    }
 
+    if let Some(client_error) = find_error::<ClientError>(&error) {
+        return anyhow::Error::new(crate::app::error::CliError::new(
+            format,
+            client_error.to_string(),
+            Some(client_error.to_json_string()),
+            exit_code_for_client_error(client_error),
+        ));
+    }
+    if let Some(attach_error) = find_error::<AttachError>(&error) {
+        return anyhow::Error::new(crate::app::error::CliError::new(
+            format,
+            attach_error.to_string(),
+            Some(serde_json::to_string_pretty(&attach_error.to_payload()).unwrap_or_default()),
+            attach_error.exit_code(),
+        ));
+    }
+    if let Some(daemon_error) = find_error::<DaemonError>(&error) {
+        return anyhow::Error::new(crate::app::error::CliError::new(
+            format,
+            daemon_error.to_string(),
+            None,
+            exit_codes::IOERR,
+        ));
+    }
+
+    anyhow::Error::new(crate::app::error::CliError::new(
+        format,
+        error.to_string(),
+        None,
+        exit_codes::GENERAL_ERROR,
+    ))
+}
 fn find_error<T: std::error::Error + 'static>(error: &anyhow::Error) -> Option<&T> {
     error.chain().find_map(|source| source.downcast_ref::<T>())
 }
@@ -1296,16 +1266,10 @@ fn print_cli_error(error: &crate::app::error::CliError) {
             eprintln!(
                 "{}: {} {}",
                 PROGRAM_NAME,
-                Colors::error("Error:"),
+                color::error("Error:"),
                 error.message
             );
         }
-    }
-}
-
-impl Default for Application {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

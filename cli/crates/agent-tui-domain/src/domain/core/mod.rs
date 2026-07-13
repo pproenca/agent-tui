@@ -2,12 +2,8 @@
 
 //! Core domain model for screen and terminal semantics.
 
-pub mod screen;
 pub mod style;
 
-pub use screen::ScreenCell;
-pub use screen::ScreenGrid;
-pub use screen::ScreenSnapshot;
 pub use style::CellStyle;
 pub use style::Color;
 

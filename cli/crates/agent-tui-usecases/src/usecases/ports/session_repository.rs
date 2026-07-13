@@ -46,7 +46,6 @@ pub trait SessionOps: Send + Sync {
     fn screen_render(&self) -> String;
     fn screen_render_compact(&self) -> String;
     fn terminal_write(&self, data: &[u8]) -> Result<(), SessionError>;
-    fn terminal_try_read(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, SessionError>;
     fn stream_read(
         &self,
         cursor: &mut StreamCursor,
@@ -62,7 +61,6 @@ pub trait SessionOps: Send + Sync {
     fn resize(&self, size: TerminalSize) -> Result<(), SessionError>;
     fn cursor(&self) -> CursorPosition;
     fn session_id(&self) -> SessionId;
-    fn command(&self) -> String;
     fn size(&self) -> TerminalSize;
     fn live_preview_snapshot(&self) -> LivePreviewSnapshot;
 }
@@ -81,13 +79,10 @@ pub trait SessionRepository: Send + Sync {
         size: TerminalSize,
     ) -> Result<(SessionId, u32), SessionError>;
 
-    fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError>;
-    fn active(&self) -> Result<SessionHandle, SessionError>;
     fn resolve(&self, session_id: Option<&SessionId>) -> Result<SessionHandle, SessionError>;
     fn set_active(&self, session_id: &SessionId) -> Result<(), SessionError>;
     fn list(&self) -> Vec<SessionInfo>;
     fn kill(&self, session_id: &SessionId) -> Result<(), SessionError>;
     fn restart(&self, session_id: Option<&SessionId>) -> Result<RestartOutput, SessionError>;
-    fn session_count(&self) -> usize;
     fn active_session_id(&self) -> Option<SessionId>;
 }

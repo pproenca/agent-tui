@@ -13,6 +13,7 @@ use crate::usecases::ports::StreamRead;
 use crate::usecases::ports::StreamWaiter;
 use crate::usecases::ports::StreamWaiterHandle;
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -196,10 +197,6 @@ impl SessionOps for ControlledSession {
         Ok(())
     }
 
-    fn terminal_try_read(&self, _buf: &mut [u8], _timeout_ms: i32) -> Result<usize, SessionError> {
-        Ok(0)
-    }
-
     fn stream_read(
         &self,
         cursor: &mut StreamCursor,
@@ -258,10 +255,6 @@ impl SessionOps for ControlledSession {
         self.id.clone()
     }
 
-    fn command(&self) -> String {
-        "controlled".to_string()
-    }
-
     fn size(&self) -> TerminalSize {
         TerminalSize::default()
     }
@@ -277,17 +270,9 @@ impl SessionOps for ControlledSession {
 }
 
 #[test]
-fn test_wait_usecase_can_be_constructed_with_mock_clock() {
-    let repo = Arc::new(MockSessionRepository::new());
-    let clock = Arc::new(TestClock);
-    let _usecase = WaitUseCaseImpl::new(repo, clock);
-}
-
-#[test]
 fn test_wait_usecase_returns_error_when_no_active_session() {
     let repo = Arc::new(MockSessionRepository::new());
     let clock = Arc::new(TestClock);
-    let usecase = WaitUseCaseImpl::new(repo, clock);
 
     let input = WaitInput {
         session_id: None,
@@ -296,7 +281,7 @@ fn test_wait_usecase_returns_error_when_no_active_session() {
         condition: None,
     };
 
-    let result = usecase.execute(input);
+    let result = wait(repo.as_ref(), clock.as_ref(), input);
     assert!(matches!(result, Err(SessionError::NoActiveSession)));
 }
 
@@ -308,7 +293,6 @@ fn test_wait_usecase_returns_error_when_session_not_found() {
             .build(),
     );
     let clock = Arc::new(TestClock);
-    let usecase = WaitUseCaseImpl::new(repo, clock);
 
     let input = WaitInput {
         session_id: Some(SessionId::try_new("missing").expect("valid session id")),
@@ -317,7 +301,7 @@ fn test_wait_usecase_returns_error_when_session_not_found() {
         condition: None,
     };
 
-    let result = usecase.execute(input);
+    let result = wait(repo.as_ref(), clock.as_ref(), input);
     assert!(matches!(result, Err(SessionError::NotFound(_))));
 }
 
@@ -325,7 +309,6 @@ fn test_wait_usecase_returns_error_when_session_not_found() {
 fn test_wait_usecase_returns_error_with_stable_condition() {
     let repo = Arc::new(MockSessionRepository::new());
     let clock = Arc::new(TestClock);
-    let usecase = WaitUseCaseImpl::new(repo, clock);
 
     let input = WaitInput {
         session_id: None,
@@ -334,7 +317,7 @@ fn test_wait_usecase_returns_error_with_stable_condition() {
         condition: Some(crate::domain::WaitConditionType::Stable),
     };
 
-    let result = usecase.execute(input);
+    let result = wait(repo.as_ref(), clock.as_ref(), input);
     assert!(matches!(result, Err(SessionError::NoActiveSession)));
 }
 
@@ -350,7 +333,6 @@ fn test_wait_usecase_returns_found_when_condition_matches() {
             .build(),
     );
     let clock = Arc::new(TestClock);
-    let usecase = WaitUseCaseImpl::new(repo, clock);
 
     let input = WaitInput {
         session_id: Some(SessionId::try_new("ready-session").expect("valid session id")),
@@ -359,7 +341,7 @@ fn test_wait_usecase_returns_found_when_condition_matches() {
         condition: None,
     };
 
-    let result = usecase.execute(input).expect("wait should succeed");
+    let result = wait(repo.as_ref(), clock.as_ref(), input).expect("wait should succeed");
     assert!(result.found);
 }
 
@@ -376,16 +358,18 @@ fn test_wait_usecase_limits_last_poll_to_remaining_timeout() {
             .with_session_handle(session.clone() as SessionHandle)
             .build(),
     );
-    let usecase = WaitUseCaseImpl::new(repo, clock);
 
-    let result = usecase
-        .execute(WaitInput {
+    let result = wait(
+        repo.as_ref(),
+        clock.as_ref(),
+        WaitInput {
             session_id: Some(SessionId::try_new("timed-session").expect("valid session id")),
             text: Some("ready".to_string()),
             timeout_ms: 120,
             condition: None,
-        })
-        .expect("wait timeout should succeed");
+        },
+    )
+    .expect("wait timeout should succeed");
 
     assert!(!result.found);
     assert_eq!(result.elapsed_ms, 120);
@@ -414,16 +398,18 @@ fn test_wait_usecase_returns_on_stream_wakeup_before_poll_interval() {
             .with_session_handle(session.clone() as SessionHandle)
             .build(),
     );
-    let usecase = WaitUseCaseImpl::new(repo, clock);
 
-    let result = usecase
-        .execute(WaitInput {
+    let result = wait(
+        repo.as_ref(),
+        clock.as_ref(),
+        WaitInput {
             session_id: Some(SessionId::try_new("wakeup-session").expect("valid session id")),
             text: Some("ready".to_string()),
             timeout_ms: 1000,
             condition: None,
-        })
-        .expect("wait should succeed after wakeup");
+        },
+    )
+    .expect("wait should succeed after wakeup");
 
     assert!(result.found);
     assert_eq!(result.elapsed_ms, 5);
@@ -448,16 +434,18 @@ fn test_wait_usecase_stable_condition_requires_three_matching_updates_over_time(
             .with_session_handle(session.clone() as SessionHandle)
             .build(),
     );
-    let usecase = WaitUseCaseImpl::new(repo, clock);
 
-    let result = usecase
-        .execute(WaitInput {
+    let result = wait(
+        repo.as_ref(),
+        clock.as_ref(),
+        WaitInput {
             session_id: Some(SessionId::try_new("stable-session").expect("valid session id")),
             text: None,
             timeout_ms: 300,
             condition: Some(crate::domain::WaitConditionType::Stable),
-        })
-        .expect("stable wait should succeed");
+        },
+    )
+    .expect("stable wait should succeed");
 
     assert!(result.found);
     assert_eq!(result.elapsed_ms, 150);

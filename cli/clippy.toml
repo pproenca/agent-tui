@@ -5,6 +5,11 @@ disallowed-methods = [
     { path = "crossbeam_channel::unbounded", reason = "Use bounded channels to enforce backpressure" },
     { path = "std::sync::mpsc::channel", reason = "Use bounded/concurrent channels with explicit capacity and backpressure semantics" }
 ]
+await-holding-invalid-types = [
+    "tokio::sync::MutexGuard",
+    "tokio::sync::RwLockReadGuard",
+    "tokio::sync::RwLockWriteGuard",
+]
 cognitive-complexity-threshold = 30
 too-many-lines-threshold = 200
 allow-unwrap-in-tests = true

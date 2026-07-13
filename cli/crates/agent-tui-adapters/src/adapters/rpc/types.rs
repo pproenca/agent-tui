@@ -226,10 +226,6 @@ impl RpcResponse {
             },
         )
     }
-
-    pub fn action_success(id: impl Into<RpcId>) -> Self {
-        Self::success(id, json!({ "success": true }))
-    }
 }
 
 #[cfg(test)]

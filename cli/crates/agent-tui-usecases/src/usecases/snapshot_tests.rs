@@ -7,10 +7,9 @@ use std::sync::Arc;
 #[test]
 fn test_snapshot_usecase_returns_error_when_no_session() {
     let repository = Arc::new(MockSessionRepository::new());
-    let usecase = SnapshotUseCaseImpl::new(repository);
 
     let input = SnapshotInput::default();
-    let result = usecase.execute(input);
+    let result = snapshot(repository.as_ref(), input);
 
     assert!(result.is_err());
 }
@@ -23,8 +22,6 @@ fn test_snapshot_usecase_rejects_named_region() {
             .with_session_handle(session)
             .build(),
     );
-    let usecase = SnapshotUseCaseImpl::new(repository);
-
     let input = SnapshotInput {
         session_id: Some(
             crate::domain::SessionId::try_new("test-session").expect("session id should be valid"),
@@ -32,7 +29,7 @@ fn test_snapshot_usecase_rejects_named_region() {
         region: Some("modal".to_string()),
         ..SnapshotInput::default()
     };
-    let result = usecase.execute(input);
+    let result = snapshot(repository.as_ref(), input);
 
     assert!(matches!(
         result,
@@ -52,14 +49,16 @@ fn test_snapshot_usecase_propagates_update_error() {
             .with_session_handle(session)
             .build(),
     );
-    let usecase = SnapshotUseCaseImpl::new(repository);
-
-    let result = usecase.execute(SnapshotInput {
-        session_id: Some(
-            crate::domain::SessionId::try_new("test-session").expect("session id should be valid"),
-        ),
-        ..SnapshotInput::default()
-    });
+    let result = snapshot(
+        repository.as_ref(),
+        SnapshotInput {
+            session_id: Some(
+                crate::domain::SessionId::try_new("test-session")
+                    .expect("session id should be valid"),
+            ),
+            ..SnapshotInput::default()
+        },
+    );
 
     assert!(matches!(result, Err(SessionError::Terminal(_))));
 }
@@ -77,10 +76,9 @@ fn test_snapshot_usecase_returns_rendered_fields_and_cursor() {
             .with_session_handle(session)
             .build(),
     );
-    let usecase = SnapshotUseCaseImpl::new(repository);
-
-    let output = usecase
-        .execute(SnapshotInput {
+    let output = snapshot(
+        repository.as_ref(),
+        SnapshotInput {
             session_id: Some(
                 crate::domain::SessionId::try_new("test-session")
                     .expect("session id should be valid"),
@@ -88,8 +86,9 @@ fn test_snapshot_usecase_returns_rendered_fields_and_cursor() {
             include_cursor: true,
             include_render: true,
             ..SnapshotInput::default()
-        })
-        .expect("snapshot should succeed");
+        },
+    )
+    .expect("snapshot should succeed");
 
     assert_eq!(output.screenshot, "plain text\n");
     assert_eq!(

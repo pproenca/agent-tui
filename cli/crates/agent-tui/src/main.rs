@@ -1,6 +1,6 @@
 //! CLI entrypoint for agent-tui.
 
-use agent_tui::Application;
+use agent_tui::run;
 use anyhow::Result;
 
 #[cfg(not(unix))]
@@ -9,7 +9,6 @@ compile_error!(
 );
 
 fn main() -> Result<()> {
-    let app = Application::new();
-    let exit_code = app.run()?;
+    let exit_code = run()?;
     std::process::exit(exit_code);
 }

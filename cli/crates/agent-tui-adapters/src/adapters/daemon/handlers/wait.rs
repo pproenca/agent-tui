@@ -7,9 +7,15 @@ use super::common;
 use super::common::session_error_response;
 use crate::adapters::parse_wait_input;
 use crate::adapters::wait_output_to_response;
-use crate::usecases::WaitUseCase;
+use crate::usecases::ports::Clock;
+use crate::usecases::ports::SessionRepository;
+use crate::usecases::wait;
 
-pub fn handle_wait_uc<U: WaitUseCase>(usecase: &U, request: RpcRequest) -> RpcResponse {
+pub fn handle_wait_uc<R, C>(repository: &R, clock: &C, request: RpcRequest) -> RpcResponse
+where
+    R: SessionRepository + ?Sized,
+    C: Clock + ?Sized,
+{
     let _span = common::handler_span(&request, "wait").entered();
     let input = match parse_wait_input(&request) {
         Ok(input) => input,
@@ -17,7 +23,7 @@ pub fn handle_wait_uc<U: WaitUseCase>(usecase: &U, request: RpcRequest) -> RpcRe
     };
     let req_id = request.id;
 
-    match usecase.execute(input) {
+    match wait::wait(repository, clock, input) {
         Ok(output) => wait_output_to_response(req_id, output),
         Err(e) => session_error_response(req_id, e),
     }

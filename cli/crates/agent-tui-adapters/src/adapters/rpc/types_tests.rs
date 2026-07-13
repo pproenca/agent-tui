@@ -110,13 +110,6 @@ fn test_response_error_format() {
 }
 
 #[test]
-fn test_action_success_shorthand() {
-    let resp = RpcResponse::action_success(1);
-    let json = serde_json::to_string(&resp).expect("action success should serialize");
-    assert!(json.contains("\"success\":true"));
-}
-
-#[test]
 fn test_success_json_returns_internal_error_when_serialization_fails() {
     struct FailingSerialize;
 

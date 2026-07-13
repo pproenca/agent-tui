@@ -12,10 +12,10 @@ const DEFAULT_MAX_REQUEST_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Clone)]
 pub struct DaemonConfig {
-    max_connections: usize,
-    idle_timeout: Duration,
-    max_request_bytes: usize,
-    max_sessions: usize,
+    pub max_connections: usize,
+    pub idle_timeout: Duration,
+    pub max_request_bytes: usize,
+    pub max_sessions: usize,
 }
 
 impl Default for DaemonConfig {
@@ -25,22 +25,6 @@ impl Default for DaemonConfig {
 }
 
 impl DaemonConfig {
-    pub fn max_connections(&self) -> usize {
-        self.max_connections
-    }
-
-    pub fn idle_timeout(&self) -> Duration {
-        self.idle_timeout
-    }
-
-    pub fn max_request_bytes(&self) -> usize {
-        self.max_request_bytes
-    }
-
-    pub fn max_sessions(&self) -> usize {
-        self.max_sessions
-    }
-
     pub fn from_env() -> Self {
         Self {
             max_connections: parse_env_usize("AGENT_TUI_MAX_CONNECTIONS", DEFAULT_MAX_CONNECTIONS),

@@ -20,7 +20,7 @@ use crate::adapters::rpc::params;
 use crate::app::rpc_client::RpcStream;
 use crate::app::rpc_client::call_stream_with_params;
 use crate::app::rpc_client::call_with_params;
-use crate::common::Colors;
+use crate::common::color;
 use crate::common::join_thread_and_warn_on_panic;
 use crate::domain::session_types::TerminalSize;
 use crate::infra::ipc::ClientError;
@@ -41,6 +41,7 @@ use crossterm::style;
 use crossterm::terminal;
 use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
+use serde::Deserialize;
 
 pub use crate::app::error::AttachError;
 
@@ -208,8 +209,8 @@ pub fn attach_ipc<C: DaemonClient>(
 ) -> Result<(), AttachError> {
     eprintln!(
         "{} Attaching to session {}...",
-        Colors::dim("[attach]"),
-        Colors::session_id(session_id)
+        color::dim("[attach]"),
+        color::session_id(session_id)
     );
 
     match mode {
@@ -217,13 +218,13 @@ pub fn attach_ipc<C: DaemonClient>(
             if detach_keys.is_disabled() {
                 eprintln!(
                     "{} Detach keys disabled (use --detach-keys to enable).",
-                    Colors::success("Connected!")
+                    color::success("Connected!")
                 );
             } else {
                 eprintln!(
                     "{} Press {} to detach.",
-                    Colors::success("Connected!"),
-                    Colors::bold(detach_keys.display())
+                    color::success("Connected!"),
+                    color::bold(detach_keys.display())
                 );
             }
             eprintln!();
@@ -231,20 +232,22 @@ pub fn attach_ipc<C: DaemonClient>(
             let term_guard = TerminalGuard::new()?;
             let stdout = Arc::new(Mutex::new(io::stdout()));
 
-            let initial_resize_warning = match terminal::size().map_err(AttachError::Terminal) {
-                Ok((cols, rows)) => TerminalSize::try_new(cols, rows).ok().and_then(|size| {
-                    sync_attach_resize(client, session_id, size)
-                        .err()
-                        .map(|error| attach_resize_warning(&error))
-                }),
-                Err(error) => return Err(error),
-            };
-            if let Ok(mut guard) = stdout.lock() {
-                render_initial_screen(client, session_id, &mut *guard);
-                if let Some(message) = initial_resize_warning.as_deref() {
-                    render_status_line(&mut *guard, Some(message));
-                }
+            let (cols, rows) = terminal::size().map_err(AttachError::Terminal)?;
+            let size = TerminalSize::try_new(cols, rows)
+                .map_err(|error| AttachError::PtyWrite(error.to_string()))?;
+            let initial_resize_warning = sync_attach_resize(client, session_id, size)
+                .err()
+                .map(|error| attach_resize_warning(&error));
+            let mut guard = stdout
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Err(error) = render_initial_screen(client, session_id, &mut *guard) {
+                tracing::warn!(%error, "Failed to render initial attach snapshot");
             }
+            if let Some(message) = initial_resize_warning.as_deref() {
+                render_status_line(&mut *guard, Some(message));
+            }
+            drop(guard);
 
             let result = attach_ipc_loop(client, session_id, &detach_keys, stdout);
 
@@ -261,18 +264,32 @@ pub fn attach_ipc<C: DaemonClient>(
     eprintln!();
     eprintln!(
         "{} Detached from session {}",
-        Colors::dim("[attach]"),
-        Colors::session_id(session_id)
+        color::dim("[attach]"),
+        color::session_id(session_id)
     );
 
     Ok(())
+}
+
+#[derive(Deserialize)]
+struct InitialSnapshot {
+    screenshot: String,
+    rendered: Option<String>,
+    cursor: Option<InitialCursor>,
+}
+
+#[derive(Deserialize)]
+struct InitialCursor {
+    row: u16,
+    col: u16,
+    visible: bool,
 }
 
 fn render_initial_screen<C: DaemonClient>(
     client: &mut C,
     session_id: &str,
     stdout: &mut impl Write,
-) {
+) -> Result<(), AttachError> {
     let params = params::SnapshotParams {
         session: Some(session_id.to_string()),
         include_cursor: true,
@@ -280,57 +297,37 @@ fn render_initial_screen<C: DaemonClient>(
         ..Default::default()
     };
 
-    let snapshot = match call_with_params(client, "snapshot", params) {
-        Ok(snapshot) => snapshot,
-        Err(_) => return,
-    };
+    let snapshot: InitialSnapshot = call_with_params(client, "snapshot", params)
+        .map_err(|error| AttachError::PtyRead(error.to_string()))?
+        .deserialize()
+        .map_err(|error| AttachError::PtyRead(error.to_string()))?;
 
-    let rendered = snapshot.get("rendered").and_then(|v| v.as_str());
-    let screenshot = snapshot.get("screenshot").and_then(|v| v.as_str());
-
-    let screen = match rendered.or(screenshot) {
-        Some(screen) => screen,
-        None => return,
-    };
+    let screen = snapshot.rendered.as_deref().unwrap_or(&snapshot.screenshot);
 
     if screen.is_empty() {
-        return;
+        return Ok(());
     }
 
-    let _ = queue!(
+    queue!(
         stdout,
         terminal::Clear(terminal::ClearType::All),
         cursor::MoveTo(0, 0),
         style::SetAttribute(style::Attribute::Reset),
         style::ResetColor,
         style::Print(screen)
-    );
+    )?;
 
-    if let Some(cursor) = snapshot.get("cursor") {
-        let row = cursor
-            .get("row")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0)
-            .min(u16::MAX as u64) as u16;
-        let col = cursor
-            .get("col")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0)
-            .min(u16::MAX as u64) as u16;
-        let visible = cursor
-            .get("visible")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-
-        let _ = queue!(stdout, cursor::MoveTo(col, row));
-        if visible {
-            let _ = queue!(stdout, cursor::Show);
+    if let Some(cursor) = snapshot.cursor {
+        queue!(stdout, cursor::MoveTo(cursor.col, cursor.row))?;
+        if cursor.visible {
+            queue!(stdout, cursor::Show)?;
         } else {
-            let _ = queue!(stdout, cursor::Hide);
+            queue!(stdout, cursor::Hide)?;
         }
     }
 
-    let _ = stdout.flush();
+    stdout.flush()?;
+    Ok(())
 }
 
 fn attach_ipc_loop<C: DaemonClient>(
@@ -715,110 +712,126 @@ impl DetachDetector {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct BufferedAttachInput {
-    bytes: Vec<u8>,
-    bypass_detach: bool,
+enum BufferedAttachInput {
+    DetectDetach(Vec<u8>),
+    BypassDetach(Vec<u8>),
 }
 
 impl BufferedAttachInput {
     fn normal(bytes: Vec<u8>) -> Self {
-        Self {
-            bytes,
-            bypass_detach: false,
-        }
+        Self::DetectDetach(bytes)
     }
 
     fn bypass(bytes: Vec<u8>) -> Self {
-        Self {
-            bytes,
-            bypass_detach: true,
-        }
+        Self::BypassDetach(bytes)
     }
 }
 
 #[derive(Debug, Default)]
-struct PasteBurstState {
-    pending_first_char: Option<(char, Instant)>,
-    buffer: String,
-    last_plain_char_at: Option<Instant>,
+enum PasteBurstState {
+    #[default]
+    Idle,
+    Pending {
+        character: char,
+        received_at: Instant,
+    },
+    Burst {
+        text: String,
+        last_received_at: Instant,
+    },
 }
 
 impl PasteBurstState {
     fn on_plain_char(&mut self, character: char, now: Instant) -> Option<BufferedAttachInput> {
-        if !self.buffer.is_empty() {
-            if self
-                .last_plain_char_at
-                .is_some_and(|last| now.duration_since(last) <= ATTACH_PASTE_BURST_CHAR_INTERVAL)
+        match std::mem::take(self) {
+            Self::Idle => {
+                *self = Self::Pending {
+                    character,
+                    received_at: now,
+                };
+                None
+            }
+            Self::Pending {
+                character: pending,
+                received_at,
+            } if now.saturating_duration_since(received_at) <= ATTACH_PASTE_BURST_CHAR_INTERVAL => {
+                let mut text = String::with_capacity(pending.len_utf8() + character.len_utf8());
+                text.push(pending);
+                text.push(character);
+                *self = Self::Burst {
+                    text,
+                    last_received_at: now,
+                };
+                None
+            }
+            Self::Pending {
+                character: pending, ..
+            } => {
+                *self = Self::Pending {
+                    character,
+                    received_at: now,
+                };
+                Some(Self::single_char_input(pending))
+            }
+            Self::Burst {
+                mut text,
+                last_received_at,
+            } if now.saturating_duration_since(last_received_at)
+                <= ATTACH_PASTE_BURST_CHAR_INTERVAL =>
             {
-                self.buffer.push(character);
-                self.last_plain_char_at = Some(now);
-                return None;
+                text.push(character);
+                *self = Self::Burst {
+                    text,
+                    last_received_at: now,
+                };
+                None
             }
-
-            let flushed = self.take_buffer();
-            self.pending_first_char = Some((character, now));
-            return Some(flushed);
-        }
-
-        if let Some((pending, pending_at)) = self.pending_first_char {
-            if now.duration_since(pending_at) <= ATTACH_PASTE_BURST_CHAR_INTERVAL {
-                self.pending_first_char = None;
-                self.buffer.push(pending);
-                self.buffer.push(character);
-                self.last_plain_char_at = Some(now);
-                return None;
+            Self::Burst { text, .. } => {
+                *self = Self::Pending {
+                    character,
+                    received_at: now,
+                };
+                Some(BufferedAttachInput::bypass(text.into_bytes()))
             }
-
-            self.pending_first_char = Some((character, now));
-            return Some(Self::single_char_input(pending));
         }
-
-        self.pending_first_char = Some((character, now));
-        None
     }
 
     fn flush_ready(&mut self, now: Instant) -> Option<BufferedAttachInput> {
-        if !self.buffer.is_empty() {
-            if self
-                .last_plain_char_at
-                .is_some_and(|last| now.duration_since(last) > ATTACH_PASTE_BURST_CHAR_INTERVAL)
-            {
-                return Some(self.take_buffer());
+        match std::mem::take(self) {
+            Self::Idle => None,
+            Self::Pending {
+                character,
+                received_at,
+            } if now.saturating_duration_since(received_at) > ATTACH_PASTE_BURST_CHAR_INTERVAL => {
+                Some(Self::single_char_input(character))
             }
-            return None;
+            Self::Burst {
+                text,
+                last_received_at,
+            } if now.saturating_duration_since(last_received_at)
+                > ATTACH_PASTE_BURST_CHAR_INTERVAL =>
+            {
+                Some(BufferedAttachInput::bypass(text.into_bytes()))
+            }
+            state => {
+                *self = state;
+                None
+            }
         }
-
-        if let Some((pending, pending_at)) = self.pending_first_char
-            && now.duration_since(pending_at) > ATTACH_PASTE_BURST_CHAR_INTERVAL
-        {
-            self.pending_first_char = None;
-            return Some(Self::single_char_input(pending));
-        }
-
-        None
     }
 
     fn flush_all(&mut self) -> Option<BufferedAttachInput> {
-        if !self.buffer.is_empty() {
-            return Some(self.take_buffer());
+        match std::mem::take(self) {
+            Self::Idle => None,
+            Self::Pending { character, .. } => Some(Self::single_char_input(character)),
+            Self::Burst { text, .. } => Some(BufferedAttachInput::bypass(text.into_bytes())),
         }
-
-        self.pending_first_char
-            .take()
-            .map(|(pending, _)| Self::single_char_input(pending))
     }
 
     fn single_char_input(character: char) -> BufferedAttachInput {
         let mut buf = [0u8; 4];
         let bytes = character.encode_utf8(&mut buf).as_bytes().to_vec();
         BufferedAttachInput::normal(bytes)
-    }
-
-    fn take_buffer(&mut self) -> BufferedAttachInput {
-        self.last_plain_char_at = None;
-        let bytes = self.buffer.as_bytes().to_vec();
-        self.buffer.clear();
-        BufferedAttachInput::bypass(bytes)
     }
 }
 
@@ -940,12 +953,13 @@ fn process_attach_input<C: DaemonClient>(
     stdout: &Arc<Mutex<io::Stdout>>,
     input: BufferedAttachInput,
 ) -> Result<bool, AttachError> {
-    let (to_send, detach) = if input.bypass_detach {
-        let mut bytes = detach_detector.cancel_partial_match();
-        bytes.extend_from_slice(&input.bytes);
-        (bytes, false)
-    } else {
-        detach_detector.consume(&input.bytes)
+    let (to_send, detach) = match input {
+        BufferedAttachInput::BypassDetach(input) => {
+            let mut bytes = detach_detector.cancel_partial_match();
+            bytes.extend_from_slice(&input);
+            (bytes, false)
+        }
+        BufferedAttachInput::DetectDetach(input) => detach_detector.consume(&input),
     };
 
     sync_detach_hint(stdout, detach_keys, detach_detector, hint_active);
@@ -1199,40 +1213,42 @@ enum AttachStreamEvent {
     Closed,
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+enum AttachStreamWireEvent {
+    Output { data: String, dropped_bytes: u64 },
+    Dropped { dropped_bytes: u64 },
+    Closed,
+    Ready,
+    Heartbeat,
+}
+
 fn parse_stream_event(value: RpcValue) -> Result<Option<AttachStreamEvent>, AttachError> {
-    let event = value.get("event").and_then(|v| v.as_str());
-    let Some(event) = event else {
-        return Ok(None);
-    };
+    let event: AttachStreamWireEvent = value
+        .deserialize()
+        .map_err(|error| AttachError::PtyRead(error.to_string()))?;
 
     match event {
-        "output" => {
-            let data_b64 = value.get("data").and_then(|v| v.as_str()).unwrap_or("");
-            if data_b64.is_empty() {
+        AttachStreamWireEvent::Output {
+            data,
+            dropped_bytes,
+        } => {
+            if data.is_empty() {
                 return Ok(None);
             }
             let data = STANDARD
-                .decode(data_b64)
+                .decode(data)
                 .map_err(|e| AttachError::PtyRead(e.to_string()))?;
-            let dropped_bytes = value
-                .get("dropped_bytes")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
             Ok(Some(AttachStreamEvent::Output {
                 data,
                 dropped_bytes,
             }))
         }
-        "dropped" => {
-            let dropped_bytes = value
-                .get("dropped_bytes")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
+        AttachStreamWireEvent::Dropped { dropped_bytes } => {
             Ok(Some(AttachStreamEvent::Dropped(dropped_bytes)))
         }
-        "closed" => Ok(Some(AttachStreamEvent::Closed)),
-        "ready" | "heartbeat" => Ok(None),
-        _ => Ok(None),
+        AttachStreamWireEvent::Closed => Ok(Some(AttachStreamEvent::Closed)),
+        AttachStreamWireEvent::Ready | AttachStreamWireEvent::Heartbeat => Ok(None),
     }
 }
 
@@ -1285,7 +1301,7 @@ fn stream_output_loop(
                 if report_drops && dropped_bytes > 0 {
                     eprintln!(
                         "{} Dropped {} bytes from stream buffer.",
-                        Colors::warning("[attach]"),
+                        color::warning("[attach]"),
                         dropped_bytes
                     );
                 }
@@ -1294,7 +1310,7 @@ fn stream_output_loop(
                 if report_drops && dropped_bytes > 0 {
                     eprintln!(
                         "{} Dropped {} bytes from stream buffer.",
-                        Colors::warning("[attach]"),
+                        color::warning("[attach]"),
                         dropped_bytes
                     );
                 }

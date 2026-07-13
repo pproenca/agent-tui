@@ -114,19 +114,9 @@ pub struct KeystrokeInput {
 }
 
 #[derive(Debug, Clone)]
-pub struct KeystrokeOutput {
-    pub success: bool,
-}
-
-#[derive(Debug, Clone)]
 pub struct TypeInput {
     pub session_id: Option<SessionId>,
     pub text: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct TypeOutput {
-    pub success: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -136,19 +126,9 @@ pub struct KeydownInput {
 }
 
 #[derive(Debug, Clone)]
-pub struct KeydownOutput {
-    pub success: bool,
-}
-
-#[derive(Debug, Clone)]
 pub struct KeyupInput {
     pub session_id: Option<SessionId>,
     pub key: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct KeyupOutput {
-    pub success: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -174,7 +154,6 @@ pub struct ResizeInput {
 #[derive(Debug, Clone)]
 pub struct ResizeOutput {
     pub session_id: SessionId,
-    pub success: bool,
     pub size: TerminalSize,
 }
 
@@ -187,7 +166,6 @@ pub struct SessionsOutput {
 #[derive(Debug, Clone)]
 pub struct KillOutput {
     pub session_id: SessionId,
-    pub success: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -200,7 +178,6 @@ pub struct TerminalWriteInput {
 pub struct TerminalWriteOutput {
     pub session_id: SessionId,
     pub bytes_written: usize,
-    pub success: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -216,7 +193,6 @@ pub struct AttachInput {
 #[derive(Debug, Clone)]
 pub struct AttachOutput {
     pub session_id: SessionId,
-    pub success: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -283,11 +259,6 @@ pub struct AssertOutput {
 
 #[derive(Debug, Clone, Default)]
 pub struct ShutdownInput;
-
-#[derive(Debug, Clone)]
-pub struct ShutdownOutput {
-    pub acknowledged: bool,
-}
 
 #[cfg(test)]
 #[path = "types_tests.rs"]

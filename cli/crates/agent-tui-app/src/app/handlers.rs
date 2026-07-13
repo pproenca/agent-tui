@@ -24,7 +24,7 @@ use tracing::warn;
 use crate::adapters::RpcValue;
 use crate::adapters::RpcValueRef;
 use crate::adapters::rpc::params;
-use crate::common::Colors;
+use crate::common::color;
 use crate::infra::ipc::ClientError;
 use crate::infra::ipc::DaemonClient;
 use crate::infra::ipc::DaemonProcessLookupResult;
@@ -40,7 +40,6 @@ use crate::infra::ipc::socket_path;
 use crate::infra::ipc::start_daemon_background;
 
 use crate::adapters::presenter::Presenter;
-use crate::adapters::presenter::create_presenter;
 use crate::app::attach::DetachKeys;
 use crate::app::commands::LiveStartArgs;
 use crate::app::commands::OutputFormat;
@@ -111,12 +110,7 @@ fn structured_cli_error(
     if let Some(suggestion) = suggestion.as_deref() {
         output["suggestion"] = serde_json::json!(suggestion);
     }
-    CliError::new(
-        format,
-        message,
-        Some(serde_json::to_string_pretty(&output).unwrap_or_default()),
-        exit_code,
-    )
+    CliError::new(format, message, Some(format!("{output:#}")), exit_code)
 }
 
 fn usage_cli_error(
@@ -212,7 +206,7 @@ fn confirm_destructive_action(
 
 fn selected_session_label(session: Option<&str>) -> String {
     session
-        .map(|id| format!("session {}", Colors::session_id(id)))
+        .map(|id| format!("session {}", color::session_id(id)))
         .unwrap_or_else(|| "the current session".to_string())
 }
 
@@ -236,11 +230,11 @@ macro_rules! key_handler {
                 key,
                 session: ctx.session.clone(),
             };
-            let result = call_with_params(ctx.client, $method, params)?;
+            call_with_params(ctx.client, $method, params)?;
             if let Some(success_message) = success_message {
-                ctx.output_success_and_ok(&result, &success_message, concat!($method, " failed"))
+                ctx.output_success_and_ok(&success_message)
             } else {
-                ctx.output_success_and_ok(&result, "", concat!($method, " failed"))
+                ctx.output_success_and_ok("")
             }
         }
     };
@@ -267,7 +261,7 @@ pub(crate) struct HandlerContext<'a, C: DaemonClient> {
     pub session: Option<String>,
     pub format: OutputFormat,
     pub no_input: bool,
-    presenter: Box<dyn Presenter>,
+    presenter: Presenter,
     current_dir_override: Option<PathBuf>,
 }
 
@@ -278,7 +272,7 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         format: OutputFormat,
         no_input: bool,
     ) -> Self {
-        let presenter = create_presenter(&format);
+        let presenter = Presenter::from(format);
         Self {
             client,
             session,
@@ -289,8 +283,8 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         }
     }
 
-    pub fn presenter(&self) -> &dyn Presenter {
-        self.presenter.as_ref()
+    pub fn presenter(&self) -> &Presenter {
+        &self.presenter
     }
 
     fn effective_current_dir(&self) -> std::io::Result<PathBuf> {
@@ -299,50 +293,6 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         } else {
             std::env::current_dir()
         }
-    }
-
-    pub fn output_success_result(
-        &self,
-        result: &RpcValue,
-        success_msg: &str,
-        failure_prefix: &str,
-    ) -> Result<bool> {
-        let success = result.bool_or("success", false);
-
-        match self.format {
-            OutputFormat::Json => {
-                if success {
-                    self.presenter.present_value(result);
-                } else {
-                    let msg = result.str_or("message", "Unknown error");
-                    let message = format!("{failure_prefix}: {msg}");
-                    return Err(CliError::new(
-                        self.format,
-                        message,
-                        Some(result.to_pretty_json()),
-                        super::exit_codes::GENERAL_ERROR,
-                    )
-                    .into());
-                }
-            }
-            OutputFormat::Text => {
-                if success {
-                    let warning = result.get("warning").and_then(|w| w.as_str());
-                    self.presenter.present_success(success_msg, warning);
-                } else {
-                    let msg = result.str_or("message", "Unknown error");
-                    let message = format!("{failure_prefix}: {msg}");
-                    return Err(CliError::new(
-                        self.format,
-                        message,
-                        Some(result.to_pretty_json()),
-                        super::exit_codes::GENERAL_ERROR,
-                    )
-                    .into());
-                }
-            }
-        }
-        Ok(true)
     }
 
     fn output_json_or<F>(&self, result: &RpcValue, text_fn: F) -> HandlerResult
@@ -360,13 +310,8 @@ impl<'a, C: DaemonClient> HandlerContext<'a, C> {
         Ok(())
     }
 
-    pub fn output_success_and_ok(
-        &self,
-        result: &RpcValue,
-        success_msg: &str,
-        failure_prefix: &str,
-    ) -> HandlerResult {
-        self.output_success_result(result, success_msg, failure_prefix)?;
+    pub fn output_success_and_ok(&self, success_msg: &str) -> HandlerResult {
+        self.presenter.present_success(success_msg, None);
         Ok(())
     }
 }
@@ -413,8 +358,8 @@ pub(crate) fn handle_spawn<C: DaemonClient>(
         let pid = result.u64_or("pid", 0);
         println!(
             "{} {}",
-            Colors::success("Session started:"),
-            Colors::session_id(session_id)
+            color::success("Session started:"),
+            color::session_id(session_id)
         );
         println!("  PID: {pid}");
     })
@@ -443,7 +388,7 @@ pub(crate) fn handle_snapshot<C: DaemonClient>(
             println!("{}", result.to_pretty_json());
         }
         OutputFormat::Text => {
-            println!("{}", Colors::bold("Screenshot:"));
+            println!("{}", color::bold("Screenshot:"));
             let screen = if preserve_ansi {
                 result
                     .get("compact_rendered")
@@ -511,8 +456,8 @@ pub(crate) fn handle_type<C: DaemonClient>(
         text,
         session: ctx.session.clone(),
     };
-    let result = call_with_params(ctx.client, "type", params)?;
-    ctx.output_success_and_ok(&result, "Text typed", "Type failed")
+    call_with_params(ctx.client, "type", params)?;
+    ctx.output_success_and_ok("Text typed")
 }
 
 pub(crate) fn warn_legacy_deprecation(command: &str, replacement: &str) {
@@ -546,18 +491,7 @@ pub(crate) fn handle_scroll<C: DaemonClient>(
             key: key.to_string(),
             session: ctx.session.clone(),
         };
-        let result = call_with_params(ctx.client, "keystroke", params)?;
-        let success = result.bool_or("success", false);
-        if !success {
-            let message = result.str_or("message", "Unknown error");
-            return Err(CliError::new(
-                ctx.format,
-                format!("scroll failed: {message}"),
-                Some(result.to_pretty_json()),
-                super::exit_codes::GENERAL_ERROR,
-            )
-            .into());
-        }
+        call_with_params(ctx.client, "keystroke", params)?;
 
         if step + 1 < amount {
             std::thread::park_timeout(Duration::from_millis(SCROLL_INTER_STEP_DELAY_MS));
@@ -733,7 +667,7 @@ pub(crate) fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> H
 
         match result.get("sessions").and_then(|v| v.as_array()) {
             Some(sessions) if !sessions.is_empty() => {
-                println!("{}", Colors::bold("Active sessions:"));
+                println!("{}", color::bold("Active sessions:"));
                 for session in sessions.iter() {
                     let id = session.str_or("id", "?");
                     let command = session.str_or("command", "?");
@@ -752,19 +686,19 @@ pub(crate) fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> H
 
                     let is_active = active_id == Some(id);
                     let active = if is_active {
-                        Colors::success(" (active)")
+                        color::success(" (active)")
                     } else {
                         String::new()
                     };
                     let status = if running {
-                        Colors::success("running")
+                        color::success("running")
                     } else {
-                        Colors::error("stopped")
+                        color::error("stopped")
                     };
 
                     println!(
                         "  {} - {} [{}] {}x{} pid:{}{}",
-                        Colors::session_id(id),
+                        color::session_id(id),
                         command,
                         status,
                         cols,
@@ -775,7 +709,7 @@ pub(crate) fn handle_sessions<C: DaemonClient>(ctx: &mut HandlerContext<C>) -> H
                 }
             }
             _ => {
-                println!("{}", Colors::dim("No active sessions"));
+                println!("{}", color::dim("No active sessions"));
             }
         }
     })
@@ -848,20 +782,20 @@ pub(crate) fn handle_session_show<C: DaemonClient>(
 
             let is_active = active_id == Some(id);
             let active = if is_active {
-                Colors::success(" (active)")
+                color::success(" (active)")
             } else {
                 String::new()
             };
             let status = if running {
-                Colors::success("running")
+                color::success("running")
             } else {
-                Colors::error("stopped")
+                color::error("stopped")
             };
 
             println!(
                 "{} {}{}",
-                Colors::bold("Session:"),
-                Colors::session_id(id),
+                color::bold("Session:"),
+                color::session_id(id),
                 active
             );
             println!("  Command: {command}");
@@ -905,24 +839,20 @@ pub(crate) fn handle_session_switch<C: DaemonClient>(
     ctx: &mut HandlerContext<C>,
     session_id: String,
 ) -> HandlerResult {
-    let success_message = format!("Active session set to {}", Colors::session_id(&session_id));
+    let success_message = format!("Active session set to {}", color::session_id(&session_id));
     let params = params::SessionParams {
-        session: Some(session_id),
+        session: Some(session_id.clone()),
     };
-    let result = call_with_params(ctx.client, "attach", params)?;
-    let success = result.bool_or("success", false);
-    let result_session_id = result.str_or("session_id", "unknown");
-    let message = if success {
-        format!("Switched active session to {result_session_id}")
-    } else {
-        result.str_or("message", "Unknown error").to_string()
-    };
+    call_with_params(ctx.client, "attach", params)?;
+    let message = format!("Switched active session to {session_id}");
     let switch_result = RpcValue::new(serde_json::json!({
-        "success": success,
-        "session_id": result_session_id,
+        "success": true,
+        "session_id": session_id,
         "message": message
     }));
-    ctx.output_success_and_ok(&switch_result, &success_message, "Switch failed")
+    ctx.output_json_or(&switch_result, || {
+        ctx.presenter.present_success(&success_message, None);
+    })
 }
 
 pub(crate) fn handle_live_start<C: DaemonClient>(
@@ -1266,7 +1196,7 @@ pub(crate) fn handle_resize<C: DaemonClient>(
     ctx.output_json_or(&result, || {
         println!(
             "Session {} resized to {}x{}",
-            Colors::session_id(result.str_or("session_id", "?")),
+            color::session_id(result.str_or("session_id", "?")),
             size.cols(),
             size.rows()
         );
@@ -1330,14 +1260,14 @@ pub(crate) fn handle_version_standalone(format: OutputFormat) -> HandlerResult {
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
-            println!("{}", Colors::bold("agent-tui"));
+            println!("{}", color::bold("agent-tui"));
             println!("  CLI version: {cli_version}");
             println!("  CLI commit: {cli_commit}");
             if let Some(err) = &daemon_error {
                 println!(
                     "  Daemon version: {} ({})",
-                    Colors::dim(&daemon_version),
-                    Colors::error(err)
+                    color::dim(&daemon_version),
+                    color::error(err)
                 );
             } else {
                 println!("  Daemon version: {daemon_version}");
@@ -1413,7 +1343,7 @@ pub(crate) fn handle_daemon_start_standalone(format: OutputFormat) -> HandlerRes
             } else {
                 "Daemon already running"
             };
-            create_presenter(&format).present_success(message, None);
+            Presenter::from(format).present_success(message, None);
         }
     }
 
@@ -1497,9 +1427,9 @@ pub(crate) fn handle_daemon_stop_standalone(
             }
             OutputFormat::Text => {
                 for warning in &warnings {
-                    eprintln!("{}", Colors::warning(warning));
+                    eprintln!("{}", color::warning(warning));
                 }
-                create_presenter(&format).present_success("Daemon stopped", None);
+                Presenter::from(format).present_success("Daemon stopped", None);
             }
         },
         StopResult::AlreadyStopped => match format {
@@ -1579,7 +1509,7 @@ pub(crate) fn handle_daemon_restart_standalone(
     }
 
     if let OutputFormat::Text = format {
-        create_presenter(&format).present_info("Restarting daemon...");
+        Presenter::from(format).present_info("Restarting daemon...");
     }
 
     let warnings = restart_daemon_core()?;
@@ -1605,9 +1535,9 @@ pub(crate) fn handle_daemon_restart_standalone(
         }
         OutputFormat::Text => {
             for warning in &warnings {
-                eprintln!("{}", Colors::warning(warning));
+                eprintln!("{}", color::warning(warning));
             }
-            create_presenter(&format).present_success("Daemon restarted", None);
+            Presenter::from(format).present_success("Daemon restarted", None);
         }
     }
     Ok(())
@@ -1753,7 +1683,7 @@ pub(crate) fn handle_daemon_status_standalone(format: OutputFormat) -> HandlerRe
             if version_mismatch {
                 println!(
                     "  Version status: {}",
-                    Colors::warning("CLI/daemon mismatch")
+                    color::warning("CLI/daemon mismatch")
                 );
             }
             if let Some(session_count) = session_count {
@@ -2219,7 +2149,7 @@ pub(crate) fn handle_cleanup<C: DaemonClient>(
             } else {
                 println!("Would clean up {} session(s):", target_ids.len());
                 for id in &target_ids {
-                    println!("  {}", Colors::session_id(id));
+                    println!("  {}", color::session_id(id));
                 }
             }
         });
@@ -2337,16 +2267,6 @@ pub(crate) fn handle_attach<C: DaemonClient>(
     let result = call_with_params(ctx.client, "attach", params)?;
 
     if interactive {
-        if !result.bool_or("success", false) {
-            return Err(CliError::new(
-                ctx.format,
-                format!("Failed to attach to session: {session_id}"),
-                Some(result.to_pretty_json()),
-                super::exit_codes::GENERAL_ERROR,
-            )
-            .into());
-        }
-
         let mode = if interactive {
             attach::AttachMode::Tty
         } else {
@@ -2357,30 +2277,10 @@ pub(crate) fn handle_attach<C: DaemonClient>(
     } else {
         match ctx.format {
             OutputFormat::Json => {
-                if result.bool_or("success", false) {
-                    println!("{}", result.to_pretty_json());
-                } else {
-                    return Err(CliError::new(
-                        ctx.format,
-                        format!("Failed to attach to session: {session_id}"),
-                        Some(result.to_pretty_json()),
-                        super::exit_codes::GENERAL_ERROR,
-                    )
-                    .into());
-                }
+                println!("{}", result.to_pretty_json());
             }
             OutputFormat::Text => {
-                if result.bool_or("success", false) {
-                    println!("Attached to session {}", Colors::session_id(&session_id));
-                } else {
-                    return Err(CliError::new(
-                        ctx.format,
-                        format!("Failed to attach to session: {session_id}"),
-                        Some(result.to_pretty_json()),
-                        super::exit_codes::GENERAL_ERROR,
-                    )
-                    .into());
-                }
+                println!("Attached to session {}", color::session_id(&session_id));
             }
         }
     }
@@ -2472,7 +2372,7 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         OutputFormat::Text => {
-            println!("{}", Colors::bold("Environment Configuration:"));
+            println!("{}", color::bold("Environment Configuration:"));
             let transport = vars
                 .iter()
                 .find(|(n, _)| *n == "AGENT_TUI_TRANSPORT")
@@ -2483,7 +2383,7 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
             );
             println!("  Socket: {}", socket_path().display());
             println!();
-            println!("{}", Colors::bold("Environment Variables:"));
+            println!("{}", color::bold("Environment Variables:"));
             for (name, value) in &vars {
                 let val_str = value
                     .as_ref()
@@ -2493,9 +2393,9 @@ pub(crate) fn handle_env(format: OutputFormat) -> HandlerResult {
                     "  {}: {}",
                     name,
                     if value.is_some() {
-                        Colors::info(val_str)
+                        color::info(val_str)
                     } else {
-                        Colors::dim(val_str)
+                        color::dim(val_str)
                     }
                 );
             }

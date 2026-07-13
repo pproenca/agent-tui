@@ -130,25 +130,36 @@ pub(crate) struct WsServerHandle {
 
 impl WsServerHandle {
     pub fn shutdown(mut self) {
+        self.shutdown_inner();
+    }
+
+    fn shutdown_inner(&mut self) {
         self.shutdown_token.cancel();
+        let Some(join) = self.join.take() else {
+            return;
+        };
         let mut remove_state_path = true;
-        if let Some(join) = self.join.take() {
-            match join_thread_with_timeout_or_reap(
-                join,
-                WS_SHUTDOWN_TIMEOUT,
-                "ws server thread",
-                "agent-tui-ws-reaper",
-            ) {
-                ThreadJoinOutcome::Joined => {}
-                ThreadJoinOutcome::ReapingInBackground => {
-                    warn!("WS server did not stop within shutdown timeout");
-                    remove_state_path = false;
-                }
+        match join_thread_with_timeout_or_reap(
+            join,
+            WS_SHUTDOWN_TIMEOUT,
+            "ws server thread",
+            "agent-tui-ws-reaper",
+        ) {
+            ThreadJoinOutcome::Joined => {}
+            ThreadJoinOutcome::ReapingInBackground => {
+                warn!("WS server did not stop within shutdown timeout");
+                remove_state_path = false;
             }
         }
         if remove_state_path && !self.state_path.as_os_str().is_empty() {
             let _ = std::fs::remove_file(&self.state_path);
         }
+    }
+}
+
+impl Drop for WsServerHandle {
+    fn drop(&mut self) {
+        self.shutdown_inner();
     }
 }
 
@@ -247,15 +258,21 @@ pub(crate) fn start_ws_server(
                 };
 
                 runtime.block_on(async move {
-                    let app = build_router(state.clone());
+                    let app = build_router(state);
                     let shutdown_token_for_server = shutdown_token_for_thread.clone();
-                    let shutdown_token_for_wait = shutdown_token_for_thread.clone();
-                    let shutdown_token_for_poll = shutdown_token_for_thread.clone();
+                    let shutdown_token_for_flag = shutdown_token_for_thread.clone();
 
                     let server = axum::serve(listener, app).with_graceful_shutdown(async move {
-                        shutdown_token_for_server.cancelled().await;
+                        tokio::select! {
+                            _ = shutdown_token_for_server.cancelled() => {}
+                            _ = async {
+                                while !shutdown_flag.load(Ordering::Relaxed) {
+                                    tokio::time::sleep(Duration::from_millis(200)).await;
+                                }
+                            } => {}
+                        }
+                        shutdown_token_for_flag.cancel();
                     });
-                    let mut server_task = tokio::spawn(async move { server.await });
 
                     #[cfg(test)]
                     tracing::callsite::rebuild_interest_cache();
@@ -269,39 +286,12 @@ pub(crate) fn start_ws_server(
                         let _ = tx.send(Ok(()));
                     }
 
-                    let shutdown_task = tokio::spawn(async move {
-                        while !shutdown_flag.load(Ordering::Relaxed) {
-                            tokio::time::sleep(Duration::from_millis(200)).await;
-                        }
-                        shutdown_token_for_poll.cancel();
-                    });
-
-                    tokio::select! {
-                        join_result = &mut server_task => {
-                            if let Err(err) = join_result {
-                                error!(error = %err, "WS server task failed");
-                            }
-                        }
-                        _ = shutdown_token_for_wait.cancelled() => {
-                            match tokio::time::timeout(WS_SHUTDOWN_TIMEOUT, &mut server_task).await {
-                                Ok(join_result) => {
-                                    if let Err(err) = join_result {
-                                        error!(error = %err, "WS server task failed");
-                                    }
-                                }
-                                Err(_) => {
-                                    warn!(
-                                        timeout_ms = WS_SHUTDOWN_TIMEOUT.as_millis(),
-                                        "WS server shutdown timed out; aborting"
-                                    );
-                                    server_task.abort();
-                                }
-                            }
-                        }
+                    if let Err(err) = server.await {
+                        error!(error = %err, "WS server failed");
                     }
-                    shutdown_task.abort();
-                    let _ = std::fs::remove_file(state_path);
+                    shutdown_token_for_thread.cancel();
                 });
+                let _ = std::fs::remove_file(state_path);
             });
         })
         .map_err(|e| WsServerError::Io {
@@ -508,6 +498,11 @@ enum WsConnectionError {
         #[source]
         source: RpcCoreError,
     },
+    #[error("websocket RPC task failed: {source}")]
+    RpcTaskFailed {
+        #[source]
+        source: tokio::task::JoinError,
+    },
     #[error("websocket stream task did not stop within {timeout_ms} ms")]
     StreamTaskShutdownTimedOut { timeout_ms: u128 },
     #[error("failed to serialize websocket RPC response: {source}")]
@@ -521,6 +516,7 @@ fn log_ws_connection_error(context: &'static str, err: &WsConnectionError) {
     match err {
         WsConnectionError::SerializeResponse { .. }
         | WsConnectionError::StreamCore { .. }
+        | WsConnectionError::RpcTaskFailed { .. }
         | WsConnectionError::StreamTaskFailed { .. } => {
             error!(context, error = %err, "WS connection failed");
         }
@@ -695,7 +691,13 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
                             break;
                         }
 
-                        let response = state.core.route(request);
+                        let response = match route_rpc_request(Arc::clone(&state.core), request).await {
+                            Ok(response) => response,
+                            Err(err) => {
+                                log_ws_connection_error("route websocket RPC", &err);
+                                break;
+                            }
+                        };
                         if let Err(err) = send_rpc_response(&mut socket, &response).await {
                             log_ws_connection_error("send RPC response", &err);
                             break;
@@ -715,6 +717,15 @@ async fn handle_ws(mut socket: WebSocket, ctx: WsContext) {
             }
         }
     }
+}
+
+async fn route_rpc_request(
+    core: Arc<RpcCore>,
+    request: RpcRequest,
+) -> Result<RpcResponse, WsConnectionError> {
+    tokio::task::spawn_blocking(move || core.route(request))
+        .await
+        .map_err(|source| WsConnectionError::RpcTaskFailed { source })
 }
 
 async fn recv_stream_payload(rx: &mut Option<mpsc::Receiver<String>>) -> Option<String> {
@@ -913,22 +924,29 @@ async fn wait_for_rpc_stream_task(
     stream_task: &mut tokio::task::JoinHandle<Result<(), RpcCoreError>>,
 ) -> Result<(), WsConnectionError> {
     match tokio::time::timeout(WS_STREAM_TASK_SHUTDOWN_TIMEOUT, &mut *stream_task).await {
-        Ok(Ok(Ok(()))) => Ok(()),
-        Ok(Ok(Err(source))) => Err(WsConnectionError::StreamCore { source }),
-        Ok(Err(err)) => {
-            warn!(error = %err, "WS stream task failed");
-            Err(WsConnectionError::StreamTaskFailed { source: err })
-        }
+        Ok(result) => rpc_stream_task_result(result),
         Err(_) => {
             warn!(
                 timeout_ms = WS_STREAM_TASK_SHUTDOWN_TIMEOUT.as_millis(),
-                "WS stream task shutdown timed out; aborting"
+                "WS stream task exceeded its cooperative shutdown grace period; waiting to reap it"
             );
-            stream_task.abort();
+            if let Err(err) = rpc_stream_task_result((&mut *stream_task).await) {
+                log_ws_connection_error("reap websocket stream task", &err);
+            }
             Err(WsConnectionError::StreamTaskShutdownTimedOut {
                 timeout_ms: WS_STREAM_TASK_SHUTDOWN_TIMEOUT.as_millis(),
             })
         }
+    }
+}
+
+fn rpc_stream_task_result(
+    result: Result<Result<(), RpcCoreError>, tokio::task::JoinError>,
+) -> Result<(), WsConnectionError> {
+    match result {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(source)) => Err(WsConnectionError::StreamCore { source }),
+        Err(source) => Err(WsConnectionError::StreamTaskFailed { source }),
     }
 }
 
@@ -944,7 +962,12 @@ async fn cancel_stream_task(
         Ok(Ok(())) => Ok(()),
         Ok(Err(source)) => Err(WsConnectionError::StreamTaskFailed { source }),
         Err(_) => {
-            stream_task.abort();
+            if let Err(source) = (&mut *stream_task).await {
+                log_ws_connection_error(
+                    "reap test websocket stream task",
+                    &WsConnectionError::StreamTaskFailed { source },
+                );
+            }
             Err(WsConnectionError::StreamTaskShutdownTimedOut {
                 timeout_ms: WS_STREAM_TASK_SHUTDOWN_TIMEOUT.as_millis(),
             })

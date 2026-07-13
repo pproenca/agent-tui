@@ -36,8 +36,19 @@ fn test_request_serializes_with_params() {
 fn test_response_deserializes_success_result() {
     let json = r#"{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}"#;
     let response: Response = serde_json::from_str(json).expect("response should parse");
-    assert!(response.result.is_some());
+    assert!(matches!(response.result, ResponseResult::Present(_)));
     assert!(response.error.is_none());
+}
+
+#[test]
+fn test_response_preserves_null_success_result() {
+    let json = r#"{"jsonrpc":"2.0","id":1,"result":null}"#;
+    let response: Response = serde_json::from_str(json).expect("response should parse");
+
+    let result = response_to_result(response, &RpcId::from(1))
+        .expect("null is a valid JSON-RPC success result");
+
+    assert_eq!(result, Value::Null);
 }
 
 #[test]
@@ -45,7 +56,7 @@ fn test_response_deserializes_string_id() {
     let json = r#"{"jsonrpc":"2.0","id":"req-1","result":{"status":"ok"}}"#;
     let response: Response = serde_json::from_str(json).expect("response should parse");
     assert_eq!(response.id, Some(RpcId::from("req-1")));
-    assert!(response.result.is_some());
+    assert!(matches!(response.result, ResponseResult::Present(_)));
 }
 
 #[test]
@@ -60,7 +71,7 @@ fn test_response_deserializes_null_id() {
 fn test_response_deserializes_error() {
     let json = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}"#;
     let response: Response = serde_json::from_str(json).expect("response should parse");
-    assert!(response.result.is_none());
+    assert!(matches!(response.result, ResponseResult::Missing));
     assert!(response.error.is_some());
     let error = response.error.expect("error payload should be present");
     assert_eq!(error.code, -32600);
@@ -95,23 +106,24 @@ fn test_client_error_rpc_error_display() {
 #[test]
 fn test_config_default_values() {
     let config = DaemonClientConfig::default();
-    assert_eq!(config.read_timeout(), Duration::from_secs(60));
-    assert_eq!(config.write_timeout(), Duration::from_secs(10));
-    assert_eq!(config.max_retries(), 3);
-    assert_eq!(config.initial_retry_delay(), Duration::from_millis(100));
+    assert_eq!(config.read_timeout, Duration::from_secs(60));
+    assert_eq!(config.write_timeout, Duration::from_secs(10));
+    assert_eq!(config.max_retries, 3);
+    assert_eq!(config.initial_retry_delay, Duration::from_millis(100));
 }
 
 #[test]
-fn test_config_builder_pattern() {
-    let config = DaemonClientConfig::default()
-        .with_read_timeout(Duration::from_secs(30))
-        .with_write_timeout(Duration::from_secs(5))
-        .with_max_retries(5)
-        .with_initial_retry_delay(Duration::from_millis(25));
-    assert_eq!(config.read_timeout(), Duration::from_secs(30));
-    assert_eq!(config.write_timeout(), Duration::from_secs(5));
-    assert_eq!(config.max_retries(), 5);
-    assert_eq!(config.initial_retry_delay(), Duration::from_millis(25));
+fn test_config_struct_literal() {
+    let config = DaemonClientConfig {
+        read_timeout: Duration::from_secs(30),
+        write_timeout: Duration::from_secs(5),
+        max_retries: 5,
+        initial_retry_delay: Duration::from_millis(25),
+    };
+    assert_eq!(config.read_timeout, Duration::from_secs(30));
+    assert_eq!(config.write_timeout, Duration::from_secs(5));
+    assert_eq!(config.max_retries, 5);
+    assert_eq!(config.initial_retry_delay, Duration::from_millis(25));
 }
 
 #[test]
@@ -195,22 +207,19 @@ fn test_ensure_daemon_starts_when_not_running() {
 
 #[test]
 fn test_in_memory_transport_round_trip() {
-    let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new(
-        |request| {
-            let value: serde_json::Value =
-                serde_json::from_str(request.trim()).expect("request json");
-            let id = value
-                .get("id")
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!(1));
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": { "ok": true }
-            })
-            .to_string()
-        },
-    ));
+    let transport = IpcTransport::in_memory(|request, _attempt| {
+        let value: serde_json::Value = serde_json::from_str(request.trim()).expect("request json");
+        let id = value
+            .get("id")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!(1));
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": { "ok": true }
+        })
+        .to_string()
+    });
 
     let mut client = UnixSocketClient::connect_with_transport(transport)
         .expect("transport-backed client should connect");
@@ -222,20 +231,21 @@ fn test_in_memory_transport_round_trip() {
 
 #[test]
 fn test_call_rejects_mismatched_response_id() {
-    let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new(
-        |_request| {
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": "wrong-id",
-                "result": { "ok": true }
-            })
-            .to_string()
-        },
-    ));
+    let transport = IpcTransport::in_memory(|_request, _attempt| {
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": "wrong-id",
+            "result": { "ok": true }
+        })
+        .to_string()
+    });
 
     let mut client = UnixSocketClient::connect_with_transport(transport)
         .expect("transport-backed client should connect");
-    let config = DaemonClientConfig::default().with_max_retries(0);
+    let config = DaemonClientConfig {
+        max_retries: 0,
+        ..DaemonClientConfig::default()
+    };
 
     let err = client
         .call_with_config("version", None, &config)
@@ -246,20 +256,21 @@ fn test_call_rejects_mismatched_response_id() {
 
 #[test]
 fn test_call_rejects_null_id_success_response() {
-    let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new(
-        |_request| {
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": null,
-                "result": { "ok": true }
-            })
-            .to_string()
-        },
-    ));
+    let transport = IpcTransport::in_memory(|_request, _attempt| {
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": null,
+            "result": { "ok": true }
+        })
+        .to_string()
+    });
 
     let mut client = UnixSocketClient::connect_with_transport(transport)
         .expect("transport-backed client should connect");
-    let config = DaemonClientConfig::default().with_max_retries(0);
+    let config = DaemonClientConfig {
+        max_retries: 0,
+        ..DaemonClientConfig::default()
+    };
 
     let err = client
         .call_with_config("version", None, &config)
@@ -270,30 +281,30 @@ fn test_call_rejects_null_id_success_response() {
 
 #[test]
 fn test_call_stream_rejects_mismatched_stream_frame_id() {
-    let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new(
-        |request| {
-            let value: serde_json::Value =
-                serde_json::from_str(request.trim()).expect("request json");
-            let id = value.get("id").cloned().expect("request should include id");
-            format!(
-                "{}\n{}",
-                serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "stream": "ready" }
-                }),
-                serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": "wrong-id",
-                    "result": { "event": "output" }
-                })
-            )
-        },
-    ));
+    let transport = IpcTransport::in_memory(|request, _attempt| {
+        let value: serde_json::Value = serde_json::from_str(request.trim()).expect("request json");
+        let id = value.get("id").cloned().expect("request should include id");
+        format!(
+            "{}\n{}",
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "stream": "ready" }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "wrong-id",
+                "result": { "event": "output" }
+            })
+        )
+    });
 
     let mut client = UnixSocketClient::connect_with_transport(transport)
         .expect("transport-backed client should connect");
-    let config = DaemonClientConfig::default().with_max_retries(0);
+    let config = DaemonClientConfig {
+        max_retries: 0,
+        ..DaemonClientConfig::default()
+    };
     let mut stream = client
         .call_stream_with_config("live_preview_stream", None, &config)
         .expect("stream handshake should succeed");
@@ -307,71 +318,60 @@ fn test_call_stream_rejects_mismatched_stream_frame_id() {
 
 #[test]
 fn test_call_with_config_retries_retryable_rpc_error() {
-    let attempts = Arc::new(Mutex::new(0u32));
-    let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new({
-        let attempts = Arc::clone(&attempts);
-        move |request| {
-            let value: serde_json::Value =
-                serde_json::from_str(request.trim()).expect("request json");
-            let id = value
-                .get("id")
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!(1));
-            let mut count = mutex_lock_or_recover(&attempts);
-            *count += 1;
-            if *count == 1 {
-                serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": {
-                        "code": -32000,
-                        "message": "busy",
-                        "data": {
-                            "retryable": true,
-                            "retry_delay_ms": 0
-                        }
+    let transport = IpcTransport::in_memory(|request, attempt| {
+        let value: serde_json::Value = serde_json::from_str(request.trim()).expect("request json");
+        let id = value
+            .get("id")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!(1));
+        if attempt == 1 {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {
+                    "code": -32000,
+                    "message": "busy",
+                    "data": {
+                        "retryable": true,
+                        "retry_delay_ms": 0
                     }
-                })
-                .to_string()
-            } else {
-                serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "ok": true }
-                })
-                .to_string()
-            }
+                }
+            })
+            .to_string()
+        } else {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "ok": true }
+            })
+            .to_string()
         }
-    }));
+    });
 
     let mut client = UnixSocketClient::connect_with_transport(transport)
         .expect("transport-backed client should connect");
-    let config = DaemonClientConfig::default()
-        .with_max_retries(1)
-        .with_initial_retry_delay(Duration::ZERO);
+    let config = DaemonClientConfig {
+        max_retries: 1,
+        initial_retry_delay: Duration::ZERO,
+        ..DaemonClientConfig::default()
+    };
 
     let result = client
         .call_with_config("version", None, &config)
         .expect("retryable RPC error should be retried");
 
     assert_eq!(result["ok"], true);
-    assert_eq!(*mutex_lock_or_recover(&attempts), 2);
 }
 
 #[test]
 fn test_call_with_config_does_not_retry_non_retryable_rpc_error() {
-    let attempts = Arc::new(Mutex::new(0u32));
-    let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new({
-        let attempts = Arc::clone(&attempts);
-        move |request| {
-            let value: serde_json::Value =
-                serde_json::from_str(request.trim()).expect("request json");
-            let id = value
-                .get("id")
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!(1));
-            let mut count = mutex_lock_or_recover(&attempts);
-            *count += 1;
+    let transport = IpcTransport::in_memory(|request, attempt| {
+        let value: serde_json::Value = serde_json::from_str(request.trim()).expect("request json");
+        let id = value
+            .get("id")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!(1));
+        if attempt == 1 {
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -384,14 +384,23 @@ fn test_call_with_config_does_not_retry_non_retryable_rpc_error() {
                 }
             })
             .to_string()
+        } else {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "unexpected_retry": true }
+            })
+            .to_string()
         }
-    }));
+    });
 
     let mut client = UnixSocketClient::connect_with_transport(transport)
         .expect("transport-backed client should connect");
-    let config = DaemonClientConfig::default()
-        .with_max_retries(3)
-        .with_initial_retry_delay(Duration::ZERO);
+    let config = DaemonClientConfig {
+        max_retries: 3,
+        initial_retry_delay: Duration::ZERO,
+        ..DaemonClientConfig::default()
+    };
 
     let err = client
         .call_with_config("version", None, &config)
@@ -405,59 +414,51 @@ fn test_call_with_config_does_not_retry_non_retryable_rpc_error() {
             ..
         } if message == "fatal"
     ));
-    assert_eq!(*mutex_lock_or_recover(&attempts), 1);
 }
 
 #[test]
 fn test_call_stream_with_config_retries_retryable_rpc_error() {
-    let attempts = Arc::new(Mutex::new(0u32));
-    let transport = std::sync::Arc::new(crate::infra::ipc::transport::InMemoryTransport::new({
-        let attempts = Arc::clone(&attempts);
-        move |request| {
-            let value: serde_json::Value =
-                serde_json::from_str(request.trim()).expect("request json");
-            let id = value
-                .get("id")
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!(1));
-            let mut count = mutex_lock_or_recover(&attempts);
-            *count += 1;
-            if *count == 1 {
-                serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": {
-                        "code": -32000,
-                        "message": "busy",
-                        "data": {
-                            "retryable": true,
-                            "retry_delay_ms": 0
-                        }
+    let transport = IpcTransport::in_memory(|request, attempt| {
+        let value: serde_json::Value = serde_json::from_str(request.trim()).expect("request json");
+        let id = value
+            .get("id")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!(1));
+        if attempt == 1 {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {
+                    "code": -32000,
+                    "message": "busy",
+                    "data": {
+                        "retryable": true,
+                        "retry_delay_ms": 0
                     }
-                })
-                .to_string()
-            } else {
-                serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": { "stream": "ready" }
-                })
-                .to_string()
-            }
+                }
+            })
+            .to_string()
+        } else {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "stream": "ready" }
+            })
+            .to_string()
         }
-    }));
+    });
 
     let mut client = UnixSocketClient::connect_with_transport(transport)
         .expect("transport-backed client should connect");
-    let config = DaemonClientConfig::default()
-        .with_max_retries(1)
-        .with_initial_retry_delay(Duration::ZERO);
+    let config = DaemonClientConfig {
+        max_retries: 1,
+        initial_retry_delay: Duration::ZERO,
+        ..DaemonClientConfig::default()
+    };
 
     let _stream = client
         .call_stream_with_config("live_preview_stream", None, &config)
         .expect("retryable stream handshake should be retried");
-
-    assert_eq!(*mutex_lock_or_recover(&attempts), 2);
 }
 
 #[test]
@@ -522,7 +523,7 @@ fn test_unix_socket_client_round_trip_over_real_socket() {
     });
 
     let mut client = UnixSocketClient {
-        transport: std::sync::Arc::new(crate::infra::ipc::transport::UnixSocketTransport),
+        transport: IpcTransport::Unix,
     };
     let result = client
         .call("version", None)
@@ -569,12 +570,14 @@ fn test_call_with_config_times_out_over_real_socket() {
     });
 
     let mut client = UnixSocketClient {
-        transport: std::sync::Arc::new(crate::infra::ipc::transport::UnixSocketTransport),
+        transport: IpcTransport::Unix,
     };
-    let config = DaemonClientConfig::default()
-        .with_read_timeout(Duration::from_millis(25))
-        .with_write_timeout(Duration::from_millis(25))
-        .with_max_retries(0);
+    let config = DaemonClientConfig {
+        read_timeout: Duration::from_millis(25),
+        write_timeout: Duration::from_millis(25),
+        max_retries: 0,
+        ..DaemonClientConfig::default()
+    };
 
     let err = client
         .call_with_config("version", None, &config)

@@ -112,23 +112,14 @@ pub fn stop_daemon_via_rpc(
 ) -> Result<StopResult, ClientError> {
     let mut warnings = Vec::new();
 
-    let config = DaemonClientConfig::default()
-        .with_read_timeout(SHUTDOWN_RPC_TIMEOUT)
-        .with_write_timeout(SHUTDOWN_RPC_TIMEOUT)
-        .with_max_retries(0);
+    let config = DaemonClientConfig {
+        read_timeout: SHUTDOWN_RPC_TIMEOUT,
+        write_timeout: SHUTDOWN_RPC_TIMEOUT,
+        max_retries: 0,
+        ..DaemonClientConfig::default()
+    };
 
-    let result = client.call_with_config("shutdown", None, &config)?;
-
-    let acknowledged = result
-        .get("acknowledged")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-
-    if !acknowledged {
-        return Err(ClientError::UnexpectedResponse {
-            message: "Shutdown was not acknowledged by daemon".to_string(),
-        });
-    }
+    client.call_with_config("shutdown", None, &config)?;
 
     wait_for_socket_removal(socket_path);
 

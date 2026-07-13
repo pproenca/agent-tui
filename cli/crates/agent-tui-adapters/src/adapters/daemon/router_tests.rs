@@ -61,10 +61,6 @@ impl SessionOps for TestSession {
         Ok(())
     }
 
-    fn terminal_try_read(&self, _buf: &mut [u8], _timeout_ms: i32) -> Result<usize, SessionError> {
-        Ok(0)
-    }
-
     fn stream_read(
         &self,
         cursor: &mut StreamCursor,
@@ -121,10 +117,6 @@ impl SessionOps for TestSession {
         self.id.clone()
     }
 
-    fn command(&self) -> String {
-        "test".to_string()
-    }
-
     fn size(&self) -> TerminalSize {
         TerminalSize::default()
     }
@@ -161,20 +153,6 @@ impl SessionRepository for TestRepository {
         Ok((id, 42))
     }
 
-    fn get(&self, session_id: &SessionId) -> Result<SessionHandle, SessionError> {
-        Ok(Arc::new(TestSession {
-            id: session_id.clone(),
-        }))
-    }
-
-    fn active(&self) -> Result<SessionHandle, SessionError> {
-        let id = self
-            .active
-            .clone()
-            .unwrap_or_else(|| SessionId::try_new("active").expect("active id should be valid"));
-        Ok(Arc::new(TestSession { id }))
-    }
-
     fn resolve(&self, session_id: Option<&SessionId>) -> Result<SessionHandle, SessionError> {
         let id = session_id
             .cloned()
@@ -209,31 +187,23 @@ impl SessionRepository for TestRepository {
         })
     }
 
-    fn session_count(&self) -> usize {
-        self.sessions.len()
-    }
-
     fn active_session_id(&self) -> Option<SessionId> {
         self.active.clone()
     }
 }
 
-fn create_test_usecases() -> UseCaseContainer<TestRepository> {
-    let session_repo = Arc::new(TestRepository::default());
-    let clock = Arc::new(TestClock);
-    let shutdown_flag = Arc::new(AtomicBool::new(false));
-    let shutdown_notifier =
-        Arc::new(crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier);
-    UseCaseContainer::new(session_repo, clock, shutdown_flag, shutdown_notifier)
+fn route_test_request(request: RpcRequest) -> RpcResponse {
+    let repository = TestRepository::default();
+    let clock = TestClock;
+    let shutdown_flag = AtomicBool::new(false);
+    let shutdown_notifier = crate::usecases::ports::shutdown_notifier::NoopShutdownNotifier;
+    Router::new(&repository, &clock, &shutdown_flag, &shutdown_notifier).route(request)
 }
 
 #[test]
 fn test_router_ping_returns_pong() {
-    let usecases = create_test_usecases();
-    let router = Router::new(&usecases);
-
     let request = RpcRequest::new(1, "ping".to_string(), None);
-    let response = router.route(request);
+    let response = route_test_request(request);
 
     let json_str = serde_json::to_string(&response).expect("ping response should serialize");
     let parsed: serde_json::Value =
@@ -245,11 +215,8 @@ fn test_router_ping_returns_pong() {
 
 #[test]
 fn test_router_unknown_method_returns_error() {
-    let usecases = create_test_usecases();
-    let router = Router::new(&usecases);
-
     let request = RpcRequest::new(1, "nonexistent_method".to_string(), None);
-    let response = router.route(request);
+    let response = route_test_request(request);
 
     let json_str =
         serde_json::to_string(&response).expect("unknown-method response should serialize");
@@ -266,11 +233,8 @@ fn test_router_unknown_method_returns_error() {
 
 #[test]
 fn test_router_version_returns_success() {
-    let usecases = create_test_usecases();
-    let router = Router::new(&usecases);
-
     let request = RpcRequest::new(1, "version".to_string(), None);
-    let response = router.route(request);
+    let response = route_test_request(request);
 
     let json_str = serde_json::to_string(&response).expect("version response should serialize");
     let parsed: serde_json::Value =
@@ -283,11 +247,8 @@ fn test_router_version_returns_success() {
 
 #[test]
 fn test_router_sessions_returns_empty_list() {
-    let usecases = create_test_usecases();
-    let router = Router::new(&usecases);
-
     let request = RpcRequest::new(1, "sessions".to_string(), None);
-    let response = router.route(request);
+    let response = route_test_request(request);
 
     let json_str = serde_json::to_string(&response).expect("sessions response should serialize");
     let parsed: serde_json::Value =
@@ -299,11 +260,8 @@ fn test_router_sessions_returns_empty_list() {
 
 #[test]
 fn test_router_cleanup_returns_success() {
-    let usecases = create_test_usecases();
-    let router = Router::new(&usecases);
-
     let request = RpcRequest::new(1, "cleanup".to_string(), None);
-    let response = router.route(request);
+    let response = route_test_request(request);
 
     let json_str = serde_json::to_string(&response).expect("cleanup response should serialize");
     let parsed: serde_json::Value =
@@ -317,15 +275,12 @@ fn test_router_cleanup_returns_success() {
 
 #[test]
 fn test_router_assert_invalid_condition_returns_error() {
-    let usecases = create_test_usecases();
-    let router = Router::new(&usecases);
-
     let request = RpcRequest::new(
         1,
         "assert".to_string(),
         Some(json!({ "type": "invalid", "value": "nope" })),
     );
-    let response = router.route(request);
+    let response = route_test_request(request);
 
     let json_str =
         serde_json::to_string(&response).expect("assert error response should serialize");
@@ -342,15 +297,12 @@ fn test_router_assert_invalid_condition_returns_error() {
 
 #[test]
 fn test_router_assert_session_condition_not_found() {
-    let usecases = create_test_usecases();
-    let router = Router::new(&usecases);
-
     let request = RpcRequest::new(
         1,
         "assert".to_string(),
         Some(json!({ "type": "session", "value": "nonexistent" })),
     );
-    let response = router.route(request);
+    let response = route_test_request(request);
 
     let json_str = serde_json::to_string(&response)
         .expect("assert session condition response should serialize");
@@ -363,17 +315,14 @@ fn test_router_assert_session_condition_not_found() {
 }
 
 #[test]
-fn test_router_shutdown_returns_acknowledged() {
-    let usecases = create_test_usecases();
-    let router = Router::new(&usecases);
-
+fn test_router_shutdown_returns_null_success() {
     let request = RpcRequest::new(1, "shutdown".to_string(), None);
-    let response = router.route(request);
+    let response = route_test_request(request);
 
     let json_str = serde_json::to_string(&response).expect("shutdown response should serialize");
     let parsed: serde_json::Value =
         serde_json::from_str(&json_str).expect("shutdown response should parse");
 
     assert!(parsed.get("error").is_none() || parsed["error"].is_null());
-    assert_eq!(parsed["result"]["acknowledged"], true);
+    assert!(parsed["result"].is_null());
 }

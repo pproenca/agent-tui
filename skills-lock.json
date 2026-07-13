@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "adversarial-rust": {
+      "source": "pproenca/dot-skills",
+      "sourceType": "github",
+      "skillPath": "skills/.experimental/adversarial-rust/SKILL.md",
+      "computedHash": "cde6a9fe3bffe8b1df03822338ae10631df7fae290390adb8175f7021f2e5151"
+    },
     "cli-for-agents": {
       "source": "pproenca/dot-skills",
       "sourceType": "github",

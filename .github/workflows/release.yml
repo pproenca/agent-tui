@@ -57,7 +57,7 @@ jobs:
             echo "dry_run=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.resolve.outputs.ref }}
           fetch-depth: 0
@@ -174,7 +174,7 @@ jobs:
             build: cargo
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.ref }}
 
@@ -211,7 +211,7 @@ jobs:
           cp "cli/target/${{ matrix.target }}/release/agent-tui" "dist/${{ matrix.artifact }}"
 
       - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}
@@ -228,7 +228,7 @@ jobs:
       attestations: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.head_sha }}
           fetch-depth: 0
@@ -237,13 +237,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Download Linux release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: cli/artifacts
           pattern: agent-tui-linux-*
 
       - name: Download macOS release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: cli/artifacts
           pattern: agent-tui-darwin-*
@@ -258,13 +258,13 @@ jobs:
 
       - name: Generate build provenance attestation
         if: needs.validate.outputs.dry_run != 'true'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: cli/release/agent-tui-*
 
       - name: Create Release
         if: needs.validate.outputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.validate.outputs.tag_name }}
           target_commitish: ${{ needs.validate.outputs.head_sha }}
@@ -295,7 +295,7 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.head_sha }}
           fetch-depth: 0
@@ -304,16 +304,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Ensure npm supports trusted publishing
         run: npm install -g npm@11.5.1
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: cli/artifacts
 
@@ -368,7 +368,7 @@ jobs:
       actions: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.head_sha }}
           fetch-depth: 0
@@ -377,9 +377,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Verify published release channels
@@ -451,7 +451,7 @@ jobs:
       npm_missing: ${{ steps.npm-check.outputs.missing }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.head_sha }}
           fetch-depth: 0
@@ -460,16 +460,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Ensure npm supports trusted publishing
         run: npm install -g npm@11.5.1
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: cli/artifacts
 
@@ -545,7 +545,7 @@ jobs:
       actions: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.head_sha }}
           fetch-depth: 0
@@ -627,7 +627,7 @@ jobs:
       actions: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.head_sha }}
           fetch-depth: 0
@@ -710,14 +710,14 @@ jobs:
           fi
 
       - name: Checkout Homebrew tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: pproenca/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
 
       - name: Download macOS release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
           pattern: agent-tui-darwin-*
@@ -794,7 +794,7 @@ jobs:
       actions: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.head_sha }}
           fetch-depth: 0
